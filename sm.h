@@ -1,14 +1,15 @@
-/* LICENSE: This code (sm.h) is placed in the public domain by its
-   author, Tom Schouten, under the terms of the CC0.
-   https://creativecommons.org/publicdomain/zero/1.0/legalcode */
-
+/* To the extent possible under law, Tom Schouten has waived all
+   copyright and related or neighboring rights to SM.
+   Code:    http://zwizwa.be/git/sm
+   License: CC0, http://creativecommons.org/publicdomain/zero/1.0
+*/
 
 #ifndef SM_H
 #define SM_H
 
 #include <stdint.h>
 
-/* Composable State Machines in C. */
+/* SM: Composable State Machines in C. */
 
 
 
