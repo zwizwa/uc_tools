@@ -1,6 +1,6 @@
 /* To the extent possible under law, Tom Schouten has waived all
    copyright and related or neighboring rights to registers_stm32f103.h
-   Code:    http://zwizwa.be/git/uctools
+   Code:    http://zwizwa.be/git/uc_tools
    License: http://creativecommons.org/publicdomain/zero/1.0 */
 
 
