@@ -1,8 +1,7 @@
 /* To the extent possible under law, Tom Schouten has waived all
-   copyright and related or neighboring rights to SM.
-   Code:    http://zwizwa.be/git/sm
-   License: CC0, http://creativecommons.org/publicdomain/zero/1.0
-*/
+   copyright and related or neighboring rights to sm.h
+   Code:    http://zwizwa.be/git/uctools
+   License: http://creativecommons.org/publicdomain/zero/1.0 */
 
 #ifndef SM_H
 #define SM_H
@@ -222,7 +221,7 @@ struct sm_buf_u16 {
    Note that it is more efficient to iterate over the buffer on the
    writing side than to yield on every element. */
 
-#define SM_WAIT_BUF_WRITE(sm, smb, typ, data) do {    \
+#define SM_WAIT_BUF_WRITE(sm, smb, data) do {         \
         SM_WAIT(sm, (smb)->next < (smb)->endx);       \
         *((smb)->next)++ = data; } while(0)
 
