@@ -23,15 +23,19 @@ struct time_extend {
    - T(time) - P < T(capture) <= T(time)
    - T(time_{n+1}) - T(time_n) < P
 
-   Routine is idempotent and can be used to annotate multiple events. */
-uint32_t time_extend(struct time_extend *x,
-                     uint16_t capture, uint32_t time) {
+   - call time_extend_set_upper_bound() before calling
+     time_extend_captured_value() possibly multiple times for multiple
+     capture values.
+
+*/
+void time_extend_set_upper_bound(struct time_extend *x, uint32_t time) {
     /* Update extension state. */
     if (time < x->time_lo) { x->time_hi++; }
     x->time_lo = time;
-
+}
+uint32_t time_extend_captured_value(struct time_extend *x, uint16_t capture) {
     /* Extend capture based on capture <= time condition. */
-    uint32_t ext = capture < time ? x->time_hi : x->time_hi - 1;
+    uint32_t ext = capture < x->time_lo ? x->time_hi : x->time_hi - 1;
     return (ext << 16) | capture;
 }
 void time_extend_init(struct time_extend *x) {
