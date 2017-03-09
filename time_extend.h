@@ -35,7 +35,7 @@ void time_extend_set_upper_bound(struct time_extend *x, uint32_t time) {
 }
 uint32_t time_extend_captured_value(struct time_extend *x, uint16_t capture) {
     /* Extend capture based on capture <= time condition. */
-    uint32_t ext = capture < x->time_lo ? x->time_hi : x->time_hi - 1;
+    uint32_t ext = capture <= x->time_lo ? x->time_hi : x->time_hi - 1;
     return (ext << 16) | capture;
 }
 void time_extend_init(struct time_extend *x) {
