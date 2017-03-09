@@ -6,8 +6,9 @@
 
 /* Allow for extending 16-bit timer capture values to 32-bit.
 
-   This works around a race condition between performing the
-   extension, and incrementing the extension counter on rollover.
+   This works around a race condition between performing the extension
+   using an additional counter, and incrementing the counter on
+   rollover.
 
    Instead, two extension counters are used, one for each region, and
    it is assumed the time_extend and time_extend_update() functions
@@ -32,6 +33,8 @@
 #ifndef TIME_EXTEND_H
 #define TIME_EXTEND_H
 
+#if 0
+// There's a simpler approach, see below
 struct time_extend {
     uint16_t ext_wrap;
     uint16_t ext_mid;
@@ -62,17 +65,53 @@ static inline void time_extend_init(struct time_extend *x) {
 }
 static inline uint32_t time_extend(struct time_extend *x, uint16_t value) {
     uint16_t ext = value;
-    if ((value >= TIME_EXTEND_Q1) &&
-        (value <  TIME_EXTEND_Q3)) {
-        ext = x->ext_mid;
-    }
-    else if (value < TIME_EXTEND_Q1) {
+    if (value < TIME_EXTEND_Q1) {
         ext = x->ext_wrap;
     }
-    else {
+    else if ((value >= TIME_EXTEND_Q1) &&
+             (value <  TIME_EXTEND_Q3)) {
+        ext = x->ext_mid;
+    }
+    else { // Q4
         ext = x->ext_wrap-1;
     }
     return value | (ext << 16);
 }
 
+#else
+
+/* Simpler implementation, using the time ordering of events to
+   disambiguate. */
+struct time_extend {
+    uint16_t time_lo;
+    uint16_t time_hi;
+};
+
+/* Preconditions:
+   T(V) means physical time of event that produced timer value in variable (V)
+   P is physical timer period
+
+   - T(time) - P < T(capture) <= T(time)
+   - T(time_n+1) - T(time_n) < P
+
+   Routine is idempotent and can be used to annotate multiple events. */
+uint32_t time_extend(struct time_extend *x,
+                     uint16_t capture, uint32_t time) {
+    /* Update extension state. */
+    if (time < x->time_lo) { x->time_hi++; }
+    x->time_lo = time;
+
+    /* Extend capture based on capture <= time condition. */
+    uint32_t ext = capture < time ? x->time_hi : x->time_hi - 1;
+    return (ext << 16) | capture;
+}
+void time_extend_init(struct time_extend *x) {
+    x->time_lo = 0;
+    x->time_hi = 0;
+}
+
+#endif
+
+
 #endif //TIME_EXTEND_H
+
