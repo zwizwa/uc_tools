@@ -28,17 +28,17 @@ struct time_extend {
      capture values.
 
 */
-void time_extend_set_upper_bound(struct time_extend *x, uint32_t time) {
+static inline void time_extend_set_upper_bound(struct time_extend *x, uint32_t time) {
     /* Update extension state. */
     if (time < x->time_lo) { x->time_hi++; }
     x->time_lo = time;
 }
-uint32_t time_extend_captured_value(struct time_extend *x, uint16_t capture) {
+static inline uint32_t time_extend_captured_value(struct time_extend *x, uint16_t capture) {
     /* Extend capture based on capture <= time condition. */
     uint32_t ext = capture <= x->time_lo ? x->time_hi : x->time_hi - 1;
     return (ext << 16) | capture;
 }
-void time_extend_init(struct time_extend *x) {
+static inline void time_extend_init(struct time_extend *x) {
     x->time_lo = 0;
     x->time_hi = 0;
 }
