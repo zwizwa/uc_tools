@@ -1,8 +1,4 @@
 #include "tools.h"
-#include "base.h"
-#include "message.h"
-
-
 
 uint8_t hex_int2char(uint32_t i) {
     if (i>15) i = 16;
@@ -28,16 +24,6 @@ uint32_t read_hex_u32_le(const uint8_t *c) {
         |  (read_hex_byte(c+4) << 16)
         |  (read_hex_byte(c+6) << 24);
 }
-
-void swap_buf(uint32_t *buf, uint32_t n) {
-    for (uint32_t i=0; i < n/2; i++) {
-        uint32_t a = buf[i];
-        uint32_t b = buf[n - 1 - i];
-        buf[i] = hw_swap(b);
-        buf[n - 1 - i] = hw_swap(a);
-    }
-}
-
 void bin_to_hex(const uint8_t *in, uint32_t nb_in, uint8_t *hex_out) {
     for (int i = 0; i < nb_in; i++) {
         write_hex_nibbles(hex_out + 2*i, in[i], 2);

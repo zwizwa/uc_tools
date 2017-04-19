@@ -7,8 +7,6 @@ uint8_t hex_int2char(uint32_t i);
 uint32_t hex_char2int_ignore(uint8_t ch); // ignore invalid (return 0)
 int32_t hex_char2int_check(uint8_t ch);   // invalid -> -1
 
-void swap_buf(uint32_t *buf, uint32_t n);
-
 void bin_to_hex(const uint8_t *in, uint32_t nb_in, uint8_t *hex_out);
 int hex_to_bin(const uint8_t *in_hex, uint8_t *buf, uint32_t size);
 

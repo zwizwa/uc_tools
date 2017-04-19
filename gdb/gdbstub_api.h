@@ -1,5 +1,5 @@
-#ifndef GDBSTUB_SHARED_H
-#define GDBSTUB_SHARED_H
+#ifndef GDBSTUB_API_H
+#define GDBSTUB_API_H
 
 /* This interface file is free and unencumbered software released into
    the public domain.
@@ -45,6 +45,8 @@
      RAM:   0x20000000
      Flash: 0x08002800
  */
+
+#include "gdbstub.h"
 
 typedef void (*gdbstub_fn_poll)(void);
 typedef void (*gdbstub_fn_reset)(void);
