@@ -4,6 +4,11 @@ C := \
 	memory.c \
 	rsp_packet.c \
 	vector.c \
+	bootloader.c \
+	hw_bootloader.c \
+	bl_hyministm32v.c \
+	bl_hyministm32v_autostart.c \
+	bl_c8t6.c \
 
 O := $(C:.c=.o)
 

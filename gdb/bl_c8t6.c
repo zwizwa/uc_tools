@@ -1,0 +1,34 @@
+#include "hw_bootloader.h"
+#include "gdbstub.h"
+#include "gdbstub_api.h"
+
+const char gdbstub_memory_map[] = GDBSTUB_MEMORY_MAP_STM32F103C8;
+const uint32_t flash_page_size_log = 10; // 1k
+
+
+/* Config is stored in a separate Flash block and overwritten when we
+   flash the application code.  To make the code more robust, the case
+   of an empty (all 0xFF) flash block is handled. */
+struct gdbstub_config _config_default __attribute__ ((section (".config_header"))) = {
+    .bottom = 0x8002800  // allow config overwrite
+};
+
+
+// #include "inline.dbg_pin.c" // KEEPs for interactive toggling and reading
+
+// ARM Cortex-M3 STM32F103C8T6 STM32 core board development board
+// A simple, bare bones board with USB.  I have 5, one is made by:
+// http://www.lctech-inc.com/Hardware/Detail.aspx?id=0172e854-77b0-43d5-b300-68e570c914fd
+// The other 4 seem functionally equivalent but have different layout and silkscreen marks.
+
+// EDIT: Also works on narrower bare-bones boards.
+
+#define LED GPIOC,13
+int main(void) {
+    rcc_clock_setup_in_hse_8mhz_out_72mhz();
+    rcc_periph_clock_enable(RCC_GPIOC);
+    hw_gpio_config(LED,HW_GPIO_CONFIG_OUTPUT);
+    bootloader_init();
+    bootloader_blink_loop(LED);
+    return 0;
+}
