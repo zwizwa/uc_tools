@@ -57,12 +57,14 @@ int infof(const char *fmt, ...) {
             case 'x': fmt++; info_hex(va_arg(ap,int),nb_digits); break;
             case 'd': fmt++; info_decimal(va_arg(ap, int));      break;
             case 's': fmt++; info_str(va_arg(ap,const char*));   break;
+            case 'c': fmt++; info_putchar(va_arg(ap, int));      break;
             default:
                 info_putchar('%');
                 info_putchar(*fmt);
                 fmt++;
                 break;
             }
+            break;
         }
         default:
             info_putchar(*fmt++);
