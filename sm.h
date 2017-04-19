@@ -135,16 +135,17 @@
 #define SM_HALT(sm)                             \
     _SM_HALT(sm,GENSYM(label_))
 
-/* Return suspend. */
-#define _SM_YIELD(sm,label) do {                \
+/* cooperative scheduling yield point.
+   If you need this, you're on the wrong track! */
+#define _SM_SUSPEND(sm,label) do {              \
         sm->next = &&label;                     \
-        return SM_READY;                        \
+        return SM_WAITING;                      \
       label:                                    \
         if (0);                                 \
     } while (0)
 
-#define SM_YIELD(sm)                            \
-    _SM_YIELD(sm,GENSYM(label_))
+#define SM_SUSPEND(sm)                          \
+    _SM_SUSPEND(sm,GENSYM(label_))
 
 
 /* Running sub-machines.
@@ -226,13 +227,14 @@ struct sm_buf {
    Note that it is more efficient to iterate over the buffer on the
    writing side than to yield on every element. */
 
-#define SM_WAIT_BUF_WRITE(sm, smb, type, data) do {         \
-        SM_WAIT(sm, (smb)->next.type < (smb)->endx.type);   \
-        *((smb)->next.type)++ = (data); } while(0)
+#define SM_WAIT_BUF_WRITE(sm, sm_buf, type, data) do {            \
+        SM_WAIT(sm, (sm_buf)->next.type < (sm_buf)->endx.type);   \
+        *((sm_buf)->next.type)++ = (data); } while(0)
 
-/* If _tick() has been called, the machine is said to be active.
-   Note that it can be in a halting state. */
-#define SM_ACTIVE(sm) ((sm)->next)
+
+
+
+typedef uint32_t (*sm_tick_fn)(void*);
 
 #endif
 
