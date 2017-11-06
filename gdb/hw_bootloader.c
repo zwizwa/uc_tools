@@ -69,7 +69,7 @@ void hw_bootloader_usb_init(void) {
     rcc_periph_clock_enable(RCC_GPIOA);
     rcc_periph_clock_enable(RCC_AFIO);
 
-    usb_strings[0] = flash_string(_config.manufacturer, "Humanetics ATD");
+    usb_strings[0] = flash_string(_config.manufacturer, "Zwizwa");
     usb_strings[1] = flash_string(_config.product,      "Bootloader");
     usb_strings[2] = flash_string(_config.serial,       "v1.0");
 

@@ -1,4 +1,4 @@
-C := \
+C_LIB := \
 	cdcacm_desc.c \
 	gdbstub.c \
 	memory.c \
@@ -6,16 +6,24 @@ C := \
 	vector.c \
 	bootloader.c \
 	hw_bootloader.c \
+	../tools.c \
+
+C_OTHER := \
 	bl_hyministm32v.c \
 	bl_hyministm32v_autostart.c \
 	bl_c8t6.c \
 
-O := $(C:.c=.o)
+ELF := \
+	bl_hyministm32v.core.elf \
+	bl_hyministm32v_autostart.core.elf \
+	bl_c8t6.core.elf \
 
-all: $(O)
+O_LIB := $(C_LIB:.c=.o)
+
+all: $(ELF)
 
 clean:
-	rm -rf *~ *.o *.d
+	rm -rf *~ *.o *.d *.dasm *.a *.elf
 
 # FIXME: transition only
 TOP := /home/build/src/gw_src/modules/
@@ -73,6 +81,24 @@ LDLIBS := \
 	-lgcc \
 	-Wl,--end-group
 
+%.d: %.c
+	$(GCC) $(CFLAGS) -M -MG -MT $(@:.d=.o) $<
+
 %.o: %.c $(MAKEFILE)
 	$(GCC) $(CFLAGS) -c $$(readlink -f $<) -o $@
+
+%.core.elf: %.o lib.a core.ld stm32f1.ld ../registers_stm32f103.o 
+	$(GCC) $(LDFLAGS) -Tcore.ld -Wl,-Map=$*.map -o $@ $*.o ../registers_stm32f103.o lib.a $(LDLIBS)
+
+%.config.elf: %.o lib.a core.ld stm32f1.ld
+	$(GCC) $(LDFLAGS) -Tconfig.ld -Wl,-Map=$*.map -o $@ $*.o lib.a $(LDLIBS)
+
+lib.a: $(O_LIB)
+	ar -r $@ $(O_LIB)
+
+
+
+TEST_RAM_O := \
+	bl_hyministm32v.core.bl_ram.o \
+
 
