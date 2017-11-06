@@ -140,7 +140,7 @@ static int32_t cmd_xfer_memory_map_read(struct gdbstub *stub,
 }
 
 #define CHECK_ADDR(rpl, addr)                                            \
-    if (!flash_null((void*)_config.bottom) && (addr < _config.bottom)) { \
+    if (!flash_null((void*)(intptr_t)_config.bottom) && (addr < _config.bottom)) { \
         return rsp_E(rpl, 00);                                      \
     }
 

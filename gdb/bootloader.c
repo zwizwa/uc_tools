@@ -23,7 +23,7 @@
 
 #include "generic.h"
 
-#define C_DELAY hw_delay[2]
+//#define C_DELAY hw_delay[2]
 
 
 #include <stdlib.h>
