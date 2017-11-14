@@ -1,6 +1,6 @@
 /* To the extent possible under law, Tom Schouten has waived all
    copyright and related or neighboring rights to sm.h
-   Code:    http://zwizwa.be/git/sm
+   Code:    http://zwizwa.be/git/uc_tools
    License: http://creativecommons.org/publicdomain/zero/1.0 */
 
 #ifndef SM_H
@@ -221,6 +221,12 @@ struct sm_buf {
     union sm_ptr endx;
 };
 
+/* Abstract read/write operations */
+#define SM_BUF_READ(sm_buf, type) \
+    (*((sm_buf)->next.type)++)
+#define SM_BUF_WRITE(sm_buf, type, data) do { \
+        *((sm_buf)->next.type)++ = data; } while(0)
+
 
 /* Blocking write to buffer.  Write as long as there is room.
 
@@ -229,12 +235,17 @@ struct sm_buf {
 
 #define SM_WAIT_BUF_WRITE(sm, sm_buf, type, data) do {            \
         SM_WAIT(sm, (sm_buf)->next.type < (sm_buf)->endx.type);   \
-        *((sm_buf)->next.type)++ = (data); } while(0)
+        SM_BUF_WRITE(sm_buf, type, data); } while(0)
 
-
+// TODO: Both the wait and the data transer can be made abstract.
+// Essentially, a write to a buffer is a write to another state
+// machine.  Conversely for reads.
 
 
 typedef uint32_t (*sm_tick_fn)(void*);
+
+
+
 
 #endif
 
