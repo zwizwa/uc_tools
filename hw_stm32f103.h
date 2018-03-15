@@ -188,21 +188,22 @@ INLINE void hw_reset(void) {
 
 /* Loop based busywait. */
 INLINE void hw_busywait(uint32_t nb_loops) {
-    __asm__("   .align 4         \n" // to make it more preditable
+    __asm__("   .align 4         \n" // to make it more predictable
             "1: subs  %0, %0, #1 \n" // 1 cycle
             "   bne   1b         \n" // 1+P if taken, 1 otherwise
             :
             : "r"(nb_loops)
             : );
-    /* P is pipeline refill.  According to datasheet this is 1 or 3
-       depending on "things". */
+    /* Cycle timing based on 0-wait-state operation. P is pipeline
+       refill.  According to datasheet this ranges from 1 to 3
+       depending on alignment and width of the target instruction, and
+       whether the processor manages to speculate the address
+       early. */
 }
 
-/* Unit is 2+P CPU cycles at 72Mhz: 0.04 uS = 1/24MHz
-   So one would think 1ms is 24000 loops with P=1.
-   The value below is from scope calibration for ms=25.
-   That would indicate P=4.  Something is not right...  FIXME */
-//INLINE void hw_busywait_us(uint32_t us) { hw_busywait(12000 * us); } // max 357912 us
+/* Trough calibration on a scope, we find the loop frequency is 12Mhz
+   for 72MHz CPU frequency.  It is not clear how to compute that
+   number from what is described in the datasheet. */
 INLINE void hw_busywait_us(uint32_t us) { hw_busywait(12 * us); }
 INLINE void hw_busywait_ms(uint32_t ms) { while(ms--) hw_busywait_us(1); }
 
@@ -289,6 +290,7 @@ INLINE void hw_delayed_write_seq2_busywait(uint32_t nb_busy_loops,
 }
 
 
+
 /* Write to GPIO CRL / CRH config registers.
 
    port: A=0,B=1,C=2,...
@@ -331,7 +333,9 @@ INLINE struct hw_delayed_write hw_gpio_config_dw(uint32_t gpio, uint32_t pin, ui
     uint32_t offset = 4 * ((pin>>3) & 1); // CRL=0, CRH=4
     uint32_t mask = ~(0xF << shift);
     uint32_t replace = (config & 0xF) << shift;
-    struct hw_delayed_write dw = {gpio + offset, (MMIO32(gpio + offset) & mask) | replace};
+    struct hw_delayed_write dw = {
+        .addr = gpio + offset,
+        .val  = (MMIO32(gpio + offset) & mask) | replace};
     return dw;
 }
 INLINE void hw_gpio_config(uint32_t gpio, uint32_t pin, uint32_t config) {
@@ -349,7 +353,34 @@ INLINE void hw_gpio_write(uint32_t gpio, uint32_t pin, int value) {
     else
         hw_gpio_low(gpio,pin);
 }
+INLINE void hw_gpio_pulse_high(uint32_t gpio, uint32_t pin, uint32_t nb_loops) {
+    hw_gpio_high(gpio, pin);
+    hw_busywait(nb_loops);
+    hw_gpio_low(gpio, pin);
+}
+INLINE void hw_gpio_pulse_low(uint32_t gpio, uint32_t pin, uint32_t nb_loops) {
+    hw_gpio_low(gpio, pin);
+    hw_busywait(nb_loops);
+    hw_gpio_high(gpio, pin);
+}
+INLINE void hw_gpio_pulse(uint32_t gpio, uint32_t pin, int value, uint32_t nb_loops) {
+    if (value)
+        hw_gpio_pulse_high(gpio,pin,nb_loops);
+    else
+        hw_gpio_pulse_low(gpio,pin,nb_loops);
+}
 
+// Note: this is likely not correct because of BRR being a 16 bit write
+// There is currently no delayed write abstraction for 16 bits registers.
+/* /\* delayed write configuration for gpio write operation *\/ */
+/* INLINE struct hw_delayed_write hw_gpio_write_dw(uint32_t gpio, uint32_t pin, uint32_t value) { */
+/*     struct hw_delayed_write dw = { */
+/*         // see libopencm3/stm32/f1/gpio.h, look for offset in GPIO_BSRR, GPIO_BRR */
+/*         .addr = gpio + value ? 0x10 : 0x14, */
+/*         .val = 1 << pin */
+/*     }; */
+/*     return dw; */
+/* } */
 
 INLINE int hw_gpio_read(uint32_t gpio, uint32_t pin) {
     return (GPIO_IDR(gpio) >> pin) & 1;
@@ -760,7 +791,6 @@ struct hw_capture_channel {
     uint32_t gpio, pin;         // gpio port, pin for capture source
     uint32_t config;            // CCMR 8bit config slice for channel
     uint32_t pol;               // polarity, 1=active low
-    uint32_t filter;            // filter configuration (0=off)
 };
 
 /* Input capture is very flexible.  There are 3 levels:
@@ -837,7 +867,7 @@ INLINE void hw_capture_channel_init(struct hw_capture_channel c) {
     // pick CCMR1/CCMR2 and shift based on high,low bits of chan.
     volatile uint32_t *tim_ccmr = (&TIM_CCMR1(c.tim)) + ((c.chan >> 1) & 1);
     uint32_t shift = 8 * (c.chan & 1);
-    *tim_ccmr = (*tim_ccmr & ~(0xFFFF << shift)) | (c.config << shift);
+    *tim_ccmr = (*tim_ccmr & ~(0xFF << shift)) | (c.config << shift);
 
 
     // TIMxCCER has 4 x 4bit slot.
