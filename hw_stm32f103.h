@@ -322,12 +322,16 @@ INLINE void hw_delayed_write_seq2_busywait(uint32_t nb_busy_loops,
        _1__: open-drain
        0___: general purpose output
        1___: Alternate function
+
+   Pull up/down is configured in PxODR port output data register.
+
 */
 
 // Common uses:
-#define HW_GPIO_CONFIG_INPUT  0x4  // gpio input, no pullup
-#define HW_GPIO_CONFIG_OUTPUT 0x3  // gpio output, push-pull
-#define HW_GPIO_CONFIG_ALTFN  0xB  // alternate function output, p
+#define HW_GPIO_CONFIG_INPUT      0x4  // gpio input, floating
+#define HW_GPIO_CONFIG_INPUT_PULL 0x8  // gpio input, pullup/down  (ODR=pull_dir)
+#define HW_GPIO_CONFIG_OUTPUT     0x3  // gpio output, push-pull
+#define HW_GPIO_CONFIG_ALTFN      0xB  // alternate function output, p
 INLINE struct hw_delayed_write hw_gpio_config_dw(uint32_t gpio, uint32_t pin, uint32_t config) {
     uint32_t shift = (pin&7) * 4;
     uint32_t offset = 4 * ((pin>>3) & 1); // CRL=0, CRH=4
