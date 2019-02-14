@@ -221,6 +221,18 @@ struct sm_buf {
     union sm_ptr endx;
 };
 
+union sm_const_ptr {
+    const uint8_t  *u8;
+    const uint16_t *u16;
+    const uint32_t *u32;
+};
+struct sm_const_buf {
+    union sm_const_ptr next;
+    union sm_const_ptr endx;
+};
+
+
+
 /* Abstract read/write operations */
 #define SM_BUF_READ(sm_buf, type) \
     (*((sm_buf)->next.type)++)
@@ -236,6 +248,11 @@ struct sm_buf {
 #define SM_WAIT_BUF_WRITE(sm, sm_buf, type, data) do {            \
         SM_WAIT(sm, (sm_buf)->next.type < (sm_buf)->endx.type);   \
         SM_BUF_WRITE(sm_buf, type, data); } while(0)
+
+#define SM_WAIT_BUF_READ(sm, sm_buf, type) ({                     \
+        SM_WAIT(sm, (sm_buf)->next.type < (sm_buf)->endx.type);   \
+        SM_BUF_READ(sm_buf, type); })
+
 
 // TODO: Both the wait and the data transer can be made abstract.
 // Essentially, a write to a buffer is a write to another state

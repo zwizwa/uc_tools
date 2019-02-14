@@ -6,6 +6,7 @@ C_LIB := \
 	vector.c \
 	bootloader.c \
 	hw_bootloader.c \
+	sm_etf.c \
 	../infof.c \
 	../tools.c \
 	info_null.c \
@@ -23,7 +24,8 @@ ELF := \
 	bl_hyministm32v.core.elf \
 	bl_hyministm32v_autostart.core.elf \
 	bl_c8t6.core.elf \
-	relay_board.x8.elf
+	relay_board.x8.elf \
+	etf_test.x8.elf
 
 O_LIB := $(C_LIB:.c=.o)
 
@@ -123,3 +125,8 @@ APP := xC
 APP := xD
 -include app.mk
 APP :=
+
+
+# FIXME: stub
+push.list: all
+	touch $@
