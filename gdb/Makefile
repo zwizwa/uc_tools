@@ -6,7 +6,13 @@ C_LIB := \
 	vector.c \
 	bootloader.c \
 	hw_bootloader.c \
+	../infof.c \
 	../tools.c \
+	info_null.c \
+
+# FIXME: Applications will not have info support.  Replace info_null.c
+# with a circular buffer.
+
 
 C_OTHER := \
 	bl_hyministm32v.c \
@@ -17,6 +23,7 @@ ELF := \
 	bl_hyministm32v.core.elf \
 	bl_hyministm32v_autostart.core.elf \
 	bl_c8t6.core.elf \
+	relay_board.x8.elf
 
 O_LIB := $(C_LIB:.c=.o)
 
@@ -25,10 +32,11 @@ all: $(ELF)
 clean:
 	rm -rf *~ *.o *.d *.dasm *.a *.elf
 
-# FIXME: transition only
-TOP := /home/build/src/gw_src/modules/
-TPF := $(TOP)/toolchain/gcc-arm-none-eabi-4_8-2014q2/bin/arm-none-eabi
-LIBOPENCM3 := $(TOP)/libopencm3
+# These are just some defaults.  Assume they are just next door.
+TPF ?= ../../gcc-arm-none-eabi-4_8-2014q2/bin/arm-none-eabi
+LIBOPENCM3 ?= ../../libopencm3
+UC_TOOLS := ..
+VERSION := $(shell git rev-parse HEAD)
 
 GCC      := $(TPF)-gcc
 OBJDUMP  := $(TPF)-objdump
@@ -46,8 +54,9 @@ MFLAGS := \
 	-mfix-cortex-m3-ldrd
 
 CPPFLAGS := \
-	-I.. \
+	-I.. -I$(UC_TOOLS)/include \
 	-I$(LIBOPENCM3)/include \
+	-DBUILD="\"$(VERSION)\""
 
 CFLAGS := \
 	-std=c99 \
@@ -85,7 +94,7 @@ LDLIBS := \
 	$(GCC) $(CFLAGS) -M -MG -MT $(@:.d=.o) $<
 
 %.o: %.c $(MAKEFILE)
-	$(GCC) $(CFLAGS) -c $$(readlink -f $<) -o $@
+	$(GCC) $(CFLAGS) -DFIRMWARE=\"$(notdir $*)\" -c $$(readlink -f $<) -o $@
 
 %.core.elf: %.o lib.a core.ld stm32f1.ld ../registers_stm32f103.o 
 	$(GCC) $(LDFLAGS) -Tcore.ld -Wl,-Map=$*.map -o $@ $*.o ../registers_stm32f103.o lib.a $(LDLIBS)
@@ -102,3 +111,15 @@ TEST_RAM_O := \
 	bl_hyministm32v.core.bl_ram.o \
 
 
+
+
+# Create rule for each separate linker script $(APP).ld
+# Device list with RAM specs here:
+# http://www.st.com/web/en/catalog/mmc/FM141/SC1169/SS1576
+APP := x8
+-include app.mk
+APP := xC
+-include app.mk
+APP := xD
+-include app.mk
+APP :=
