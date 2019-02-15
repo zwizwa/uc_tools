@@ -8,6 +8,7 @@ O_LIB := sm_etf.o
 
 HERE := $(shell readlink -f . )
 CFLAGS := \
+	-g \
 	-I $(HERE) \
 	-I $(HERE)/../../ \
 	-I $(HERE)/../../gdb \

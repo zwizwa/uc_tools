@@ -254,6 +254,7 @@ struct sm_const_buf {
         SM_BUF_READ(sm_buf, type); })
 
 
+
 // TODO: Both the wait and the data transer can be made abstract.
 // Essentially, a write to a buffer is a write to another state
 // machine.  Conversely for reads.

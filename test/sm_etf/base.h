@@ -4,6 +4,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#define infof printf
+#define infof(...) fprintf(stderr, __VA_ARGS__)
 
 #endif // BASE_H

@@ -8,5 +8,4 @@
 #include "hw_stm32f103.h"
 #include "infof.h"
 
-
 #endif // BASE_H
