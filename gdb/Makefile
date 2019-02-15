@@ -25,7 +25,8 @@ ELF := \
 	bl_hyministm32v_autostart.core.elf \
 	bl_c8t6.core.elf \
 	relay_board.x8.elf \
-	etf_test.x8.elf
+	etf_test.x8.elf \
+	echo_test.x8.elf
 
 O_LIB := $(C_LIB:.c=.o)
 

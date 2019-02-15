@@ -3,8 +3,8 @@
 #include <string.h>
 
 
-//#define NEXT() SM_WAIT_BUF_READ(sm, &sm->input, u8)
-#define NEXT() ({ uint8_t b = SM_WAIT_BUF_READ(sm, &sm->input, u8); infof("next: %d\n", b); b; })
+#define NEXT() SM_WAIT_BUF_READ(sm, &sm->input, u8)
+//#define NEXT() ({ uint8_t b = SM_WAIT_BUF_READ(sm, &sm->input, u8); infof("next: %d\n", b); b; })
 
 // Core copy routine.
 static int copy_done(struct sm_etf *sm) {
@@ -12,7 +12,7 @@ static int copy_done(struct sm_etf *sm) {
         if (sm->data_next     >= sm->data_size)     return 1;
         if (sm->input.next.u8 >= sm->input.endx.u8) return 0;
         uint8_t b = *(sm->input.next.u8)++;
-        infof("copy: %d\n", b);
+        //infof("copy: %d\n", b);
         sm->buf[sm->data_next++] = b;
     }
 }
@@ -24,13 +24,17 @@ static int copy_done(struct sm_etf *sm) {
     } while(0)
 
 // All integers are big endian
-static int32_t i32(struct sm_etf *sm) {
+static uint32_t u32(struct sm_etf *sm) {
     uint8_t *b = sm->buf;
     uint32_t x = 0x100;
     uint32_t ui = b[3] + x * (b[2] + x * (b[1] + x * b[0]));
-    return (int32_t)ui;
+    return ui;
+}
+static int32_t i32(struct sm_etf *sm) {
+    return (int32_t)u32(sm);
 }
 #define NEXT_I32() ({NEXT_CHUNK(4); i32(sm);})
+#define NEXT_U32() ({NEXT_CHUNK(4); u32(sm);})
 
 
 
@@ -107,10 +111,8 @@ uint32_t sm_etf_tick(struct sm_etf *sm) {
     /* Expecting a value.  This is either a leaf node or a new assoc
        list that deepens the recursion level. */
   next_value: {
-        /* We are at a single value point.
-           It is either a leaf ... */
-        uint8_t type = NEXT();
-        if (LIST_EXT == type) {
+        sm->data_type = NEXT();
+        if (LIST_EXT == sm->data_type) {
             /* Ignore the count.  We assume it is nil-terminated */
             NEXT_I32();
             /* A new list creates a new context */
@@ -118,24 +120,35 @@ uint32_t sm_etf_tick(struct sm_etf *sm) {
             if (sm->depth >= SM_ETF_STACK_SIZE) return SM_ETF_ERR_STACK;
         }
         else {
-            switch(type) {
+            switch(sm->data_type) {
             case SMALL_INTEGER_EXT: {
-                uint8_t b = NEXT();
-                infof("small_integer_ext: %d\n", b);
+                uint8_t byte = NEXT();
+                infof("si:%d\n", byte);
+                sm->data_size = 1;
+                sm->buf[0] = byte;
                 break;
             }
+            // SMALL_BIG_EXT, e.g. for u64
             case INTEGER_EXT: {
-                uint32_t w = NEXT_I32();
-                infof("integer_ext: %x\n", w);
+                int32_t word = NEXT_I32();
+                infof("i:%d\n", word);
+                sm->data_size = 4;
+                memcpy(sm->buf, &word, sm->data_size);
+                break;
+            }
+            case BINARY_EXT: {
+                uint32_t len = NEXT_U32();
+                infof("b:%d\n", len);
+                NEXT_CHUNK(len);
                 break;
             }
             default:
                 return SM_ETF_ERR_PROTO;
             }
 
-            /* We have a value in a context.  Pass it on. */
+            /* We have a value in a context.  FIXME: Put the callback here. */
             for(int i=0; i<=sm->depth; i++) { infof("%d ", sm->stack[i]); }
-            infof("<- stack\n");
+            infof("=stack\n");
         }
 
         goto next_binding;

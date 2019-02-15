@@ -1,3 +1,12 @@
+/* Nested data structures based on ETF.
+
+   This supports nested dictionaries where keys are numbers and
+   payloads are either numbers or binaries.  This is enough to
+   represent almost anything, while avoiding symbolic names in
+   small-sized firmware.
+*/
+
+
 #ifndef SM_ETF_H
 #define SM_ETF_H
 #include "sm.h"
@@ -9,10 +18,11 @@ struct sm_etf {
     struct sm_const_buf input;
     uint8_t *buf;
     uint32_t buf_size;
-    uint8_t data_size;
-    uint8_t data_next;
     int32_t stack[SM_ETF_STACK_SIZE];
     uint32_t depth;
+    uint32_t data_size;
+    uint32_t data_next;
+    uint8_t data_type;
 };
 uint32_t sm_etf_tick(struct sm_etf *sm);
 uint32_t sm_etf_write(struct sm_etf *sm, const uint8_t *buf, uint32_t len);
@@ -31,5 +41,6 @@ void sm_etf_init(struct sm_etf *sm, uint8_t *buf, uint32_t len);
 #define LIST_EXT          108
 #define NIL_EXT           106
 #define SMALL_TUPLE_EXT   104
+#define BINARY_EXT        109
 
 #endif //SM_ETF_H
