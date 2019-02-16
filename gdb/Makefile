@@ -130,4 +130,6 @@ APP :=
 
 # FIXME: stub
 push.list: all
-	touch $@
+	echo etf_test.x8.elf >$@
+etf_test.x8.elf.push:
+	echo 'relay_board cycle 1' | socat - TCP:10.1.3.29:12345

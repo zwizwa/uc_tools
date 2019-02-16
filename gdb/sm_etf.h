@@ -18,6 +18,7 @@ typedef void (*sm_etf_cb)(struct sm_etf*);
 struct sm_etf {
     void *next;
     sm_etf_cb cb;
+    void *cb_ctx;
     struct sm_const_buf input;
     uint8_t *buf;
     uint32_t buf_size;
