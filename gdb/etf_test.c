@@ -1,3 +1,12 @@
+
+// FIXME:
+/* S([{1,2},{3,[{5,6}]}]). */
+/* cb1:(97,1),1 */
+/* cb1:(97,1),3,5 */
+/* cb1:(106,0),3,5 */
+/* cb1: */
+
+
 // FIXME: Binary copy needs to be checked for oveflow, but there is
 // still something wrong resulting in:
 // f(B),B=binary:copy(<<0>>,100).

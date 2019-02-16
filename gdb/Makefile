@@ -25,6 +25,7 @@ ELF := \
 	bl_hyministm32v_autostart.core.elf \
 	bl_c8t6.core.elf \
 	relay_board.x8.elf \
+	wavegen.x8.elf \
 	etf_test.x8.elf \
 	echo_test.x8.elf
 
@@ -129,7 +130,8 @@ APP :=
 
 
 # FIXME: stub
-push.list: all
-	echo etf_test.x8.elf >$@
-etf_test.x8.elf.push:
-	echo 'relay_board cycle 1' | socat - TCP:10.1.3.29:12345
+push.list: $(ELF)
+	echo $(ELF) >$@
+
+# etf_test.x8.elf.push:
+# 	echo 'relay_board cycle 1' | socat - TCP:10.1.3.29:12345
