@@ -34,7 +34,8 @@ O_LIB := $(C_LIB:.c=.o)
 all: $(ELF)
 
 clean:
-	rm -rf *~ *.o *.d *.dasm *.a *.elf
+	rm -rf *~ *.o *.d *.dasm *.a *.elf *.push
+
 
 # These are just some defaults.  Assume they are just next door.
 TPF ?= ../../gcc-arm-none-eabi-4_8-2014q2/bin/arm-none-eabi
@@ -48,7 +49,9 @@ OBJCOPY  := $(TPF)-objcopy
 READELF  := $(TPF)-readelf
 HOST_GCC := gcc
 
-MAKEFILE := Makefile
+# Don't.  This is too coarse-grained.
+# MAKEFILE := Makefile
+MAKEFILE :=
 
 # Machine flags needed both for compiling and linking.
 MFLAGS := \
@@ -129,9 +132,18 @@ APP := xD
 APP :=
 
 
-# FIXME: stub
+# Support for exo:make_push
+
+# This is an overestimate.  The next rule will prune.
 push.list: $(ELF)
 	echo $(ELF) >$@
 
-# etf_test.x8.elf.push:
-# 	echo 'relay_board cycle 1' | socat - TCP:10.1.3.29:12345
+# Generate actual files to avoid pushes when not necessary.
+%.elf.push: %.elf
+	[ ! -z "$$DST" ]
+	echo "gdbstub push_change $$(readlink -f .) $<" | socat - TCP:$$DST
+	touch $@
+
+# This is needed to avoid pointless relinking of the .elf files.  See
+# elf deps list in app.mk
+.SECONDARY:
