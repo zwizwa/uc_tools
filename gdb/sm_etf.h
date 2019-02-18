@@ -14,7 +14,7 @@
 
 
 struct sm_etf;
-typedef void (*sm_etf_cb)(struct sm_etf*);
+typedef uint32_t (*sm_etf_cb)(struct sm_etf*);
 struct sm_etf {
     void *next;
     sm_etf_cb cb;

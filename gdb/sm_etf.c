@@ -117,7 +117,10 @@ uint32_t sm_etf_tick(struct sm_etf *sm) {
             }
 
             /* We have a value in a context.  FIXME: Put the callback here. */
-            if(sm->cb) sm->cb(sm);
+            if(sm->cb) {
+                uint32_t rv = sm->cb(sm);
+                if (rv) return rv;
+            }
         }
 
         goto next_binding;
@@ -135,7 +138,10 @@ uint32_t sm_etf_tick(struct sm_etf *sm) {
         case NIL_EXT:
             /* Acts as "commit" command for a dictionary. */
             sm->data_size = 0;
-            if(sm->cb) sm->cb(sm);
+            if(sm->cb) {
+                uint32_t rv = sm->cb(sm);
+                if (rv) return rv;
+            }
             sm->depth--;
             goto next_binding;
         case SMALL_TUPLE_EXT: {
