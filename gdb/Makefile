@@ -28,6 +28,7 @@ ELF := \
 	gpio_etf.x8.elf \
 	wavegen.x8.elf \
 	etf_test.x8.elf \
+	etf_console.x8.elf \
 	echo_test.x8.elf
 
 O_LIB := $(C_LIB:.c=.o)
@@ -43,6 +44,10 @@ TPF ?= ../../gcc-arm-none-eabi-4_8-2014q2/bin/arm-none-eabi
 LIBOPENCM3 ?= ../../libopencm3
 UC_TOOLS := ..
 VERSION := $(shell git rev-parse HEAD)
+
+# FIXME: move this into libprim instead
+LIBPRIM ?= ../../libprim
+LIBPRIM_LIBS ?= $(LIBPRIM)/build/gdbstub/lib.a
 
 GCC      := $(TPF)-gcc
 OBJDUMP  := $(TPF)-objdump
@@ -64,6 +69,7 @@ MFLAGS := \
 CPPFLAGS := \
 	-I.. -I$(UC_TOOLS)/include \
 	-I$(LIBOPENCM3)/include \
+	-I$(LIBPRIM) \
 	-DBUILD="\"$(VERSION)\""
 
 CFLAGS := \
@@ -97,6 +103,9 @@ LDLIBS := \
 	-lc \
 	-lgcc \
 	-Wl,--end-group
+
+# FIXME
+LDLIBS += $(LIBPRIM_LIBS)
 
 %.d: %.c
 	$(GCC) $(CFLAGS) -M -MG -MT $(@:.d=.o) $<

@@ -1,57 +1,71 @@
+/* Wrapper for libprim-based command line interpreters.
 
-// FIXME: Binary copy needs to be checked for oveflow, but there is
-// still something wrong resulting in:
-// f(B),B=binary:copy(<<0>>,100).
-// gdbstub:dev({zoe,[9,2,4]}) ! {send, term_to_binary([{3,B},{1,B}])}.
-//  {data,<<"¿¿:(109,100),3\ncb:(109,100),1\n">>}
-
-
-/* Test application for ETF-based protocol. */
-
-/* Subset of ETF protocol.  Basic principles:
-
-   - A tree can be represented as [{Path,Leaf}]
-
-   - This can easily be folded without needing intermediate storage,
-     as long as the receiving end can parse the Leaf nodes in a
-     streaming fashion.
-
-   - The loop state that needs to be kept is just the path of the
-     current leaf node.
-
-   - By making all tags into uint32_t, the depth can be fixed to a
-     particular size, avoiding memory allocation.
-
-*/
+   The problem this solves is that the libprim code requires blocking
+   I/O.  Which can be implemented on the serial port, but currently
+   not on USB.  The intermediate route is to use ETF to perform the
+   chunking necessary to send command buffers, and run the interpreter
+   on the command buffer. */
 
 #include "sm_etf.h"
 #include "base.h"
 #include "gdbstub_api.h"
 #include <string.h>
+#include <stdlib.h>
+
+// libprim
+#include "leaf/port.h"
+#include "leaf/bytes.h"
+
 
 struct sm_etf sm_etf;
 uint8_t etf_buf[1024];
 
-// S=fun(T) -> gdbstub:dev({zoe,[9,2,3]}) ! {send, term_to_binary(T)} end.
+// For malloc.
+extern int _ebss;
+void *_sbrk(intptr_t increment) {
+    static uint8_t *brk = (void*)&_ebss;
+    brk += increment;
+    infof("_sbrk %x %x\n", increment, brk);
+    return brk;
+}
+// FIXME: These should not be necessary.  Find out what code is calling this.
+void _exit(void)  { info_puts("_exit\n");   while(1); }
+int _isatty(void) { info_puts("_isatty\n"); return 0; }
+int _read(void)   { info_puts("_read\n");   return -1; }
+int _write(void)  { info_puts("_write\n");  return -1; }
+int _close(void)  { info_puts("_close\n");  return -1; }
+int _fini(void)   { info_puts("_fini\n");   return -1; }
+int _fstat(void)  { info_puts("_fstat\n");  return -1; }
+int _lseek(void)  { info_puts("_lseek\n");  return -1; }
 
-// application will typically provide a top level callback
-static uint32_t cb1(uint8_t type,
-                uint8_t *buf, uint32_t buf_len,
-                int32_t *tag, uint32_t tag_len) {
-    infof("cb1:(%d,%d)", type, buf_len);
-    for(int i=0; i<tag_len; i++) { infof(",%d", tag[i]); }
-    infof("\n");
+
+uint32_t interpret(uint8_t *buf, uint32_t len) {
+    //bytes *b = bytes_const_new((const char*)buf, len);
+    //port *p  = port_bytes_new(b);
+    //infof("brk: %x\n", _sbrk(0));
+    void *p = malloc(10);
+    infof("%x\n", p);
+    free(p);
+    //leaf_free(&p->base);
+    //leaf_free(&b->base);
     return 0;
 }
-// but for sm_etf, the cb is kept simple: just pass the struct
-static uint32_t cb(struct sm_etf *sm) {
-    return cb1(sm->data_type, sm->buf, sm->data_size, sm->stack, sm->depth);
-}
 
+
+
+
+// Run the interpreter on a binary supplied using ETF.
+static uint32_t cb(struct sm_etf *sm) {
+    if (sm->data_type != BINARY_EXT) return 0x100;
+    if (sm->depth != 0) return 0x101;
+    return interpret(sm->buf, sm->data_size);
+    //info_write(sm->buf, sm->data_size);
+    //infof("%x\n", &_ebss);
+    return 0;
+}
 static void sm_etf_reset(void) {
     sm_etf_init(&sm_etf, &etf_buf[0], sizeof(etf_buf), &cb);
 }
-
 static void etf_write(const uint8_t *buf, uint32_t len) {
     uint32_t status = sm_etf_write(&sm_etf, buf, len);
     if (SM_WAITING != status) {
@@ -59,17 +73,10 @@ static void etf_write(const uint8_t *buf, uint32_t len) {
         sm_etf_reset();
     }
 }
-
-
-
 static uint32_t etf_read(uint8_t *buf, uint32_t len) {
-    // Wrap console data in an ETF binary.  Note that pure binaries
-    // would be easy to parse on the other end, but let's keep it
-    // consistent.
+    //return etf_binary_read(info_read, buf, len);
     return etf_tagged_read(123, info_read, buf, len);
 }
-
-
 const struct gdbstub_io etf_io = {
     .read  = etf_read,
     .write = etf_write,

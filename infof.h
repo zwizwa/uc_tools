@@ -18,6 +18,7 @@ int info_putchar(int c);
 int info_flushed(void);
 uint32_t info_read(uint8_t *buf, uint32_t len);
 
+
 /* Entry points */
 int infof(const char *fmt, ...);
 void info_decimal(int d);
@@ -34,6 +35,13 @@ static inline void info_block_data(uint32_t block, uint8_t *data, uint32_t block
         info_hex_u8(data + i, 32);
         info_putchar('\n');
     }
+}
+
+static inline void info_puts(char *buf) {
+    while(*buf)info_putchar(*buf++);
+}
+static inline void info_write(uint8_t *buf, uint32_t len) {
+    while(len--) info_putchar(*buf++);
 }
 
 #endif

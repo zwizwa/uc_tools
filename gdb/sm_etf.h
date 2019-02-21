@@ -43,7 +43,7 @@ void sm_etf_init(struct sm_etf *sm, uint8_t *buf, uint32_t len, sm_etf_cb);
 #define SM_ETF_ERR_PAIR    6
 #define SM_ETF_ERR_NAME    7
 
-
+#define ATOM_EXT          100
 #define SMALL_INTEGER_EXT  97
 #define INTEGER_EXT        98
 #define LIST_EXT          108
@@ -54,8 +54,11 @@ void sm_etf_init(struct sm_etf *sm, uint8_t *buf, uint32_t len, sm_etf_cb);
 uint32_t etf_tagged_read(
     uint8_t tag,
     uint32_t (*read)(uint8_t *buf, uint32_t len),
-    uint8_t *buf,
-    uint32_t len);
+    uint8_t *buf, uint32_t len);
+
+uint32_t etf_binary_read(
+    uint32_t (*read)(uint8_t *buf, uint32_t len),
+    uint8_t *buf, uint32_t len);
 
 #endif //SM_ETF_H
 

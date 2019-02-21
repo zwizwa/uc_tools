@@ -262,9 +262,6 @@ struct sm_const_buf {
 
 typedef uint32_t (*sm_tick_fn)(void*);
 
-
-
-
 #endif
 
 

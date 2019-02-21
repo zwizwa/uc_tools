@@ -1,11 +1,4 @@
 // ETF-controlled GPIO acces
-// Can serve as an example.  Note that:
-//
-// - ETF is easy to receive for us
-// - we can send pterm or ETF back
-//
-// FIXME: currently we're sending pterm, but ETF is easy enough to
-// dump into the log buffer.
 
 
 #include "sm_etf.h"
@@ -18,43 +11,47 @@ uint8_t etf_buf[1024];
 
 #define ERR_CB = 0x100
 
-KEEP void set_pin_A(int pin, int val) {
-    hw_gpio_write(GPIOA,pin,val);
-    hw_gpio_config(GPIOA,pin,HW_GPIO_CONFIG_OUTPUT);
+
+void set_pin(uint32_t gpiodev, int pin, int val) {
+    hw_gpio_write(gpiodev,pin,val);
+    hw_gpio_config(gpiodev,pin,HW_GPIO_CONFIG_OUTPUT);
 }
-KEEP void set_pin_B(int pin, int val) {
-    hw_gpio_write(GPIOB,pin,val);
-    hw_gpio_config(GPIOB,pin,HW_GPIO_CONFIG_OUTPUT);
-}
+
+// The info buffer is used to send reply ETF data
+#define INFO(...) { uint8_t buf[] = {__VA_ARGS__}; info_write(buf, sizeof(buf)); }
 
 static uint32_t cb1(uint8_t type,
                     uint8_t *buf, uint32_t buf_len,
                     int32_t *tag, uint32_t tag_len) {
     // FIXME: don't rely on integer sizes
-    // FIXME: to avoid a reply buffer, ack is sent using a console message.
     if (SMALL_INTEGER_EXT == type && 1 == tag_len) {
-        int32_t gpio = *tag;
+        int32_t gpio;
+        switch(type){
+        case SMALL_INTEGER_EXT: gpio = *buf; break;
+        case INTEGER_EXT: gpio = *(int32_t*)buf; break;
+        default: return 0x100;
+        }
         int pin = gpio % 32;
         int port = gpio / 32;
         int val = *buf;
         if (port < 0) return 0x101;
-        if (port > 1) return 0x102;
+        if (port > 2) return 0x102;
         if (val < 0)  return 0x103;
         if (val > 1)  return 0x104;
-
         switch(port) {
-        case 0: set_pin_A(pin, val); break;
-        case 1: set_pin_B(pin, val); break;
+        case 0: set_pin(GPIOA, pin, val); break;
+        case 1: set_pin(GPIOB, pin, val); break;
+        case 2: set_pin(GPIOC, pin, val); break;
         }
         return 0;
     }
     if (NIL_EXT == type && 1 == tag_len) {
-        infof("ok\n");
+        INFO(0,0,0,6,
+             131,
+             ATOM_EXT,0,2,'o','k');
         return 0;
     }
-    // Don't do this here.  _read will return status code
-    // infof("cb1: bad proto\n");
-    return 0x100;
+    return 0x105;
 }
 static uint32_t cb(struct sm_etf *sm) {
     return cb1(sm->data_type, sm->buf, sm->data_size, sm->stack, sm->depth);
@@ -67,13 +64,22 @@ static void sm_etf_reset(void) {
 static void etf_write(const uint8_t *buf, uint32_t len) {
     uint32_t status = sm_etf_write(&sm_etf, buf, len);
     if (SM_WAITING != status) {
-        infof("{error,16#%x}\n",status);
+        INFO(0,0,0,16,
+             131,
+             SMALL_TUPLE_EXT,2,
+             ATOM_EXT,0,5,'e','r','r','o','r',
+             INTEGER_EXT,
+             status >> 24,
+             status >> 16,
+             status >> 8,
+             status >> 0);
         sm_etf_reset();
     }
 }
 
 static uint32_t etf_read(uint8_t *buf, uint32_t len) {
-    return etf_tagged_read(123, info_read, buf, len);
+    // Buffer contains ETF
+    return info_read(buf, len);
 }
 
 const struct gdbstub_io etf_io = {
@@ -101,7 +107,10 @@ void start(void) {
     hw_app_init();
 
     /* IO init */
-    rcc_periph_clock_enable(RCC_GPIOA | RCC_GPIOB | RCC_AFIO);
+    rcc_periph_clock_enable(
+        RCC_GPIOA |
+        RCC_GPIOB |
+        RCC_AFIO);
     sm_etf_reset();
 
 }

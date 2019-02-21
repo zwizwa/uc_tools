@@ -9,10 +9,10 @@
 //#define NEXT() ({ uint8_t b = SM_WAIT_BUF_READ(sm, &sm->input, u8); infof("next: %d\n", b); b; })
 
 // Init + blocking copy
-#define NEXT_CHUNK(nb) do {                     \
-        sm->data_size = nb;                     \
-        sm->data_next = 0;                      \
-        SM_WAIT(sm, copy_done(sm));             \
+#define NEXT_CHUNK(nb) do {                           \
+        sm->data_size = nb;                           \
+        sm->data_next = 0;                            \
+        SM_WAIT(sm, copy_done(sm));                   \
     } while(0)
 
 #define NEXT_I32() ({NEXT_CHUNK(4); i32(sm->buf);})
@@ -66,6 +66,9 @@ uint32_t sm_etf_tick(struct sm_etf *sm) {
     SM_RESUME(sm);
 
   next_term:
+    /* We don't need the {packet,4} prefix as we are streaming the
+     * bytes into the state machine without buffering. */
+    NEXT_I32();
     if (131 != NEXT()) return SM_ETF_ERR_PROTO;
 
     /* value = leaf | assoc(value)
@@ -187,27 +190,43 @@ void sm_etf_init(struct sm_etf *sm, uint8_t *buf, uint32_t len, sm_etf_cb cb) {
 }
 
 
+static void write_u32(uint8_t *buf, uint32_t val) {
+    buf[0] = val >> 24;
+    buf[1] = val >> 16;
+    buf[2] = val >> 8;
+    buf[3] = val >> 0;
+}
 
-/* Not part of read SM, but convenient. */
-uint32_t etf_tagged_read(uint8_t tag, uint32_t (*read)(uint8_t *buf, uint32_t len),
+/* Not part of read SM, but convenient.  Note that this is quite a
+ * large overhead: 20 out of 64 bytes in a USB frame are used for
+ * packaging.  ETF makes most sense when using state machines to
+ * produce larger data chunks. */
+uint32_t etf_tagged_read(uint8_t tag, 
+                         uint32_t (*read)(uint8_t *buf, uint32_t len),
                          uint8_t *buf, uint32_t len) {
-    uint32_t data_size = read(buf+15, len-15-1);
+    uint32_t data_size = read(buf+19, len-19-1);
     if (!data_size) return 0;
-    buf[0] = 131;
-    buf[1] = LIST_EXT;
-    buf[2] = 0;
-    buf[3] = 0;
-    buf[4] = 0;
-    buf[5] = 1;
-    buf[6] = SMALL_TUPLE_EXT;
-    buf[7] = 2;
-    buf[8] = SMALL_INTEGER_EXT;
-    buf[9] = tag;
-    buf[10] = BINARY_EXT;
-    buf[11] = data_size >> 24;
-    buf[12] = data_size >> 16;
-    buf[13] = data_size >> 8;
-    buf[14] = data_size >> 0;
-    buf[15 + data_size] = NIL_EXT;
-    return 15 + data_size + 1;
+    write_u32(&buf[0], 15 + data_size + 1);
+    buf[4] = 131;
+    buf[5] = LIST_EXT;
+    write_u32(&buf[6], 1);
+    buf[10] = SMALL_TUPLE_EXT;
+    buf[11] = 2;
+    buf[12] = SMALL_INTEGER_EXT;
+    buf[13] = tag;
+    buf[14] = BINARY_EXT;
+    write_u32(&buf[15], data_size);
+    buf[19 + data_size] = NIL_EXT;
+    return 19 + data_size + 1;
+}
+
+uint32_t etf_binary_read(uint32_t (*read)(uint8_t *buf, uint32_t len),
+                         uint8_t *buf, uint32_t len) {
+    uint32_t data_size = read(buf+10, len-10);
+    if (!data_size) return 0;
+    write_u32(&buf[0], data_size + 6);
+    buf[4] = 131;
+    buf[5] = BINARY_EXT;
+    write_u32(&buf[6], data_size);
+    return 10 + data_size;
 }
