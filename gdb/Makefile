@@ -28,7 +28,6 @@ ELF := \
 	gpio_etf.x8.elf \
 	wavegen.x8.elf \
 	etf_test.x8.elf \
-	etf_console.x8.elf \
 	echo_test.x8.elf
 
 O_LIB := $(C_LIB:.c=.o)
