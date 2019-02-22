@@ -5,8 +5,6 @@ LIBOPENCM3=../../libopencm3
 UC_TOOLS=..
 VERSION=$(git rev-parse HEAD)
 
-
-
 # ---- Implementation
 
 GCC=${TPF}-gcc
@@ -14,21 +12,20 @@ OBJDUMP=${TPF}-objdump
 OBJCOPY=${TPF}-objcopy
 READELF=${TPF}-readelf
 
-MFLAGS="\
+MFLAGS=" \
 -mthumb \
 -mcpu=cortex-m3 \
 -msoft-float \
--mfix-cortex-m3-ldrd"
+-mfix-cortex-m3-ldrd \
+" 
 
 CPPFLAGS="\
 -I.. \
 -I$UC_TOOLS/include \
 -I$LIBOPENCM3/include \
--I$LIBPRIM \
--DBUILD="\"$VERSION\""
 "
 
-CFLAGS="\
+CFLAGS=" \
 -std=c99 \
 -fno-common \
 -ffunction-sections \
@@ -43,10 +40,10 @@ CFLAGS="\
 -g \
 -Os \
 $CPPFLAGS \
-$MFLAGS\
+$MFLAGS \
 "
 
-LDFLAGS="\
+LDFLAGS=" \
 -g \
 --static \
 -nostartfiles \
@@ -62,5 +59,4 @@ LDLIBS="\
 -lgcc \
 -Wl,--end-group \
 "
-
 

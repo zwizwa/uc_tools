@@ -6,12 +6,13 @@
 #include "gdbstub_api.h"
 #include <string.h>
 
-void dispatch(uint8_t type,
-              uint8_t *buf, uint32_t buf_len,
-              int32_t *tag, uint32_t tag_len) {
+uint32_t dispatch(uint8_t type,
+                  uint8_t *buf, uint32_t buf_len,
+                  int32_t *tag, uint32_t tag_len) {
     infof("wavegen:(%d,%d)", type, buf_len);
     for(int i=0; i<=tag_len; i++) { infof(",%d", tag[i]); }
     infof("\n");
+    return 0;
 }
 
 
@@ -19,8 +20,8 @@ void dispatch(uint8_t type,
 struct sm_etf sm_etf;
 uint8_t etf_buf[1024];
 
-static void cb(struct sm_etf *sm) {
-    dispatch(sm->data_type, sm->buf, sm->data_size, sm->stack, sm->depth);
+static uint32_t cb(struct sm_etf *sm) {
+    return dispatch(sm->data_type, sm->buf, sm->data_size, sm->stack, sm->depth);
 }
 static void sm_etf_reset(void) {
     sm_etf_init(&sm_etf, &etf_buf[0], sizeof(etf_buf), &cb);

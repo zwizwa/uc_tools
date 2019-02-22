@@ -6,7 +6,8 @@
 
 redo-ifchange $2.c
 . ./env.sh
-$GCC $CFLAGS -MD -MF $3.deps.tmp -DFIRMWARE=\"$2\" -o $3 -c $2.c
+# echo "CFLAGS=$CFLAGS" >&2
+$GCC $CFLAGS -MD -MF $3.deps.tmp -DFIRMWARE=\"$2\" -DBUILD=\"$VERSION\" -o $3 -c $2.c || exit 1
 
 # Transform the Makefile style dependency list into just a list of
 # prerequisites.
