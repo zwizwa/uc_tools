@@ -15,7 +15,7 @@ uint32_t dispatch(uint8_t type,
     return 0;
 }
 
-
+ 
 /* ETF IO */
 struct sm_etf sm_etf;
 uint8_t etf_buf[1024];
