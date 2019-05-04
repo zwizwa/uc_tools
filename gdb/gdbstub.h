@@ -43,7 +43,7 @@ extern const struct gdbstub_io *io;
 #define GDBSTUB_REG_INIT {[13] = 0x20005000}
 #define GDBSTUB_NB_REGS 26
 #define GDBSTUB_FLAG_STARTED (1 << 0)
-#define GDBSTUB_FLAG_ISR     (1 << 1)
+#define GDBSTUB_FLAG_LOOP    (1 << 1)
 struct gdbstub {
     struct packet *req;
     struct packet *rpl;

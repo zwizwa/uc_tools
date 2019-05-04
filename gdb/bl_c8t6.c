@@ -23,12 +23,53 @@ struct gdbstub_config _config_default __attribute__ ((section (".config_header")
 
 // EDIT: Also works on narrower bare-bones boards.
 
+extern struct gdbstub bootloader_stub;
+
 #define LED GPIOC,13
+static uint32_t counter = 0;
+void bootloader_tick(void) {
+    bootloader_blink_tick(LED, &counter);
+}
+
+
+
+
+
 int main(void) {
     rcc_clock_setup_in_hse_8mhz_out_72mhz();
     rcc_periph_clock_enable(RCC_GPIOC);
     hw_gpio_config(LED,HW_GPIO_CONFIG_OUTPUT);
     bootloader_init();
-    bootloader_blink_loop(LED);
+
+    /* For now, the loop takeover routine is implemented on a per
+       loader basis as it is still under test.
+
+       An application can take over the main loop after its start()
+       routine has executed from the poll loop in a previous cycle.
+
+       The loop() function can e.g. be used to switch the uC to
+       ISR-only mode, by executing the bootloader tick method from the
+       USB ISR.
+
+       Note that the bootloader does not support interrupts.  The
+       application contains the interrupt vector table. */
+
+    for (;;) {
+        /* Application can request to take over the main loop.  This
+         * is useful for running USB in ISR.  This mechanism is
+         * separate from start() because start() is executed from the
+         * main loop already, and needs to return. */
+        if ((bootloader_stub.flags & GDBSTUB_FLAG_STARTED) && (_config.loop)) {
+            bootloader_stub.flags |= GDBSTUB_FLAG_LOOP;
+            _config.loop(&bootloader_tick);
+            // NOT REACHED
+        }
+        /* By default, just poll USB in the main loop. */
+        else {
+            bootloader_tick();
+        }
+    }
     return 0;
 }
+
+

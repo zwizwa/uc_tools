@@ -57,6 +57,8 @@ typedef void (*gdbstub_fn_write)(const uint8_t*, uint32_t);
 typedef void (*gdbstub_fn_start)(void);
 typedef void (*gdbstub_fn_stop)(void);
 
+typedef void (*gdbstub_fn_loop)(gdbstub_fn_poll);
+
 struct gdbstub_io {
     gdbstub_fn_read read;
     gdbstub_fn_write write;
@@ -183,8 +185,8 @@ struct gdbstub_config {
     /* 11: Connect application console. */
     void (*switch_protocol)(const uint8_t*, uint32_t size);
 
-    /* 12: Misc config flags */
-    uint32_t flags;
+    /* 12: Main loop takeover function. */
+    gdbstub_fn_loop loop;
 
     /* 13: Reserved */
     void *reserved_13[3+16];
