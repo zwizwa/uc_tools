@@ -17,6 +17,7 @@
 
 #define NEXT_I32() ({NEXT_CHUNK(4); i32(sm->buf);})
 #define NEXT_U32() ({NEXT_CHUNK(4); u32(sm->buf);})
+#define NEXT_U16() ({NEXT_CHUNK(2); u16(sm->buf);})
 
 
 
@@ -27,6 +28,11 @@
 static uint32_t u32(uint8_t *b) {
     uint32_t x = 0x100;
     uint32_t ui = b[3] + x * (b[2] + x * (b[1] + x * b[0]));
+    return ui;
+}
+static uint32_t u16(uint8_t *b) {
+    uint32_t x = 0x100;
+    uint32_t ui = b[1] + x * b[0];
     return ui;
 }
 static int32_t i32(uint8_t *b) {
@@ -115,6 +121,19 @@ uint32_t sm_etf_tick(struct sm_etf *sm) {
                 NEXT_CHUNK(len);
                 break;
             }
+            case SMALL_ATOM_EXT: {
+                uint32_t len = NEXT();
+                if (len > sm->buf_size) return SM_ETF_ERR_BUF;
+                NEXT_CHUNK(len);
+                break;
+            }
+            case ATOM_EXT: {
+                uint32_t len = NEXT_U16();
+                if (len > sm->buf_size) return SM_ETF_ERR_BUF;
+                NEXT_CHUNK(len);
+                break;
+            }
+
             default:
                 return SM_ETF_ERR_PROTO;
             }
@@ -229,4 +248,22 @@ uint32_t etf_binary_read(uint32_t (*read)(uint8_t *buf, uint32_t len),
     buf[5] = BINARY_EXT;
     write_u32(&buf[6], data_size);
     return 10 + data_size;
+}
+
+
+uint32_t as_uint32(uint8_t type, uint8_t *buf, uint32_t buf_len, uint32_t dflt) {
+    uint32_t val;
+    switch(type) {
+    case SMALL_INTEGER_EXT:
+    case INTEGER_EXT:
+    case BINARY_EXT:
+        // Interpret as little endian unsigned.
+        val = 0;
+        for (int i=0; i<buf_len; i++) {
+            val += buf[i] << (i*8);
+        }
+        return val;
+    default:
+        return dflt;
+    }
 }

@@ -13,6 +13,7 @@ static void usbisr_write(const uint8_t *buf, uint32_t len) {
 static uint32_t usbisr_read(uint8_t *buf, uint32_t len) {
     if (nb_cmds) {
         nb_cmds--;
+        // {packet,4}
         buf[0] = 0;
         buf[1] = 0;
         buf[2] = 0;
@@ -32,19 +33,24 @@ const struct gdbstub_io usbisr_io = {
 
 /* STARTUP */
 void switch_protocol(const uint8_t *buf, uint32_t size) {
-   *_service.io = (struct gdbstub_io *)(&usbisr_io);
+    *_service.io = (struct gdbstub_io *)(&usbisr_io);
     (*_service.io)->write(buf, size);
 }
 void start(void) {
     hw_app_init();
-    rcc_periph_clock_enable(RCC_GPIOA | RCC_AFIO);
-}
-void stop(void) {
-    hw_app_stop();
-    _service.reset();
 }
 
-/* MAIN LOOP */
+/* MAIN LOOP
+
+   config.loop is defined, so the bootloader will call loop() once
+   start() has been executed.
+
+   Typically start() and switch_protocol() will be executed when a
+   non-GDBRSP message is sent to the serial port.
+
+   loop() is passed the main bootloader poll routine.  We will call
+   this from ISR, leaving a main loop that only sleeps.
+*/
 static gdbstub_fn_poll bl_poll;
 void loop(gdbstub_fn_poll _bl_poll) {
     bl_poll = _bl_poll;
@@ -54,8 +60,6 @@ void loop(gdbstub_fn_poll _bl_poll) {
 void usb_lp_can_rx0_isr(void) {
     bl_poll();
 }
-
-
 
 int main(void) { start(); }
 
@@ -72,7 +76,6 @@ struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .firmware        = config_firmware,
     .version         = config_version,
     .start           = start,
-    .stop            = stop,
     .switch_protocol = switch_protocol,
     .loop            = loop
 };

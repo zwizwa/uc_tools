@@ -10,7 +10,7 @@ fi
 
 redo-ifchange $2.c
 . ./env.sh
-# echo "CFLAGS=$CFLAGS" >&2
+echo "CFLAGS=$CFLAGS" >&2
 $GCC $CFLAGS -MD -MF $3.deps.tmp -DFIRMWARE=\"$2\" -DBUILD=\"$VERSION\" -o $3 -c $2.c || exit 1
 
 # Transform the Makefile style dependency list into just a list of
