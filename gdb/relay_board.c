@@ -8,11 +8,26 @@
 #include "gdbstub_api.h"
 #include <string.h>
 
-// Commands are single characters, one for each relay: ABCD is 1, abcd is 0
+
+/* For ad-hoc protocols, it often makes sense to design it in a way
+   that is easy to interpret on both ends.  This application is
+   intended to be used together with erl_tools/src/gdbstub_hub.erl,
+   which uses {packet,4} as Erlang input, and poses no constraint on
+   the protocol we use for this side input.
+
+   So we use single characters for port control, one for each relay:
+   ABCD is 1, abcd is 0
+
+   The return path sends an empty {packet,4} message for each command
+   that has been received.
+
+*/
+
 KEEP void set_pin(int pin, int val) {
     hw_gpio_write(GPIOA,pin,val);
     hw_gpio_config(GPIOA,pin,HW_GPIO_CONFIG_OUTPUT);
 }
+uint32_t nb_commands = 0;
 static void command_write(const uint8_t *buf, uint32_t len) {
     for(int i=0; i<len; i++) {
         int c = buf[i];
@@ -26,10 +41,19 @@ static void command_write(const uint8_t *buf, uint32_t len) {
         case 'c': set_pin(5,0); break;
         case 'd': set_pin(6,0); break;
         }
+        nb_commands++;
     }
 }
 static uint32_t command_read(uint8_t *buf, uint32_t len) {
-    return 0;
+    //return 0;
+
+    uint32_t n = 0;
+    while(nb_commands && ((n + 4) <= len)) {
+        memset(&buf[n], 0, 4);  // empty {packet,4} message
+        n += 4;
+        nb_commands--;
+    }
+    return n;
 }
 const struct gdbstub_io command_io = {
     .read  = command_read,

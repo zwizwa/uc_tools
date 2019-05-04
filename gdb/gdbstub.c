@@ -48,32 +48,42 @@
 
 // Limits are set by PacketSize= in qSupported reply.
 
-
+static inline int started(struct gdbstub *stub) {
+    return !!(stub->flags & GDBSTUB_FLAG_STARTED);
+}
+static inline void set_started(struct gdbstub *stub, int started) {
+    if (started) {
+        stub->flags |= GDBSTUB_FLAG_STARTED;
+    }
+    else {
+        stub->flags &= ~GDBSTUB_FLAG_STARTED;
+    }
+}
 
 static inline void ensure_started(struct gdbstub *stub) {
-    if (stub->started) return; // idempotent
+    if (started(stub)) return; // idempotent
     _config.start();
-    stub->started = 1;
+    set_started(stub, 1);
 }
 static inline void ensure_stopped(struct gdbstub *stub) {
-    if (!stub->started) return; // idempotent
+    if (!started(stub)) return; // idempotent
     _config.stop();
-    stub->started = 0;
+    set_started(stub, 0);
 }
 static int32_t mon_start_stop(struct gdbstub *stub, uint32_t start) {
-    uint32_t was = stub->started;
-    if (stub->started == start) {
+    uint32_t was = started(stub);
+    if (was == start) {
         // Already in desired state
     }
     else {
-        void (*fn)(void) = start ? _config.start : _config.stop;
+        gdbstub_fn_start fn = start ? _config.start : _config.stop;
         if (fn) {
             fn();
-            stub->started = start;
+            set_started(stub, 1);
         }
     }
     const char reply[] = {
-        '0'+ was,'-','>','0'+ stub->started,'\n',0
+        '0'+ was,'-','>','0'+ started(stub),'\n',0
     };
     return rsp_hex_cstring(stub->rpl, reply);
 }

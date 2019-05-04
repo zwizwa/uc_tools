@@ -33,6 +33,9 @@
 #include "gdbstub.h"
 #include "bootloader.h"
 
+// FIXME: This makes it platform-dependent
+
+
 
 #define POLL_TABLE_SIZE 16
 static gdbstub_fn_poll poll_table[POLL_TABLE_SIZE];

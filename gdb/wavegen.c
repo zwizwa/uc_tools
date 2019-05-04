@@ -41,6 +41,8 @@ const struct gdbstub_io etf_io = {
     .write = etf_write,
 };
 
+
+
 /* STARTUP */
 void switch_protocol(const uint8_t *buf, uint32_t size) {
     *_service.io = (struct gdbstub_io *)(&etf_io);

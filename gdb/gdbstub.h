@@ -42,14 +42,15 @@ extern const struct gdbstub_io *io;
 // that execute target code.
 #define GDBSTUB_REG_INIT {[13] = 0x20005000}
 #define GDBSTUB_NB_REGS 26
+#define GDBSTUB_FLAG_STARTED (1 << 0)
+#define GDBSTUB_FLAG_ISR     (1 << 1)
 struct gdbstub {
     struct packet *req;
     struct packet *rpl;
     uint32_t reg[GDBSTUB_NB_REGS];
     uint32_t breakpoint;
-    uint32_t started;
-    const struct gdbstub_command *commands;
     uint32_t flags;
+    const struct gdbstub_command *commands;
 };
 #define GDBSTUB_FLAG_MEMORY_PROTECT (1<<0)
 

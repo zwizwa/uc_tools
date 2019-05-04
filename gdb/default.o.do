@@ -4,6 +4,10 @@
 # $3 temp
 # echo "0:$0 args:$@" >>/tmp/redo.log
 
+if [ ! -z "REDO_VERBOSE_ENTER" ]; then 
+    echo "redo: Entering directory '$(readlink -f .)'" >&2
+fi
+
 redo-ifchange $2.c
 . ./env.sh
 # echo "CFLAGS=$CFLAGS" >&2
