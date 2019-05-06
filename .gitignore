@@ -5,3 +5,4 @@
 *.map
 *.dasm
 *.a
+out.list
