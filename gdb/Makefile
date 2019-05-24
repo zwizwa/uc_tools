@@ -77,7 +77,6 @@ CFLAGS := \
 	-ffunction-sections \
 	-fdata-sections \
 	-MD \
-	-DSTM32F1 \
 	-Wall \
 	-Werror \
 	-Wno-format \
@@ -88,6 +87,12 @@ CFLAGS := \
 	$(CPPFLAGS) \
 	$(MFLAGS)
 
+CFLAGS_F1 := \
+	-DSTM32F1 \
+
+CFLAGS_F4 := \
+	-DSTM32F4 \
+
 LDFLAGS := \
 	-g \
 	--static \
@@ -97,11 +102,27 @@ LDFLAGS := \
 	$(MFLAGS)
 
 LDLIBS := \
-	-lopencm3_stm32f1 \
 	-Wl,--start-group \
 	-lc \
 	-lgcc \
 	-Wl,--end-group
+
+LDLIBS_F1 := \
+	-lopencm3_stm32f1 \
+
+LDLIBS_F4 := \
+	-lopencm3_stm32f4 \
+
+
+#CFLAGS += $(CFLAGS_F1)
+#LDLIBS += $(LDLIBS_F1)
+
+CFLAGS += $(CFLAGS_F4)
+LDLIBS += $(LDLIBS_F4)
+
+# FIXME: It's going to be some work to abstract away the F1/F4
+# differences.
+
 
 # FIXME
 LDLIBS += $(LIBPRIM_LIBS)

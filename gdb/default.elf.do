@@ -2,25 +2,51 @@
 # $2 basename
 # $3 temp
 
-. ./env.sh
+# We're building files like this:
+# redo bl_c8t6.core.f103.elf
+#      BN      LDT  ARCH
 
-# Filename encodes which linker script to use.
-# E.g. for foo.x8.elf, the script is x8.ld
-# Variables below are annotated with the foo example:
+# BN:   basename
+# LDT:  linker type (.ld file)
+# ARCH: compilation architecture (.o files)
 
-# foo.x8
-APP_TYPED=$(basename $1 .elf)
-# x8
-TYPE="${APP_TYPED##*.}"
-# foo
-APP=$(basename $APP_TYPED .$TYPE)
-# foo.ld
-LD=$TYPE.ld
-# foo.x8.map
-MAP=$APP_TYPED.map
-# foo.o
-O=$APP.o
 
-redo-ifchange $O lib.a $LD $UC_TOOLS/registers_stm32f103.o
-$GCC $LDFLAGS -T$LD -Wl,-Map=$MAP -o $3 $O $UC_TOOLS/registers_stm32f103.o lib.a $LDLIBS
+
+ARCH="${2##*.}"
+BN_LDT=$(basename $2 .$ARCH)
+LDT="${BN_LDT##*.}"
+BN=$(basename $BN_LDT .$LDT)
+ENV=./env.$ARCH.sh
+
+show_vars() {
+cat <<EOF >&2
+ARCH=$ARCH
+LDT=$LDT
+BN=$BN
+ENV=$ENV
+EOF
+}
+
+# show_vars
+
+
+
+redo-ifchange $ENV
+. $ENV
+
+# .o files that need to be linked in explicitly. contianing the
+# application elf's main and optionally some system .o files
+# configured in $ENV file.
+O="$BN.$ARCH.o $O_SYSTEM"
+
+# library of .o files for compilation architecture for any remaining unresolved symbols
+A=lib.$ARCH.a
+
+# linker configuration file
+LD=$LDT.$ARCH.ld
+
+redo-ifchange $O $A $LD 
+$GCC $LDFLAGS -T$LD -Wl,-Map=$BN.$ARCH.map -o $3 $O $A $LDLIBS
+
+
 
