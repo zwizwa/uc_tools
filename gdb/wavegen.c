@@ -175,6 +175,3 @@ struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .switch_protocol = switch_protocol,
 };
 
-
-
-

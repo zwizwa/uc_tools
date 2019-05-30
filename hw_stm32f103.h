@@ -1,6 +1,8 @@
 #ifndef HW_STM32F103_H
 #define HW_STM32F103_H
 
+#include "macros.h"
+
 /* This code is based for the larger part on libopencm3 code.
    E.g. hw_usart_enable() is a copy of libopencm3's usart_enable(), etc.. */
 

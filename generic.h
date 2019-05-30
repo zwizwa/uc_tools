@@ -4,7 +4,7 @@
 // Base tools shared between STM32F103 and Linux C.
 
 #include <stdint.h>
-
+#include "macros.h"
 
 /* Note that "static inline" doesn't necessarily inline.  Adding this
    attribute will force GCC to inline the function even if
@@ -40,8 +40,6 @@
                 exit(1); \
             } })
 
-#define ARRAY_SIZE(a) \
-    (sizeof(a)/sizeof((a)[0]))
 #define FOR_ARRAY(a,p) \
     for(typeof(&a[0]) p = &a[0]; p < &a[ARRAY_SIZE(a)]; p++)
 

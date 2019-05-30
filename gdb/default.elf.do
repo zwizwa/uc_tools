@@ -48,5 +48,3 @@ LD=$LDT.$ARCH.ld
 redo-ifchange $O $A $LD 
 $GCC $LDFLAGS -T$LD -Wl,-Map=$BN.$ARCH.map -o $3 $O $A $LDLIBS
 
-
-

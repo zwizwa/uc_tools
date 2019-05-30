@@ -35,6 +35,12 @@
 
 */
 
+#ifndef NS
+#error define NS
+#endif
+
+typedef int (*NS(_predicate_t))(void*, const NS(_element_t) *);
+
 
 /* Remove elements based on a predicate.
 
@@ -46,10 +52,12 @@
    for any operation that rebuilds the queue based on cycling through
    the elements. */
 
-static inline void *NS(_remove)(
+static inline int NS(_remove)(
     NS(_container_t) *q,
     NS(_predicate_t) pred,
-    NS(_predicate_ctx_t) ctx) {
+    void *ctx) {
+
+    int removed = 0;
 
     uint32_t endx = q->write;
     for(;;) {
@@ -60,20 +68,22 @@ static inline void *NS(_remove)(
         if (q->read == endx) break;
         if (pred(ctx, e)) {
             NS(_drop)(q);
+            removed++;
         }
         else {
             NS(_cycle)(q);
         }
     }
+    return removed;
 }
 
 /* Read-only iteration.  Return value of the predicate is used to
  * continue. */
 
-static inline void *NS(_fold)(
+static inline void NS(_fold)(
     NS(_container_t) *q,
     NS(_predicate_t) pred,
-    NS(_predicate_ctx_t) ctx) {
+    void *ctx) {
 
     uint32_t i    = q->read;
     uint32_t endx = q->write;
