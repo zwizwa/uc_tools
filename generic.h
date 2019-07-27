@@ -57,8 +57,13 @@ INLINE const char* flash_string(const char *str, const char *defstr) {
 }
 
 
+#ifndef offsetof
 #define offsetof(st,m) __builtin_offsetof(st,m)
+#endif
+
+#ifndef typeof
 #define typeof(x)      __typeof__(x)
+#endif
 
 
 // Useful for fallthrough routing.

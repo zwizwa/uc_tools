@@ -1,9 +1,11 @@
 . ./env.common.sh
 
+# See libopencm3/lib/stm32/f4/Makefile for compiler flags.
+
 MFLAGS=" \
--mthumb \
 -mcpu=cortex-m4 \
--mhard-float \
+-mthumb \
+-mfloat-abi=hard -mfpu=fpv4-sp-d16 \
 -mfix-cortex-m3-ldrd \
 " 
 

@@ -75,7 +75,7 @@ void init_memory(void){
 	}
 }
 
-void WEAK __attribute__ ((naked)) reset_handler(void)
+void __attribute__((weak)) __attribute__ ((naked)) reset_handler(void)
 {
 	funcp_t *fp;
 

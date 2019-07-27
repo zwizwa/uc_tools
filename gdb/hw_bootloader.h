@@ -1,12 +1,7 @@
 #ifndef HW_BOOTLOADER_H
 #define HW_BOOTLOADER_H
 #include "bootloader.h"
-#if defined(HW_MACHINE) && STM32F407 == HW_MACHINE
-#include "hw_stm32f407.h"
-#else
-// Default is the first architecture.
-#include "hw_stm32f103.h"
-#endif
+#include "hw.h"
 static inline void bootloader_blink_tick(uint32_t gpio, uint32_t pin,
                                          uint32_t *counter) {
     hw_gpio_write(gpio,pin,((*counter)++>>17)&1);

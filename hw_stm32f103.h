@@ -71,10 +71,11 @@
 
 /* Parameterization of generic STM32F code */
 #define HW_LOOPS_PER_US 12
+#define HW_USB_DRIVER &st_usbfs_v1_usb_driver
 
 
 /* Generic code, shared between F103 and F407 */
-#include "hw_stm32f.h"
+#include "hw_stm32f_common.h"
 
 #include <libopencm3/stm32/f1/rcc.h>
 #include <libopencm3/stm32/f1/timer.h>
@@ -109,6 +110,13 @@
 #define HW_DMA_ISR_SPI2_TX  dma1_channel5_isr
 
 
+/* Gpio */
+INLINE void hw_gpio_high(uint32_t gpio, uint32_t pin) {
+    GPIO_BSRR(gpio) = 1 << pin;
+}
+INLINE void hw_gpio_low(uint32_t gpio, uint32_t pin) {
+    GPIO_BRR(gpio) = 1 << pin;
+}
 
 
 /* Timers */
@@ -202,7 +210,7 @@ INLINE void hw_periodic_init(struct hw_periodic c) {
     nvic_enable_irq(c.irq);
 
     // Setup tim for periodic clock (only xD has TIM5,6!)
-    timer_reset(c.tim);
+    rcc_periph_reset_pulse(c.tim);
     timer_set_mode(c.tim, TIM_CR1_CKD_CK_INT,TIM_CR1_CMS_EDGE,TIM_CR1_DIR_UP);
     timer_set_prescaler(c.tim, c.pre-1); // 72MHz in
     hw_tim_set_period(c.tim, c.div-1); // -> periodic frequency
@@ -217,7 +225,7 @@ INLINE void hw_periodic_ack(struct hw_periodic c) {
 }
 INLINE void hw_periodic_disable(struct hw_periodic c) {
     nvic_disable_irq(c.irq);
-    timer_reset(c.tim);
+    rcc_periph_reset_pulse(c.tim);
 }
 
 
@@ -244,7 +252,7 @@ INLINE void hw_delay_init(struct hw_delay c, uint32_t default_ticks, int interru
         nvic_set_priority(c.irq, 1);
         nvic_enable_irq(c.irq);
     }
-    timer_reset(c.tim);
+    rcc_periph_reset_pulse(c.tim);
     hw_tim_disable_counter(c.tim);
     timer_set_mode(c.tim, TIM_CR1_CKD_CK_INT,TIM_CR1_CMS_EDGE,TIM_CR1_DIR_UP);
     timer_set_master_mode(c.tim, TIM_CR2_MMS_COMPARE_OC1REF); // CR2.MMS = 1xx -> OCxREF = TRGO
@@ -310,7 +318,7 @@ struct hw_gate {
 
 INLINE void hw_gate_init(struct hw_gate c) {
     rcc_periph_clock_enable(c.rcc);
-    timer_reset(c.tim);
+    rcc_periph_reset_pulse(c.tim);
     hw_tim_disable_counter(c.tim);
     /* It seems that setting the polarity with CC1P does not affect
        the value that is sent to TRGO, so have counter count down
@@ -373,7 +381,7 @@ struct hw_clockgen {
 // tim_reset strobes the bit in RCC_REG.)
 INLINE void hw_clockgen_off(struct hw_clockgen c) {
     hw_tim_disable_counter(c.tim);
-    timer_reset(c.tim);
+    rcc_periph_reset_pulse(c.tim);
     //rcc_periph_clock_disable(c.rcc_tim);
 }
 
@@ -387,7 +395,7 @@ INLINE void hw_clockgen_init(struct hw_clockgen c) {
     hw_gpio_config(c.gpio,c.pin,HW_GPIO_CONFIG_OUTPUT);
 
     /* Configure PWM, period = c.clockdiv, mid = c.clockdiv / 2. */
-    timer_reset(c.tim);
+    rcc_periph_reset_pulse(c.tim);
     timer_set_oc_mode(c.tim, c.chan, TIM_OCM_PWM2);
     timer_enable_oc_output(c.tim, c.chan);
 
@@ -520,7 +528,7 @@ INLINE void hw_capture_init(struct hw_capture c) {
         nvic_enable_irq(c.irq);
     }
 
-    timer_reset(c.tim);
+    rcc_periph_reset_pulse(c.tim);
     hw_tim_disable_counter(c.tim);
     timer_set_mode(c.tim, c.ckd,TIM_CR1_CMS_EDGE,TIM_CR1_DIR_UP);
     timer_set_prescaler(c.tim, c.pre-1); // 72 MHz in

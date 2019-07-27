@@ -1,7 +1,14 @@
 #include "generic.h"
 #include "gdbstub.h"
 #include "gdbstub_api.h"
+
+#if defined(STM32F1)
 #include "hw_stm32f103.h"
+#elif defined(STM32F4)
+#include "hw_stm32f407.h"
+#else
+#error UNKNOWN_HW
+#endif
 
 extern struct gdbstub_service service;
 
@@ -67,7 +74,9 @@ void hw_bootloader_usb_init(void) {
     //rcc_clock_setup_in_hse_12mhz_out_72mhz();  // FIXME: was
 
     rcc_periph_clock_enable(RCC_GPIOA);
+#ifdef RCC_AFIO
     rcc_periph_clock_enable(RCC_AFIO);
+#endif
 
     usb_strings[0] = flash_string(_config.manufacturer, "Zwizwa");
     usb_strings[1] = flash_string(_config.product,      "Bootloader");

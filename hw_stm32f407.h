@@ -6,16 +6,34 @@
 
 /* Parameterization of generic STM32F code */
 #define HW_LOOPS_PER_US 12
+#define HW_USB_DRIVER &otgfs_usb_driver
 
 //#warning F407
 
-#include "hw_stm32f.h"
+#include <libopencm3/stm32/gpio.h>
+
+
+#include "hw_stm32f_common.h"
 // FIXME: 407 versions of this
 #include <libopencm3/stm32/f4/rcc.h>
 #include <libopencm3/stm32/f4/timer.h>
 #include <libopencm3/stm32/f4/gpio.h>
 #include <libopencm3/stm32/f4/usart.h>
 #include <libopencm3/stm32/f4/spi.h>
+
+
+/* Gpio */
+INLINE void hw_gpio_high(uint32_t gpio, uint32_t pin) {
+    GPIO_BSRR(gpio) = 1 << pin;
+}
+INLINE void hw_gpio_low(uint32_t gpio, uint32_t pin) {
+    /* Note that the F4-7 does not have a BRR register like the F103.
+     * The high bits of the BSRR are used for reset.  This here needs
+     * to be validated. */
+    //GPIO_BRR(gpio) = 1 << pin;
+    GPIO_BSRR(gpio) = 1 << (pin + 16);
+}
+
 
 
 #endif // HW_STM32F407_H

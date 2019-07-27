@@ -4,6 +4,10 @@
 #include <stdint.h>
 #include <libopencm3/stm32/flash.h>
 
+// This is platform-dependent.  Only F1 is supported for now
+
+#if defined(STM32F1)
+
 /* Don't use the library routines.  Instead move functionality into
    inline functions to make it easier to include in the bl_ram.h
    trampoline.
@@ -61,9 +65,8 @@ static inline void hw_flash_unlock(void) {
 static inline void hw_flash_program_half_word(uint32_t address, uint16_t data) {
     flash_program_half_word(address, data);
 }
+
 #endif
-
-
 
 
 
@@ -101,5 +104,19 @@ static inline int32_t hw_flash_write(uint32_t addr, const uint8_t *b_buf,
     hw_flash_lock();
     return rv;
 }
+#else
+
+//#warning NO_FLASH_SUPPORT
+
+static inline int32_t hw_flash_erase(uint32_t addr, uint32_t size,
+                                     uint32_t flash_page_size_log) {
+    return 0;
+}
+static inline int32_t hw_flash_write(uint32_t addr, const uint8_t *b_buf,
+                                     uint32_t len) {
+    return 0;
+}
+
+#endif
 
 #endif

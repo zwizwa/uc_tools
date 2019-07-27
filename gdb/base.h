@@ -5,7 +5,7 @@
 
 #include "generic.h"
 #include "tools.h"
-#include "hw_stm32f103.h"
+#include "hw.h"
 #include "infof.h"
 
 #endif // BASE_H

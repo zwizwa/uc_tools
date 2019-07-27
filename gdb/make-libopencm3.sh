@@ -1,7 +1,7 @@
 #!/bin/bash
 cd $(dirname $0)
 . ./env.common.sh
-exec make -C $LIBOPENCM3 PREFIX=$(readlink -f $TPF) TARGETS=stm32/f1 "$@"
+exec make -C $LIBOPENCM3 PREFIX=$(readlink -f $TPF)- TARGETS="stm32/f1 stm32/f4" "$@"
 
 
 # Derived from Makefile rule:

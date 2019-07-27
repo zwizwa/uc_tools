@@ -41,8 +41,8 @@ void bootloader_tick(void) {
 #include <libopencm3/stm32/rcc.h>
 
 int main(void) {
-    rcc_clock_setup_hse_3v3(&rcc_hse_8mhz_3v3[RCC_CLOCK_3V3_120MHZ]);
-// Above is from https://github.com/libopencm3/libopencm3-examples/blob/master/examples/stm32/f4/stm32f4-discovery/usb_cdcacm/cdcacm.c
+    rcc_clock_setup_pll(&rcc_hse_8mhz_3v3[RCC_CLOCK_3V3_168MHZ]);
+    // See https://github.com/libopencm3/libopencm3-examples/blob/master/examples/stm32/f4/stm32f4-discovery/usb_cdcacm/cdcacm.c
 // Fails with:
 //  bl_f4.c:44:5: error: implicit declaration of function 'rcc_clock_setup_hse_3v3' [-Werror=implicit-function-declaration]
 

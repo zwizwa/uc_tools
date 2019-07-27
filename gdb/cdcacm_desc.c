@@ -30,6 +30,9 @@
 #include <libopencm3/usb/usbd.h>
 #include <libopencm3/usb/cdc.h>
 
+#include "generic.h"
+#include "hw.h"
+
 static const struct usb_device_descriptor descriptor = {
 	.bLength = USB_DT_DEVICE_SIZE,
 	.bDescriptorType = USB_DT_DEVICE,
@@ -164,12 +167,13 @@ static const struct usb_config_descriptor config = {
 	.interface = ifaces,
 };
 
-
 /* Buffer to be used for control requests. */
 uint8_t usbd_control_buffer[128];
 
-static int cdcacm_control_request(usbd_device *usbd_dev, struct usb_setup_data *req, uint8_t **buf,
-		uint16_t *len, usbd_control_complete_callback *complete)
+static enum usbd_request_return_codes cdcacm_control_request(
+    usbd_device *usbd_dev,
+    struct usb_setup_data *req, uint8_t **buf, uint16_t *len,
+    usbd_control_complete_callback *complete)
 {
 	(void)complete;
 	(void)buf;
@@ -222,7 +226,7 @@ void cdcacm_set_config_with_callbacks(usbd_device *usbd_dev, void *rx_cb, void *
 usbd_device *cdcacm_init(void *set_config,
                          const char * const *usb_strings) {
 	usbd_device *usbd_dev = 
-		usbd_init(&stm32f103_usb_driver, &descriptor, &config,
+		usbd_init(HW_USB_DRIVER, &descriptor, &config,
                           (const char **)usb_strings,
 			  3, usbd_control_buffer, sizeof(usbd_control_buffer));
 	usbd_register_set_config_callback(usbd_dev, set_config);

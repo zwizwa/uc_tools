@@ -71,25 +71,25 @@ use.
 INLINE void hw_rcc_osc_ready_int_clear(enum rcc_osc osc)
 {
 	switch (osc) {
-	case PLL:
+	case RCC_PLL:
 		RCC_CIR |= RCC_CIR_PLLRDYC;
 		break;
-	case PLL2:
+	case RCC_PLL2:
 		RCC_CIR |= RCC_CIR_PLL2RDYC;
 		break;
-	case PLL3:
+	case RCC_PLL3:
 		RCC_CIR |= RCC_CIR_PLL3RDYC;
 		break;
-	case HSE:
+	case RCC_HSE:
 		RCC_CIR |= RCC_CIR_HSERDYC;
 		break;
-	case HSI:
+	case RCC_HSI:
 		RCC_CIR |= RCC_CIR_HSIRDYC;
 		break;
-	case LSE:
+	case RCC_LSE:
 		RCC_CIR |= RCC_CIR_LSERDYC;
 		break;
-	case LSI:
+	case RCC_LSI:
 		RCC_CIR |= RCC_CIR_LSIRDYC;
 		break;
 	}
@@ -104,25 +104,25 @@ INLINE void hw_rcc_osc_ready_int_clear(enum rcc_osc osc)
 INLINE void hw_rcc_osc_ready_int_enable(enum rcc_osc osc)
 {
 	switch (osc) {
-	case PLL:
+	case RCC_PLL:
 		RCC_CIR |= RCC_CIR_PLLRDYIE;
 		break;
-	case PLL2:
+	case RCC_PLL2:
 		RCC_CIR |= RCC_CIR_PLL2RDYIE;
 		break;
-	case PLL3:
+	case RCC_PLL3:
 		RCC_CIR |= RCC_CIR_PLL3RDYIE;
 		break;
-	case HSE:
+	case RCC_HSE:
 		RCC_CIR |= RCC_CIR_HSERDYIE;
 		break;
-	case HSI:
+	case RCC_HSI:
 		RCC_CIR |= RCC_CIR_HSIRDYIE;
 		break;
-	case LSE:
+	case RCC_LSE:
 		RCC_CIR |= RCC_CIR_LSERDYIE;
 		break;
-	case LSI:
+	case RCC_LSI:
 		RCC_CIR |= RCC_CIR_LSIRDYIE;
 		break;
 	}
@@ -137,25 +137,25 @@ INLINE void hw_rcc_osc_ready_int_enable(enum rcc_osc osc)
 INLINE void hw_rcc_osc_ready_int_disable(enum rcc_osc osc)
 {
 	switch (osc) {
-	case PLL:
+	case RCC_PLL:
 		RCC_CIR &= ~RCC_CIR_PLLRDYIE;
 		break;
-	case PLL2:
+	case RCC_PLL2:
 		RCC_CIR &= ~RCC_CIR_PLL2RDYIE;
 		break;
-	case PLL3:
+	case RCC_PLL3:
 		RCC_CIR &= ~RCC_CIR_PLL3RDYIE;
 		break;
-	case HSE:
+	case RCC_HSE:
 		RCC_CIR &= ~RCC_CIR_HSERDYIE;
 		break;
-	case HSI:
+	case RCC_HSI:
 		RCC_CIR &= ~RCC_CIR_HSIRDYIE;
 		break;
-	case LSE:
+	case RCC_LSE:
 		RCC_CIR &= ~RCC_CIR_LSERDYIE;
 		break;
-	case LSI:
+	case RCC_LSI:
 		RCC_CIR &= ~RCC_CIR_LSIRDYIE;
 		break;
 	}
@@ -171,29 +171,28 @@ INLINE void hw_rcc_osc_ready_int_disable(enum rcc_osc osc)
 INLINE int hw_rcc_osc_ready_int_flag(enum rcc_osc osc)
 {
 	switch (osc) {
-	case PLL:
+	case RCC_PLL:
 		return ((RCC_CIR & RCC_CIR_PLLRDYF) != 0);
 		break;
-	case PLL2:
+	case RCC_PLL2:
 		return ((RCC_CIR & RCC_CIR_PLL2RDYF) != 0);
 		break;
-	case PLL3:
+	case RCC_PLL3:
 		return ((RCC_CIR & RCC_CIR_PLL3RDYF) != 0);
 		break;
-	case HSE:
+	case RCC_HSE:
 		return ((RCC_CIR & RCC_CIR_HSERDYF) != 0);
 		break;
-	case HSI:
+	case RCC_HSI:
 		return ((RCC_CIR & RCC_CIR_HSIRDYF) != 0);
 		break;
-	case LSE:
+	case RCC_LSE:
 		return ((RCC_CIR & RCC_CIR_LSERDYF) != 0);
 		break;
-	case LSI:
+	case RCC_LSI:
 		return ((RCC_CIR & RCC_CIR_LSIRDYF) != 0);
 		break;
 	}
-
 	cm3_assert_not_reached();
 }
 
@@ -227,25 +226,25 @@ INLINE int hw_rcc_css_int_flag(void)
 INLINE void hw_rcc_wait_for_osc_ready(enum rcc_osc osc)
 {
 	switch (osc) {
-	case PLL:
+	case RCC_PLL:
 		while ((RCC_CR & RCC_CR_PLLRDY) == 0);
 		break;
-	case PLL2:
+	case RCC_PLL2:
 		while ((RCC_CR & RCC_CR_PLL2RDY) == 0);
 		break;
-	case PLL3:
+	case RCC_PLL3:
 		while ((RCC_CR & RCC_CR_PLL3RDY) == 0);
 		break;
-	case HSE:
+	case RCC_HSE:
 		while ((RCC_CR & RCC_CR_HSERDY) == 0);
 		break;
-	case HSI:
+	case RCC_HSI:
 		while ((RCC_CR & RCC_CR_HSIRDY) == 0);
 		break;
-	case LSE:
+	case RCC_LSE:
 		while ((RCC_BDCR & RCC_BDCR_LSERDY) == 0);
 		break;
-	case LSI:
+	case RCC_LSI:
 		while ((RCC_CSR & RCC_CSR_LSIRDY) == 0);
 		break;
 	}
@@ -269,25 +268,25 @@ pwr_disable_backup_domain_write_protect).
 INLINE void hw_rcc_osc_on(enum rcc_osc osc)
 {
 	switch (osc) {
-	case PLL:
+	case RCC_PLL:
 		RCC_CR |= RCC_CR_PLLON;
 		break;
-	case PLL2:
+	case RCC_PLL2:
 		RCC_CR |= RCC_CR_PLL2ON;
 		break;
-	case PLL3:
+	case RCC_PLL3:
 		RCC_CR |= RCC_CR_PLL3ON;
 		break;
-	case HSE:
+	case RCC_HSE:
 		RCC_CR |= RCC_CR_HSEON;
 		break;
-	case HSI:
+	case RCC_HSI:
 		RCC_CR |= RCC_CR_HSION;
 		break;
-	case LSE:
+	case RCC_LSE:
 		RCC_BDCR |= RCC_BDCR_LSEON;
 		break;
-	case LSI:
+	case RCC_LSI:
 		RCC_CSR |= RCC_CSR_LSION;
 		break;
 	}
@@ -310,25 +309,25 @@ backup domain write protection has been removed (see
 INLINE void hw_rcc_osc_off(enum rcc_osc osc)
 {
 	switch (osc) {
-	case PLL:
+	case RCC_PLL:
 		RCC_CR &= ~RCC_CR_PLLON;
 		break;
-	case PLL2:
+	case RCC_PLL2:
 		RCC_CR &= ~RCC_CR_PLL2ON;
 		break;
-	case PLL3:
+	case RCC_PLL3:
 		RCC_CR &= ~RCC_CR_PLL3ON;
 		break;
-	case HSE:
+	case RCC_HSE:
 		RCC_CR &= ~RCC_CR_HSEON;
 		break;
-	case HSI:
+	case RCC_HSI:
 		RCC_CR &= ~RCC_CR_HSION;
 		break;
-	case LSE:
+	case RCC_LSE:
 		RCC_BDCR &= ~RCC_BDCR_LSEON;
 		break;
-	case LSI:
+	case RCC_LSI:
 		RCC_CSR &= ~RCC_CSR_LSION;
 		break;
 	}
@@ -371,17 +370,17 @@ pwr_disable_backup_domain_write_protect).
 INLINE void hw_rcc_osc_bypass_enable(enum rcc_osc osc)
 {
 	switch (osc) {
-	case HSE:
+	case RCC_HSE:
 		RCC_CR |= RCC_CR_HSEBYP;
 		break;
-	case LSE:
+	case RCC_LSE:
 		RCC_BDCR |= RCC_BDCR_LSEBYP;
 		break;
-	case PLL:
-	case PLL2:
-	case PLL3:
-	case HSI:
-	case LSI:
+	case RCC_PLL:
+	case RCC_PLL2:
+	case RCC_PLL3:
+	case RCC_HSI:
+	case RCC_LSI:
 		/* Do nothing, only HSE/LSE allowed here. */
 		break;
 	}
@@ -404,17 +403,17 @@ pwr_disable_backup_domain_write_protect) or the backup domain has been reset
 INLINE void hw_rcc_osc_bypass_disable(enum rcc_osc osc)
 {
 	switch (osc) {
-	case HSE:
+	case RCC_HSE:
 		RCC_CR &= ~RCC_CR_HSEBYP;
 		break;
-	case LSE:
+	case RCC_LSE:
 		RCC_BDCR &= ~RCC_BDCR_LSEBYP;
 		break;
-	case PLL:
-	case PLL2:
-	case PLL3:
-	case HSI:
-	case LSI:
+	case RCC_PLL:
+	case RCC_PLL2:
+	case RCC_PLL3:
+	case RCC_HSI:
+	case RCC_LSI:
 		/* Do nothing, only HSE/LSE allowed here. */
 		break;
 	}
@@ -636,15 +635,15 @@ INLINE uint32_t hw_rcc_system_clock_source(void)
 INLINE void hw_rcc_clock_setup_in_hse_8mhz_out_72mhz(void)
 {
 	/* Enable internal high-speed oscillator. */
-        hw_rcc_osc_on(HSI);
-	hw_rcc_wait_for_osc_ready(HSI);
+        hw_rcc_osc_on(RCC_HSI);
+	hw_rcc_wait_for_osc_ready(RCC_HSI);
 
 	/* Select HSI as SYSCLK source. */
 	hw_rcc_set_sysclk_source(RCC_CFGR_SW_SYSCLKSEL_HSICLK);
 
 	/* Enable external high-speed oscillator 8MHz. */
-	hw_rcc_osc_on(HSE);
-	hw_rcc_wait_for_osc_ready(HSE);
+	hw_rcc_osc_on(RCC_HSE);
+	hw_rcc_wait_for_osc_ready(RCC_HSE);
 	hw_rcc_set_sysclk_source(RCC_CFGR_SW_SYSCLKSEL_HSECLK);
 
 	/*
@@ -680,8 +679,8 @@ INLINE void hw_rcc_clock_setup_in_hse_8mhz_out_72mhz(void)
 	hw_rcc_set_pllxtpre(RCC_CFGR_PLLXTPRE_HSE_CLK);
 
 	/* Enable PLL oscillator and wait for it to stabilize. */
-	hw_rcc_osc_on(PLL);
-	hw_rcc_wait_for_osc_ready(PLL);
+	hw_rcc_osc_on(RCC_PLL);
+	hw_rcc_wait_for_osc_ready(RCC_PLL);
 
 	/* Select PLL as SYSCLK source. */
 	hw_rcc_set_sysclk_source(RCC_CFGR_SW_SYSCLKSEL_PLLCLK);
