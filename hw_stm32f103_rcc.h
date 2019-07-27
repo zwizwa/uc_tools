@@ -597,7 +597,7 @@ INLINE void hw_rcc_set_prediv1_source(uint32_t rccsrc)
 
 INLINE void hw_rcc_set_mco(uint32_t mcosrc)
 {
-	RCC_CFGR = (RCC_CFGR & ~RCC_CFGR_MCO) |
+	RCC_CFGR = (RCC_CFGR & ~(RCC_CFGR_MCO_MASK << RCC_CFGR_MCO_SHIFT)) |
 			(mcosrc << RCC_CFGR_MCO_SHIFT);
 
 }

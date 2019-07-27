@@ -169,7 +169,7 @@ static const struct usb_config_descriptor config = {
 uint8_t usbd_control_buffer[128];
 
 static int cdcacm_control_request(usbd_device *usbd_dev, struct usb_setup_data *req, uint8_t **buf,
-		uint16_t *len, void (**complete)(usbd_device *usbd_dev, struct usb_setup_data *req))
+		uint16_t *len, usbd_control_complete_callback *complete)
 {
 	(void)complete;
 	(void)buf;
