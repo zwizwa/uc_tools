@@ -207,5 +207,8 @@ extern struct gdbstub_config _config; // FLASH
 #define STORE_HEADER_SECTION  __attribute__ ((section (".store_header")))
 #define STORE_DATA_SECTION    __attribute__ ((section (".store_data")))
 
+/* A separate RAM section for applets. */
+#define APPLET_SECTION        __attribute__ ((section (".applet")))
+
 
 #endif

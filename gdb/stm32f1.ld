@@ -92,7 +92,7 @@ SECTIONS
 		*(COMMON)
 		. = ALIGN(4);
 		_ebss = .;
-	} >ram
+ 	} >ram
 
 
 	/*

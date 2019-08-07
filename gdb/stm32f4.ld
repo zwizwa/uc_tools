@@ -108,7 +108,7 @@ SECTIONS
 SECTIONS {
         /* Configuration block.
            This has a default in core and might be overwritten by app. */
-        .config 0x8002800 : { 
+        .config 0x8004000 : { 
                 KEEP (*(.config_header))
                 KEEP (*(.config_data))
                 . = ALIGN(4);
@@ -126,7 +126,7 @@ PROVIDE(_stack = ORIGIN(ram) + LENGTH(ram));
 PROVIDE(_service = 0x08000150);
 
 /* Boot loader config block. */
-PROVIDE(_config = 0x08002800);
+PROVIDE(_config = 0x08004000);
 
 /* Data store. */
 PROVIDE(_store = 0x08030000);

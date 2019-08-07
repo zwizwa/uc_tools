@@ -20,13 +20,8 @@
 /* Define memory regions. */
 MEMORY
 {
-/* ORIGINAL
-	rom (rx)  : ORIGIN = 0x08000000, LENGTH = 64K
-	ram (rwx) : ORIGIN = 0x20000000, LENGTH = 20K
-
-
 /* BOOTLOADER / HOST  */
-	rom (rx)  : ORIGIN = 0x08000000, LENGTH = 0x2800
+	rom (rx)  : ORIGIN = 0x08000000, LENGTH = 0x4000
 	ram (rwx) : ORIGIN = 0x20000000, LENGTH = 0x2000
 
 }

@@ -34,6 +34,7 @@ EOF
 redo-ifchange $ENV
 . $ENV
 
+
 # .o files that need to be linked in explicitly. contianing the
 # application elf's main and optionally some system .o files
 # configured in $ENV file.
@@ -45,6 +46,13 @@ A=lib.$ARCH.a
 # linker configuration file
 LD=$LDT.$ARCH.ld
 
+
+# If the linker file is an actual file, we do the ordinary link step.
 redo-ifchange $O $A $LD 
 $GCC $LDFLAGS -T$LD -Wl,-Map=$BN.$ARCH.map -o $3 $O $A $LDLIBS
+
+
+# FIXME: This needs an extension where LDT doesn't just refer to a
+# linker file, but to something that generates linker flags.
+
 

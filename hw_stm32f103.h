@@ -936,12 +936,17 @@ INLINE void hw_usart1_off(void) {
     rcc_periph_clock_disable(RCC_USART1);
 }
 
-
+// It is assumed all chips run at the canonical 72MHz master clock.
+// The baud rate divisor is a 16 bit register and devices the master
+// clock.
 INLINE void hw_usart1_3M(int ie) {
     hw_usart1_config(24, ie); // 3MBaud, interrupt enable configurable
 }
 INLINE void hw_usart1_115k2(void) {
     hw_usart1_config(625, 0); // 115200 Baud, interrupt disable.
+}
+INLINE void hw_usart1_250k(void) {
+    hw_usart1_config(288, 0); // 250000 Baud, interrupt disable.
 }
 INLINE void hw_usart1_init(void) {
     rcc_periph_clock_enable(RCC_GPIOA);
@@ -967,7 +972,16 @@ INLINE int hw_usart1_getchar(void) {
     // SR flags RXNE and ORE cause interrupt
     uint32_t sr = USART_SR(USART1); // clears ORE if followed by DR read
     uint32_t dr = USART_DR(USART1); // clears RXNE
-    if (sr & 0xF) return -1; // check errors: ORE,FE,NE,PE
+    if (sr & 0xF) return -1; // check errors: [ORE NE FE PE]
+    return dr & USART_DR_MASK;
+}
+/* Same as getchar, but in case of error create a negative error code
+ * containing SR and DR. */
+INLINE int hw_usart1_getchar_nsr(void) {
+    // SR flags RXNE and ORE cause interrupt
+    int32_t  sr = USART_SR(USART1);   // clears ORE if followed by DR read
+    uint32_t dr = USART_DR(USART1);   // clears RXNE
+    if (sr & 0xF) return (-1 << 12) | ((sr & 0xF) << 8) | (dr & 0xFF);
     return dr & USART_DR_MASK;
 }
 INLINE int hw_usart1_recv_ready(void) {

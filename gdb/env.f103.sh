@@ -23,6 +23,7 @@ wavegen.x8.f103.elf
 usbisr.x8.f103.elf
 etf_test.x8.f103.elf
 echo_test.x8.f103.elf
+doodle.x8.f103.elf
 "
 
 O_SYSTEM=registers_stm32f103.f103.o
