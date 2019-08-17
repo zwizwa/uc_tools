@@ -16,7 +16,19 @@ infof.c
 tools.c
 info_null.c
 "
+
 O=$(echo $C | sed s/\\.c/\\.${ARCH}\\.o/g)
+
+# User-defined library extensions
+echo "UC_TOOLS_LIB_DIR=$UC_TOOLS_LIB_DIR" >&2
+
+if [ ! -z "$UC_TOOLS_LIB_DIR" ]; then
+    O_EXTRA=$(cd $UC_TOOLS_LIB_DIR ; ls *.c | sed s/\\.c/\\.${ARCH}\\.o/g)
+    O="$O $O_EXTRA"
+fi
+
+echo "O=$O" >&2
+
 
 cat <<EOF >&2
 ARCH=$ARCH

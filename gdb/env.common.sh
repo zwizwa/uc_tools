@@ -18,6 +18,7 @@ READELF=${TPF}-readelf
 MFLAGS_COMMON=""
 
 CPPFLAGS_COMMON="\
+-I. \
 -I.. \
 -I$UC_TOOLS/include \
 -I$LIBOPENCM3/include \

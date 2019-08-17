@@ -119,8 +119,6 @@ void stop(void) {
     _service.reset();
 }
 
-int main(void) { start(); }
-
 const char config_manufacturer[] CONFIG_DATA_SECTION = "Zwizwa";
 const char config_product[]      CONFIG_DATA_SECTION = "ETF Test";
 const char config_serial[]       CONFIG_DATA_SECTION = "0";

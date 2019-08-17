@@ -156,8 +156,6 @@ void stop(void) {
     hw_app_stop();
     _service.reset();
 }
-int main(void) { start(); }
-
 const char config_manufacturer[] CONFIG_DATA_SECTION = "Zwizwa";
 const char config_product[]      CONFIG_DATA_SECTION = "Waveform Generator";
 const char config_serial[]       CONFIG_DATA_SECTION = "000000000000000000000000";

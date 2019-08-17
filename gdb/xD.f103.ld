@@ -6,6 +6,9 @@ MEMORY /* STM32F103xD */
 
 PROVIDE(_flash_top = 0x08060000);
 
+/* This is to keep the linker happy.  main() is not used. */
+PROVIDE(main = 0);
+
 /* Fake entry point.  Apps are started manually through gdb RSP 
 PROVIDE (_fake_reset_handler = 0);
 ENTRY (_fake_reset_handler); */

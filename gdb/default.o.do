@@ -13,10 +13,18 @@ fi
 ARCH="${2##*.}"
 BN=$(basename $2 .$ARCH)
 
-# Only support local or parent directory
-C=$BN.c
-[ ! -f $C ] && C=../$C
+# Find the corresponding C file.
+# echo "UC_TOOLS_APP_DIR=$UC_TOOLS_APP_DIR" >&2
+# echo "UC_TOOLS_LIB_DIR=$UC_TOOLS_LIB_DIR" >&2
 
+
+C=$BN.c
+[ ! -f $C ] && C=../$BN.c
+[ ! -f $C ] && C=$UC_TOOLS_LIB_DIR/$BN.c
+[ ! -f $C ] && C=$UC_TOOLS_APP_DIR/$BN.c
+[ ! -f $C ] && exit 1
+
+echo "C=$C" >&2
 
 redo-ifchange $C
 ENV=./env.$ARCH.sh

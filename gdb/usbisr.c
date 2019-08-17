@@ -61,8 +61,6 @@ void usb_lp_can_rx0_isr(void) {
     bl_poll();
 }
 
-int main(void) { start(); }
-
 const char config_manufacturer[] CONFIG_DATA_SECTION = "Zwizwa";
 const char config_product[]      CONFIG_DATA_SECTION = "USB ISR test";
 const char config_serial[]       CONFIG_DATA_SECTION = "000000000000000000000000";

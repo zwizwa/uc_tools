@@ -23,8 +23,6 @@ void start(void) {
     hw_app_init();
 }
 
-int main(void) { start(); }
-
 const char config_manufacturer[] CONFIG_DATA_SECTION = "Zwizwa";
 const char config_product[]      CONFIG_DATA_SECTION = "Doodle Board";
 const char config_serial[]       CONFIG_DATA_SECTION = "2";
