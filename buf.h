@@ -1,6 +1,8 @@
 #ifndef BUF_H
 #define BUF_H
 
+#include <stdint.h>
+
 /* Circular byte buffer implemented as inline functions.
    Rolling pointers, power-of-2 size, wrap on access. */
 
@@ -22,6 +24,11 @@ static inline void buf_init(struct buf *b, uint8_t *buf, uint32_t size) {
     b->mask  = size-1;
     b->buf   = buf;
 }
+
+/* Initialize with statically allocated buffer with _buf postfix. */
+#define BUF_INIT(name) buf_init(&name, &name##_buf[0], sizeof(name##_buf))
+
+
 static inline uint32_t buf_mask(struct buf *b, uint32_t index) {
     return b->mask;
 }
@@ -54,6 +61,18 @@ static inline void buf_drop(struct buf *b, uint32_t nb_drop) {
     uint32_t bs = buf_bytes(b);
     if (nb_drop > bs) { nb_drop = bs; }
     b->read += nb_drop;
+}
+static inline void buf_write(struct buf *b, const uint8_t *buf, uint32_t len) {
+    for (uint32_t i=0; i<len; i++) {
+        buf_put(b, buf[i]);
+    }
+}
+static inline uint32_t buf_read(struct buf *b, uint8_t *buf, uint32_t len) {
+    uint32_t i = 0;
+    while ((i < len) && (!buf_empty(b))) {
+        buf[i++] = buf_get(b);
+    }
+    return i;
 }
 
 

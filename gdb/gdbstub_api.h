@@ -188,8 +188,11 @@ struct gdbstub_config {
     /* 12: Main loop takeover function. */
     gdbstub_fn_loop loop;
 
-    /* 13: Reserved */
-    void *reserved_13[3+16];
+    /* 13: Protocol. */
+    const char *protocol;
+
+    /* 14: Reserved */
+    void *reserved_14[2+16];
 };
 extern struct gdbstub_config _config; // FLASH
 

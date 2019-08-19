@@ -1,4 +1,3 @@
-
 // FIXME: Binary copy needs to be checked for oveflow, but there is
 // still something wrong resulting in:
 // f(B),B=binary:copy(<<0>>,100).

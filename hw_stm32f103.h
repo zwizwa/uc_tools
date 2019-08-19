@@ -151,6 +151,9 @@ INLINE void hw_tim_set_counter(uint32_t tim, uint32_t count) {
 INLINE uint16_t hw_tim_counter(uint32_t tim) {
     return TIM_CNT(tim);
 }
+INLINE void hw_tim_set_prescaler(uint32_t tim, uint16_t psc) {
+    TIM_PSC(tim) = psc;
+}
 
 
 INLINE void hw_reset(void) {
@@ -201,7 +204,6 @@ struct hw_periodic {
     uint32_t div;
     uint32_t pre;   // prescaler setting
 };
-
 
 
 INLINE void hw_periodic_init(struct hw_periodic c) {
@@ -1004,7 +1006,10 @@ INLINE void hw_usart1_send_flush(void) {
 }
 
 /* ---------------------------------------------------------------------
-   hw_exti6_* : EXTI6 PA6 external interrupt, falling
+   PA0-PC0 -> EXTI0
+   PA1-PC1 -> EXTI1
+   ...
+   hw_exti_* : EXTIx external interrupt
    - init:   one time initialization, call before start
    - arm:    call from anywhere, enables trigger
    - ack:    call from exti6_isr()
@@ -1016,7 +1021,8 @@ struct hw_exti {
     uint32_t gpio;
     uint32_t trigger;
 };
-
+//                     rcc_gpio   nvic_irq        pin  gpio   trigger
+#define HW_EXTI_A0_B { RCC_GPIOA, NVIC_EXTI0_IRQ, 0,   GPIOA, EXTI_TRIGGER_BOTH }
 
 // libopencm3-examples/examples/stm32/f1/stm32-h103/exti_rising_falling/exti_rising_falling.c
 INLINE void hw_exti_init(struct hw_exti c) {

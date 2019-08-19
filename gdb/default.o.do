@@ -17,7 +17,6 @@ BN=$(basename $2 .$ARCH)
 # echo "UC_TOOLS_APP_DIR=$UC_TOOLS_APP_DIR" >&2
 # echo "UC_TOOLS_LIB_DIR=$UC_TOOLS_LIB_DIR" >&2
 
-
 C=$BN.c
 [ ! -f $C ] && C=../$BN.c
 [ ! -f $C ] && C=$UC_TOOLS_LIB_DIR/$BN.c
@@ -30,6 +29,14 @@ redo-ifchange $C
 ENV=./env.$ARCH.sh
 redo-ifchange $ENV
 . $ENV
+
+if [ ! -z "$UC_TOOLS_LIB_DIR" ]; then
+    CFLAGS="-I$UC_TOOLS_LIB_DIR $CFLAGS"
+    echo "CFLAGS=$CFLAGS" >&2
+fi
+
+
+
 
 # cat <<EOF >&2
 # 1=$1
