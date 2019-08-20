@@ -1,15 +1,31 @@
-/* Test for Ethernet or other packet code usinf buf.h pbuf.h
-   Packets are encapsulated in {packet,4} over serial stream interface.
+/* Ethernet testing.  Note that this does not make a whole lot of
+   sense on its own over USB serial.  It's usually much easier to keep
+   the protocol simple and have some driver on the host end.
+
+   However, this code is intended to explore Ethernet development for
+   two projects in progress:
+
+   1) A standard RNDIS or CDC-ECM gadget.
+
+   2) An Ethernet data pack/unpack application with
+      - high bw MAC<->FPGA<->busses
+      - low bw management application on uC
+
+   For both we have Ethernet/UDP + possible minimalistic TCP on the
+   uC.  The FPGA presents data frames over SPI.
+
+
+
 */
 
 #include "base.h"
 #include "gdbstub_api.h"
 #include <string.h>
-#include "buf.h"
+#include "cbuf.h"
 #include "pbuf.h"
 
 struct pbuf incoming; uint8_t incoming_buf[1518];
-struct buf  outgoing; uint8_t outgoing_buf[4096];
+struct cbuf outgoing; uint8_t outgoing_buf[4096];
 
 // Main rate is just base clock for audio
 #define DIV 1500 // (/ 72000000 48000)
@@ -36,19 +52,6 @@ void HW_TIM_ISR(TIM_PERIODIC)(void) {
     }
 }
 
-/* This is an Ethernet packet.  Note that there is no particular
-   reason to do ethernet wrapping here.  Since there is an adaptor
-   program necessary on the host, it makes more sense to keep the
-   protocol that goes over the tty line much simpler and let the host
-   end decide how to wrap.  But there is no reason of course why it
-   can't be this generic.
-
-   Some ideas:
-   - Ethernet here + udpbridge TTY TAP + brctl
-   - IP here + slattach
-   - Arbitrary protocol + Erlang {packet,N} port
-   - Arbitrary protocol + udpbridge TTY UDP/UDP-LISTEN
-*/
 static const uint8_t heartbeat[] = {
     // broadcast dest MAC
     0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
@@ -66,8 +69,8 @@ void poll(void) {
         last_sec++;
         uint8_t buf[4];
         write_be(buf, sizeof(heartbeat), 4);
-        buf_write(&outgoing, buf, 4);
-        buf_write(&outgoing, heartbeat, sizeof(heartbeat));
+        cbuf_write(&outgoing, buf, 4);
+        cbuf_write(&outgoing, heartbeat, sizeof(heartbeat));
     }
 }
 
@@ -78,13 +81,14 @@ void recv(void *ctx, struct pbuf *p) {
     if (p->count < 14) return; // incomplete ethernet header
 }
 
+/* Use zwizwa/udpbridge to connect this to a tap interface */
 static void packet4_write(const uint8_t *buf, uint32_t len) {
     pbuf_packetn_write(&incoming, 4,
                        buf, len,
                        (pbuf_sink_t)recv, NULL);
 }
 static uint32_t packet4_read(uint8_t *buf, uint32_t len) {
-    return buf_read(&outgoing, buf, len);
+    return cbuf_read(&outgoing, buf, len);
 }
 const struct gdbstub_io etf_io = {
     .read  = packet4_read,
@@ -100,7 +104,7 @@ void start(void) {
      * manually after loading to initialize memory. */
     hw_app_init();
     PBUF_INIT(incoming);
-    BUF_INIT(outgoing);
+    CBUF_INIT(outgoing);
     hw_periodic_init(C_PERIODIC);
     _service.add(poll);
 
@@ -111,6 +115,7 @@ const char config_product[]      CONFIG_DATA_SECTION = "Ethernet Test Board";
 const char config_serial[]       CONFIG_DATA_SECTION = "AE0000000001";
 const char config_firmware[]     CONFIG_DATA_SECTION = FIRMWARE;
 const char config_version[]      CONFIG_DATA_SECTION = BUILD;
+const char config_protocol[]     CONFIG_DATA_SECTION = "{ethernet,4}";
 
 struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .manufacturer    = config_manufacturer,
@@ -118,6 +123,7 @@ struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .serial          = config_serial,
     .firmware        = config_firmware,
     .version         = config_version,
+    .protocol        = config_protocol,
     .start           = start,
     .switch_protocol = switch_protocol,
 };

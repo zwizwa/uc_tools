@@ -191,8 +191,13 @@ struct gdbstub_config {
     /* 13: Protocol. */
     const char *protocol;
 
-    /* 14: Reserved */
-    void *reserved_14[2+16];
+    /* 14: Protocol to host, if different from protocol.  This allows
+     * e.g. a custom binary command protocol coming from host, but
+     * plain log messages or formatted text going back to host. */
+    const char *protocol2;
+
+    /* 15: Reserved */
+    void *reserved_15[1+16];
 };
 extern struct gdbstub_config _config; // FLASH
 

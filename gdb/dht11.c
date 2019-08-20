@@ -12,9 +12,9 @@
 #include "base.h"
 #include "gdbstub_api.h"
 #include <string.h>
-#include "buf.h"
+#include "cbuf.h"
 
-struct buf to_usb; uint8_t to_usb_buf[1024];
+struct cbuf to_usb; uint8_t to_usb_buf[1024];
 
 volatile uint32_t count = 0;
 volatile uint32_t rollover = 0;
@@ -24,12 +24,12 @@ void poll(void) {
     static uint32_t track_rollover = 0;
     if (track_count != count) {
         uint8_t msg[] = {0,0,0,1,'P'};
-        buf_write(&to_usb, msg, sizeof(msg));
+        cbuf_write(&to_usb, msg, sizeof(msg));
         track_count++;
     }
     while (track_rollover != rollover) {
         uint8_t msg[] = {0,0,0,1,'T'};
-        buf_write(&to_usb, msg, sizeof(msg));
+        cbuf_write(&to_usb, msg, sizeof(msg));
         track_rollover++;
     }
 }
@@ -39,7 +39,7 @@ static void app_write(const uint8_t *buf, uint32_t len) {
     //infof("app_write: %d\n", len);
 }
 static uint32_t app_read(uint8_t *buf, uint32_t len) {
-    return buf_read(&to_usb, buf, len);
+    return cbuf_read(&to_usb, buf, len);
     //return info_read(buf, len);
 }
 const struct gdbstub_io app_io = {
@@ -83,9 +83,9 @@ void start(void) {
     /* Low level application init.  Note that this needs to be called
      * manually after loading to initialize memory. */
     hw_app_init();
-    BUF_INIT(to_usb);
+    CBUF_INIT(to_usb);
     uint8_t msg[] = {0,0,0,1,123};
-    buf_write(&to_usb, msg, sizeof(msg));
+    cbuf_write(&to_usb, msg, sizeof(msg));
 
     /* Timers are 16 bits with 16 bit prescaling value. We want about
      * 10uS resolution for a total cycle of 655.360 ms. */
