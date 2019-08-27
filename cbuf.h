@@ -10,11 +10,15 @@
 #define BUF_EAGAIN ((uint16_t)0x100)
 
 struct cbuf {
-    uint32_t write;
-    uint32_t read;
+    volatile uint32_t write;
+    volatile uint32_t read;
     uint32_t mask;
     uint8_t *buf;
 };
+
+/* FIXME: With read/write volatile, it might be best to manually
+ * inline some of these operations such that they do not cause
+ * multiple reads. */
 
 
 /* Note that size needs to be a power of two for this to work. */

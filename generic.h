@@ -13,6 +13,17 @@
 #define INLINE static inline __attribute__((__always_inline__))
 #endif
 
+/* The default error propagation is to exit the program.  This works
+ * well for the intended use as Erlang port.  Note that for
+ * microcontroller use this should probably be overridden. */
+#ifndef ABORT
+#define ABORT exit(1)
+#endif
+
+#ifndef ERROR
+#define ERROR(...) do {LOG(__VA_ARGS__);ABORT;}while(0)
+#endif
+
 #define CT_ASSERT(name, pred) \
     typedef char nct_assert_##name[(pred) ? 1 : -1]
 #define CT_ASSERT_STRUCT_SIZE(name, size) \
@@ -23,21 +34,21 @@
 #define ASSERT(assertion) ({ \
             if(!(assertion)) { \
                 LOG("%s: %d: ASSERT FAIL: " #assertion "\n", __FILE__, __LINE__); \
-                exit(1); \
+                ABORT; \
             } })
 #define ASSERT_EQ(a,b) ({ \
             __typeof__(a) _a = (a); \
             __typeof__(b) _b = (b); \
             if(_a != _b) { \
                 LOG("ASSERT FAIL: " #a "(%d) == " #b "(%d)\n", _a, _b); \
-                exit(1); \
+                ABORT; \
             } })
 #define ASSERT_GT(a,b) ({ \
             __typeof__(a) _a = (a); \
             __typeof__(b) _b = (b); \
             if(_a <= _b) { \
                 LOG("ASSERT FAIL: " #a "(%d) <= " #b "(%d)\n", _a, _b); \
-                exit(1); \
+                ABORT; \
             } })
 
 #define FOR_ARRAY(a,p) \
