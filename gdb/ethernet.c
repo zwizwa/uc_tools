@@ -122,57 +122,64 @@ struct __attribute__((packed)) udp {
     uint16_t checksum;
 };
 
-struct __attribute__((packed)) miu {
+struct __attribute__((packed)) headers {
+    uint32_t len;
     struct mac m;
     struct ip  i;
     struct udp u;
 };
 
-struct __attribute__((packed)) msg {
-    uint32_t len;
-    struct miu miu;
-    uint8_t data[2];
+// Multicast seems most convenient.
+// https://networklessons.com/multicast/multicast-ip-address-to-mac-address-mapping
+// socat - UDP4-RECVFROM:12345,ip-add-membership=224.0.13.1:10.1.3.2,fork
+#define MULTICAST 0,13,1
+#define SOURCE 10,1,3,123  // does this really matter?
+static struct headers headers = {
+    .m = {
+        .d_mac = {0x01, 0x00, 0x5e, MULTICAST},
+        .s_mac = {0xAE, 0, SOURCE},
+        .ethertype = HTONS(0x0800), // IPv4
+    },
+    .i = {
+        .version_ihl = 0x45,
+        .dscp_ecn = 0,
+        .identification = HTONS(0x1234), // ??
+        .flags_fo = HTONS(0x4000), // don't fragment
+        .ttl = 0x40,
+        .protocol = 0x11, // UDP,
+        .s_ip = {SOURCE},
+        .d_ip = {224,MULTICAST}
+    },
+    .u = {
+        .s_port = HTONS(54321),
+        .d_port = HTONS(12345),
+    }
 };
 
-static struct msg heartbeat_template = {
-    .miu = {
-        .m = {
-            .d_mac = {0x00, 0x1b, 0x21, 0xb3, 0x3d, 0x2c},
-            .s_mac = {0xAE, 0, 0, 0, 0, 1},
-            .ethertype = HTONS(0x0800), // IPv4
-        },
-        .i = {
-            .version_ihl = 0x45,
-            .dscp_ecn = 0,
-            .total_length = HTONS(28+2),
-            .identification = HTONS(0x1234),
-            .flags_fo = HTONS(0x4000), // don't fragment
-            .ttl = 0x40,
-            .protocol = 0x11, // UDP,
-            .header_checksum = 0,
-            .s_ip = {10,1,3,123},
-            .d_ip = {10,1,3,2}
-        },
-        .u = {
-            .s_port = HTONS(54321),
-            .d_port = HTONS(12345),
-            .length = HTONS(8 + 2),
-            .checksum = 0,
-        },
-    },
-    .data = {'!','\n'}
-};
+static void send_udp(const struct headers *headers,
+                     const uint8_t *buf, uint32_t len) {
+    struct headers h = *headers;
+    h.i.total_length = htons(28 + len);
+    h.i.header_checksum = ip_checksum(&h.i, sizeof(h.i));
+
+    /* UDP checksum is optional for IPv4 so it is not set here.
+     * Note that computation would be based on a pseudo IP header,
+     * not the actual header. */
+    h.u.length   = htons( 8 + len);
+    h.u.checksum = 0;
+
+    h.len = htonl(sizeof(h) - 4 + len);
+    cbuf_write(&outgoing, (const uint8_t*)&h, sizeof(h));
+    cbuf_write(&outgoing, buf, len);
+}
 
 void poll(void) {
 
     static uint32_t last_sec = 0;
     if (sec > last_sec) {
         last_sec++;
-        struct msg h = heartbeat_template;
-        h.miu.i.header_checksum = ip_checksum(&h.miu.i, 20);
-        // h.miu.u.checksum = ip_checksum(&h.miu.i, xxx);
-        h.len = HTONL(sizeof(h) - 4);
-        cbuf_write(&outgoing, (const uint8_t*)&h, sizeof(h));
+        uint8_t buf[] = {'\r', '0'+(last_sec%10)};
+        send_udp(&headers, buf, sizeof(buf));
     }
 }
 
