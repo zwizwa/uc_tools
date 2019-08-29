@@ -24,7 +24,7 @@
 #include "cbuf.h"
 #include "pbuf.h"
 
-struct pbuf incoming; uint8_t incoming_buf[1518];
+struct pbuf incoming; uint8_t incoming_buf[1522];
 struct cbuf outgoing; uint8_t outgoing_buf[4096];
 
 // Main rate is just base clock for audio
@@ -59,6 +59,8 @@ void HW_TIM_ISR(TIM_PERIODIC)(void) {
 #define NTOHL(w) (NTOHS((w)>>16) | (NTOHS(w)<<16))
 #define HTONL(w) NTOHL(w)
 
+uint32_t byte_count = 0;
+uint32_t packet_count = 0;
 
 static inline uint16_t ntohs(uint16_t w) { return NTOHS(w); }
 static inline uint16_t htons(uint16_t w) { return HTONS(w); }
@@ -122,7 +124,7 @@ struct __attribute__((packed)) udp {
     uint16_t checksum;
 };
 
-struct __attribute__((packed)) headers {
+struct __attribute__((packed)) miu {
     uint32_t len;
     struct mac m;
     struct ip  i;
@@ -131,10 +133,10 @@ struct __attribute__((packed)) headers {
 
 // Multicast seems most convenient.
 // https://networklessons.com/multicast/multicast-ip-address-to-mac-address-mapping
-// socat - UDP4-RECVFROM:12345,ip-add-membership=224.0.13.1:10.1.3.2,fork
+// socat - UDP4-RECVFROM:12345,ip-add-membership=224.0.13.1:10.1.3.2,fork | hd
 #define MULTICAST 0,13,1
-#define SOURCE 10,1,3,123  // does this really matter?
-static struct headers headers = {
+#define SOURCE 10,1,3,123  // does this really matter? (only for SSM?)
+static struct miu headers = {
     .m = {
         .d_mac = {0x01, 0x00, 0x5e, MULTICAST},
         .s_mac = {0xAE, 0, SOURCE},
@@ -156,9 +158,9 @@ static struct headers headers = {
     }
 };
 
-static void send_udp(const struct headers *headers,
+static void send_udp(const struct miu *headers,
                      const uint8_t *buf, uint32_t len) {
-    struct headers h = *headers;
+    struct miu h = *headers;
     h.i.total_length = htons(28 + len);
     h.i.header_checksum = ip_checksum(&h.i, sizeof(h.i));
 
@@ -173,25 +175,50 @@ static void send_udp(const struct headers *headers,
     cbuf_write(&outgoing, buf, len);
 }
 
-void poll(void) {
+uint32_t last_sec = 0;
 
-    static uint32_t last_sec = 0;
+static void send_status(void) {
+    // Status info
+    uint32_t buf[4] = {
+        htonl(last_sec),
+        htonl(byte_count),
+        htonl(packet_count),
+        0
+    };
+    send_udp(&headers, (const uint8_t*)&buf[0], sizeof(buf));
+}
+static void send_log(void) {
+    // Status info
+    uint8_t buf[1400];
+    uint32_t len = info_read(buf, sizeof(buf));
+    if (len) {
+        send_udp(&headers, (const uint8_t*)&buf[0], len);
+    }
+}
+
+void poll(void) {
     if (sec > last_sec) {
         last_sec++;
-        uint8_t buf[] = {'\r', '0'+(last_sec%10)};
-        send_udp(&headers, buf, sizeof(buf));
+        switch(1) {
+        case 0: send_status(); break;
+        case 1: send_log(); break;
+        }
     }
 }
 
 
-
-
-void recv(void *ctx, struct pbuf *p) {
+void recv(void *ctx, const struct pbuf *p) {
+    packet_count++;
     if (p->count < 14) return; // incomplete ethernet header
+    // FIXME: check destination
+    // FIXME: validate checksum
+    const struct miu *h = (void*)&p->buf[0];
+    infof("%04x %d\n", ntohs(h->m.ethertype), p->count);
 }
 
 /* Use zwizwa/udpbridge to connect this to a tap interface */
 static void packet4_write(const uint8_t *buf, uint32_t len) {
+    byte_count += len;
     pbuf_packetn_write(&incoming, 4,
                        buf, len,
                        (pbuf_sink_t)recv, NULL);
@@ -217,11 +244,12 @@ void start(void) {
     hw_periodic_init(C_PERIODIC);
     _service.add(poll);
 
+    infof("ethernet.c\n");
 }
 
 const char config_manufacturer[] CONFIG_DATA_SECTION = "Zwizwa";
 const char config_product[]      CONFIG_DATA_SECTION = "Ethernet Test Board";
-const char config_serial[]       CONFIG_DATA_SECTION = "AE0000000001";
+const char config_serial[]       CONFIG_DATA_SECTION = "ae:00:00:00:00:01";
 const char config_firmware[]     CONFIG_DATA_SECTION = FIRMWARE;
 const char config_version[]      CONFIG_DATA_SECTION = BUILD;
 const char config_protocol[]     CONFIG_DATA_SECTION = "{ethernet,4}";

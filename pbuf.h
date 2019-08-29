@@ -2,6 +2,8 @@
 #define PBUF_H
 
 #include <stdint.h>
+#include <string.h>
+#include "infof.h"
 
 /* Generic packet buffer. */
 struct pbuf {
@@ -15,12 +17,13 @@ static inline void pbuf_init(struct pbuf *p, uint8_t *buf, uint32_t size) {
     p->count = 0;
     p->size  = size;
     p->buf   = buf;
+    memset(buf, 0, size);
 }
 
 /* Initialize with statically allocated buffer with _buf postfix. */
 #define PBUF_INIT(name) pbuf_init(&name, &name##_buf[0], sizeof(name##_buf))
 
-static inline void pbuf_put(struct pbuf *p, uint32_t c) {
+static inline void pbuf_put(struct pbuf *p, uint8_t c) {
     if (p->count < p->size) {
         p->buf[p->count++] = c;
     }
@@ -49,16 +52,16 @@ static inline void write_be(uint8_t *buf, uint64_t word, uint32_t nb) {
 
 
 
-/* Collector for incoming {packet,2} Erlang format.  Keep the length
-   prefix in * the buffer to avoid extra state tracking. */
+/* Collector for incoming {packet,N} Erlang format.  Keep the length
+   prefix in the buffer to avoid extra state tracking. */
 static inline void pbuf_packetn_write(struct pbuf *p, int len_len,
                                       const uint8_t *buf, uint32_t len,
                                       pbuf_sink_t sink, void *ctx) {
     for (uint32_t i=0; i<len; i++) {
         pbuf_put(p, buf[i]);
         if (p->count >= len_len) {
-            uint32_t count = read_be(buf, len_len);
-            if (p->count == count) {
+            uint32_t count = read_be(&p->buf[0], len_len);
+            if (p->count == count + 4) {
                 if (sink) sink(ctx, p);
                 p->count = 0;
             }
