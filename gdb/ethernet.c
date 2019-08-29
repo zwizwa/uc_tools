@@ -52,25 +52,127 @@ void HW_TIM_ISR(TIM_PERIODIC)(void) {
     }
 }
 
-static const uint8_t heartbeat[] = {
-    // broadcast dest MAC
-    0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
-    // source MAC
-    0xAE,0,0,0,0,1,
-    // ethertype
-    0x12,0x34,
-    // payload
-    0x56,0x78
+
+#define NTOHS(w) ((((w)&0xFF00) >> 8) | (((w)&0x00FF) << 8))
+#define HTONS(w) NTOHS(w)
+
+#define NTOHL(w) (NTOHS((w)>>16) | (NTOHS(w)<<16))
+#define HTONL(w) NTOHL(w)
+
+
+static inline uint16_t ntohs(uint16_t w) { return NTOHS(w); }
+static inline uint16_t htons(uint16_t w) { return HTONS(w); }
+static inline uint32_t ntohl(uint32_t w) { return NTOHL(w); }
+static inline uint32_t htonl(uint32_t w) { return HTONL(w); }
+
+// FIXME: add checksum computations for headers.
+
+// http://www.microhowto.info/howto/calculate_an_internet_protocol_checksum_in_c.html
+uint16_t ip_checksum(const void *vdata, size_t length) {
+
+    const uint8_t *data = vdata;
+    // Initialise the accumulator.
+    uint32_t acc = 0xffff;
+    // Handle complete 16-bit blocks.
+    for (size_t i = 0; i+1 < length; i += 2) {
+        uint16_t word;
+        memcpy(&word, data + i, 2);
+        acc += ntohs(word);
+        if (acc > 0xffff) {
+            acc -= 0xffff;
+        }
+    }
+    // Handle any partial block at the end of the data.
+    if (length & 1) {
+        uint16_t word = 0;
+        memcpy(&word, data + length - 1, 1);
+        acc += ntohs(word);
+        if (acc > 0xffff) {
+            acc -= 0xffff;
+        }
+    }
+    // Return the checksum in network byte order.
+    return htons(~acc);
+
+}
+
+struct __attribute__((packed)) mac {
+    uint8_t d_mac[6];
+    uint8_t s_mac[6];
+    uint16_t ethertype;
+    // uint32_t checksum follows payload
+} ;
+struct __attribute__((packed)) ip {
+    uint8_t version_ihl;
+    uint8_t dscp_ecn;
+    uint16_t total_length;
+    uint16_t identification;
+    uint16_t flags_fo;
+    uint8_t ttl;
+    uint8_t protocol;
+    uint16_t header_checksum;
+    uint8_t s_ip[4];
+    uint8_t d_ip[4];
+    // options if IHL>5
+} ;
+struct __attribute__((packed)) udp {
+    uint16_t s_port;
+    uint16_t d_port;
+    uint16_t length;
+    uint16_t checksum;
+};
+
+struct __attribute__((packed)) miu {
+    struct mac m;
+    struct ip  i;
+    struct udp u;
+};
+
+struct __attribute__((packed)) msg {
+    uint32_t len;
+    struct miu miu;
+    uint8_t data[2];
+};
+
+static struct msg heartbeat_template = {
+    .miu = {
+        .m = {
+            .d_mac = {0x00, 0x1b, 0x21, 0xb3, 0x3d, 0x2c},
+            .s_mac = {0xAE, 0, 0, 0, 0, 1},
+            .ethertype = HTONS(0x0800), // IPv4
+        },
+        .i = {
+            .version_ihl = 0x45,
+            .dscp_ecn = 0,
+            .total_length = HTONS(28+2),
+            .identification = HTONS(0x1234),
+            .flags_fo = HTONS(0x4000), // don't fragment
+            .ttl = 0x40,
+            .protocol = 0x11, // UDP,
+            .header_checksum = 0,
+            .s_ip = {10,1,3,123},
+            .d_ip = {10,1,3,2}
+        },
+        .u = {
+            .s_port = HTONS(54321),
+            .d_port = HTONS(12345),
+            .length = HTONS(8 + 2),
+            .checksum = 0,
+        },
+    },
+    .data = {'!','\n'}
 };
 
 void poll(void) {
+
     static uint32_t last_sec = 0;
     if (sec > last_sec) {
         last_sec++;
-        uint8_t buf[4];
-        write_be(buf, sizeof(heartbeat), 4);
-        cbuf_write(&outgoing, buf, 4);
-        cbuf_write(&outgoing, heartbeat, sizeof(heartbeat));
+        struct msg h = heartbeat_template;
+        h.miu.i.header_checksum = ip_checksum(&h.miu.i, 20);
+        // h.miu.u.checksum = ip_checksum(&h.miu.i, xxx);
+        h.len = HTONL(sizeof(h) - 4);
+        cbuf_write(&outgoing, (const uint8_t*)&h, sizeof(h));
     }
 }
 

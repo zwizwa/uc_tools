@@ -5,8 +5,8 @@
 
 /* Generic packet buffer. */
 struct pbuf {
-    uint32_t count;
-    uint32_t size;
+    uint32_t count;  /* Number of valid bytes in buffer */
+    uint32_t size;   /* Total allocated size of buffer */
     uint8_t *buf;
 };
 #define PBUF_INIT_FROM_BUF(b) { .buf = &b[0], .size = sizeof(b), .count = sizeof(b) }
