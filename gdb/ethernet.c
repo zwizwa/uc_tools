@@ -31,7 +31,8 @@ struct cbuf outgoing; uint8_t outgoing_buf[4096];
 #define DIV 1500 // (/ 72000000 48000)
 #define TIM_PERIODIC 4
 static volatile uint32_t sample;
-static volatile uint32_t sec;
+static volatile uint32_t tick;
+uint32_t tick_period = 4800;
 
 static const struct hw_periodic hw_periodic_config[] = {
 //          rcc       irq            tim   div  pre
@@ -46,9 +47,9 @@ static const struct hw_periodic hw_periodic_config[] = {
 void HW_TIM_ISR(TIM_PERIODIC)(void) {
     hw_periodic_ack(C_PERIODIC);
     sample++;
-    if (sample == 48000) {
+    if (sample == tick_period) {
         sample = 0;
-        sec++;
+        tick++;
     }
 }
 
@@ -124,7 +125,9 @@ struct __attribute__((packed)) udp {
     uint16_t checksum;
 };
 
-struct __attribute__((packed)) miu {
+/* All headers.  FIXME: Where to put ethernet checksum?  Currently
+   linux tap seems to add that. */
+struct __attribute__((packed)) headers {
     uint32_t len;
     struct mac m;
     struct ip  i;
@@ -136,7 +139,7 @@ struct __attribute__((packed)) miu {
 // socat - UDP4-RECVFROM:12345,ip-add-membership=224.0.13.1:10.1.3.2,fork | hd
 #define MULTICAST 0,13,1
 #define SOURCE 10,1,3,123  // does this really matter? (only for SSM?)
-static struct miu headers = {
+static struct headers headers = {
     .m = {
         .d_mac = {0x01, 0x00, 0x5e, MULTICAST},
         .s_mac = {0xAE, 0, SOURCE},
@@ -158,9 +161,9 @@ static struct miu headers = {
     }
 };
 
-static void send_udp(const struct miu *headers,
+static void send_udp(const struct headers *headers,
                      const uint8_t *buf, uint32_t len) {
-    struct miu h = *headers;
+    struct headers h = *headers;
     h.i.total_length = htons(28 + len);
     h.i.header_checksum = ip_checksum(&h.i, sizeof(h.i));
 
@@ -175,45 +178,76 @@ static void send_udp(const struct miu *headers,
     cbuf_write(&outgoing, buf, len);
 }
 
-uint32_t last_sec = 0;
+uint32_t last_tick = 0;
 
 static void send_status(void) {
     // Status info
     uint32_t buf[4] = {
-        htonl(last_sec),
+        htonl(last_tick),
         htonl(byte_count),
         htonl(packet_count),
         0
     };
     send_udp(&headers, (const uint8_t*)&buf[0], sizeof(buf));
 }
-static void send_log(void) {
-    // Status info
-    uint8_t buf[1400];
-    uint32_t len = info_read(buf, sizeof(buf));
-    if (len) {
-        send_udp(&headers, (const uint8_t*)&buf[0], len);
-    }
+
+/* Makre sure we don't overflow the outgoing buffer. */
+static uint32_t outgoing_room(uint32_t need) {
+    uint32_t have = cbuf_room(&outgoing);
+    if (have < sizeof(struct headers) + need) return 0;
+    return have - sizeof(struct headers);
 }
 
+
+static void send_log(void) {
+    if (!info_bytes()) return;
+
+    /* Backpressure.  Don't send anything if there is not a minimal
+     * payload size available. */
+    uint32_t need = 100;
+    uint32_t room = outgoing_room(need);
+    if (!room) return;
+
+    /* FIXME: avoid the buffer here.  Push header into cbuf and then
+     * push payload here. */
+    uint8_t buf[room];
+    uint32_t len = info_read(buf, sizeof(buf));
+    send_udp(&headers, (const uint8_t*)&buf[0], len);
+}
+
+
 void poll(void) {
-    if (sec > last_sec) {
-        last_sec++;
-        switch(1) {
-        case 0: send_status(); break;
-        case 1: send_log(); break;
+    /* Note that there can be no direct path from recv() to a log
+     * flush message going out, as we will receive our own broadcasts
+     * and this would create a feedback loop.  Limit the rate by
+     * polling. */
+    if (tick != last_tick) {
+        last_tick++;
+        switch(2) {
+        case 1: send_status(); break;
+        case 2: send_log(); break;
+        default: break;
         }
     }
 }
 
 
 void recv(void *ctx, const struct pbuf *p) {
-    packet_count++;
     if (p->count < 14) return; // incomplete ethernet header
     // FIXME: check destination
     // FIXME: validate checksum
-    const struct miu *h = (void*)&p->buf[0];
-    infof("%04x %d\n", ntohs(h->m.ethertype), p->count);
+    const struct headers *h = (void*)&p->buf[0];
+    uint16_t type = ntohs(h->m.ethertype);
+    switch(type) {
+        // Ignore noise
+    case 0x8100: // ARP
+        break;
+    default:
+        infof("(%d) %04x %d\n", packet_count, type, p->count);
+        break;
+    }
+
+    packet_count++;
 }
 
 /* Use zwizwa/udpbridge to connect this to a tap interface */
@@ -252,7 +286,7 @@ const char config_product[]      CONFIG_DATA_SECTION = "Ethernet Test Board";
 const char config_serial[]       CONFIG_DATA_SECTION = "ae:00:00:00:00:01";
 const char config_firmware[]     CONFIG_DATA_SECTION = FIRMWARE;
 const char config_version[]      CONFIG_DATA_SECTION = BUILD;
-const char config_protocol[]     CONFIG_DATA_SECTION = "{ethernet,4}";
+const char config_protocol[]     CONFIG_DATA_SECTION = "{driver,ethernet,{packet,4}}";
 
 struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .manufacturer    = config_manufacturer,

@@ -7,7 +7,7 @@
    Rolling pointers, power-of-2 size, wrap on access. */
 
 /* Control codes. */
-#define BUF_EAGAIN ((uint16_t)0x100)
+#define CBUF_EAGAIN ((uint16_t)0x100)
 
 struct cbuf {
     volatile uint32_t write;
@@ -42,6 +42,9 @@ static inline uint32_t cbuf_wrap(struct cbuf *b, uint32_t index) {
 static inline uint32_t cbuf_bytes(struct cbuf *b) {
     return b->write - b->read;
 }
+static inline uint32_t cbuf_room(struct cbuf *b) {
+    return b->mask - cbuf_bytes(b);
+}
 static inline int cbuf_empty(struct cbuf *b) {
     return 0 == cbuf_bytes(b);
 }
@@ -54,11 +57,11 @@ static inline void cbuf_put(struct cbuf *b, uint8_t byte) {
     }
 }
 static inline uint16_t cbuf_get(struct cbuf *b) {
-    if (cbuf_empty(b)) return BUF_EAGAIN;
+    if (cbuf_empty(b)) return CBUF_EAGAIN;
     return b->buf[cbuf_wrap(b, b->read++)];
 }
 static inline uint16_t cbuf_peek(struct cbuf *b, uint32_t offset) {
-    if (offset >= cbuf_bytes(b)) return BUF_EAGAIN;
+    if (offset >= cbuf_bytes(b)) return CBUF_EAGAIN;
     return b->buf[cbuf_wrap(b, b->read + offset)];
 }
 static inline void cbuf_drop(struct cbuf *b, uint32_t nb_drop) {
@@ -78,6 +81,25 @@ static inline uint32_t cbuf_read(struct cbuf *b, uint8_t *buf, uint32_t len) {
     }
     return i;
 }
+
+
+/* SLIP */
+#define SLIP_END     0xC0 // 192 Packet separation marker (Break/MAB start)
+#define SLIP_ESC     0xDB // 219 Escape character
+#define SLIP_ESC_END 0xDC // 220 Re-mapped END, after ESC
+#define SLIP_ESC_ESC 0xDD // 221 Re-mapped ESC, after ESC
+
+#define CBUF_OOB_BASE 0x200
+
+/* This is a macro so it can be used as a "case" */
+#define CBUF_OOB(code) (CBUF_OOB_BASE | ((code) & 0xFF))
+
+/* Provide an out-of-band interface to slip-encoded characters. */
+uint16_t cbuf_peek_slip_decode(struct cbuf *b, uint32_t *nb_drop);
+uint16_t cbuf_get_slip_decode(struct cbuf *b);
+
+void cbuf_put_slip(struct cbuf *b, uint16_t fc);
+void cbuf_write_slip(struct cbuf *b, uint8_t *buf, uint32_t len);
 
 
 #endif

@@ -18,6 +18,7 @@ bl_hyministm32v.core.f103.elf
 bl_hyministm32v_autostart.core.f103.elf
 bl_c8t6.core.f103.elf
 relay_board.x8.f103.elf
+lab_board.x8.f103.elf
 gpio_etf.x8.f103.elf
 wavegen.x8.f103.elf
 usbisr.x8.f103.elf

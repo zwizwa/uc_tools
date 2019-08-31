@@ -15,6 +15,7 @@ sm_etf.c
 infof.c
 tools.c
 info_null.c
+cbuf.c
 "
 
 O=$(echo $C | sed s/\\.c/\\.${ARCH}\\.o/g)

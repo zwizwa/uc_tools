@@ -1,3 +1,8 @@
+/* This is not implemented using cbuf.h because the behavior is
+ * slightly different: on overflow, we still update counters, but on
+ * readout the lost characters are replaced with '?' to give some
+ * indication data was lost. */
+
 #if 0
 // Stub for info calls.
 int info_putchar(int c) { return 0; }
@@ -22,11 +27,14 @@ KEEP int info_putchar(int c) {
     info_buf[offset] = c;
     return 0;
 }
+KEEP uint32_t info_bytes() {
+    return info_write_next - info_read_next;
+}
 KEEP uint32_t info_read(uint8_t *buf, uint32_t len) {
     uint32_t nb = 0;
     for(;;) {
         if (!len) return nb;
-        int32_t todo = info_write_next - info_read_next;
+        int32_t todo = info_bytes();
         if (!todo) return nb;
         if (todo < INFO_SIZE) {
             *buf++ = info_buf[info_read_next & INFO_MASK];
