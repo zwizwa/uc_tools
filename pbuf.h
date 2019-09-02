@@ -5,6 +5,8 @@
 #include <string.h>
 #include "infof.h"
 
+#include "cbuf.h"
+
 /* Generic packet buffer. */
 struct pbuf {
     uint32_t count;  /* Number of valid bytes in buffer */
@@ -69,7 +71,35 @@ static inline void pbuf_packetn_write(struct pbuf *p, int len_len,
     }
 }
 
+/* I'm at a loss for naming this properly, but the idea is that this
+ * writes slip to a ciruclar buffer, collects data into a flat packet
+ * buffer, and calls a function when packet is done.  It's a common
+ * operation in slip-based boards.  FIXME: By re-arranging the calls
+ * it is possible to keep the input buffer really short. */
+static inline void slip_write_cp(
+    const uint8_t *buf, uint32_t len, // input buffer
+    struct cbuf *c,                   // stage 1 buffer for slip stream
+    struct pbuf *p,                   // stage 2 buffer for decoded packet
+    pbuf_sink_t sink, void *ctx) {    // handler of stage2 buffer
 
+    cbuf_write(c, buf, len);
+    uint16_t fc;
+    while (CBUF_EAGAIN != (fc = cbuf_get_slip_decode(c))) {
+        if (CBUF_OOB(SLIP_END) == fc) {
+            sink(ctx, p);
+            p->count = 0;
+        }
+        else if (fc >= 0x100) {
+            /* Out-of-band characters other than frame borders are not
+             * expected.  Not much that can be done here. */
+            infof("oob %d\n", fc);
+        }
+        else {
+            /* Normal characters get collected until buffer is full. */
+            pbuf_put(p, fc);
+        }
+    }
+}
 
 
 #endif

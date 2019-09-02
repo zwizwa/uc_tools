@@ -125,7 +125,7 @@ static void command_io(const struct pbuf *p) {
     cbuf_write_slip_tagged(&slip_out, TAG_REPLY,
                            &p->buf[3], p->count-3);
 }
-void dispatch(struct pbuf *p) {
+void dispatch(void *ctx, const struct pbuf *p) {
     if (p->count < 2) return;
     uint16_t tag = read_be(p->buf, 2);
     switch(tag) {
@@ -146,7 +146,9 @@ void dispatch(struct pbuf *p) {
 
 int poll_status(struct cbuf *b) {
     if (tick != tick_last) {
-        cbuf_write_slip_tagged(b, TAG_STATUS, (void*)&tick_last, 4);
+        // FIXME: Don't send out status info unless someone is
+        // actually listening.
+        // cbuf_write_slip_tagged(b, TAG_STATUS, (void*)&tick_last, 4);
         tick_last++;
         return 1;
     }
@@ -192,23 +194,10 @@ static uint32_t slip_read(uint8_t *buf, uint32_t room) {
 /* We don't have flow control here.  The sending end should use the
    ack mechanism to avoid overflows. */
 static void slip_write(const uint8_t *buf, uint32_t len) {
-    // for (uint32_t i = 0; i<len; i++) infof("%02x ", buf[i], len);
-    cbuf_write(&slip_in, buf, len);
-    uint16_t fc;
-    while (CBUF_EAGAIN != (fc = cbuf_get_slip_decode(&slip_in))) {
-        if (CBUF_OOB(SLIP_END) == fc) {
-            dispatch(&packet_in);
-            packet_in.count = 0;
-        }
-        else if (fc >= 0x100) {
-            /* Out-of-band characters other than frame borders are not
-             * expected.  Not much that can be done here. */
-            infof("oob %d\n", fc);
-        }
-        else {
-            pbuf_put(&packet_in, fc);
-        }
-    }
+    slip_write_cp(
+        buf, len,
+        &slip_in, &packet_in,
+        dispatch, NULL);
 }
 const struct gdbstub_io slip_io = {
     .read  = slip_read,
