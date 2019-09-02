@@ -38,6 +38,8 @@
 
 */
 
+// FIXME: These are not slip-specific, just packet dispatch.
+
 #define TAG_PING   0xFFFC  // request TAG_REPLY echo
 #define TAG_GDB    0xFFFD  // gdbstub RSP tunnel
 #define TAG_INFO   0xFFFE  // info log data

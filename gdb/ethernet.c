@@ -136,15 +136,27 @@ struct __attribute__((packed)) headers {
     struct udp u;
 };
 
-// Multicast seems most convenient.
+// Multicast/broadcast seems most convenient.
 // https://networklessons.com/multicast/multicast-ip-address-to-mac-address-mapping
-// socat - UDP4-RECVFROM:12345,ip-add-membership=224.0.13.1:10.1.3.2,fork | hd
+// socat - UDP4-RECVFROM:1234,ip-add-membership=224.0.13.1:10.1.3.2,fork | hd
+// socat - UDP4-RECVFROM:1234,fork | hd
+
+#define SIP 10,1,3,123  // does this really matter? (only for SSM?)
+#define SMAC 0xAE, 0, SIP
+#if 0
+// multicast
 #define MULTICAST 0,13,1
-#define SOURCE 10,1,3,123  // does this really matter? (only for SSM?)
+#define DIP 244,MULTICAST
+#define DMAC 0x01,0x00,0x5e,MULTICAST
+#else
+// broadcast
+#define DIP 255,255,255,255
+#define DMAC 255,255,255,255,255,255
+#endif
 static struct headers headers = {
     .m = {
-        .d_mac = {0x01, 0x00, 0x5e, MULTICAST},
-        .s_mac = {0xAE, 0, SOURCE},
+        .d_mac = {DMAC},
+        .s_mac = {SMAC},
         .ethertype = HTONS(0x0800), // IPv4
     },
     .i = {
@@ -154,12 +166,12 @@ static struct headers headers = {
         .flags_fo = HTONS(0x4000), // don't fragment
         .ttl = 0x40,
         .protocol = 0x11, // UDP,
-        .s_ip = {SOURCE},
-        .d_ip = {224,MULTICAST}
+        .s_ip = {SIP},
+        .d_ip = {DIP}
     },
     .u = {
-        .s_port = HTONS(54321),
-        .d_port = HTONS(12345),
+        .s_port = HTONS(4321),
+        .d_port = HTONS(1234),
     }
 };
 
@@ -242,8 +254,8 @@ void recv(void *ctx, const struct pbuf *p) {
     uint16_t type = ntohs(h->m.ethertype);
     switch(type) {
         // Ignore noise
-    case 0x8100: // ARP
-        break;
+    //case 0x8100: // ARP
+    //    break;
     default:
         infof("(%d) %04x %d\n", packet_count, type, p->count);
         break;
