@@ -2,6 +2,7 @@
 #define CBUF_H
 
 #include <stdint.h>
+#include "slip.h"
 
 /* Circular byte buffer implemented as inline functions.
    Rolling pointers, power-of-2 size, wrap on access. */
@@ -100,6 +101,15 @@ uint16_t cbuf_get_slip_decode(struct cbuf *b);
 
 void cbuf_put_slip(struct cbuf *b, uint16_t fc);
 void cbuf_write_slip(struct cbuf *b, uint8_t *buf, uint32_t len);
+
+
+struct slice {
+    const uint8_t *buf;
+    uint32_t len;
+};
+void cbuf_write_slip_slices(struct cbuf *b, const struct slice *buf, uint32_t n_slices);
+
+void cbuf_write_slip_tagged(struct cbuf *b, uint16_t tag, const uint8_t *buf, uint32_t len);
 
 
 #endif

@@ -78,9 +78,32 @@ void cbuf_put_slip(struct cbuf *b, uint16_t fc) {
 }
 /* Write a complete double-ended slip packet. */
 void cbuf_write_slip(struct cbuf *b, uint8_t *buf, uint32_t len) {
-    cbuf_put_slip(b, CBUF_OOB(SLIP_END));
+    cbuf_put(b, SLIP_END);
     for(uint32_t i=0; i<len; i++) {
         cbuf_put_slip(b, buf[i]);
     }
-    cbuf_put_slip(b, CBUF_OOB(SLIP_END));
+    cbuf_put(b, SLIP_END);
 }
+
+
+void cbuf_write_slip_slices(struct cbuf *b, const struct slice *slice, uint32_t n_slices) {
+    cbuf_put(b, SLIP_END);
+    for(uint32_t s=0; s<n_slices; s++) {
+        for(uint32_t i=0; i<slice[s].len; i++) {
+            cbuf_put_slip(b, slice[s].buf[i]);
+        }
+    }
+    cbuf_put(b, SLIP_END);
+}
+
+
+void cbuf_write_slip_tagged(struct cbuf *b, uint16_t tag,
+                            const uint8_t *buf, uint32_t len) {
+    uint8_t tagbuf[] = {tag >> 8, tag & 0xff};
+    struct slice slices[] = {
+        {tagbuf, sizeof(tagbuf)},
+        {buf, len}
+    };
+    cbuf_write_slip_slices(b, slices, 2);
+}
+

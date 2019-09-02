@@ -69,6 +69,8 @@ static inline uint32_t ntohl(uint32_t w) { return NTOHL(w); }
 static inline uint32_t htonl(uint32_t w) { return HTONL(w); }
 
 // FIXME: add checksum computations for headers.
+// FIXME: one's complement checksums are endian independent (is this true?)
+// https://www.quora.com/Why-is-it-that-UDP-takes-the-1s-complement-of-the-sum-that-is-why-not-just-use-the-sum
 
 // http://www.microhowto.info/howto/calculate_an_internet_protocol_checksum_in_c.html
 uint16_t ip_checksum(const void *vdata, size_t length) {

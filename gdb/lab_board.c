@@ -13,6 +13,11 @@
    connecting to a board that has already been running, and that has a
    receiver that is in an unknown state.  Send it an empty packet to
    sync.
+
+   Wish list:
+   - bit-bang routines for different protocols (SPI, MII, ...)
+   - programmable bit-bang?
+
 */
 
 #include "base.h"
@@ -52,8 +57,8 @@
 */
 
 
-struct cbuf slip_in;  uint8_t slip_in_buf[256];
-struct cbuf slip_out; uint8_t slip_out_buf[256];
+struct cbuf slip_in;  uint8_t slip_in_buf[256*2];
+struct cbuf slip_out; uint8_t slip_out_buf[256*2];
 
 struct pbuf packet_in; uint8_t packet_in_buf[128];
 
@@ -91,23 +96,13 @@ KEEP void set_pin(int pin, int val) {
     hw_gpio_config(GPIOA,pin,HW_GPIO_CONFIG_OUTPUT);
 }
 
-void cbuf_write_slip_tagged(struct cbuf *b, uint8_t tag, uint8_t *buf, uint32_t len) {
-    cbuf_put_slip(b, CBUF_OOB(SLIP_END));
-    cbuf_put_slip(b, tag);
-    for(uint32_t i=0; i<len; i++) {
-        cbuf_put_slip(b, buf[i+1]);
-    }
-    cbuf_put_slip(b, CBUF_OOB(SLIP_END));
-}
 
 
-/* Message tags. */
-#define TAG_SET_PIN     0
-#define TAG_SET_PIN_ACK 1
-#define TAG_TICK        2
-#define TAG_INFO        ':'  // So Erlang prints chars
 
 
+/* Message tags.  See also slip.h */
+#define TAG_SET_PIN     0x0000
+#define TAG_STATUS      0x0001
 
 
 /* Handle I/O command.  Routing tag is still present in the buffer. */
@@ -115,7 +110,7 @@ static void command_io(const struct pbuf *p) {
     /* This doesn't need to be complicated.  Support 26 I/O lines,
        where capital letter corresponds to high and lower caps is
        low. */
-    switch(p->buf[1]) {
+    switch(p->buf[2]) {
     case 'A': set_pin(3,1); break;
     case 'B': set_pin(4,1); break;
     case 'C': set_pin(5,1); break;
@@ -127,21 +122,30 @@ static void command_io(const struct pbuf *p) {
     }
     /* Caller supplies ack message so we can be dumb here and just
        echo it back.  This allows for CPS-style synchronization. */
-    cbuf_write_slip_tagged(&slip_out, TAG_SET_PIN_ACK,
-                           &p->buf[2], p->count-2);
+    cbuf_write_slip_tagged(&slip_out, TAG_REPLY,
+                           &p->buf[3], p->count-3);
 }
 void dispatch(struct pbuf *p) {
-    if (p->count == 0) return;
-    switch(p->buf[0]) {
+    if (p->count < 2) return;
+    uint16_t tag = read_be(p->buf, 2);
+    switch(tag) {
+    case TAG_PING:
+        cbuf_write_slip_tagged(&slip_out, TAG_REPLY,
+                               &p->buf[2], p->count-2);
+        break;
     case TAG_SET_PIN:
-        if (p->count >= 2) command_io(p);
+        if (p->count >= 3) command_io(p);
+        break;
+    case TAG_GDB:
+        _service.rsp_io.write(&p->buf[1], p->count-1);
         break;
     }
 }
 
-int poll_heartbeat(struct cbuf *b) {
+
+int poll_status(struct cbuf *b) {
     if (tick != tick_last) {
-        cbuf_write_slip_tagged(b, TAG_TICK, (void*)&tick, 1);
+        cbuf_write_slip_tagged(b, TAG_STATUS, (void*)&tick_last, 4);
         tick_last++;
         return 1;
     }
@@ -149,28 +153,20 @@ int poll_heartbeat(struct cbuf *b) {
         return 0;
     }
 }
-int poll_info(struct cbuf *b) {
-    /* Flush info log.  RIXME: How much to take here? */
-    if (!info_bytes()) return 0;
-    cbuf_put_slip(b, CBUF_OOB(SLIP_END));
-    cbuf_put_slip(b, TAG_INFO);
-    uint32_t i = 0;
-    for(;;) {
-        uint8_t byte;
-        int n = info_read(&byte, 1);
-        if ((n == 0) || i == 40) break;
-        cbuf_put_slip(b, byte);
-    }
-    cbuf_put_slip(b, CBUF_OOB(SLIP_END));
+
+int poll_read(struct cbuf *b, uint16_t tag,
+              uint32_t (*read)(uint8_t *buf, uint32_t len)) {
+    uint8_t buf[40]; // What's a good size?
+    uint32_t n = read(buf, sizeof(buf));
+    if (!n) return 0;
+    cbuf_write_slip_tagged(b, tag, buf, n);
     return 1;
 }
 
-int poll_machines(void) {
-    struct cbuf *b = &slip_out;
-    int rv = 0;
-    if ((rv = poll_heartbeat(b))) return rv;
-    if ((rv = poll_info(b)))      return rv;
-    return 0;
+void poll_machines(struct cbuf *b) {
+    if (poll_status(b)) return;
+    if (poll_read(b, TAG_INFO, info_read)) return;
+    if (poll_read(b, TAG_GDB, _service.rsp_io.read)) return;
 }
 
 static uint32_t slip_read(uint8_t *buf, uint32_t room) {
@@ -187,7 +183,7 @@ static uint32_t slip_read(uint8_t *buf, uint32_t room) {
      * often a lot more efficient to let machines hold on to state
      * that can produce a new message, than it is to have them dump
      * serialized data into a buffer at an earlier stage. */
-    poll_machines();
+    poll_machines(&slip_out);
     return nb + cbuf_read(&slip_out, buf, room);
 }
 
@@ -195,6 +191,7 @@ static uint32_t slip_read(uint8_t *buf, uint32_t room) {
 /* We don't have flow control here.  The sending end should use the
    ack mechanism to avoid overflows. */
 static void slip_write(const uint8_t *buf, uint32_t len) {
+    // for (uint32_t i = 0; i<len; i++) infof("%02x ", buf[i], len);
     cbuf_write(&slip_in, buf, len);
     uint16_t fc;
     while (CBUF_EAGAIN != (fc = cbuf_get_slip_decode(&slip_in))) {
