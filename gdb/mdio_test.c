@@ -56,24 +56,24 @@ static void dispatch(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
     case 1:
         if (p->count < 4) return;
         set_pin(p->buf[2], p->buf[3]);
-        cbuf_write_slip_reply(&cbuf_to_usb, p, 4);
+        cbuf_write_slip_reply(&cbuf_to_usb, p, 4, 0, 0);
     case 2: {
-        if (p->count < 10) return;
-        int phy = *(int*)(p->buf+2);
-        int reg = *(int*)(p->buf+6);
-        int val = mdio_read(phy, reg);
+        if (p->count < 4) return;
+        uint8_t  phy = *(int*)(p->buf+2);
+        uint8_t  reg = *(int*)(p->buf+3);
+        uint16_t val = mdio_read(phy, reg);
         infof("mdio_read %d %d -> %d\n", phy, reg, val);
-        cbuf_write_slip_reply(&cbuf_to_usb, p, 10);
+        cbuf_write_slip_reply(&cbuf_to_usb, p, 4, (uint8_t*)&val, sizeof(val));
         break;
     }
     case 3: {
-        if (p->count < 14) return;
-        int phy = *(int*)(p->buf+2);
-        int reg = *(int*)(p->buf+6);
-        int val = *(int*)(p->buf+10);
+        if (p->count < 6) return;
+        uint8_t  phy = *(int*)(p->buf+2);
+        uint8_t  reg = *(int*)(p->buf+3);
+        uint16_t val = *(int*)(p->buf+4);
         infof("mdio_write %d %d %d\n", phy, reg, val);
         mdio_write(phy, reg, val);
-        cbuf_write_slip_reply(&cbuf_to_usb, p, 14);
+        cbuf_write_slip_reply(&cbuf_to_usb, p, 6, 0, 0);
         break;
     }
     default:
@@ -113,8 +113,8 @@ void start(void) {
     hw_gpio_config(MDIO_CLOCK,HW_GPIO_CONFIG_OUTPUT);
     _service.add(poll);
 
-    uint32_t r2 = mdio_read(1, 2);
-    uint32_t r3 = mdio_read(1, 3);
+    uint16_t r2 = mdio_read(1, 2);
+    uint16_t r3 = mdio_read(1, 3);
     infof("phy: ID %04x:%04x\n", r2, r3);
 
 }

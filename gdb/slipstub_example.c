@@ -1,4 +1,9 @@
-/* Example boilerplate for a slipstub application. */
+/* Example boilerplate for a slipstub application.
+   This has the following handled behind the scene:
+   - slip input -> flat packet conversion
+   - handle GDB stub, PING incoming packets
+   - handle GDB stub, LOG outgoing packets
+*/
 
 #include "base.h"
 #include "gdbstub_api.h"
@@ -25,7 +30,7 @@ static void dispatch(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
     case 1:
         if (p->count < 4) return;
         set_pin(p->buf[2], p->buf[3]);
-        cbuf_write_slip_reply(&cbuf_to_usb, p, 4);
+        cbuf_write_slip_reply(&cbuf_to_usb, p, 4, 0, 0);
     default:
         infof("bad tag %04x", tag);
     }

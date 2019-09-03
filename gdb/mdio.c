@@ -24,7 +24,7 @@ static void send_num(uint16_t val, int bits) {
         send_bit((val >> i) & 1);
     }
 }
-static uint16_t get_num(int bits) {
+ uint16_t get_num(int bits) {
     int i;
     uint16_t ret = 0;
     for (i=bits - 1; i>=0; i--) {
@@ -53,7 +53,7 @@ static void cmd(int read, uint8_t phy, uint8_t reg) {
     send_num(phy, 5);
     send_num(reg, 5);
 }
-int mdio_read(int phy, int reg) {
+uint16_t mdio_read(uint8_t phy, uint8_t reg) {
     int ret;
     cmd(MDIO_READ, phy, reg);
     mdio_set_dir(0);
@@ -65,7 +65,7 @@ int mdio_read(int phy, int reg) {
     get_bit();
     return ret;
 }
-int mdio_write(int phy, int reg, uint16_t val) {
+void mdio_write(uint8_t phy, uint8_t reg, uint16_t val) {
     cmd(MDIO_WRITE, phy, reg);
     /* turnaround (10) */
     send_bit(1);
@@ -73,6 +73,5 @@ int mdio_write(int phy, int reg, uint16_t val) {
     send_num(val, 16);
     mdio_set_dir(0);
     get_bit();
-    return 0;
 }
 
