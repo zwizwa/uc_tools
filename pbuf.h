@@ -107,6 +107,17 @@ static inline void slip_write_cp(
     }
 }
 
+/* Standard rpc reply.  Offset contains the "continuation", which is
+ * added by the sender after the main payload. */
+static inline void cbuf_write_slip_reply(
+    struct cbuf *c,
+    const struct pbuf *p,
+    uint32_t offset) {
+    cbuf_write_slip_tagged(c, TAG_REPLY,
+                           &p->buf[offset],
+                           p->count-offset);
+}
+
 
 #endif
 
