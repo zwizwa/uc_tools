@@ -34,6 +34,9 @@ static void slipstub_write(const uint8_t *buf, uint32_t len) {
         slipstub_dispatch, NULL);
 }
 
+/* This is for machines that produce streams.  Machines that produce
+ * SLIP messagges should be asked to write complete messages
+ * elsewhere. */
 static int slipstub_poll_read(struct cbuf *b, uint16_t tag,
                               uint32_t (*read)(uint8_t *buf, uint32_t len)) {
     uint8_t buf[40]; // What's a good size?  Maybe make it configurable.
@@ -42,15 +45,14 @@ static int slipstub_poll_read(struct cbuf *b, uint16_t tag,
     cbuf_write_slip_tagged(b, tag, buf, n);
     return 1;
 }
-
-static void slipstub_poll_machines(struct cbuf *b) {
+static void slipstub_poll_streams(struct cbuf *b) {
     if (slipstub_poll_read(b, TAG_INFO, info_read)) return;
     if (slipstub_poll_read(b, TAG_GDB, _service.rsp_io.read)) return;
 }
-
 static uint32_t slipstub_read(uint8_t *buf, uint32_t room) {
     /* Flush old */
-    uint32_t nb = cbuf_read(slipstub.slip_out, buf, room);
+    struct cbuf *c = slipstub.slip_out;
+    uint32_t nb = cbuf_read(c, buf, room);
     buf += nb;  room -= nb;
     if (!room) return nb;
 
@@ -61,8 +63,8 @@ static uint32_t slipstub_read(uint8_t *buf, uint32_t room) {
      * often a lot more efficient to let machines hold on to state
      * that can produce a new message, than it is to have them dump
      * serialized data into a buffer at an earlier stage. */
-    slipstub_poll_machines(slipstub.slip_out);
-    return nb + cbuf_read(slipstub.slip_out, buf, room);
+    slipstub_poll_streams(c);
+    return nb + cbuf_read(c, buf, room);
 }
 
 const struct gdbstub_io slipstub_io = {
