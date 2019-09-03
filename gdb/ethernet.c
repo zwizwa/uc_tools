@@ -143,10 +143,10 @@ struct __attribute__((packed)) headers {
 
 #define SIP 10,1,3,123  // does this really matter? (only for SSM?)
 #define SMAC 0xAE, 0, SIP
-#if 0
+#if 1
 // multicast
 #define MULTICAST 0,13,1
-#define DIP 244,MULTICAST
+#define DIP 224,MULTICAST
 #define DMAC 0x01,0x00,0x5e,MULTICAST
 #else
 // broadcast

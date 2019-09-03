@@ -57,7 +57,7 @@
 */
 
 
-struct cbuf slip_in;  uint8_t slip_in_buf[256*2];
+struct cbuf slip_in;  uint8_t slip_in_buf[4];
 struct cbuf slip_out; uint8_t slip_out_buf[256*2];
 
 struct pbuf packet_in; uint8_t packet_in_buf[1024];
@@ -130,6 +130,7 @@ void dispatch(void *ctx, const struct pbuf *p) {
     uint16_t tag = read_be(p->buf, 2);
     switch(tag) {
     case TAG_PING:
+        //infof("ping:%d\n",p->count-2);
         cbuf_write_slip_tagged(&slip_out, TAG_REPLY,
                                &p->buf[2], p->count-2);
         break;
