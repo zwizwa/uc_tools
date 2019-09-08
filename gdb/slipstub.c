@@ -27,7 +27,7 @@ static void slipstub_dispatch(void *ctx, const struct pbuf *p) {
     }
 }
 static void slipstub_write(const uint8_t *buf, uint32_t len) {
-    slip_write_cp(
+    pbuf_slip_write(
         buf, len,
         slipstub.slip_in,   // intermediate cbuf for slip data
         slipstub.packet_in, // incoming tagged packet

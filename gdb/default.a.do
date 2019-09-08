@@ -16,6 +16,7 @@ infof.c
 tools.c
 info_null.c
 cbuf.c
+pbuf.c
 slipstub.c
 mdio.c
 "

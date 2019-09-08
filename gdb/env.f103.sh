@@ -17,6 +17,7 @@ ELF="
 bl_hyministm32v.core.f103.elf
 bl_hyministm32v_autostart.core.f103.elf
 bl_c8t6.core.f103.elf
+bl_c8t6_usb_pullup.core.f103.elf
 relay_board.x8.f103.elf
 lab_board.x8.f103.elf
 gpio_etf.x8.f103.elf
@@ -27,7 +28,7 @@ echo_test.x8.f103.elf
 doodle.x8.f103.elf
 ethernet.x8.f103.elf
 dht11.x8.f103.elf
-mdio_test.x8.f103.elf
+switch.x8.f103.elf
 slipstub_example.x8.f103.elf
 "
 

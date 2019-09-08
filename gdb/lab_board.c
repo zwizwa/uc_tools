@@ -195,7 +195,7 @@ static uint32_t slip_read(uint8_t *buf, uint32_t room) {
 /* We don't have flow control here.  The sending end should use the
    ack mechanism to avoid overflows. */
 static void slip_write(const uint8_t *buf, uint32_t len) {
-    slip_write_cp(
+    pbuf_slip_write(
         buf, len,
         &slip_in, &packet_in,
         dispatch, NULL);

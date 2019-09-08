@@ -67,11 +67,23 @@ static void cdcacm_set_config(usbd_device *usbd_dev, uint16_t wValue) {
     usbd_register_reset_callback(usbd_dev, usb_reset);
 }
 
+char serial_hex[25];
+
 void hw_bootloader_usb_init(void) {
 
     // setup clock in bl_*.c
     //rcc_clock_setup_in_hse_8mhz_out_72mhz();  // FIXME: was
     //rcc_clock_setup_in_hse_12mhz_out_72mhz();  // FIXME: was
+
+    for (uint32_t i=0; i<12; i++) {
+        // FIXME: share this code with smpacket.h
+        static const uint8_t digit[] = "0123456789abcdef";
+        uint8_t b = ((uint8_t*)0x1FFFF7E8)[i];
+        uint8_t hi = digit[(b >> 4) & 0x0f];
+        uint8_t lo = digit[(b >> 0) & 0x0f];
+        serial_hex[2*i] = hi;
+        serial_hex[2*i+1] = lo;
+    }
 
     rcc_periph_clock_enable(RCC_GPIOA);
 #ifdef RCC_AFIO
@@ -80,7 +92,7 @@ void hw_bootloader_usb_init(void) {
 
     usb_strings[0] = flash_string(_config.manufacturer, "Zwizwa");
     usb_strings[1] = flash_string(_config.product,      "Bootloader");
-    usb_strings[2] = flash_string(_config.serial,       "v1.0");
+    usb_strings[2] = flash_string(_config.serial,       serial_hex);
 
     usb_serial = cdcacm_init(cdcacm_set_config, usb_strings);
 }

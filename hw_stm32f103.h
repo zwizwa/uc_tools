@@ -647,12 +647,16 @@ INLINE void hw_spi_nodma_reset(struct hw_spi_nodma c) {
         |  SPI_CR1_DFF_8BIT
         |  SPI_CR1_MSBFIRST;
 
-    // Only master mode
+    // Only support master mode.
+    // The DIV_2 relates to fPCLK, the bus clock of the peripheral:
+    // APB1: 36MHz  SPI2,SPI3
+    // APB2: 72MHz  SPI1
     hw_gpio_config(c.gpio, c.sck,  HW_GPIO_CONFIG_ALTFN);
     cr1 |= SPI_CR1_MSTR
         |  SPI_CR1_SSM // software NSS
         |  SPI_CR1_SSI
-        |  SPI_CR1_BAUDRATE_FPCLK_DIV_2; // 18MHz
+        |  SPI_CR1_BAUDRATE_FPCLK_DIV_2;
+
 
     hw_gpio_high(c.gpio, c.out);
     hw_gpio_config(c.gpio, c.out, HW_GPIO_CONFIG_ALTFN);
