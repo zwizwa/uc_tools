@@ -328,6 +328,3 @@ struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .stop            = stop,
     .switch_protocol = slipstub_switch_protocol,
 };
-
-
-

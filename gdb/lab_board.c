@@ -14,6 +14,10 @@
    receiver that is in an unknown state.  Send it an empty packet to
    sync.
 
+   STM32F103 pin config for UART1
+   A9  = TX
+   A10 = RX  (5V tolerant on STM32F103x8)
+
    Wish list:
    - bit-bang routines for different protocols (SPI, MII, ...)
    - programmable bit-bang?
@@ -60,6 +64,9 @@
 struct cbuf slip_in;  uint8_t slip_in_buf[4];
 struct cbuf slip_out; uint8_t slip_out_buf[256*2];
 
+struct cbuf uart1_in;  uint8_t uart1_in_buf[1024];
+struct cbuf uart1_out; uint8_t uart1_out_buf[1024];
+
 struct pbuf packet_in; uint8_t packet_in_buf[1024];
 
 
@@ -88,6 +95,30 @@ void HW_TIM_ISR(TIM_PERIODIC)(void) {
         sample = 0;
         tick++;
     }
+}
+
+void usart1_isr(void) {
+    /* Get SR + DR from the UART. Low 8 bits are received data, the 4
+     * bits above that are status register (SR) bits [ORE NE FE PE] */
+    /* ACK is done by read. */
+    int rv = hw_usart1_getchar_nsr();
+    uint32_t sr_dr = rv & 0xFFF;
+    /* FIXME: handle error conditions */
+    cbuf_put(&uart1_in, sr_dr & 0xFF);
+}
+static void usart1_init(void) {
+    // uart controller init, io port setup
+    hw_usart1_init();
+    // uart config.
+    hw_usart_disable(USART1);
+    hw_usart_set_databits(USART1, 8);
+    hw_usart_set_stopbits(USART1, USART_STOPBITS_1);
+    hw_usart_set_mode(USART1, USART_MODE_TX_RX);
+    hw_usart_set_parity(USART1, USART_PARITY_NONE);
+    hw_usart_set_flow_control(USART1, USART_FLOWCONTROL_NONE);
+    USART_BRR(USART1) = 72000000 / 115200;
+    hw_usart_enable_rx_interrupt(USART1);
+    hw_usart_enable(USART1);
 }
 
 
@@ -140,6 +171,9 @@ void dispatch(void *ctx, const struct pbuf *p) {
     case TAG_GDB:
         // infof("tag_gdb: %d\n", p->count);
         _service.rsp_io.write(&p->buf[2], p->count-2);
+    case TAG_UART:
+        // infof("tag_gdb: %d\n", p->count);
+        cbuf_write(&uart1_out, &p->buf[2], p->count-2);
         break;
     }
 }
@@ -148,8 +182,10 @@ void dispatch(void *ctx, const struct pbuf *p) {
 int poll_status(struct cbuf *b) {
     if (tick != tick_last) {
         // FIXME: Don't send out status info unless someone is
-        // actually listening.
-        // cbuf_write_slip_tagged(b, TAG_STATUS, (void*)&tick_last, 4);
+        // actually listening.  Uart will be buffered (indefinitely?)
+        // by linux, which creates a flood on opening.
+
+        cbuf_write_slip_tagged(b, TAG_STATUS, (void*)&tick_last, 4);
         tick_last++;
         return 1;
     }
@@ -166,11 +202,23 @@ int poll_read(struct cbuf *b, uint16_t tag,
     cbuf_write_slip_tagged(b, tag, buf, n);
     return 1;
 }
+static uint32_t uart1_read(uint8_t *buf, uint32_t len) {
+    return cbuf_read(&uart1_in, buf, len);
+}
 
 void poll_machines(struct cbuf *b) {
     if (poll_status(b)) return;
     if (poll_read(b, TAG_INFO, info_read)) return;
     if (poll_read(b, TAG_GDB, _service.rsp_io.read)) return;
+    if (poll_read(b, TAG_UART, uart1_read)) return;
+}
+
+// Poll independent of read
+static void poll_uart1_tx(void) {
+    if (!hw_usart1_send_ready()) return;
+    uint16_t fc = cbuf_get(&uart1_out);
+    if (CBUF_EAGAIN == fc) return;
+    hw_usart1_send(fc & 0xFF);
 }
 
 static uint32_t slip_read(uint8_t *buf, uint32_t room) {
@@ -228,11 +276,16 @@ void start(void) {
     rcc_periph_clock_enable(RCC_GPIOA | RCC_AFIO);
 
     /* Data structure init */
+    CBUF_INIT(uart1_in);
+    CBUF_INIT(uart1_out);
     CBUF_INIT(slip_in);
     CBUF_INIT(slip_out);
     PBUF_INIT(packet_in);
 
     hw_periodic_init(C_PERIODIC);
+    usart1_init();
+
+    _service.add(poll_uart1_tx);
 
     infof("lab_board.c\n");
 
@@ -244,7 +297,6 @@ void stop(void) {
 
 const char config_manufacturer[] CONFIG_DATA_SECTION = "Zwizwa";
 const char config_product[]      CONFIG_DATA_SECTION = "Lab Board";
-const char config_serial[]       CONFIG_DATA_SECTION = "2";
 const char config_firmware[]     CONFIG_DATA_SECTION = FIRMWARE;
 const char config_version[]      CONFIG_DATA_SECTION = BUILD;
 const char config_protocol[]     CONFIG_DATA_SECTION = "{driver,lab_board,slip}";
@@ -252,7 +304,6 @@ const char config_protocol[]     CONFIG_DATA_SECTION = "{driver,lab_board,slip}"
 struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .manufacturer    = config_manufacturer,
     .product         = config_product,
-    .serial          = config_serial,
     .firmware        = config_firmware,
     .version         = config_version,
     .protocol        = config_protocol,
