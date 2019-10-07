@@ -172,7 +172,7 @@ void dispatch(void *ctx, const struct pbuf *p) {
         // infof("tag_gdb: %d\n", p->count);
         _service.rsp_io.write(&p->buf[2], p->count-2);
     case TAG_UART:
-        // infof("tag_gdb: %d\n", p->count);
+        //infof("tag_uart: %d\n", p->count);
         cbuf_write(&uart1_out, &p->buf[2], p->count-2);
         break;
     }
@@ -185,7 +185,7 @@ int poll_status(struct cbuf *b) {
         // actually listening.  Uart will be buffered (indefinitely?)
         // by linux, which creates a flood on opening.
 
-        cbuf_write_slip_tagged(b, TAG_STATUS, (void*)&tick_last, 4);
+        // cbuf_write_slip_tagged(b, TAG_STATUS, (void*)&tick_last, 4);
         tick_last++;
         return 1;
     }
