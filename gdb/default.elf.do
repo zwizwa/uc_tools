@@ -27,13 +27,10 @@ ENV=$ENV
 EOF
 }
 
-# show_vars
-
-
+show_vars
 
 redo-ifchange $ENV
 . $ENV
-
 
 # .o files that need to be linked in explicitly. contianing the
 # application elf's main and optionally some system .o files
@@ -43,16 +40,25 @@ O="$BN.$ARCH.o $O_SYSTEM"
 # library of .o files for compilation architecture for any remaining unresolved symbols
 A=lib.$ARCH.a
 
-# linker configuration file
-LD=$LDT.$ARCH.ld
+redo-ifchange $O $A
 
 
-# If the linker file is an actual file, we do the ordinary link step.
-redo-ifchange $O $A $LD 
-$GCC $LDFLAGS -T$LD -Wl,-Map=$BN.$ARCH.map -o $3 $O $A $LDLIBS
 
-
-# FIXME: This needs an extension where LDT doesn't just refer to a
-# linker file, but to something that generates linker flags.
-
+case $LDT in
+     custom)
+            # For custom linking, the filename maps to a shell script
+            # fragment that performs the linking, parameterized by the
+            # variables we already have above.
+            LINK_SH="./$BN.link.sh"
+            echo "custom link: $LINK_SH" >&2
+            redo-ifchange $LINK_SH
+            . $LINK_SH
+            ;;
+     *)
+            # linker configuration file
+            LD=$LDT.$ARCH.ld
+            redo-ifchange $LD 
+            $GCC $LDFLAGS -T$LD -Wl,-Map=$BN.$ARCH.map -o $3 $O $A $LDLIBS
+            ;;
+esac
 
