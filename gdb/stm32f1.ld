@@ -92,8 +92,7 @@ SECTIONS
 		*(COMMON)
 		. = ALIGN(4);
 		_ebss = .;
- 	} >ram
-
+	} >ram
 
 	/*
 	 * The .eh_frame section appears to be used for C++ exception handling.
@@ -105,6 +104,11 @@ SECTIONS
 	end = .;
 
 
+	/* Mark the first free block in Flash memory for application use. */
+ 	.flash_pad : {
+	       . = ALIGN(4096);
+		_eflash = . ;     
+ 	} >rom
 
 }
 

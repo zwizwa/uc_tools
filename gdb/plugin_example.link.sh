@@ -11,21 +11,37 @@
 PARENT_ELF=doodle.x8.f103.elf
 redo-ifchange $PARENT_ELF
 
-# FIXME: These need to not overlap with parent elf.
-RAM=0x20004000
-FLASH=0x08008000
+
 
 LD=$3.tmp.ld
+redo-ifchange mem_top.sh
 cat <<EOF >$LD
-MEMORY /* STM32F103x8 */
-{
-	rom (rx)  : ORIGIN = $FLASH, LENGTH = 0xFFFFFFFF
-	ram (rwx) : ORIGIN = $RAM,   LENGTH = 0xFFFFFFFF
-}
+$(./mem_top.sh $PARENT_ELF)
 INCLUDE stm32f1.ld
 EOF
 
-$GCC $LDFLAGS -T$LD -Wl,-Map=$BN.$ARCH.map  -Wl,--just-symbols=$PARENT_ELF -o $3 $O $A $LDLIBS && rm $LD
+# [ -z "$RAM" ]   && RAM=0x20004000
+# [ -z "$FLASH" ] && FLASH=0x08008000
+# echo "RAM=$RAM" >&2
+# echo "FLASH=$FLASH" >&2
+# cat <<EOF >$LD
+# MEMORY /* STM32F103x8 */
+# {
+# 	rom (rx)  : ORIGIN = $FLASH, LENGTH = 0xFFFFFFFF
+# 	ram (rwx) : ORIGIN = $RAM,   LENGTH = 0xFFFFFFFF
+# }
+# INCLUDE stm32f1.ld
+# EOF
+
+$GCC $LDFLAGS -T$LD -Wl,-Map=$BN.$ARCH.map  -Wl,--just-symbols=$PARENT_ELF -o $3 $O $A $LDLIBS || exit $?
+
+rm $LD
+
+arm-none-eabi-objdump -d $3 >&2
+# arm-none-eabi-objdump -d $PARENT_ELF >&2
+
+
+# FIXME: Clean up documentation.
 
 
 # See below for more information.  This is an example of a "snippet"
