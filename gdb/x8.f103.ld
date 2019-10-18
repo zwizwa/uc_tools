@@ -19,5 +19,13 @@ ENTRY (reset_handler);
 /* Include the common ld script. */
 INCLUDE stm32f1.ld
 
+/* FIXME: Can't put this in the bootloader.  Is it ok to sit here
+after the .config and .mem.* sections? */
 
-
+SECTIONS {
+	/* Mark the first free block in Flash memory for application use. */
+ 	.flash_pad : {
+	       . = ALIGN(4096);
+		_eflash = . ;     
+ 	} >rom
+}

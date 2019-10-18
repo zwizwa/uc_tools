@@ -18,6 +18,7 @@ info_null.c
 cbuf.c
 pbuf.c
 slipstub.c
+sliplib.c
 mdio.c
 "
 

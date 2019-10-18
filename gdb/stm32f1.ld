@@ -104,12 +104,6 @@ SECTIONS
 	end = .;
 
 
-	/* Mark the first free block in Flash memory for application use. */
- 	.flash_pad : {
-	       . = ALIGN(4096);
-		_eflash = . ;     
- 	} >rom
-
 }
 
 SECTIONS {
