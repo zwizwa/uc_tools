@@ -1,8 +1,7 @@
-/* Convert a byte stream to double-ended slip, wasting as little
- * memory as possible. */
 
 #include "sliplib.h"
 
+/* Convert SLIP input to an abstract byte/end event stream. */
 void slip_write_tagged(struct slip_write_state *s, const uint8_t *buf, uint32_t len) {
     for(uint32_t i = 0; i < len; i++) {
         uint8_t byte = buf[i];
@@ -32,6 +31,9 @@ void slip_write_tagged(struct slip_write_state *s, const uint8_t *buf, uint32_t 
     }
 }
 
+/* Convert a byte stream to double-ended slip, wasting as little
+ * memory as possible.  Write only complete messages, hence a minimum
+ * of 6 bytes is necessary for this to do anything. */
 uint32_t slip_read_tagged(
     uint16_t tag,
     uint32_t (*read)(uint8_t *buf, uint32_t len),

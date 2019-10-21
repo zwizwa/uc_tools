@@ -156,6 +156,10 @@ static void command_io(const struct pbuf *p) {
     cbuf_write_slip_tagged(&slip_out, TAG_REPLY,
                            &p->buf[3], p->count-3);
 }
+
+#include "plugin_api.h"
+extern struct plugin_service _eflash;
+
 void dispatch(void *ctx, const struct pbuf *p) {
     if (p->count < 2) return;
     uint16_t tag = read_be(p->buf, 2);
@@ -174,6 +178,14 @@ void dispatch(void *ctx, const struct pbuf *p) {
     case TAG_UART:
         //infof("tag_uart: %d\n", p->count);
         cbuf_write(&uart1_out, &p->buf[2], p->count-2);
+        break;
+    case TAG_PLUGIN:
+        if (_eflash.version != PLUGIN_API_VERSION) {
+            infof("bad plugin api %08x", _eflash.version);
+        }
+        else {
+            _eflash.io.write(&p->buf[2], p->count-2);
+        }
         break;
     }
 }
