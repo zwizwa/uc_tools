@@ -27,7 +27,7 @@ ENV=$ENV
 EOF
 }
 
-show_vars
+# show_vars
 
 redo-ifchange $ENV
 . $ENV
@@ -50,7 +50,7 @@ case $LDT in
             # fragment that performs the linking, parameterized by the
             # variables we already have above.
             LINK_SH="./$BN.link.sh"
-            echo "custom link: $LINK_SH" >&2
+            # echo "custom link: $LINK_SH" >&2
             redo-ifchange $LINK_SH
             . $LINK_SH
             ;;

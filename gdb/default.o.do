@@ -4,12 +4,6 @@
 # $3 temp
 # echo "0:$0 args:$@" >>/tmp/redo.log
 
-# So emacs compile mode knows where we are.
-if [ ! -z "REDO_VERBOSE_ENTER" ]; then 
-    echo "redo: Entering directory '$(readlink -f .)'" >&2
-fi
-
-
 ARCH="${2##*.}"
 BN=$(basename $2 .$ARCH)
 
@@ -23,7 +17,7 @@ C=$BN.c
 [ ! -f $C ] && C=$UC_TOOLS_APP_DIR/$BN.c
 [ ! -f $C ] && exit 1
 
-echo "C=$C" >&2
+#echo "C=$C" >&2
 
 redo-ifchange $C
 ENV=./env.$ARCH.sh
@@ -32,7 +26,7 @@ redo-ifchange $ENV
 
 if [ ! -z "$UC_TOOLS_LIB_DIR" ]; then
     CFLAGS="-I$UC_TOOLS_LIB_DIR $CFLAGS"
-    echo "CFLAGS=$CFLAGS" >&2
+    #echo "CFLAGS=$CFLAGS" >&2
 fi
 
 
@@ -48,6 +42,11 @@ fi
 # ENV=$ENV
 # CFLAGS=$CFLAGS
 # EOF
+
+# So emacs compile mode knows where we are.
+if [ ! -z "REDO_VERBOSE_ENTER" ]; then 
+    echo "redo: Entering directory '$(readlink -f .)'" >&2
+fi
 
 $GCC $CFLAGS -MD -MF $3.deps.tmp -DFIRMWARE=\"$BN\" -DBUILD=\"$VERSION\" -o $3 -c $C || exit 1
 

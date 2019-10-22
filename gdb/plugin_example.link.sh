@@ -6,7 +6,7 @@
 # running, and that can call into the application code as well.
 # This is useful for incremental development, avoiding restarts.
 
-PARENT_ELF=doodle.x8.f103.elf
+PARENT_ELF=lab_board.x8.f103.elf
 redo-ifchange $PARENT_ELF
 
 redo-ifchange mem_top.sh
@@ -16,10 +16,10 @@ $(./mem_top.sh $PARENT_ELF)
 INCLUDE stm32f1.ld
 EOF
 
-$GCC $LDFLAGS -T$LD -Wl,-Map=$BN.$ARCH.map -Wl,--just-symbols=$PARENT_ELF -o $3 $O $A $LDLIBS || exit $?
+$GCC $LDFLAGS -T$LD -Wl,-Map=$BN.$ARCH.map -o $3 $O -Wl,--just-symbols=$PARENT_ELF  $A $LDLIBS || exit $?
 
 rm $LD
 
-arm-none-eabi-objdump -d $3 >&2
+# arm-none-eabi-objdump -d $3 >&2
 # arm-none-eabi-objdump -d $PARENT_ELF >&2
 

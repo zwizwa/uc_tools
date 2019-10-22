@@ -31,6 +31,8 @@
 #include "cbuf.h"
 #include "pbuf.h"
 
+#include "memory.h"
+
 /* Buffering.
 
    There is plenty of space, so use it.  Below is the general
@@ -67,7 +69,7 @@ struct cbuf slip_out; uint8_t slip_out_buf[256*2];
 struct cbuf uart1_in;  uint8_t uart1_in_buf[1024];
 struct cbuf uart1_out; uint8_t uart1_out_buf[1024];
 
-struct pbuf packet_in; uint8_t packet_in_buf[1024];
+struct pbuf packet_in; uint8_t packet_in_buf[2+4+1024]; // FLASH_WRITE
 
 
 // Main rate is just base clock for audio
@@ -157,8 +159,25 @@ static void command_io(const struct pbuf *p) {
                            &p->buf[3], p->count-3);
 }
 
+
 #include "plugin_api.h"
 extern struct plugin_service _eflash;
+
+uint32_t map_addr(uint32_t addr) {
+    if (addr >= 0x08000000) {
+        // Assume absolute
+        return addr;
+    }
+    else {
+        // Assume relative to _eflash.
+        uint32_t abs_addr = addr + (uint32_t)(&_eflash);
+        // infof("%08x->%08x\n", addr, abs_addr);
+        return abs_addr;
+    }
+}
+
+#include "forth.h"
+struct forth forth = FORTH_INIT;
 
 void dispatch(void *ctx, const struct pbuf *p) {
     if (p->count < 2) return;
@@ -179,7 +198,19 @@ void dispatch(void *ctx, const struct pbuf *p) {
         //infof("tag_uart: %d\n", p->count);
         cbuf_write(&uart1_out, &p->buf[2], p->count-2);
         break;
-    case TAG_PLUGIN:
+    case TAG_PLUGCTL:
+        if (p->count >= 3) {
+            switch(p->buf[2]) {
+                case 0:
+                    // Note that this message won't get to the host if
+                    // we crash in the function call.
+                    infof("starting plugin: 0x%08x\n", _eflash.start);
+                    _eflash.start();
+                    break;
+            }
+        }
+        break;
+    case TAG_PLUGIO:
         if (_eflash.version != PLUGIN_API_VERSION) {
             infof("bad plugin api %08x", _eflash.version);
         }
@@ -187,7 +218,41 @@ void dispatch(void *ctx, const struct pbuf *p) {
             _eflash.io.write(&p->buf[2], p->count-2);
         }
         break;
+    case TAG_FORTH:
+        forth.io.write(&p->buf[2], p->count-2);
+        break;
+
+    /* These are not implemented by RPC to keep implementation simple
+     * and to avoid round-trip delays.  At the end of a programming
+     * operation, send a ping to synchronize.  The application should
+     * ensure no messages are interleaved that would see a partially
+     * programmed flash state. */
+
+    // bp4 ! {send_packet,<<16#FFF6:16,16#08005000:32, 1024:32, 10:32>>}.
+    case TAG_FLASH_ERASE: {
+        uint32_t addr = map_addr(read_be(p->buf+2,  4));
+        uint32_t size = read_be(p->buf+6,  4);
+        uint32_t log  = read_be(p->buf+10, 4);
+        int rv = hw_flash_erase(addr, size, log);
+        //if (rv) {
+            infof("e:%08x:%d:%d:%d\n", addr, size, log, rv);
+        //}
+        break;
     }
+    // bp4 ! {send_packet,<<16#FFF7:16,16#08005000:32,1,2,3,4>>}.
+    case TAG_FLASH_WRITE: {
+        uint32_t addr = map_addr(read_be(p->buf+2,  4));
+        uint8_t *buf  = &p->buf[6];
+        uint32_t len  = p->count - 6;
+        int rv = hw_flash_write(addr, buf, len);
+        //if (rv) {
+            infof("w:%08x:%d:%d\n", addr, len, rv);
+        //}
+        break;
+    }
+
+    }
+
 }
 
 
@@ -223,6 +288,7 @@ void poll_machines(struct cbuf *b) {
     if (poll_read(b, TAG_INFO, info_read)) return;
     if (poll_read(b, TAG_GDB, _service.rsp_io.read)) return;
     if (poll_read(b, TAG_UART, uart1_read)) return;
+    if (poll_read(b, TAG_FORTH, forth.io.read)) return;
 }
 
 // Poll independent of read
@@ -279,7 +345,6 @@ void switch_protocol(const uint8_t *buf, uint32_t size) {
 }
 
 
-
 void start(void) {
     /* Low level application init */
     hw_app_init();
@@ -299,7 +364,10 @@ void start(void) {
 
     _service.add(poll_uart1_tx);
 
+    forth_start();
+
     infof("lab_board.c\n");
+    infof("_eflash = 0x%08x\n", &_eflash);
 
 }
 void stop(void) {
