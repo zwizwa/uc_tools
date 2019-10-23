@@ -16,9 +16,18 @@ static uint32_t plugin_read(uint8_t *buf, uint32_t size) {
 
 /* Loader calls this after reflashing. */
 
+extern uint8_t _stext;
+extern uint8_t _etext;
+
+#include "crc.h"
+
 static void plugin_start(void) {
     plugin_init_memory();
-    infof("plugin_start OK\n");
+    //uint32_t cs = crc_ethernet(0, &_stext, &_etext);
+    const char buf[] = "U";
+    uint32_t cs_test = crc_ethernet(buf, strlen(buf));
+    // infof("plugin_start %08x %08x %08x %08x\n", &_stext, &_etext, cs, cs_test);
+    infof("cs_test %08x\n", cs_test);
 }
 
 /* Header at start of .bin file */

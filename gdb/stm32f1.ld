@@ -31,6 +31,7 @@ EXTERN (vector_table)
 SECTIONS
 {
 	.text : {
+		_stext = .;
                 KEEP (*(.plugin_header))  /* Start of Flash data in plugis. */
 		*(.vectors)        /* Vector table */
                 KEEP (*(.service)) /* Bootloader services */
