@@ -162,6 +162,7 @@ static void command_io(const struct pbuf *p) {
 
 #include "plugin_api.h"
 extern struct plugin_service _eflash;
+int plugin_active = 0;
 
 uint32_t map_addr(uint32_t addr) {
     if (addr >= 0x08000000) {
@@ -175,9 +176,6 @@ uint32_t map_addr(uint32_t addr) {
         return abs_addr;
     }
 }
-
-#include "forth.h"
-struct forth forth = FORTH_INIT;
 
 void dispatch(void *ctx, const struct pbuf *p) {
     if (p->count < 2) return;
@@ -206,6 +204,7 @@ void dispatch(void *ctx, const struct pbuf *p) {
                     // we crash in the function call.
                     infof("starting plugin: 0x%08x\n", _eflash.start);
                     _eflash.start();
+                    plugin_active = 1;
                     break;
             }
         }
@@ -218,10 +217,6 @@ void dispatch(void *ctx, const struct pbuf *p) {
             _eflash.io.write(&p->buf[2], p->count-2);
         }
         break;
-    case TAG_FORTH:
-        forth.io.write(&p->buf[2], p->count-2);
-        break;
-
     /* These are not implemented by RPC to keep implementation simple
      * and to avoid round-trip delays.  At the end of a programming
      * operation, send a ping to synchronize.  The application should
@@ -230,6 +225,7 @@ void dispatch(void *ctx, const struct pbuf *p) {
 
     // bp4 ! {send_packet,<<16#FFF6:16,16#08005000:32, 1024:32, 10:32>>}.
     case TAG_FLASH_ERASE: {
+        plugin_active = 0;
         uint32_t addr = map_addr(read_be(p->buf+2,  4));
         uint32_t size = read_be(p->buf+6,  4);
         uint32_t log  = read_be(p->buf+10, 4);
@@ -241,6 +237,7 @@ void dispatch(void *ctx, const struct pbuf *p) {
     }
     // bp4 ! {send_packet,<<16#FFF7:16,16#08005000:32,1,2,3,4>>}.
     case TAG_FLASH_WRITE: {
+        plugin_active = 0;
         uint32_t addr = map_addr(read_be(p->buf+2,  4));
         uint8_t *buf  = &p->buf[6];
         uint32_t len  = p->count - 6;
@@ -288,7 +285,8 @@ void poll_machines(struct cbuf *b) {
     if (poll_read(b, TAG_INFO, info_read)) return;
     if (poll_read(b, TAG_GDB, _service.rsp_io.read)) return;
     if (poll_read(b, TAG_UART, uart1_read)) return;
-    if (poll_read(b, TAG_FORTH, forth.io.read)) return;
+    // FIXME: Only if plugin is active!
+    if (plugin_active && poll_read(b, TAG_PLUGIO, _eflash.io.read)) return;
 }
 
 // Poll independent of read
@@ -363,8 +361,6 @@ void start(void) {
     usart1_init();
 
     _service.add(poll_uart1_tx);
-
-    forth_start();
 
     infof("lab_board.c\n");
     infof("_eflash = 0x%08x\n", &_eflash);
