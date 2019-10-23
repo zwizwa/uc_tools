@@ -45,4 +45,21 @@ struct plugin_service {
    code, which is bottom (_eflash) of the host image. */
 #define PLUGIN_HEADER_SECTION __attribute__ ((section (".plugin_header")))
 
+
+/* Memory initialization is duplicated here, as init_memory() in
+ * vector.c is in the main app, hard-coded to its segements. */
+extern unsigned _data_loadaddr, _data, _edata, _ebss, _stack;
+static inline void plugin_init_memory(void) {
+    volatile unsigned *src, *dest;
+    for (src = &_data_loadaddr, dest = &_data;
+         dest < &_edata;
+         src++, dest++) {
+        *dest = *src;
+    }
+    while (dest < &_ebss) {
+        *dest++ = 0;
+    }
+}
+
+
 #endif

@@ -3,23 +3,29 @@
 #include "base.h"
 #include "plugin_api.h"
 
-static void plug_put(uint8_t byte) {
+
+/* TAG_PLUGIO stream will be routed here. */
+static void plugin_put(uint8_t byte) {
 }
-static void plug_write(const uint8_t *buf, uint32_t len) {
-    while(len--) { plug_put(*buf++); }
+static void plugin_write(const uint8_t *buf, uint32_t len) {
+    while(len--) { plugin_put(*buf++); }
 }
-static uint32_t plug_read(uint8_t *buf, uint32_t size) {
+static uint32_t plugin_read(uint8_t *buf, uint32_t size) {
     return 0;
 }
-static void plug_start(void) {
-    infof("plug_start\n");
+
+/* Loader calls this after reflashing. */
+
+static void plugin_start(void) {
+    plugin_init_memory();
+    infof("plugin_start OK\n");
 }
 
-
+/* Header at start of .bin file */
 struct plugin_service plugin PLUGIN_HEADER_SECTION = {
     .version = PLUGIN_API_VERSION,
-    .io = { .read = plug_read, .write = plug_write },
-    .start = plug_start
+    .io = { .read = plugin_read, .write = plugin_write },
+    .start = plugin_start
 };
 
 
