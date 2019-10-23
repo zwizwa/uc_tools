@@ -24,8 +24,9 @@ extern uint8_t _etext;
 static void plugin_start(void) {
     plugin_init_memory();
     //uint32_t cs = crc_ethernet(0, &_stext, &_etext);
-    const char buf[] = "U";
-    uint32_t cs_test = crc_ethernet(buf, strlen(buf));
+    const uint8_t buf[] = "123456789";
+    // const uint8_t buf[] = "UU";
+    uint32_t cs_test = crc32(buf, sizeof(buf)-1);
     // infof("plugin_start %08x %08x %08x %08x\n", &_stext, &_etext, cs, cs_test);
     infof("cs_test %08x\n", cs_test);
 }
