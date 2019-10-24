@@ -1,3 +1,6 @@
+# FIXME: Currently only using uid-specific linking, and RAM only.
+# See plugin.link.sh
+
 # The only thing we need to do here is to map the BN (plugin_forth) to
 # the ELF that will be loading the plugin.  The plugin code can use
 # symbols defined in the elf.

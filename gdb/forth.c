@@ -1,4 +1,7 @@
-/* Plugin example.  See code at bottom. */
+/* Plugin example.  See code at bottom.
+   Typically this is linked against a particular uC's Flash state, e.g.
+   forth.56ff6f065078525347130887.f103.bin
+*/
 
 #include "base.h"
 
@@ -95,7 +98,7 @@ void interpreter(void) {
             break;
         }
         case 1: // Thumb tag
-        case 3: // Thunk tag (or is code always 32bit-aligned?)
+        case 3: // Thumb tag (or is code always 32bit-aligned?)
             xt.code(0);
             break;
         case 2: // Interpreter control.
@@ -276,7 +279,6 @@ void forth_start(void) {
 
 
 #include "plugin_api.h"
-#include "gdbstub_api.h"
 
 
 /* Loader calls this after reflashing. */
@@ -285,7 +287,6 @@ static void plugin_start(void) {
     forth_start();
 }
 /* Header at start of .bin file */
-//extern struct plugin_service plugin;
 struct plugin_service plugin PLUGIN_HEADER_SECTION = {
     .version = PLUGIN_API_VERSION,
     .io = { .read = forth_read, .write = forth_write },
