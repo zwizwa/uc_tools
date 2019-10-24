@@ -37,4 +37,15 @@ static inline unsigned crc8x_simple(unsigned crc, void const *mem, size_t len) {
     return crc;
 }
 
+/*
+
+Flash checksum:
+
+extern uint8_t _stext;
+extern uint8_t _etext;
+    uint32_t cs = crc32b(&_stext, &_etext - &_stext);
+    infof("S:%08x L:%d CRC:%08x\n", &_stext, &_etext - &_stext, cs);
+
+*/
+
 #endif
