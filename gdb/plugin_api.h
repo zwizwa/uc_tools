@@ -61,5 +61,12 @@ static inline void plugin_init_memory(void) {
     }
 }
 
+/* Host side handling.  Takes a tagged message.  Nonzero return means
+ * message was handled. */
+uint32_t plugin_write_message(const uint8_t *buf, uint32_t len);
+uint32_t plugin_read(uint8_t *buf, uint32_t len);
+
+extern struct plugin_service _eflash;
+
 
 #endif

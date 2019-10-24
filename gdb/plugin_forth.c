@@ -58,7 +58,7 @@ typedef union word w;
 
    - An instruction or execution token (XT) is a pointer into the
      dictionary, pointing to the code word entry that interprets the
-     code list (e.g. ENTER).
+     code list (e.g. enter).
 
    - It is simpler to keep the type of ip to be a pointer to union
      word, and do the double dereference inside the interpreter loop.
@@ -71,21 +71,19 @@ typedef union word w;
      do.  This avoids the need for wrapping each primitive in a
      dictionary entry.
 
-   - Taking this further, all token lists are going to be 32-bit
+   - Taking that further, all token lists are going to be 32-bit
      aligned, so there are actually 2 extra tag codes to use.
 */
 
 w *ip;
 
 /* Special interpreter opcodes */
-#define IOPC(x) (2 | ((x)<<2))
+#define IOPC(x) ((uint32_t)(2 | ((x)<<2)))
 #define YIELD IOPC(0)
 // TODO: blocking read
 
 
 void interpreter(void) {
-    //int max = 10;
-
     for(;;) {
         w xt = *ip;
         infof("ip:%08x xt:%08x\n", ip, xt);
@@ -104,7 +102,6 @@ void interpreter(void) {
             if (YIELD == xt.u32) return;
             break;
         }
-        //if (!(max--)) return;
     }
 }
 
@@ -172,72 +169,70 @@ static void tx(w* _) {
 }
 
 // Inner interpreter
-static void LIT(w* _) {
+static void lit(w* _) {
     push(*ip++);
 }
 static void push_ip(void) {
     w _ip_old = {.pw = ip};
     pushr(_ip_old);
 }
-static void ENTER(w* list) {
+static void enter(w* list) {
     push_ip();
     ip = list;
 }
-static void EXIT(w* _) {
+static void exit(w* _) {
     ip = popr().pw;
 }
-static void EXECUTE(w* _) {
+static void execute(w* _) {
     push_ip();
     ip = pop().pw;
 }
 
 struct dict {
     const char *name;
-    code_fn code;
+    w xt;
 };
-
-
-
 struct dict dict[] = {
     // eForth primitives
     // System interface
-    {"?rx", rx},
-    {"tx!", tx},
+    {"?rx",     (w)rx},
+    {"tx!",     (w)tx},
     // Inner interpreter
-    {"LIT", LIT},
-    {"ENTER", ENTER},
-    {"EXIT",EXIT},
-    {"EXECUTE", EXECUTE},
+    {"lit",     (w)lit},
+    {"enter",   (w)enter},
+    {"exit",    (w)exit},
+    {"execute", (w)execute},
+    {"yield",   (w)YIELD},
 #if 0
-    {"?branch", TODO},
-    {"branch", TODO},
+    {"?branch", (w)TODO},
+    {"branch",  (w)TODO},
     // Memory access
-    {"!",TODO},
-    {"@",TODO},
-    {"C!",TODO},
-    {"C@",TODO},
+    {"!",       (w)TODO},
+    {"@",       (w)TODO},
+    {"C!",      (w)TODO},
+    {"C@",      (w)TODO},
     // Return stack
-    {"RP@",TODO},
-    {"RP!",TODO},
-    {"R>",TODO},
-    {"R@",TODO},
-    {">R",TODO},
+    {"RP@",     (w)TODO},
+    {"RP!",     (w)TODO},
+    {"R>",      (w)TODO},
+    {"R@",      (w)TODO},
+    {">R",      (w)TODO},
     // Data stack
-    {"SP@",TODO},
-    {"SP!",TODO},
+    {"SP@",     (w)TODO},
+    {"SP!",     (w)TODO},
 #endif
-    {"DROP",(code_fn)pop},
-    {"DUP",dup},
+    {"DROP",    (w)(code_fn)pop},
+    {"DUP",     (w)dup},
 #if 0
-    {"SWAP",TODO},
-    {"OVER",TODO},
+    {"SWAP",    (w)TODO},
+    {"OVER",    (w)TODO},
     //Logic
-    {"0<",TODO},
-    {"AND",TODO},
-    {"OR",TODO},
-    {"XOR",TODO},
+    {"0<",      (w)TODO},
+    {"AND",     (w)TODO},
+    {"OR",      (w)TODO},
+    {"XOR",     (w)TODO},
     // Arithmetic
-    {"UM+",TODO},
+    {"UM+",     (w)TODO},
 #endif
     {}
 };
@@ -248,8 +243,8 @@ struct dict dict[] = {
    primitives in C can be done like this ... */
 
 
-const w lit1[] = { (w)ENTER, (w)LIT, (w)1, (w)EXIT };
-const w test[] = { (w)ENTER, (w)lit1, (w)lit1, (w)add, (w)print, (w)EXIT };
+const w lit1[] = { (w)enter, (w)lit, (w)1, (w)exit };
+const w test[] = { (w)enter, (w)lit1, (w)lit1, (w)add, (w)print, (w)exit };
 
 /* ... but gets tedious when conditional jumps are involved.
 

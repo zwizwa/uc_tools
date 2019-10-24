@@ -1,25 +1,15 @@
-# default.elf.do supports ad-hoc linking stages
-# whenver $LDT==custom, $BN.link.sh is sourced into the build script
-
-# The main reason to perform custom linking is to allow for "plugins"
-# that can be loaded along side a main application when the app is
-# running, and that can call into the application code as well.
-# This is useful for incremental development, avoiding restarts.
-
+# The only thing we need to do here is to map the BN (plugin_forth) to
+# the ELF that will be loading the plugin.  The plugin code can use
+# symbols defined in the elf.
 PARENT_ELF=lab_board.x8.f103.elf
-redo-ifchange $PARENT_ELF
 
-redo-ifchange mem_top.sh
-LD=$3.tmp.ld
-cat <<EOF >$LD
-$(./mem_top.sh $PARENT_ELF)
-INCLUDE stm32f1.ld
-EOF
+# Keep this configurable
+LINK_SH=flash_plugin.link.sh
+# LINK_SH=ram_plugin.link.sh
 
-$GCC $LDFLAGS -T$LD -Wl,-Map=$BN.$ARCH.map -o $3 $O -Wl,--just-symbols=$PARENT_ELF  $A $LDLIBS || exit $?
+# The actual linking step and .ld script generation is common for all
+# plugins, so just source it here.
+redo-ifchange $LINK_SH
+. ./$LINK_SH
 
-rm $LD
-
-# arm-none-eabi-objdump -d $3 >&2
-# arm-none-eabi-objdump -d $PARENT_ELF >&2
 

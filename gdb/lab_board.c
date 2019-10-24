@@ -31,7 +31,6 @@
 #include "cbuf.h"
 #include "pbuf.h"
 
-#include "memory.h"
 
 /* Buffering.
 
@@ -161,25 +160,13 @@ static void command_io(const struct pbuf *p) {
 
 
 #include "plugin_api.h"
-extern struct plugin_service _eflash;
-int plugin_active = 0;
-
-uint32_t map_addr(uint32_t addr) {
-    if (addr >= 0x08000000) {
-        // Assume absolute
-        return addr;
-    }
-    else {
-        // Assume relative to _eflash.
-        uint32_t abs_addr = addr + (uint32_t)(&_eflash);
-        // infof("%08x->%08x\n", addr, abs_addr);
-        return abs_addr;
-    }
-}
 
 void dispatch(void *ctx, const struct pbuf *p) {
     if (p->count < 2) return;
     uint16_t tag = read_be(p->buf, 2);
+
+    if (plugin_write_message(p->buf, p->count)) return;
+
     switch(tag) {
     case TAG_PING:
         //infof("ping:%d\n",p->count-2);
@@ -196,58 +183,9 @@ void dispatch(void *ctx, const struct pbuf *p) {
         //infof("tag_uart: %d\n", p->count);
         cbuf_write(&uart1_out, &p->buf[2], p->count-2);
         break;
-    case TAG_PLUGCTL:
-        if (p->count >= 3) {
-            switch(p->buf[2]) {
-                case 0:
-                    // Note that this message won't get to the host if
-                    // we crash in the function call.
-                    infof("starting plugin: 0x%08x\n", _eflash.start);
-                    _eflash.start();
-                    plugin_active = 1;
-                    break;
-            }
-        }
+    default:
+        infof("unknown message: tag=%02x len=%d\n", tag, p->count);
         break;
-    case TAG_PLUGIO:
-        if (_eflash.version != PLUGIN_API_VERSION) {
-            infof("bad plugin api %08x", _eflash.version);
-        }
-        else {
-            _eflash.io.write(&p->buf[2], p->count-2);
-        }
-        break;
-    /* These are not implemented by RPC to keep implementation simple
-     * and to avoid round-trip delays.  At the end of a programming
-     * operation, send a ping to synchronize.  The application should
-     * ensure no messages are interleaved that would see a partially
-     * programmed flash state. */
-
-    // bp4 ! {send_packet,<<16#FFF6:16,16#08005000:32, 1024:32, 10:32>>}.
-    case TAG_FLASH_ERASE: {
-        plugin_active = 0;
-        uint32_t addr = map_addr(read_be(p->buf+2,  4));
-        uint32_t size = read_be(p->buf+6,  4);
-        uint32_t log  = read_be(p->buf+10, 4);
-        int rv = hw_flash_erase(addr, size, log);
-        //if (rv) {
-            infof("e:%08x:%d:%d:%d\n", addr, size, log, rv);
-        //}
-        break;
-    }
-    // bp4 ! {send_packet,<<16#FFF7:16,16#08005000:32,1,2,3,4>>}.
-    case TAG_FLASH_WRITE: {
-        plugin_active = 0;
-        uint32_t addr = map_addr(read_be(p->buf+2,  4));
-        uint8_t *buf  = &p->buf[6];
-        uint32_t len  = p->count - 6;
-        int rv = hw_flash_write(addr, buf, len);
-        //if (rv) {
-            infof("w:%08x:%d:%d\n", addr, len, rv);
-        //}
-        break;
-    }
-
     }
 
 }
@@ -285,8 +223,7 @@ void poll_machines(struct cbuf *b) {
     if (poll_read(b, TAG_INFO, info_read)) return;
     if (poll_read(b, TAG_GDB, _service.rsp_io.read)) return;
     if (poll_read(b, TAG_UART, uart1_read)) return;
-    // FIXME: Only if plugin is active!
-    if (plugin_active && poll_read(b, TAG_PLUGIO, _eflash.io.read)) return;
+    if (poll_read(b, TAG_PLUGIO, plugin_read)) return;
 }
 
 // Poll independent of read
