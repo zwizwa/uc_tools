@@ -32,10 +32,11 @@
 
 #define PLUGIN_API_VERSION 0x00014C50  // Version + 'PL' tag
 struct plugin_service {
-    uint32_t version;       // Maybe best to use some version/tag info
-    struct gdbstub_io io;   // Plugin's input/output.  Sending a message will activate.
-    gdbstub_fn_start start; // Needs to be called once before io is accessed.
-    gdbstub_fn_stop  stop;  // If nonzero, needs to be called before code is reloaded.
+    /* 0 */   uint32_t version;       // Maybe best to use some version/tag info
+    /* 1,2 */ struct gdbstub_io io;   // Plugin's input/output.  Sending a message will activate.
+    /* 3 */   gdbstub_fn_start start; // Needs to be called once before io is accessed.
+    /* 4 */   gdbstub_fn_stop  stop;  // If nonzero, needs to be called before code is reloaded.
+    /* 5 */   void *load_addr;        // Where this is supposed to go.
 };
 
 // FIXME: Some tag to identify which host this was compiled for.
@@ -48,7 +49,11 @@ struct plugin_service {
 
 /* Memory initialization is duplicated here, as init_memory() in
  * vector.c is in the main app, hard-coded to its segements. */
-extern unsigned _data_loadaddr, _data, _edata, _ebss, _stack;
+
+extern struct plugin_service _eflash;
+extern struct plugin_service _ebss;
+
+extern unsigned _data_loadaddr, _data, _edata, _stack;
 static inline void plugin_init_memory(void) {
     volatile unsigned *src, *dest;
     for (src = &_data_loadaddr, dest = &_data;
@@ -56,7 +61,7 @@ static inline void plugin_init_memory(void) {
          src++, dest++) {
         *dest = *src;
     }
-    while (dest < &_ebss) {
+    while (dest < (unsigned *)&_ebss) {
         *dest++ = 0;
     }
 }
@@ -66,7 +71,6 @@ static inline void plugin_init_memory(void) {
 uint32_t plugin_write_message(const uint8_t *buf, uint32_t len);
 uint32_t plugin_read(uint8_t *buf, uint32_t len);
 
-extern struct plugin_service _eflash;
 
 
 #endif

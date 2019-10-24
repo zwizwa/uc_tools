@@ -301,6 +301,7 @@ void start(void) {
 
     infof("lab_board.c\n");
     infof("_eflash = 0x%08x\n", &_eflash);
+    infof("_ebss   = 0x%08x\n", &_ebss);
 
 }
 void stop(void) {

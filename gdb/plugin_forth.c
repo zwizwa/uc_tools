@@ -284,10 +284,12 @@ static void plugin_start(void) {
     forth_start();
 }
 /* Header at start of .bin file */
+//extern struct plugin_service plugin;
 struct plugin_service plugin PLUGIN_HEADER_SECTION = {
     .version = PLUGIN_API_VERSION,
     .io = { .read = forth_read, .write = forth_write },
-    .start = plugin_start
+    .start = plugin_start,
+    .load_addr = &plugin
 };
 
 

@@ -6,6 +6,7 @@
 
 
 int plugin_active = 0;
+struct plugin_service *plugin_header;
 
 static uint32_t map_addr(uint32_t addr) {
     if (addr >= 0x08000000) {
@@ -76,8 +77,27 @@ uint32_t plugin_write_message(const uint8_t *buf, uint32_t len) {
     // bp4 ! {send_packet,<<16#FFF7:16,16#08005000:32,1,2,3,4>>}.
     case TAG_FLASH_WRITE: {
         plugin_active = 0;
-        uint32_t addr = map_addr(read_be(buf+2,  4));
+        uint32_t req_addr = read_be(buf+2, 4);
         const uint8_t *data_buf  = &buf[6];
+        if (req_addr == 0) {
+            /* If host doesn't give us an actual address, we're going
+               to assume a couple of things.
+
+               1.  We can use map_addr to map relative addresses into
+                   the destination space.
+
+               2.  The first block is going to contain a plugin header.
+            */
+            struct plugin_service *plugin = (void*)data_buf;
+            infof("plugin->version   = 0x%08x\n", plugin->version);
+            infof("plugin->load_addr = 0x%08x\n", plugin->load_addr);
+
+            /* Keep a copy of the pointer so we can read it out on the
+               next iteration. */
+            plugin_header = plugin->load_addr;
+        }
+
+        uint32_t addr = map_addr(req_addr);
         uint32_t data_len  = len - 6;
         int rv = hw_flash_write(addr, data_buf, data_len);
         //if (rv) {
