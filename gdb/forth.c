@@ -95,7 +95,7 @@ void interpreter(void) {
             break;
         }
         case 1: // Thumb tag
-        case 3: // Possibly free tag due to alignment?
+        case 3: // Thunk tag (or is code always 32bit-aligned?)
             xt.code(0);
             break;
         case 2: // Interpreter control.

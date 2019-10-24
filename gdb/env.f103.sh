@@ -32,7 +32,6 @@ switch.x8.f103.elf
 slipstub_example.x8.f103.elf
 rawslip.x8.f103.elf
 uart_router.x8.f103.elf
-forth.plugin.f103.bin
 "
 
 O_SYSTEM=registers_stm32f103.f103.o

@@ -43,25 +43,28 @@ A=lib.$ARCH.a
 redo-ifchange $O $A
 
 
+LD=$LDT.$ARCH.ld
 
-case $LDT in
-     plugin)
-            # For plugin linking, the filename maps to a shell script
-            # fragment that performs the linking, parameterized by the
-            # variables we already have above.
-            LINK_SH="./$BN.link.sh"
+if [ -f "$LD" ]; then
+    redo-ifchange $LD 
+    $GCC $LDFLAGS -T$LD -Wl,-Map=$BN.$ARCH.map -o $3 $O $A $LDLIBS
+    
+else
+    # no .ld file, use a custom link step instead.
 
-            # If that doesn't exist, use the default pluging link config.
-            [ ! -f "$LINK_SH" ] && LINK_SH=./plugin.link.sh
-            echo "plugin link: $LINK_SH" >&2
-            redo-ifchange $LINK_SH
-            . $LINK_SH
-            ;;
-     *)
-            # linker configuration file
-            LD=$LDT.$ARCH.ld
-            redo-ifchange $LD 
-            $GCC $LDFLAGS -T$LD -Wl,-Map=$BN.$ARCH.map -o $3 $O $A $LDLIBS
-            ;;
-esac
+    # Try basename of the .c file
+    LINK_SH="./$BN.link.sh"
+
+    # If that doesn't exist, use the default plugin link script, which
+    # used the LDT to identify the parent elf.
+    [ ! -f "$LINK_SH" ] && LINK_SH=./plugin.link.sh
+
+    # Source the shell script fragment to perform the linking.  This
+    # allows it to be parameterized by the variables we already have
+    # defined here.
+    echo "plugin link: $LINK_SH" >&2
+    redo-ifchange $LINK_SH
+    . $LINK_SH
+fi
+
 
