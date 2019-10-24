@@ -4,8 +4,8 @@
 PARENT_ELF=lab_board.x8.f103.elf
 
 # Keep this configurable
-LINK_SH=flash_plugin.link.sh
-# LINK_SH=ram_plugin.link.sh
+# LINK_SH=flash_plugin.link.sh
+LINK_SH=ram_plugin.link.sh
 
 # The actual linking step and .ld script generation is common for all
 # plugins, so just source it here.
