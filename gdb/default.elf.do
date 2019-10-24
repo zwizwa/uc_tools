@@ -45,12 +45,15 @@ redo-ifchange $O $A
 
 
 case $LDT in
-     custom)
-            # For custom linking, the filename maps to a shell script
+     plugin)
+            # For plugin linking, the filename maps to a shell script
             # fragment that performs the linking, parameterized by the
             # variables we already have above.
             LINK_SH="./$BN.link.sh"
-            # echo "custom link: $LINK_SH" >&2
+
+            # If that doesn't exist, use the default pluging link config.
+            [ ! -f "$LINK_SH" ] && LINK_SH=./plugin.link.sh
+            echo "plugin link: $LINK_SH" >&2
             redo-ifchange $LINK_SH
             . $LINK_SH
             ;;

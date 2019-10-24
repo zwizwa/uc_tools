@@ -86,7 +86,7 @@ w *ip;
 void interpreter(void) {
     for(;;) {
         w xt = *ip;
-        //infof("ip:%08x xt:%08x\n", ip, xt);
+        infof("ip:%08x xt:%08x\n", ip, xt);
         ip++;
 
         switch (xt.u32 & 3) {
@@ -262,6 +262,7 @@ void forth_write(const uint8_t *buf, uint32_t len) {
     cbuf_write(&forth_out, buf, len);
 }
 void forth_start(void) {
+    infof("forth_start()\n");
     CBUF_INIT(forth_in);
     CBUF_INIT(forth_out);
     const uint8_t hello[] = "hello\r\n";

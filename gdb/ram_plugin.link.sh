@@ -3,7 +3,8 @@
 # This is a variant that puts all code in RAM.  Useful for frequent
 # reloading that would otherwise stress Flash too much.
 
-[ -z "$PARENT_ELF" ] && echo "need PARENT_ELF" && exit 1
+[ -z "$PARENT_ELF" ] && echo "need PARENT_ELF" >&2 && exit 1
+echo "PARENT_ELF=$PARENT_ELF" >&2
 redo-ifchange $PARENT_ELF
 
 redo-ifchange mem_top.sh
