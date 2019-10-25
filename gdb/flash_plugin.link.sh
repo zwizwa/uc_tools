@@ -24,10 +24,10 @@ cat <<EOF >$LD
 $(./mem_top.sh $PARENT_ELF)
 INCLUDE ${ARCH}.ld
 SECTIONS {
- 	.flash_pad : {
-	       . = ALIGN(1024);
-		_eplugin = . ;     
- 	} >rom
+    .flash_pad : {
+        . = ALIGN(1024);
+        _eplugin = . ;     
+     } >rom
 }
 
 EOF

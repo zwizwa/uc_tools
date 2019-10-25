@@ -14,7 +14,7 @@
    - Tail call optimization is a plus
 
    - Primitives should be C functions to avoid the "dual language
-     problem".  This precludes a direct or indirect threaded
+     problem".  This excludes a direct or indirect threaded
      interpreter and leaves a loop threaded or subroutine threaded
      interpreter.
 
@@ -54,6 +54,8 @@ union word {
     int i;
     uint32_t u32;
     uint32_t *u32p;
+    uint8_t b;
+    char c;
     code_fn code;
     union word *pw;
     const union word *cpw;
@@ -84,7 +86,8 @@ typedef union word w;
      dictionary entry.
 
    - Taking that further, all token lists are going to be 32-bit
-     aligned, so there are actually 2 extra tag codes to use.
+     aligned, so there are actually 2 extra tag codes to use.  So this
+     could be called a loop threaded token/direct/indirect interpreter.
 */
 
 w *ip;
@@ -92,13 +95,14 @@ w *ip;
 /* Special interpreter opcodes */
 #define IOPC(x) ((uint32_t)(2 | ((x)<<2)))
 #define YIELD IOPC(0)
+#define TODO  IOPC(1)
 // TODO: blocking read
 
 
 void interpreter(void) {
     for(;;) {
         w xt = *ip;
-        infof("ip:%08x xt:%08x\n", ip, xt);
+        // infof("ip:%08x xt:%08x\n", ip, xt);
         ip++;
 
         switch (xt.u32 & 3) {
@@ -112,6 +116,10 @@ void interpreter(void) {
             break;
         case 2: // Interpreter control.
             if (YIELD == xt.u32) return;
+            if (TODO  == xt.u32) {
+                infof("undefined opcode\n");
+                return;
+            }
             break;
         }
     }
@@ -148,7 +156,11 @@ struct cbuf forth_in;
 w ds[DS_SIZE]; uint32_t di;
 w rs[DS_SIZE]; uint32_t ri;
 
-#define TOP ds[di&DS_MASK]
+/* Stacks are circular to avoid the most obvious crashes. */
+#define DI (di&DS_MASK)
+#define RI (ri&RS_MASK)
+
+#define TOP ds[DI]
 #define SND ds[(di-1)&DS_MASK]
 
 #define TOPR rs[ri&RS_MASK]
@@ -163,7 +175,6 @@ static w popr(void) { w rv = TOPR; ri--; return rv; }
 
 static void dup(w* _) { di++; TOP = SND; }
 static void add(w* _) { SND.u32 += TOP.u32; pop(); }
-static void print(w* _) { infof("%08x\n", pop().u32); }
 
 
 // ?RX ( -- c T | F )
@@ -179,7 +190,31 @@ static void rx(w* _) {
 }
 // TX! ( c -- )
 static void tx(w* _) {
-    cbuf_put(&forth_in, pop().u32);
+    cbuf_put(&forth_out, pop().u32);
+}
+static void p(w* _) {
+    uint32_t val = pop().u32;
+    const uint8_t c[] = "0123456789ABCDEF";
+    // leading zeros are annoying
+    uint32_t dontskip = 0;
+    for(int digit=7; digit>=0; digit--) {
+        uint32_t d = 0xF&(val>>(4*digit));
+        dontskip += d;
+        if (dontskip || (digit==0)) {
+            push((w)c[d]);
+            tx(_);
+        }
+    }
+    push((w)'\n');
+    tx(_);
+}
+static void fetch(w* _) {
+    TOP = *(TOP.pw);
+}
+static void store(w* _) {
+    w *addr = pop().pw;
+    w val   = pop();
+    *addr = val;
 }
 
 // Inner interpreter
@@ -202,6 +237,12 @@ static void execute(w* _) {
     ip = pop().pw;
 }
 
+/* Print machine state. */
+static void s(w* _) {
+    infof("d:"); for(int i=0; i<DI; i++) { infof(" %08x", ds[i]); } infof("\n");
+    infof("r:"); for(int i=0; i<RI; i++) { infof(" %08x", rs[i]); } infof("\n");
+}
+
 
 /* If an on-target outer interpreter is necessary, the high level word
    dictionary is best bootstrapped from another eForth image or from
@@ -209,7 +250,7 @@ static void execute(w* _) {
    primitives in C can be done like this ... */
 
 const w lit1[] = { (w)enter, (w)lit, (w)1, (w)exit };
-const w test[] = { (w)enter, (w)lit1, (w)lit1, (w)add, (w)print, (w)exit };
+const w test[] = { (w)enter, (w)lit1, (w)lit1, (w)add, (w)p, (w)exit };
 
 /* ... but gets tedious when conditional jumps are involved.
 
@@ -224,6 +265,7 @@ struct record {
     const char *name;
     w xt;
 };
+
 struct record dict[] = {
     // eForth primitives
     // System interface
@@ -235,12 +277,12 @@ struct record dict[] = {
     {"exit",    (w)exit},
     {"execute", (w)execute},
     {"yield",   (w)YIELD},
-#if 0
+    {"s",       (w)s},
     {"?branch", (w)TODO},
     {"branch",  (w)TODO},
     // Memory access
-    {"!",       (w)TODO},
-    {"@",       (w)TODO},
+    {"!",       (w)store},
+    {"@",       (w)fetch},
     {"C!",      (w)TODO},
     {"C@",      (w)TODO},
     // Return stack
@@ -252,10 +294,8 @@ struct record dict[] = {
     // Data stack
     {"SP@",     (w)TODO},
     {"SP!",     (w)TODO},
-#endif
     {"drop",    (w)(code_fn)pop},
     {"dup",     (w)dup},
-#if 0
     {"SWAP",    (w)TODO},
     {"OVER",    (w)TODO},
     //Logic
@@ -265,7 +305,9 @@ struct record dict[] = {
     {"XOR",     (w)TODO},
     // Arithmetic
     {"UM+",     (w)TODO},
-#endif
+    {"+",       (w)add},
+    // High level words
+    {"p",       (w)p},
     {}
 };
 
@@ -298,6 +340,7 @@ uint32_t forth_accept(uint8_t *buf, uint32_t len) {
             else {
                 /* We have only just peeked characters.  Only drop
                  * when complete word is in. */
+                // FIXME: there is no error mechanism to signal bad words.
                 cbuf_drop(&forth_in, i);
                 // infof("w:%d\n", i);
                 return i;
@@ -326,7 +369,18 @@ void forth_write(const uint8_t *buf, uint32_t len) {
         if (!len) return;
         word[len] = 0;
         w xt = forth_find((const char*)&word[0]);
-        infof("word: %08x %s\n", xt, word);
+        if (xt.i) {
+            //infof("xt:  %08x %s\n", xt, word);
+            run(xt);
+        }
+        else {
+            /* There is no error handling here: any words that are not
+             * defined are interpreted as hex, with bad digits mapped
+             * to 0. */
+            uint32_t lit = read_hex_nibbles(&word[0], len);
+            //infof("lit: %08x %s\n", lit, word);
+            push((w)lit);
+        }
     }
 }
 
@@ -334,7 +388,7 @@ void forth_start(void) {
     infof("forth_start()\n");
     CBUF_INIT(forth_in);
     CBUF_INIT(forth_out);
-    const uint8_t hello[] = "hello\r\n";
+    const uint8_t hello[] = "forth_start()\r\n";
     cbuf_write(&forth_out, hello, sizeof(hello)-1);
 
     infof("(pre)  di = %d\n", di);
