@@ -33,6 +33,7 @@ slipstub_example.x8.f103.elf
 rawslip.x8.f103.elf
 uart_router.x8.f103.elf
 host.x8.f103.elf
+forth_app.x8.f103.elf
 "
 
 O_SYSTEM=registers_stm32f103.f103.o
