@@ -12,6 +12,12 @@ LD=$3.tmp.ld
 cat <<EOF >$LD
 $(./mem_top.sh $PARENT_ELF)
 INCLUDE ${ARCH}.ram.ld
+SECTIONS {
+ 	.ram_pad : {
+	       . = ALIGN(4);
+		_eplugin = . ;     
+ 	} >ram
+}
 EOF
 
 $GCC $LDFLAGS -T$LD -Wl,-Map=$BN.$ARCH.map -o $3 $O -Wl,--just-symbols=$PARENT_ELF  $A $LDLIBS || exit $?

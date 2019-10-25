@@ -21,6 +21,7 @@ struct plugin_service plugin PLUGIN_HEADER_SECTION = {
     .version = PLUGIN_API_VERSION,
     .io = { .read = forth_read, .write = forth_write },
     .start = plugin_start,
-    .load_addr = &plugin
+    .load_addr = &plugin,
+    .endx_addr = &_eplugin
 };
 

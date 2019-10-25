@@ -13,6 +13,7 @@ PARENT_ELF=$STATE_DIR/$LDT.app.elf
 [ ! -f "$PARENT_ELF" ] && echo "plugin_link.sh: need PARENT_ELF" >&2 && exit 1
 
 
-LINK_SH=./ram_plugin.link.sh
+# LINK_SH=./ram_plugin.link.sh
+LINK_SH=./flash_plugin.link.sh
 redo-ifchange $LINK_SH
 . $LINK_SH

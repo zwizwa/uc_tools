@@ -20,7 +20,7 @@ pbuf.c
 slipstub.c
 sliplib.c
 mdio.c
-plugin_host.c
+pluginlib.c
 "
 
 O=$(echo $C | sed s/\\.c/\\.${ARCH}\\.o/g)

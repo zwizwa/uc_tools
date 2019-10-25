@@ -23,6 +23,13 @@ LD=$3.tmp.ld
 cat <<EOF >$LD
 $(./mem_top.sh $PARENT_ELF)
 INCLUDE ${ARCH}.ld
+SECTIONS {
+ 	.flash_pad : {
+	       . = ALIGN(1024);
+		_eplugin = . ;     
+ 	} >rom
+}
+
 EOF
 
 # FIXME: It is actually possible here to put a checksum of the host

@@ -37,6 +37,7 @@ struct plugin_service {
     /* 3 */   gdbstub_fn_start start; // Needs to be called once before io is accessed.
     /* 4 */   gdbstub_fn_stop  stop;  // If nonzero, needs to be called before code is reloaded.
     /* 5 */   void *load_addr;        // Where this is supposed to go.
+    /* 6 */   void *endx_addr;        // End of image.
 };
 
 // FIXME: Some tag to identify which host this was compiled for.
@@ -53,7 +54,7 @@ struct plugin_service {
 extern struct plugin_service _eflash;
 extern struct plugin_service _ebss;
 
-extern unsigned _data_loadaddr, _data, _edata, _stack;
+extern unsigned _data_loadaddr, _data, _edata, _stack, _eplugin;
 static inline void plugin_init_memory(void) {
     volatile unsigned *src, *dest;
     for (src = &_data_loadaddr, dest = &_data;

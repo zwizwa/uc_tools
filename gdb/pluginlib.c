@@ -81,6 +81,7 @@ uint32_t plugin_write_message(const uint8_t *buf, uint32_t len) {
                 plugin = (void*)data_buf;
                 infof("plugin->version   = 0x%08x\n", plugin->version);
                 infof("plugin->load_addr = 0x%08x\n", plugin->load_addr);
+                infof("plugin->endx_addr = 0x%08x\n", plugin->endx_addr);
 
                 /* Keep a copy of the pointer so we can read it out on the
                    next iteration. */

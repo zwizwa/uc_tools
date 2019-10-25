@@ -25,7 +25,7 @@ after the .config and .mem.* sections? */
 SECTIONS {
 	/* Mark the first free block in Flash memory for application use. */
  	.flash_pad : {
-	       . = ALIGN(4096);
+	       . = ALIGN(1024);
 		_eflash = . ;     
  	} >rom
 }

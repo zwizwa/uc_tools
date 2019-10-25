@@ -23,15 +23,29 @@
      primitives in C.  Also, if R is separate, multitasking becomes
      simple to implement, so loop threading is what's left.
 
-   - Get an interactive console working as soon as possible.
+   - Should this use a "standard" Forth outer interpreter and syntax?
+     In the end, that is what the complexity of a Forth kernel comes
+     from: translating text into executable code.  I am not all that
+     interested in this because I rarely write stand-alone uC code.
+     Usually the uC is just a component that is ultimately controlled
+     by a more complex system.  Aside from that, the development
+     system is usually fairly complex and does not need the target to
+     be self-hosting.  So a stand-alone outer interpreter is a
+     gimmick.  Do not put it in the critical path.
 
-   - Use a "standard" Forth outer interpreter and syntax.  eForth
-     comes to mind.  I don't really want to bootstrap an outer
-     interpreter.  (EDIT: This might not be so important.  It is a lot
-     of work to bootstrap.)
+   - So why is Forth still interesting?  Mostly for the simplicity it
+     brings when going to FPGA-based solutions, e.g. control
+     sequencers.  It makes the distance between code and hardware
+     sequencers a bit smaller.
 
-   - Use circular stacks
-
+   - Another point is protocols.  I did not dig into this deeply yet,
+     but it is one of the incentives to try it out on STM32.  The
+     basic trade-off here is to replace a datastructure-heavy protocol
+     with code.  I.e. instead of having the uC interpret ad-hoc data
+     structures, have it execute more arbitrary code, providing just
+     primitives.  It's not clear if this is really a good idea, but
+     the idea has been haunting me in one vague form or another for a
+     long time.
 */
 
 union word;
@@ -117,6 +131,8 @@ void run(w xt) {
 uint8_t     forth_out_buf[64];
 struct cbuf forth_out;
 
+/* Input is a cbuf, such both the C outer interpreter and the forth
+ * word ?rx can read from the input. */
 uint8_t     forth_in_buf[64];
 struct cbuf forth_in;
 
@@ -186,11 +202,29 @@ static void execute(w* _) {
     ip = pop().pw;
 }
 
-struct dict {
+
+/* If an on-target outer interpreter is necessary, the high level word
+   dictionary is best bootstrapped from another eForth image or from
+   an outer interpreter written in another language.  Writing
+   primitives in C can be done like this ... */
+
+const w lit1[] = { (w)enter, (w)lit, (w)1, (w)exit };
+const w test[] = { (w)enter, (w)lit1, (w)lit1, (w)add, (w)print, (w)exit };
+
+/* ... but gets tedious when conditional jumps are involved.
+
+   That said I've never liked implementing the outer interpreter in
+   Forth.  I only interact with these things when I have another
+   computer available that can run some meta code.  So for now,
+   provide a minimal outer interpreter in C. */
+
+#include "string.h"
+
+struct record {
     const char *name;
     w xt;
 };
-struct dict dict[] = {
+struct record dict[] = {
     // eForth primitives
     // System interface
     {"?rx",     (w)rx},
@@ -219,8 +253,8 @@ struct dict dict[] = {
     {"SP@",     (w)TODO},
     {"SP!",     (w)TODO},
 #endif
-    {"DROP",    (w)(code_fn)pop},
-    {"DUP",     (w)dup},
+    {"drop",    (w)(code_fn)pop},
+    {"dup",     (w)dup},
 #if 0
     {"SWAP",    (w)TODO},
     {"OVER",    (w)TODO},
@@ -235,21 +269,49 @@ struct dict dict[] = {
     {}
 };
 
-/* If an on-target outer interpreter is necessary, the high level word
-   dictionary is best bootstrapped from another eForth image or from
-   an outer interpreter written in another language.  Writing
-   primitives in C can be done like this ... */
+w forth_find(const char *word) {
+    for(const struct record *r = &dict[0]; r->name; r++) {
+        if(!strcmp(word, r->name)) return r->xt;
+    }
+    return (w)0;
+}
+uint32_t forth_accept(uint8_t *buf, uint32_t len) {
+    /* Written char count. */
+    uint32_t i = 0;
+    for(;;) {
+        uint16_t c = cbuf_peek(&forth_in, i);
+        // infof("peek: %d\n", c);
+
+        switch(c) {
+        case CBUF_EAGAIN:
+            /* No complete word. */
+            return 0;
+        case '\t':
+        case '\n':
+        case '\r':
+        case ' ':
+            /* Whitespace.  Skip if we don't have anything yet.
+             * Otherwise treat as delimiter. */
+            if (i == 0) {
+                cbuf_drop(&forth_in, 1);
+            }
+            else {
+                /* We have only just peeked characters.  Only drop
+                 * when complete word is in. */
+                cbuf_drop(&forth_in, i);
+                // infof("w:%d\n", i);
+                return i;
+            }
+            break;
+        default:
+            if (i < len) buf[i] = c;
+            i++;
+            break;
+        }
+    }
+}
 
 
-const w lit1[] = { (w)enter, (w)lit, (w)1, (w)exit };
-const w test[] = { (w)enter, (w)lit1, (w)lit1, (w)add, (w)print, (w)exit };
-
-/* ... but gets tedious when conditional jumps are involved.
-
-   That said I've never liked implementing the outer interpreter in
-   Forth.  I only interact with these things when I have another
-   computer available that can run some meta code.  So for now, see
-   where this is heading. */
 
 
 /* TAG_PLUGIO stream will be routed here. */
@@ -257,8 +319,17 @@ uint32_t forth_read(uint8_t *buf, uint32_t size) {
     return cbuf_read(&forth_out, buf, size);
 }
 void forth_write(const uint8_t *buf, uint32_t len) {
-    cbuf_write(&forth_out, buf, len);
+    cbuf_write(&forth_in, buf, len);
+    uint8_t word[16];
+    for(;;) {
+        uint32_t len = forth_accept(word, sizeof(word)-1);
+        if (!len) return;
+        word[len] = 0;
+        w xt = forth_find((const char*)&word[0]);
+        infof("word: %08x %s\n", xt, word);
+    }
 }
+
 void forth_start(void) {
     infof("forth_start()\n");
     CBUF_INIT(forth_in);

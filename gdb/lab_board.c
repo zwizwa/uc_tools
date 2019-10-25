@@ -68,7 +68,7 @@ struct cbuf slip_out; uint8_t slip_out_buf[256*2];
 struct cbuf uart1_in;  uint8_t uart1_in_buf[1024];
 struct cbuf uart1_out; uint8_t uart1_out_buf[1024];
 
-struct pbuf packet_in; uint8_t packet_in_buf[2+4+1024]; // FLASH_WRITE
+struct pbuf packet_in; uint8_t packet_in_buf[64+1024]; // FLASH_WRITE
 
 
 // Main rate is just base clock for audio
