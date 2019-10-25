@@ -145,7 +145,7 @@ uint8_t     forth_in_buf[64];
 struct cbuf forth_in;
 
 
-#define DS_LOGSIZE 5
+#define DS_LOGSIZE 3
 #define DS_SIZE (1 << DS_LOGSIZE)
 #define DS_MASK (DS_SIZE-1)
 
@@ -192,22 +192,25 @@ static void rx(w* _) {
 static void tx(w* _) {
     cbuf_put(&forth_out, pop().u32);
 }
-static void p(w* _) {
-    uint32_t val = pop().u32;
+static void print_hex(uint32_t val, uint32_t nb_digits) {
     const uint8_t c[] = "0123456789ABCDEF";
     // leading zeros are annoying
     uint32_t dontskip = 0;
-    for(int digit=7; digit>=0; digit--) {
+    for(int digit=nb_digits-1; digit>=0; digit--) {
         uint32_t d = 0xF&(val>>(4*digit));
         dontskip += d;
         if (dontskip || (digit==0)) {
             push((w)c[d]);
-            tx(_);
+            tx(0);
         }
     }
     push((w)'\n');
-    tx(_);
+    tx(0);
 }
+static void p(w* _) {
+    print_hex(pop().u32, 8);
+}
+
 static void fetch(w* _) {
     TOP = *(TOP.pw);
 }
@@ -249,8 +252,11 @@ static void s(w* _) {
    an outer interpreter written in another language.  Writing
    primitives in C can be done like this ... */
 
+// #define TEST
+#ifdef TEST
 const w lit1[] = { (w)enter, (w)lit, (w)1, (w)exit };
 const w test[] = { (w)enter, (w)lit1, (w)lit1, (w)add, (w)p, (w)exit };
+#endif
 
 /* ... but gets tedious when conditional jumps are involved.
 
@@ -367,6 +373,8 @@ void forth_write(const uint8_t *buf, uint32_t len) {
     for(;;) {
         uint32_t len = forth_accept(word, sizeof(word)-1);
         if (!len) return;
+        if (len>sizeof(word)-1) len = sizeof(word)-1;
+
         word[len] = 0;
         w xt = forth_find((const char*)&word[0]);
         if (xt.i) {
@@ -391,8 +399,10 @@ void forth_start(void) {
     const uint8_t hello[] = "forth_start()\r\n";
     cbuf_write(&forth_out, hello, sizeof(hello)-1);
 
+#ifdef TEST
     infof("(pre)  di = %d\n", di);
     run((w)test);
     infof("(post) di = %d\n", di);
+#endif
 
 }
