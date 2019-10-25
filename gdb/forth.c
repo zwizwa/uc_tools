@@ -50,6 +50,7 @@
 
 union word;
 typedef void (*code_fn)(union word *);
+typedef void (*void_fn)(void);
 union word {
     int i;
     uint32_t u32;
@@ -57,6 +58,7 @@ union word {
     uint8_t b;
     char c;
     code_fn code;
+    void_fn vcode;
     union word *pw;
     const union word *cpw;
 };
@@ -252,8 +254,8 @@ static void s(w* _) {
    an outer interpreter written in another language.  Writing
    primitives in C can be done like this ... */
 
-// #define TEST
-#ifdef TEST
+// #define FORTH_TEST
+#ifdef FORTH_TEST
 const w lit1[] = { (w)enter, (w)lit, (w)1, (w)exit };
 const w test[] = { (w)enter, (w)lit1, (w)lit1, (w)add, (w)p, (w)exit };
 #endif
@@ -273,6 +275,13 @@ struct record {
 };
 
 struct record dict[] = {
+
+/* The idea is to just include forth.c in a wrapper .c file, and
+ * define some extra application words before including. */
+#ifdef FORT_WORDS
+FORTH_WORDS
+#endif
+
     // eForth primitives
     // System interface
     {"?rx",     (w)rx},
@@ -399,7 +408,7 @@ void forth_start(void) {
     const uint8_t hello[] = "forth_start()\r\n";
     cbuf_write(&forth_out, hello, sizeof(hello)-1);
 
-#ifdef TEST
+#ifdef FORTH_TEST
     infof("(pre)  di = %d\n", di);
     run((w)test);
     infof("(post) di = %d\n", di);
