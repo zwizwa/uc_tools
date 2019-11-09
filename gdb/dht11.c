@@ -9,35 +9,39 @@
 
 */
 
+
+
+
+
 /* Platform dependent functionality includes the timer used for
  * measuring bit times, and the interrupt mechanism that calls
  * _posedge() and _negedge() functions. */
-#define DHT11_PER_US 1 // FIXME
-#define DHT11_BIT0_TIME ((uint32_t)(25 * DHT11_PER_US))
-#define DHT11_BIT1_TIME ((uint32_t)(70 * DHT11_PER_US))
-static inline void dht11_hw_reset_timer(void) {
-}
-static inline void dht11_hw_stop_timer(void) {
-}
-static inline int dht11_hw_read_timer_bit(struct dht11 *s) {
-    /* Time scale is hardware dependent.  Demodulation is done here
-     * based on BIT0/BIT1 time. */
-    uint32_t time = 0;
-    return time > ((DHT11_BIT0_TIME + DHT11_BIT1_TIME)/2)
-}
-static inline void dht11_hw_enable_interrupt(void) {
-}
-static inline void dht11_hw_disable_interrupt(void) {
-}
-
-
 #include "dht11.h"
+#include "infof.h"
+static inline void dht11_hw_response(struct dht11 *s, uint8_t rh, uint8_t t) {
+    infof("dht11: %d %d\n", rh, t);
+}
+static inline void dht11_hw_time_reset(struct dht11 *s) {
+}
+static inline void dht11_hw_time_stop(struct dht11 *s) {
+}
+static inline uint32_t dht11_hw_time_us(struct dht11 *s) {
+    return 0;
+}
+static inline void dht11_hw_io_enable(struct dht11 *s) {
+}
+static inline void dht11_hw_io_disable(struct dht11 *s) {
+}
+static inline void dht11_hw_delay_start(struct dht11 *s, uint32_t us) {
+}
+static inline void dht11_hw_delay_stop(struct dht11 *s) {
+}
+static inline void dht11_hw_io_write(struct dht11 *s, int val) {
+}
+
 
 #include <stdint.h>
 #include <string.h>
-
-
-
 
 #include "base.h"
 #include "gdbstub_api.h"
