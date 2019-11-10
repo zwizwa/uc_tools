@@ -48,6 +48,29 @@
    and only write bits when count >= 1.
 */
 
+
+/* DESIGN
+
+   This tests a new state machine design approach based on the
+   following principles:
+
+   - Capture the functionality inside a start function that will be
+     called by the highlevel code, and an event handler function that
+     will be called by system support.
+
+   - Keep only a single event handler function, and abstract events
+     through data structures.  This seems to keep control flow a bit
+     more clear: the start function asks for events, and each call of
+     the handle function might ask for more events.
+
+   - The "holes" for system _hw_ functionality should be implemented
+     as inline functions.  This makes better C compiler optimizations
+     possible even when coupling between hw and the logic is quite
+     tight.
+
+*/
+
+
 #include <stdint.h>
 #include <string.h>
 
@@ -72,28 +95,26 @@ static inline void dht11_hw_io_write(struct dht11 *, int val);
    start:   start counting at 0
    us:      return time elapsed in us since reset
    stop:    done with device
-
-   Note that this can be shared with timer used for sequencing the
-   write operations as they are not used at the same time. */
+*/
 static inline void dht11_hw_time_reset(struct dht11 *);
-static inline void dht11_hw_time_stop(struct dht11 *);
 static inline uint32_t dht11_hw_time_us(struct dht11 *);
 
 
 /* IO event interface:
    enable:  we want POSEDGE/NEGEDGE events.
    disable: done, disable hardware */
-#define DTH11_EVENT_IO_POSEDGE 0
-#define DHT11_EVENT_IO_NEGEDGE 1
+#define DHT11_EVENT_POSEDGE 0
+#define DHT11_EVENT_NEGEDGE 1
 static inline void dht11_hw_io_enable(struct dht11 *);
-static inline void dht11_hw_io_disable(struct dht11 *);
 
 /* Time delay events:
    start:  we want a DELAY event after us microseconds
-   stop:   disable events */
+   stop:   disable events
+*/
 #define DHT11_EVENT_DELAY 2
 static inline void dht11_hw_delay_start(struct dht11 *, uint32_t us);
-static inline void dht11_hw_delay_stop(struct dht11 *);
+
+
 
 
 
@@ -118,8 +139,8 @@ static inline void dht11_request(struct dht11 *s) {
     dht11_hw_delay_start(s, 18000);
 }
 
-static inline void dht11_event(struct dht11 *s, uint32_t evt) {
-    switch (evt) {
+static inline void dht11_handle(struct dht11 *s, uint32_t event) {
+    switch (event) {
 
     case DHT11_EVENT_DELAY:
         /* Timer will sequence the request procedure. */
@@ -127,9 +148,6 @@ static inline void dht11_event(struct dht11 *s, uint32_t evt) {
         case 1:
             /* End request pulse on the I/O line */
             dht11_hw_io_write(s, 0);
-            /* Disable DHT11_EVENT_TIMER, and reset phase to ignore
-             * spurious events. */
-            dht11_hw_delay_stop(s);
             s->phase++;
 
             /* Start following edges, but skip the first two that are
@@ -137,42 +155,43 @@ static inline void dht11_event(struct dht11 *s, uint32_t evt) {
             s->count = -2;
             dht11_hw_io_enable(s);
             dht11_hw_time_reset(s);
+
+            /* Register a timeout */
+            dht11_hw_delay_start(s, 1000000);
             break;
+
+        case 2:
+            /* Communication should be done by now. */
+            /* Ensure spurious events are ignored. */
+            s->phase++;
+            break;
+
         default:
             /* INVALID */
             break;
         }
 
-    case DHT11_EVENT_IO_NEGEDGE:
+    case DHT11_EVENT_NEGEDGE:
         /* A bit is encodued in the elapsed time since last
          * posedge. Decode by thresholding on average of on/off
          * times. */
-        if (s->count >= 0) {
+        if ((s->count >= 0) && (s->count < 40)) {
             uint32_t us = dht11_hw_time_us(s);
             int bitval = us < ((24+72)/2);
             int byte = (s->count / 8);
-            int bit  = (s->count % 8);
+            int bit  = 7 - (s->count % 8);  // MSB first
             s->data[byte] |= (bitval << bit);
         }
         else {
-            /* Ignore edges that are part of preamble. */
+            /* Ignore edges that are part of preamble, or any trailing
+             * spurious edges. */
         }
         s->count++;
         break;
 
 
-    case DTH11_EVENT_IO_POSEDGE:
-        if (s->count < sizeof(s->data) * 8) {
-            /* There's more to come.  Reset timer to measure the time
-             * to next negedge. */
-            dht11_hw_time_reset(s);
-        }
-        else {
-            /* All bits are in so this was the last edge.  Turn off
-             * all machinery. */
-            dht11_hw_time_stop(s);
-            dht11_hw_io_disable(s);
-
+    case DHT11_EVENT_POSEDGE:
+        if (s->count == sizeof(s->data) * 8) {
             /* Deliver only when consistency check passes. */
             uint8_t cs = 0;
             for (int i=0; i<4; i++) cs += s->data[i];
@@ -184,6 +203,11 @@ static inline void dht11_event(struct dht11 *s, uint32_t evt) {
             else {
                 /* BAD CHECKSUM */
             }
+        }
+        else {
+            /* There's more to come.  Reset timer to measure the time
+             * to next negedge. */
+            dht11_hw_time_reset(s);
         }
         break;
     default:

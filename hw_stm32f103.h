@@ -244,6 +244,7 @@ struct hw_delay {
     uint32_t rcc;   // peripheral clock
     uint32_t irq;   // interrupt request
     uint32_t tim;   // timer instance
+    uint32_t psc;   // prescaler (backwards compat set to 0)
 };
 
 
@@ -258,7 +259,7 @@ INLINE void hw_delay_init(struct hw_delay c, uint32_t default_ticks, int interru
     hw_tim_disable_counter(c.tim);
     timer_set_mode(c.tim, TIM_CR1_CKD_CK_INT,TIM_CR1_CMS_EDGE,TIM_CR1_DIR_UP);
     timer_set_master_mode(c.tim, TIM_CR2_MMS_COMPARE_OC1REF); // CR2.MMS = 1xx -> OCxREF = TRGO
-    timer_set_prescaler(c.tim, 0); // 72MHz in
+    timer_set_prescaler(c.tim, c.psc); // 72MHz in
     hw_tim_set_period(c.tim, default_ticks); // for arm_fixed
     timer_enable_irq(c.tim, TIM_DIER_UIE);
     timer_one_shot_mode(c.tim);
