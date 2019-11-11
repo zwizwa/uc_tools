@@ -159,23 +159,30 @@ static inline void dht11_handle(struct dht11 *s, uint32_t event) {
             /* End request pulse on the I/O line */
             dht11_hw_io_write(s, 1);
 
-            /* Start measurement. */
-            dht11_hw_time_reset(s);
-
-            /* Register a timeout */
-            dht11_hw_delay_start_ms(s, 1000);
+            /* Communication is finalized at a fixed time in the
+             * future.  This allows us to handle the case when no
+             * device is present, or not enough edges come through. */
+            dht11_hw_delay_start_ms(s, 10);
 
             s->phase++;
             break;
 
-        case 2:
+        case 2: {
             /* Communication should be done by now. */
-            /* Ensure spurious events are ignored. */
+            // infof("end: count=%d\n", s->count);
+            uint8_t cs = 0;
+            for (int i=0; i<4; i++) cs += s->data[i];
+            uint8_t rh = s->data[0];
+            uint8_t t  = s->data[2];
+            int ok = (s->count == 40) && (cs == s->data[4]);
+            dht11_hw_response(s, ok, rh, t);
+
             s->phase++;
             break;
+        }
 
         default:
-            /* INVALID */
+            /* Ensure spurious events are ignored. */
             break;
         }
 
@@ -200,19 +207,7 @@ static inline void dht11_handle(struct dht11 *s, uint32_t event) {
 
 
     case DHT11_EVENT_POSEDGE:
-        if (s->count == sizeof(s->data) * 8) {
-            /* Deliver only when consistency check passes. */
-            uint8_t cs = 0;
-            for (int i=0; i<4; i++) cs += s->data[i];
-            uint8_t rh = s->data[0];
-            uint8_t t  = s->data[2];
-            dht11_hw_response(s, cs == s->data[4], rh, t);
-        }
-        else {
-            /* There's more to come.  Reset timer to measure the time
-             * to next negedge. */
-            dht11_hw_time_reset(s);
-        }
+        dht11_hw_time_reset(s);
         break;
     default:
         /* INVALID */
