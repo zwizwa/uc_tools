@@ -20,6 +20,12 @@
 
 #include "base.h"
 #include "infof.h"
+#include "slipstub.h"
+
+/* Buffers need to be reserved in the main app. */
+struct cbuf cbuf_from_usb; uint8_t cbuf_from_usb_buf[4];
+struct cbuf cbuf_to_usb;   uint8_t cbuf_to_usb_buf[1024];
+struct pbuf pbuf_from_usb; uint8_t pbuf_from_usb_buf[1024];
 
 
 /* The generic DHT11 driver is prameterized by platform dependent
@@ -50,7 +56,6 @@ static void send(uint32_t event) {
    This fits perfectly, so the prescal can be set to 1.
 */
 
-
 const struct hw_periodic hw_tim_10us[] = {
 //          rcc       irq            tim   div      pre
 //-------------------------------------------------------
@@ -59,6 +64,15 @@ const struct hw_periodic hw_tim_10us[] = {
 #define TIM 2
 #define C_TIM hw_tim_10us[TIM]
 
+
+/* Number of integral ticks per millisecond. */
+#define ITICKS_PER_MS (72000.0/((double)0x10000))
+
+/* Number of microseconds per fractional tick. */
+#define US_PER_FTICK ((double)(1.0/72.0))
+
+
+
 /* The hardware timer values -- i.e. the fractional number of 1.1kHz
    ticks -- is used for fine scale measurements. */
 volatile uint16_t timer_frac_mark;
@@ -66,9 +80,12 @@ static inline void dht11_hw_time_reset(struct dht11 *s) {
     timer_frac_mark = hw_tim_counter(C_TIM.tim);
 }
 static inline uint32_t dht11_hw_time_us(struct dht11 *s) {
-    uint16_t t = hw_tim_counter(C_TIM.tim) - timer_frac_mark;
-    return t; // FIXME: SCALE
+    uint16_t fticks = hw_tim_counter(C_TIM.tim) - timer_frac_mark;
+    uint32_t us = (((double)fticks) * US_PER_FTICK);
+    // infof("us = %d\n", us);
+    return us;
 }
+
 
 /* The integral number of 1.1kHz ticks is used for delay events. */
 volatile uint32_t timer_ticks;
@@ -82,9 +99,11 @@ void HW_TIM_ISR(TIM)(void) {
         send(DHT11_EVENT_DELAY);
     }
 }
-static inline void dht11_hw_delay_start(struct dht11 *s, uint32_t us) {
+static inline void dht11_hw_delay_start_ms(struct dht11 *s, uint32_t ms) {
+    uint32_t tticks = (uint32_t)(ITICKS_PER_MS*((double)ms));
+    //infof("delay_start: ms=%d, tticks=%d\n", ms, tticks);
     timer_delay_enable = 1;
-    timer_delay_mark = timer_ticks + us; // FIXME: SCALE
+    timer_delay_mark = timer_ticks + tticks;
 }
 static inline void dht11_hw_delay_stop(struct dht11 *s) {
     // Just leave it on for now
@@ -113,19 +132,20 @@ static inline void dht11_hw_io_disable(struct dht11 *s) {
 // Weak 1, strong 0.
 static inline void dht11_hw_io_write(struct dht11 *s, int val) {
     if (val) {
-        hw_gpio_write(C_GPIO,1); // pull up direction
-        hw_gpio_config(C_GPIO, HW_GPIO_CONFIG_INPUT_PULL);
+        hw_gpio_high(C_GPIO); // pull up direction
+        hw_gpio_config(C_GPIO, HW_GPIO_CONFIG_OUTPUT); // jolt
+        hw_gpio_config(C_GPIO, HW_GPIO_CONFIG_INPUT_PULL); // keep
     }
     else {
-        hw_gpio_write(C_GPIO,0);
+        hw_gpio_low(C_GPIO);
         hw_gpio_config(C_GPIO, HW_GPIO_CONFIG_OUTPUT);
     }
 }
 
 
 /* Endpoint */
-static inline void dht11_hw_response(struct dht11 *s, uint8_t rh, uint8_t t) {
-    infof("dht11: %d %d\n", rh, t);
+static inline void dht11_hw_response(struct dht11 *s, int ok, uint8_t rh, uint8_t t) {
+    infof("dht11: %d %d %d\n", ok, rh, t);
     /* Resources can be freed here */
 
     /* FIXME: The machine is halted.  All interrupts can be turned
@@ -135,36 +155,11 @@ static inline void dht11_hw_response(struct dht11 *s, uint8_t rh, uint8_t t) {
 
 
 
-#include <stdint.h>
-#include <string.h>
-
 #include "gdbstub_api.h"
 #include <string.h>
 #include "cbuf.h"
 
-struct cbuf to_usb; uint8_t to_usb_buf[1024];
 
-/* For debugging. */
-volatile uint32_t count_timer = 0;
-volatile uint32_t count_exti = 0;
-
-
-
-static void app_write(const uint8_t *buf, uint32_t len) {
-    //infof("app_write: %d\n", len);
-}
-static uint32_t app_read(uint8_t *buf, uint32_t len) {
-    return cbuf_read(&to_usb, buf, len);
-    //return info_read(buf, len);
-}
-const struct gdbstub_io app_io = {
-    .read  = app_read,
-    .write = app_write,
-};
-void switch_protocol(const uint8_t *buf, uint32_t size) {
-    *_service.io = (struct gdbstub_io *)(&app_io);
-    (*_service.io)->write(buf, size);
-}
 
 
 
@@ -174,14 +169,46 @@ void switch_protocol(const uint8_t *buf, uint32_t size) {
 #if 1
 /* Interactive testing at GDB prompt. */
 KEEP void test(int n) {
+    infof("running test %d:\n", n);
     switch(n) {
     case 0:
+        infof("low\n");
+        dht11_hw_io_write(&dht11, 0);
+        break;
+    case 1:
+        infof("high\n");
+        dht11_hw_io_write(&dht11, 1);
+        break;
+    case 2:
+        infof("dht_request()\n");
         dht11_request(&dht11);
         break;
+    default:
+        infof("no such test\n");
     }
 }
 #endif
 
+/* This function receives complete SLIP packets from USB.
+   Note that the pbuf contains the tag in the first 2 bytes. */
+static void dispatch(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
+    infof("handle tag %04x\n", tag);
+    switch(tag) {
+    case 0x101:
+        infof("dht_request()\n");
+        dht11_request(&dht11);
+        break;
+    default:
+        infof("bad tag\n");
+    }
+}
+
+struct slipstub slipstub = {
+    .slip_in   = &cbuf_from_usb,
+    .packet_in = &pbuf_from_usb,
+    .slip_out  = &cbuf_to_usb,
+    .dispatch  = dispatch
+};
 
 
 const char config_product[];
@@ -189,9 +216,18 @@ void start(void) {
     /* Low level application init.  Note that this needs to be called
      * manually after loading to initialize memory. */
     hw_app_init();
-    CBUF_INIT(to_usb);
-    uint8_t msg[] = {0,0,0,1,123};
-    cbuf_write(&to_usb, msg, sizeof(msg));
+
+    CBUF_INIT(cbuf_from_usb);
+    CBUF_INIT(cbuf_to_usb);
+    PBUF_INIT(pbuf_from_usb);
+
+    /* GPIO & EXTI */
+    rcc_periph_clock_enable(RCC_GPIOA | RCC_AFIO);
+
+    /* Idle line */
+    dht11_hw_io_write(&dht11, 1);
+    hw_exti_init(C_EXTI);
+    hw_exti_arm(C_EXTI);
 
     /* Use a single periodic timer to provide time base.  If the
      * application allows for it -- basically a power consumption
@@ -200,12 +236,6 @@ void start(void) {
      * directly. */
     hw_periodic_init(C_TIM);
 
-    /* GPIO & EXTI */
-    rcc_periph_clock_enable(RCC_GPIOA | RCC_AFIO);
-    hw_gpio_high(GPIOA,0); // pull up
-    hw_gpio_config(GPIOA,0,HW_GPIO_CONFIG_INPUT_PULL);
-    hw_exti_init(C_EXTI);
-    hw_exti_arm(C_EXTI);
 
     infof("product: %s\n",&config_product[0]);
 
@@ -216,17 +246,16 @@ const char config_product[]      CONFIG_DATA_SECTION = "DHT11 interface board";
 //const char config_serial[]       CONFIG_DATA_SECTION = "123";
 const char config_firmware[]     CONFIG_DATA_SECTION = FIRMWARE;
 const char config_version[]      CONFIG_DATA_SECTION = BUILD;
-const char config_protocol[]     CONFIG_DATA_SECTION = "{packet,4}";
+const char config_protocol[]     CONFIG_DATA_SECTION = "slip";
 
 struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .manufacturer    = config_manufacturer,
     .product         = config_product,
-    //.serial          = config_serial,
     .firmware        = config_firmware,
     .version         = config_version,
-    //.protocol        = config_protocol,
+    .protocol        = config_protocol,
     .start           = start,
-    .switch_protocol = switch_protocol,
+    .switch_protocol = slipstub_switch_protocol,
 };
 
 

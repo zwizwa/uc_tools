@@ -85,7 +85,7 @@ struct dht11 {
    See dht11.c for STM32F103 example. */
 
 /* Delivery of validated response. */
-static inline void dht11_hw_response(struct dht11 *, uint8_t rh, uint8_t t);
+static inline void dht11_hw_response(struct dht11 *, int ok, uint8_t rh, uint8_t t);
 
 
 /* IO access */
@@ -105,14 +105,13 @@ static inline uint32_t dht11_hw_time_us(struct dht11 *);
    disable: done, disable hardware */
 #define DHT11_EVENT_POSEDGE 0
 #define DHT11_EVENT_NEGEDGE 1
-static inline void dht11_hw_io_enable(struct dht11 *);
 
 /* Time delay events:
    start:  we want a DELAY event after us microseconds
    stop:   disable events
 */
 #define DHT11_EVENT_DELAY 2
-static inline void dht11_hw_delay_start(struct dht11 *, uint32_t us);
+static inline void dht11_hw_delay_start_ms(struct dht11 *, uint32_t ms);
 
 
 
@@ -132,32 +131,41 @@ static inline void dht11_hw_delay_start(struct dht11 *, uint32_t us);
 
 static inline void dht11_request(struct dht11 *s) {
     memset(s, 0, sizeof(*s));
+
+    /* Edge events will be always active.  We will see everything: the
+     * ones sent out by us, the initial acknowledgment by DHT11, and
+     * the data bits.  To keep it simple, initialize the bit count to
+     * a negative value to skipt the edges that do not contain
+     * data. */
+    s->count = -4;
+
+    /* Request DHT11_EVENT_DELAY that is used to release the line again. */
+    s->phase = 1;
+    dht11_hw_delay_start_ms(s, 18);
+
     /* Start request pulse on the I/O line. */
     dht11_hw_io_write(s, 0);
-    /* Request DHT11_EVENT_DELAY */
-    s->phase = 1;
-    dht11_hw_delay_start(s, 18000);
 }
 
 static inline void dht11_handle(struct dht11 *s, uint32_t event) {
+    // infof("event %d\n", event);
     switch (event) {
+
 
     case DHT11_EVENT_DELAY:
         /* Timer will sequence the request procedure. */
         switch (s->phase) {
         case 1:
             /* End request pulse on the I/O line */
-            dht11_hw_io_write(s, 0);
-            s->phase++;
+            dht11_hw_io_write(s, 1);
 
-            /* Start following edges, but skip the first two that are
-               part of the preamble. */
-            s->count = -2;
-            dht11_hw_io_enable(s);
+            /* Start measurement. */
             dht11_hw_time_reset(s);
 
             /* Register a timeout */
-            dht11_hw_delay_start(s, 1000000);
+            dht11_hw_delay_start_ms(s, 1000);
+
+            s->phase++;
             break;
 
         case 2:
@@ -177,10 +185,11 @@ static inline void dht11_handle(struct dht11 *s, uint32_t event) {
          * times. */
         if ((s->count >= 0) && (s->count < 40)) {
             uint32_t us = dht11_hw_time_us(s);
-            int bitval = us < ((24+72)/2);
+            int bitval = us > ((24+72)/2);
             int byte = (s->count / 8);
             int bit  = 7 - (s->count % 8);  // MSB first
             s->data[byte] |= (bitval << bit);
+            //infof("bit %d = %d\n", s->count, bitval);
         }
         else {
             /* Ignore edges that are part of preamble, or any trailing
@@ -195,14 +204,9 @@ static inline void dht11_handle(struct dht11 *s, uint32_t event) {
             /* Deliver only when consistency check passes. */
             uint8_t cs = 0;
             for (int i=0; i<4; i++) cs += s->data[i];
-            if (cs == s->data[4]) {
-                uint8_t rh = s->data[0];
-                uint8_t t  = s->data[2];
-                dht11_hw_response(s, rh, t);
-            }
-            else {
-                /* BAD CHECKSUM */
-            }
+            uint8_t rh = s->data[0];
+            uint8_t t  = s->data[2];
+            dht11_hw_response(s, cs == s->data[4], rh, t);
         }
         else {
             /* There's more to come.  Reset timer to measure the time
