@@ -84,6 +84,9 @@ static inline uint32_t cbuf_read(struct cbuf *b, uint8_t *buf, uint32_t len) {
 }
 
 
+#define CBUF_WRITE(buf, ...) \
+    do { uint8_t msg[] = __VA_ARGS__; cbuf_write(buf, msg, sizeof(msg)); } while(0)
+
 /* SLIP */
 #define SLIP_END     0xC0 // 192 Packet separation marker (Break/MAB start)
 #define SLIP_ESC     0xDB // 219 Escape character

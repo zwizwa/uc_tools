@@ -1,20 +1,18 @@
 /* DHT11 interface
 
-   Note that this is much easier to implement as a blocking task, and
-   usually I would do so.  The 18ms time delay isn't a problem for
-   pausing the USB.
+   Note that this is much easier to implement using
+   blocking/busywaiting.
 
-   However, this was too nice an example to not use as a motivation to
-   explore event driven programming in a cleaner way, where events are
-   abstracted and isolated hardware-dependent code implements the
-   event propagation and setup.  This makes event-driven code
-   testable.
+   However, this was an opportunity to explore event driven
+   programming in a cleaner way, where events are abstracted and
+   isolated hardware-dependent code implements the event propagation
+   and setup.  This makes event-driven code testable.
 
    The hardware used in this example is:
    - A periodic interrupt to provide time-based events
-   - EXTI GPIO edge detection
-   - Direct GPIO contrl
    - Free-running timer readout
+   - EXTI GPIO edge detection
+   - GPIO read/write
 
 */
 
@@ -22,15 +20,17 @@
 #include "infof.h"
 #include "slipstub.h"
 
-/* Buffers need to be reserved in the main app. */
+/* Buffers for SLIP I/O.  Input uses libstub.h to implement basic
+ * behavior.  Output is a raw slip buffer. */
 struct sbuf sbuf_from_usb; uint8_t sbuf_from_usb_buf[1024];
 struct cbuf cbuf_to_usb;   uint8_t cbuf_to_usb_buf[1024];
 
 
-/* The generic DHT11 driver is prameterized by platform dependent
+/* The header has generic code, parameterized by platform dependent
  * functionality in terms of inline functions. */
 #include "dht11.h"
 struct dht11 dht11;
+
 /* Instantiate the event handler. */
 static void send(uint32_t event) {
     dht11_handle(&dht11, event);
@@ -40,19 +40,20 @@ static void send(uint32_t event) {
 /* A single general-purpose timer is used to provide two time-based
    mechanisms at different time scales:
 
-   - The ability to measure us-level time differences for decoding
-     pulse width modulation.
+   - The ability to measure microsecond-level time differences for
+     decoding pulse width modulation.
 
-   - A periodic interrupt to schedule ms-level events such as the
-     request pulse, and an overall timeout.
+   - A periodic interrupt to schedule millisecond-level events for
+     output pulse width and overall timeout.
 
-   Time differences are simplest to perform and have the highest
-   accuracy when the timer runs over the entire 16 bit range.  That
-   sets div=0x10000 and gives a base clock of
+   Time differences are simplest to perform when the timer runs over
+   the entire 16 bit range.  That requires div=0x10000 and gives a
+   base clock of
 
    (/ 72000.0 #x10000) 1.1 kHz or 0.9us
 
-   This fits perfectly, so the prescal can be set to 1.
+   This fits perfectly tot the millisecond-level requirement for the
+   interrupt, so set the prescaler to 1.
 */
 
 const struct hw_periodic hw_tim_10us[] = {
@@ -72,8 +73,8 @@ const struct hw_periodic hw_tim_10us[] = {
 
 
 
-/* The hardware timer values -- i.e. the fractional number of 1.1kHz
-   ticks -- is used for fine scale measurements. */
+/* The current hardware timer value is used for fine scale
+ * measurements. */
 volatile uint16_t timer_frac_mark;
 static inline void dht11_hw_time_reset(struct dht11 *s) {
     timer_frac_mark = hw_tim_counter(C_TIM.tim);
@@ -122,7 +123,7 @@ void exti0_isr(void) {
     send(event);
     count_exti++;
 }
-// Weak 1, strong 0.
+// Write a weak 1 and a strong 0.
 static inline void dht11_hw_io_write(struct dht11 *s, int val) {
     if (val) {
         hw_gpio_high(C_GPIO); // pull up direction
@@ -136,21 +137,19 @@ static inline void dht11_hw_io_write(struct dht11 *s, int val) {
 }
 
 
-/* Endpoint */
+/* Measurement result sink. */
 static inline void dht11_hw_response(struct dht11 *s, int ok, uint8_t rh, uint8_t t) {
     infof("dht11: %d %d %d\n", ok, rh, t);
-    /* Resources can be freed here */
 
-    /* FIXME: The machine is halted.  All interrupts can be turned
-     * off, but the machine will ignore them if they still arrive. */
+    CBUF_WRITE(&cbuf_to_usb, {1,1,ok,rh,t});
+
+    /* FIXME: Resources can be freed here. */
+
 }
 
 
 
 
-#include "gdbstub_api.h"
-#include <string.h>
-#include "cbuf.h"
 
 
 
@@ -203,6 +202,7 @@ struct slipstub slipstub = {
     .dispatch  = dispatch
 };
 
+#include "gdbstub_api.h"
 
 const char config_product[];
 void start(void) {
@@ -235,7 +235,6 @@ void start(void) {
 
 const char config_manufacturer[] CONFIG_DATA_SECTION = "Zwizwa";
 const char config_product[]      CONFIG_DATA_SECTION = "DHT11 interface board";
-//const char config_serial[]       CONFIG_DATA_SECTION = "123";
 const char config_firmware[]     CONFIG_DATA_SECTION = FIRMWARE;
 const char config_version[]      CONFIG_DATA_SECTION = BUILD;
 const char config_protocol[]     CONFIG_DATA_SECTION = "slip";
