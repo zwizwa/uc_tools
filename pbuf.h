@@ -70,9 +70,17 @@ void cbuf_write_slip_reply(
     uint8_t *buf,
     uint32_t len);
 
-
-
-
+/* pbuf + cbuf combo used for slip decoding. */
+struct sbuf {
+    struct pbuf p;
+    struct cbuf c;
+    uint8_t c_buf[4];
+};
+#define SBUF_INIT(name) \
+    do { \
+        pbuf_init(&name.p, &name##_buf[0], sizeof(name##_buf)); \
+        cbuf_init(&name.c, &name.c_buf[0], sizeof(name.c_buf)); \
+    } while(0)
 
 #endif
 

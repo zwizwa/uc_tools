@@ -23,9 +23,8 @@
 #include "slipstub.h"
 
 /* Buffers need to be reserved in the main app. */
-struct cbuf cbuf_from_usb; uint8_t cbuf_from_usb_buf[4];
+struct sbuf sbuf_from_usb; uint8_t sbuf_from_usb_buf[1024];
 struct cbuf cbuf_to_usb;   uint8_t cbuf_to_usb_buf[1024];
-struct pbuf pbuf_from_usb; uint8_t pbuf_from_usb_buf[1024];
 
 
 /* The generic DHT11 driver is prameterized by platform dependent
@@ -123,12 +122,6 @@ void exti0_isr(void) {
     send(event);
     count_exti++;
 }
-static inline void dht11_hw_io_enable(struct dht11 *s) {
-    // Always on
-}
-static inline void dht11_hw_io_disable(struct dht11 *s) {
-    // FIXME: always on
-}
 // Weak 1, strong 0.
 static inline void dht11_hw_io_write(struct dht11 *s, int val) {
     if (val) {
@@ -204,8 +197,8 @@ static void dispatch(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
 }
 
 struct slipstub slipstub = {
-    .slip_in   = &cbuf_from_usb,
-    .packet_in = &pbuf_from_usb,
+    .slip_in   = &sbuf_from_usb.c,
+    .packet_in = &sbuf_from_usb.p,
     .slip_out  = &cbuf_to_usb,
     .dispatch  = dispatch
 };
@@ -217,9 +210,8 @@ void start(void) {
      * manually after loading to initialize memory. */
     hw_app_init();
 
-    CBUF_INIT(cbuf_from_usb);
+    SBUF_INIT(sbuf_from_usb);
     CBUF_INIT(cbuf_to_usb);
-    PBUF_INIT(pbuf_from_usb);
 
     /* GPIO & EXTI */
     rcc_periph_clock_enable(RCC_GPIOA | RCC_AFIO);

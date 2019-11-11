@@ -132,12 +132,11 @@ static inline void dht11_hw_delay_start_ms(struct dht11 *, uint32_t ms);
 static inline void dht11_request(struct dht11 *s) {
     memset(s, 0, sizeof(*s));
 
-    /* Edge events will be always active.  We will see everything: the
-     * ones sent out by us, the initial acknowledgment by DHT11, and
-     * the data bits.  To keep it simple, initialize the bit count to
-     * a negative value to skipt the edges that do not contain
-     * data. */
-    s->count = -4;
+    /* Edge events will be active by this point, so we will see
+     * everything: the ones sent out by us, the initial acknowledgment
+     * by DHT11, and the data bits.  There will be 3 negedges before
+     * the first one that carries information. */
+    s->count = -3;
 
     /* Request DHT11_EVENT_DELAY that is used to release the line again. */
     s->phase = 1;
@@ -185,6 +184,7 @@ static inline void dht11_handle(struct dht11 *s, uint32_t event) {
             /* Ensure spurious events are ignored. */
             break;
         }
+        break;
 
     case DHT11_EVENT_NEGEDGE:
         /* A bit is encodued in the elapsed time since last
