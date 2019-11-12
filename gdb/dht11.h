@@ -92,12 +92,12 @@ static inline void dht11_hw_response(struct dht11 *, int ok, uint8_t rh, uint8_t
 static inline void dht11_hw_io_write(struct dht11 *, int val);
 
 /* Time measurement
-   start:   start counting at 0
-   us:      return time elapsed in us since reset
-   stop:    done with device
+   zero:       start counting at 0
+   elapsed_us: return time elapsed in us since reset
+   stop:       done with device
 */
-static inline void dht11_hw_time_reset(struct dht11 *);
-static inline uint32_t dht11_hw_time_us(struct dht11 *);
+static inline void dht11_hw_time_zero(struct dht11 *);
+static inline uint32_t dht11_hw_time_elapsed_us(struct dht11 *);
 
 
 /* IO event interface:
@@ -106,12 +106,12 @@ static inline uint32_t dht11_hw_time_us(struct dht11 *);
 #define DHT11_EVENT_POSEDGE 0
 #define DHT11_EVENT_NEGEDGE 1
 
-/* Time delay events:
-   start:  we want a DELAY event after us microseconds
+/* Time alarm events:
+   start:  we want a ALARM event after us microseconds
    stop:   disable events
 */
-#define DHT11_EVENT_DELAY 2
-static inline void dht11_hw_delay_start_ms(struct dht11 *, uint32_t ms);
+#define DHT11_EVENT_ALARM 2
+static inline void dht11_hw_alarm_start_ms(struct dht11 *, uint32_t ms);
 
 
 
@@ -138,9 +138,9 @@ static inline void dht11_request(struct dht11 *s) {
      * the first one that carries information. */
     s->count = -3;
 
-    /* Request DHT11_EVENT_DELAY that is used to release the line again. */
+    /* Request DHT11_EVENT_ALARM that is used to release the line again. */
     s->phase = 1;
-    dht11_hw_delay_start_ms(s, 18);
+    dht11_hw_alarm_start_ms(s, 18);
 
     /* Start request pulse on the I/O line. */
     dht11_hw_io_write(s, 0);
@@ -151,7 +151,7 @@ static inline void dht11_handle(struct dht11 *s, uint32_t event) {
     switch (event) {
 
 
-    case DHT11_EVENT_DELAY:
+    case DHT11_EVENT_ALARM:
         /* Timer will sequence the request procedure. */
         switch (s->phase) {
         case 1:
@@ -161,7 +161,7 @@ static inline void dht11_handle(struct dht11 *s, uint32_t event) {
             /* Communication is finalized at a fixed time in the
              * future.  This allows us to handle the case when no
              * device is present, or not enough edges come through. */
-            dht11_hw_delay_start_ms(s, 10);
+            dht11_hw_alarm_start_ms(s, 10);
 
             s->phase++;
             break;
@@ -191,7 +191,7 @@ static inline void dht11_handle(struct dht11 *s, uint32_t event) {
          * posedge. Decode by thresholding on average of on/off
          * times. */
         if ((s->count >= 0) && (s->count < 40)) {
-            uint32_t us = dht11_hw_time_us(s);
+            uint32_t us = dht11_hw_time_elapsed_us(s);
             int bitval = us > ((24+72)/2);
             int byte = (s->count / 8);
             int bit  = 7 - (s->count % 8);  // MSB first
@@ -207,7 +207,7 @@ static inline void dht11_handle(struct dht11 *s, uint32_t event) {
 
 
     case DHT11_EVENT_POSEDGE:
-        dht11_hw_time_reset(s);
+        dht11_hw_time_zero(s);
         break;
     default:
         /* INVALID */

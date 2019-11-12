@@ -76,10 +76,10 @@ const struct hw_periodic hw_tim_10us[] = {
 /* The current hardware timer value is used for fine scale
  * measurements. */
 volatile uint16_t timer_frac_mark;
-static inline void dht11_hw_time_reset(struct dht11 *s) {
+static inline void dht11_hw_time_zero(struct dht11 *s) {
     timer_frac_mark = hw_tim_counter(C_TIM.tim);
 }
-static inline uint32_t dht11_hw_time_us(struct dht11 *s) {
+static inline uint32_t dht11_hw_time_elapsed_us(struct dht11 *s) {
     uint16_t fticks = hw_tim_counter(C_TIM.tim) - timer_frac_mark;
     uint32_t us = (((double)fticks) * US_PER_FTICK);
     // infof("us = %d\n", us);
@@ -87,26 +87,23 @@ static inline uint32_t dht11_hw_time_us(struct dht11 *s) {
 }
 
 
-/* The integral number of 1.1kHz ticks is used for delay events. */
+/* The integral number of 1.1kHz ticks is used for alarm events. */
 volatile uint32_t timer_ticks;
-volatile uint32_t timer_delay_mark;
-volatile uint32_t timer_delay_enable;
+volatile uint32_t timer_alarm_mark;
+volatile uint32_t timer_alarm_enable;
 void HW_TIM_ISR(TIM)(void) {
     hw_periodic_ack(C_TIM);
     uint32_t ticks = timer_ticks++;
-    if (timer_delay_enable && (timer_delay_mark == ticks)) {
-        timer_delay_enable = 0;
-        send(DHT11_EVENT_DELAY);
+    if (timer_alarm_enable && (timer_alarm_mark == ticks)) {
+        timer_alarm_enable = 0;
+        send(DHT11_EVENT_ALARM);
     }
 }
-static inline void dht11_hw_delay_start_ms(struct dht11 *s, uint32_t ms) {
+static inline void dht11_hw_alarm_start_ms(struct dht11 *s, uint32_t ms) {
     uint32_t tticks = (uint32_t)(ITICKS_PER_MS*((double)ms));
-    //infof("delay_start: ms=%d, tticks=%d\n", ms, tticks);
-    timer_delay_enable = 1;
-    timer_delay_mark = timer_ticks + tticks;
-}
-static inline void dht11_hw_delay_stop(struct dht11 *s) {
-    // Just leave it on for now
+    //infof("alarm_start: ms=%d, tticks=%d\n", ms, tticks);
+    timer_alarm_enable = 1;
+    timer_alarm_mark = timer_ticks + tticks;
 }
 
 
@@ -140,46 +137,9 @@ static inline void dht11_hw_io_write(struct dht11 *s, int val) {
 /* Measurement result sink. */
 static inline void dht11_hw_response(struct dht11 *s, int ok, uint8_t rh, uint8_t t) {
     infof("dht11: %d %d %d\n", ok, rh, t);
-
     CBUF_WRITE(&cbuf_to_usb, {1,1,ok,rh,t});
-
     /* FIXME: Resources can be freed here. */
-
 }
-
-
-
-
-
-
-
-
-
-
-
-
-#if 1
-/* Interactive testing at GDB prompt. */
-KEEP void test(int n) {
-    infof("running test %d:\n", n);
-    switch(n) {
-    case 0:
-        infof("low\n");
-        dht11_hw_io_write(&dht11, 0);
-        break;
-    case 1:
-        infof("high\n");
-        dht11_hw_io_write(&dht11, 1);
-        break;
-    case 2:
-        infof("dht_request()\n");
-        dht11_request(&dht11);
-        break;
-    default:
-        infof("no such test\n");
-    }
-}
-#endif
 
 /* This function receives complete SLIP packets from USB.
    Note that the pbuf contains the tag in the first 2 bytes. */
@@ -228,9 +188,7 @@ void start(void) {
      * directly. */
     hw_periodic_init(C_TIM);
 
-
     infof("product: %s\n",&config_product[0]);
-
 }
 
 const char config_manufacturer[] CONFIG_DATA_SECTION = "Zwizwa";
