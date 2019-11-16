@@ -85,7 +85,7 @@ struct dht11 {
    See dht11.c for STM32F103 example. */
 
 /* Delivery of validated response. */
-static inline void dht11_hw_response(struct dht11 *, int ok, uint8_t rh, uint8_t t);
+static inline void dht11_hw_response(struct dht11 *, int ok, uint8_t *t);
 
 
 /* IO access */
@@ -171,10 +171,8 @@ static inline void dht11_handle(struct dht11 *s, uint32_t event) {
             // infof("end: count=%d\n", s->count);
             uint8_t cs = 0;
             for (int i=0; i<4; i++) cs += s->data[i];
-            uint8_t rh = s->data[0];
-            uint8_t t  = s->data[2];
             int ok = (s->count == 40) && (cs == s->data[4]);
-            dht11_hw_response(s, ok, rh, t);
+            dht11_hw_response(s, ok, &s->data[0]);
 
             s->phase++;
             break;

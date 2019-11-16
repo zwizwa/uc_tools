@@ -134,10 +134,23 @@ static inline void dht11_hw_io_write(struct dht11 *s, int val) {
 }
 
 
-/* Measurement result sink. */
-static inline void dht11_hw_response(struct dht11 *s, int ok, uint8_t rh, uint8_t t) {
-    infof("dht11: %d %d %d\n", ok, rh, t);
-    CBUF_WRITE(&cbuf_to_usb, {1,1,ok,rh,t});
+/* Measurement result sink.  DHT11 and DHT22 use different encoding:
+ * DHT11 only uses high byte for integral values, DHT22 uses hi:lo big
+ * endian for decimal .1 increments. */
+static inline void dht11_hw_response(struct dht11 *s, int ok, uint8_t *d) {
+    switch(2) {
+        case 1: { // dht11
+            infof("dht11: %d %d %d\n", ok, d[0], d[2]);
+            break;
+        }
+        case 2: { // dht22 am2302
+            uint16_t rh = d[0]*256+d[1];
+            uint16_t  t = d[2]*256+d[3];
+            infof("dht11: %d %d %d\n", ok, rh, t);
+            break;
+        }
+    }
+    CBUF_WRITE(&cbuf_to_usb, {1, 1, ok, d[0], d[1], d[2], d[3]});
     /* FIXME: Resources can be freed here. */
 }
 
