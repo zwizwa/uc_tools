@@ -4,12 +4,13 @@
 # $3 temp
 # echo "0:$0 args:$@" >>/tmp/redo.log
 
+
 ARCH="${2##*.}"
 BN=$(basename $2 .$ARCH)
 
 # Find the corresponding C file.
-# echo "UC_TOOLS_APP_DIR=$UC_TOOLS_APP_DIR" >&2
-# echo "UC_TOOLS_LIB_DIR=$UC_TOOLS_LIB_DIR" >&2
+echo "UC_TOOLS_APP_DIR=$UC_TOOLS_APP_DIR" >&2
+echo "UC_TOOLS_LIB_DIR=$UC_TOOLS_LIB_DIR" >&2
 
 C=$BN.c
 [ ! -f $C ] && C=../$BN.c
