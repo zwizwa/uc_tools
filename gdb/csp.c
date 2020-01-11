@@ -18,35 +18,22 @@
 
    - Only a fixed number of static tasks are supported
 
+   - Support SEND and SELECT
 
 
-   The basic structure of a CSP scheduler is quite straightforward.
-   The central idea is rendez-vous: both SND and RCV need to block on
-   a channel before they can both resume.
 
-   This requres a round-robin scheduler with two queues, one for SND
-   and one for RCV.  To schedule, execute the following loop:
-
-     - For each RCV, find a corresponding SND.  If there are none,
-       suspend the scheduler until a hardware event arrives.
-
-     - If a SND/RCV pair is found, copy the channel value from the
-       SND's context to the RCV's context and resume both tasks until
-       they block again, re-queueing the continuations to the proper
-       queues.  Then resume the scheduler loop.
-
-
-   Some more notes:
-
-     - SEL is like RCV, but will pick one of a number of channels
-
-
+   The basic structure of a CSP scheduler is straightforward.  The
+   central idea is rendez-vous: both SEND and SELECT block, and get
+   resumed when a compatible counterpart is waiting.
 
 */
 
-
+#ifndef ASSERT
+#define ASSERT(x)
+#endif
 
 #include <stdint.h>
+#include <string.h>
 
 struct csp_task;
 typedef void (*csp_resume)(struct csp_task *k);
@@ -64,32 +51,35 @@ typedef void (*csp_resume)(struct csp_task *k);
 */
 
 struct csp_task {
-    /* Multiple tasks (writers) can block on the same channel.  It's
-       simplest to implement the pointers inside the task struct. */
+    /* Multiple tasks can block on the same channel.  It's simplest to
+       implement the pointers inside the task struct. */
     struct csp_task *next_task;
 
-    void *buf;         // object being communicated in sender's memory
-    uint16_t size;     // size of the object
-    uint8_t chan;      // channel nb (or nb of channels for select)
-    uint8_t op;        // channel op
     csp_resume resume; // resume task, updating the continuation in place
-    uint8_t chans[0];  // channels to wait for in case of select
+    void *msg_buf;     // message being communicated in sender's memory
+    uint32_t msg_size; // size of the message or buffer room for reception
+    uint16_t op_type;  // type and nb_channels (can be >1 for select)
+    uint16_t chan[1];  // channels (spills over to >1 for select)
 };
 
 /* Semantics of send: by the time execution resumes, the object has
    been delivered to the receiver, and the storage for the data
-   element can be reclaimed for private use.  The reverse for receive:
-   on resume, object has been written. */
-#define CSP_OP_SND 0
-#define CSP_OP_RCV 1
-#define CSP_OP_SEL 2
-static inline void csp_op(uint8_t op, struct csp_task *k,
-                          uint8_t chan, const void *buf, uint16_t size) {
-    k->chan = chan;
-    k->op   = op;
-    k->size = size;
-    k->buf  = (void*)buf;
-}
+   element can be reclaimed for private use.  The reverse for select
+   (receive): on resume, object has been written, and the k->chan
+   contains the channel on which it was received.  Send is always on a
+   single channel.  Receive (select) is 1 or more channels. */
+
+/* The kind of operation is encoded in op_type before suspending.
+   0x0000 is send with one channel
+   Otherwise it is the number of channels in a select.
+
+   Before resuming, op_type contains the channel ID that had the
+   message.
+*/
+
+#define CSP_OP_SEND 0
+#define CSP_OP_SELECT(n) n
+
 
 
 /* E.g. a computed goto style state machine would have a pointer to
@@ -100,31 +90,12 @@ struct csp_task_sm {
     void *next;        // next pointer for CG machine
 };
 
-
-/* Optimize for fast switching.  One way to speed up is to implement
-   channel->blocked_list mapping using an array.  It's not clear yet
-   if this is a good or bad idea.  Depends on the application.  It
-   might be good to make this a compile time configuration option.
-   Memory-wise it seems fine, as all tasks will be blocking on some
-   input channel when idle. */
-#ifndef NB_CHANS
-#define NB_CHANS 10
-#endif
-
-/* Queues.  Implement using cbuf? */
+/* Task sets, implemented as stacks. */
 struct csp_scheduler {
-
-    /* The "cold" list is a list of blocked tasks.  Currently
-       implemented as a Channel -> task list mapping implemented as an
-       array.  Each task in the domain of this mapping is waiting for
-       a corresponding reader/writer to be rescheduled. */
-    struct csp_task *channels[NB_CHANS];
-
-    /* Current hot list (stack).  Each of these tasks need to be
-       checked if they can rendez-vous with a blocked task, or if they
-       can be moved to the cold list.  A hot list is necessary because
-       unblocking a rendez-vous will generate two new continuations
-       that will need to be checked. */
+    // blocked tasks
+    struct csp_task *cold_send;
+    struct csp_task *cold_select;
+    // suspended, to check for block/resume
     struct csp_task *hot;
 };
 
@@ -149,6 +120,10 @@ performed a write, and a buffer for an outgoing interrupt is a write
 that does not cause any tasks to schedule and will only resume the
 sender.
 
+The data structures used to contain tasks are stacks.  This is ok
+because we have no priority levels.
+
+
 1. Precondition: everything is blocking.
 
 2. Some external event happens (read or write interrupt).  The
@@ -157,40 +132,132 @@ sender.
 3. While there is a task on the hot list, find a corresponding blocked
    task on the cold list.
 
-   3a.  There is no task.  Add the task to the cold list.
+   3a.  There is no task.  Add the hot task to the cold list.
 
-   3b.  There is a corresponding cold task.  Perform the data copy
-        between writer and reader, resume both, and push their
-        resulting suspension points to the hot list.
+   3b.  There is a corresponding cold task.  Remove it from the cold
+        list. Perform the data copy between writer and reader, resume
+        both, and push their resulting suspension points to the hot
+        list.
 */
 
-static inline int is_rendezvous(struct csp_task *a,
-                                struct csp_task *b) {
-    /* FIXME: Extend for select. */
-    return (!!a) && (!!b) && (a->op != b->op);
-}
-static inline struct csp_task **block_list(struct csp_scheduler *s, int c) {
-    return &s->channels[c];
+
+/* Given a send and a select, check if they match.  If they do,
+   execute the rendez-vous and remove the cold list entry. */
+
+static inline int maybe_resume(
+    struct csp_scheduler *s,
+    struct csp_task **cold_list_entry,
+    struct csp_task *select,
+    struct csp_task *send) {
+
+    ASSERT(select->op_type != CSP_OP_SEND);
+    ASSERT(send->op_type == CSP_OP_SEND);
+
+    int send_chan = send->chan[0];
+    int n_chan = select->op_type;
+    for (int i=0; i<n_chan; i++) {
+        if (send_chan == select->chan[i]) {
+            /* Rendez-vous found */
+
+            /* Hot list entry has already been removed by caller.
+               Remove cold list entry here.  This has to be done
+               before adding it to another list.  We don't know which
+               is hot or cold so caller needs to pass this in. */
+            pop(cold_list_entry);
+
+            /* Copy the data over the channel. */
+            ASSERT(select->msg_size <= send->msg_size);
+            memcpy(select->msg_buf, send->msg_buf, send->msg_size);
+            select->msg_size = send->msg_size;
+            select->op_type = select->chan[i];
+
+            /* Resume both, and push the resulting continuations to
+               the hot list for further evaluation.  NULL resume means
+               halt after this op. */
+            select->resume(select);
+            if (select->resume) {
+                push(&s->hot, select);
+            }
+            send->resume(send);
+            if (send->resume) {
+                push(&s->hot, send);
+            }
+
+            return 1;
+        }
+    }
+    return 0;
 }
 
 void csp_schedule(struct csp_scheduler *s) {
-    struct csp_task *a, *b, **b_list;
-    while((a = pop(&s->hot))) {
-        b_list = block_list(s, a->chan);
-        /* If there is more than one element in the block list, they
-           must all be of the same type.  I.e. it's not possible that
-           the first one hides a compatible one; it would have
-           combined with it. */
-        b = *b_list;
-        if (is_rendezvous(a, b)) {
-            pop(b_list);
-            /* Resume both and push resulting ks to the hot list. */
-            a->resume(a); push(&s->hot, a);
-            b->resume(b); push(&s->hot, b);
+
+    struct csp_task *a, *b, **pb;
+
+    /* Repeat until hot list is empty. */
+  next_hot:
+    if (!(a = pop(&s->hot))) return;
+
+    /* Make the choice between send and receive early so we don't have
+       to constantly check which op kind we're looking at.  This leads
+       to two cases here with the inner routine shared. */
+    if (a->op_type == CSP_OP_SEND) {
+        for (pb = &s->cold_select; (b = *pb); pb = &(b->next_task)) {
+            struct csp_task *select = b, *send = a;
+            if (maybe_resume(s, pb, select, send)) goto next_hot;
         }
-        else {
-            /* Not a rendez-vous.  Store it in the cold list. */
-            push(&s->channels[a->chan], a);
-        }
+        push(&s->cold_send, a);
     }
+    else {
+        for (pb = &s->cold_send; (b = *pb); pb = &(b->next_task)) {
+            struct csp_task *select = a, *send = b;
+            if (maybe_resume(s, pb, select, send)) goto next_hot;
+        }
+        push(&s->cold_select, a);
+    }
+    goto next_hot;
+}
+
+
+
+void csp_start(struct csp_scheduler *s, struct csp_task *t) {
+    t->resume(t);
+    push(&s->hot, t);
+    csp_schedule(s);
+}
+
+
+/* For use in computed goto machine. */
+#define CSP_COP(ch,var,klabel,typ)      \
+    e->task.msg_buf = &(var);           \
+    e->task.msg_size = sizeof(var);     \
+    e->task.op_type = typ;              \
+    e->task.chan[0] = ch;               \
+    e->next = &&klabel;                 \
+    return;                             \
+klabel:
+
+#define CSP_SEND(ch,var,klabel) CSP_COP(ch,var,klabel,CSP_OP_SEND)
+#define CSP_RECV(ch,var,klabel) CSP_COP(ch,var,klabel,CSP_OP_SELECT(1))
+
+
+static void csp_send_halt(struct csp_task *t) {
+    t->resume = 0;
+}
+void csp_send(struct csp_scheduler *s,
+              int chan,
+              void *msg_buf,
+              uint32_t msg_len) {
+    struct csp_task t = {
+        .msg_buf = msg_buf,
+        .msg_size = msg_len,
+        .op_type = CSP_OP_SEND,
+        .chan[0] = chan,
+        .resume = csp_send_halt
+    };
+    push(&s->hot, &t);
+    csp_schedule(s);
+    /* FIXME: External send only works if there is something waiting
+     * on the channel since we're getting rid of the task struct here.
+     * If the send didn't trigger, this should really remove the task
+     * from the cold list and indicate failure to caller. */
 }
