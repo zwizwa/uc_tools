@@ -4,8 +4,8 @@
 #include <stdint.h>
 #include "slip.h"
 
-/* Circular byte buffer implemented as inline functions.
-   Rolling pointers, power-of-2 size, wrap on access. */
+/* Circular byte buffer implemented as inline functions.  Rolling
+   pointers, power-of-2 size, wrap on access. */
 
 /* Control codes. */
 #define CBUF_EAGAIN ((uint16_t)0x100)
@@ -70,6 +70,9 @@ static inline void cbuf_drop(struct cbuf *b, uint32_t nb_drop) {
     if (nb_drop > bs) { nb_drop = bs; }
     b->read += nb_drop;
 }
+static inline void cbuf_clear(struct cbuf *b) {
+    cbuf_drop(b, 0xFFFFFFFF);
+}
 static inline void cbuf_write(struct cbuf *b, const uint8_t *buf, uint32_t len) {
     for (uint32_t i=0; i<len; i++) {
         cbuf_put(b, buf[i]);
@@ -113,6 +116,26 @@ struct slice {
 void cbuf_write_slip_slices(struct cbuf *b, const struct slice *buf, uint32_t n_slices);
 
 void cbuf_write_slip_tagged(struct cbuf *b, uint16_t tag, const uint8_t *buf, uint32_t len);
+
+
+
+/* TODO */
+
+/* Some "phantom types" for distinguishing the read and write end of a
+ * cbuf by types.  FIXME: Make less hairy. */
+struct cbuf_i {
+    uint8_t priv[sizeof(struct cbuf)];
+};
+
+struct cbuf_o {
+    uint8_t priv[sizeof(struct cbuf)];
+};
+static inline void cbuf_o_put(struct cbuf_o *b, uint8_t byte) {
+    cbuf_put((struct cbuf *)b, byte);
+}
+
+
+
 
 
 

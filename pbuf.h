@@ -21,6 +21,10 @@ static inline void pbuf_init(struct pbuf *p, uint8_t *buf, uint32_t size) {
     p->buf   = buf;
     memset(buf, 0, size);
 }
+static inline void pbuf_clear(struct pbuf *p) {
+    pbuf_init(p, p->buf, p->size);
+}
+
 
 /* Initialize with statically allocated buffer with _buf postfix. */
 #define PBUF_INIT(name) pbuf_init(&name, &name##_buf[0], sizeof(name##_buf))

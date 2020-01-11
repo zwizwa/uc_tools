@@ -21,6 +21,7 @@ slipstub.c
 sliplib.c
 mdio.c
 pluginlib.c
+csp.c
 "
 
 O=$(echo $C | sed s/\\.c/\\.${ARCH}\\.o/g)
