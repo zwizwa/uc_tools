@@ -1,3 +1,5 @@
+#define CSP_HAVE_BUFFERED_SEND
+
 #include "csp.c"
 
 /* Some context
@@ -62,6 +64,7 @@
 
 struct env1 {
     struct csp_task task;
+    struct csp_op op[1];
     void *next;
     uint32_t a;
     uint32_t b;
@@ -85,6 +88,7 @@ void task1(struct env1 *e) {
 /* Two more tasks to test task1 */
 struct env0 {
     struct csp_task task;
+    struct csp_op op[1];
     void *next;
     uint32_t x;
 };
@@ -100,6 +104,7 @@ void task0(struct env0 *e) {
 
 struct env2 {
     struct csp_task task;
+    struct csp_op op[1];
     void *next;
     uint32_t n;
     uint32_t x;
