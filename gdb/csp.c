@@ -142,23 +142,26 @@ static inline void push(struct csp_task **pstack, struct csp_task *task) {
 
 /* Scheduler loop
 
-Note that an external event buffer is not a real task, but we pretend
-that a buffer for an input interrupt behaves as a task that has just
-performed a write, and a buffer for an outgoing interrupt is a write
-that does not cause any tasks to schedule and will only resume the
-sender.
+Each csp_schedule() call runs until all tasks are blocked.  For this
+to be useful in practice there has to be some external influence that
+creates new channel operations, opon which the scheduler can be used
+to propagate through the network.
 
-The data structures used to contain tasks are stacks.  This is ok
-because we have no priority levels.
+To simplify impelementation, the schedule loop does not assume any
+outside influence: it knows only about tasks and channels.  Any event
+coming from the outside is injected by emulating a task.  See
+e.g. csp_send().
 
+The general principle:
 
 1. Precondition: everything is blocking.
 
-2. Some external event happens (read or write interrupt).  The
-   corresponding tasks are added to the hot list.
+2. Some external event happens (e.g. coming from a read or write
+   interrupt on a microcontroller).  By some ad-hoc mechansim, this
+   results in a (temporary) task are added to the hot list.
 
-3. While there is a task on the hot list, find a corresponding blocked
-   task on the cold list.
+3. csp_schedule() loop: while there is a task on the hot list, find a
+   corresponding blocked task on the cold list.
 
    3a.  There is no task.  Add the hot task to the cold list.
 
@@ -166,6 +169,9 @@ because we have no priority levels.
         list. Perform the data copy between writer and reader, resume
         both, and push their resulting suspension points to the hot
         list.
+
+4. optionally: remove any temporary tasks.
+
 */
 
 
@@ -253,19 +259,26 @@ void csp_schedule(struct csp_scheduler *s) {
 }
 
 
-
+/* Start a task by letting it go through its initialization code.
+   When resume returns, the task will either be blocking on send or
+   receive, or halted. */
 void csp_start(struct csp_scheduler *s, struct csp_task *t) {
     t->resume(t);
-    push(&s->hot, t);
+    if (t->resume) push(&s->hot, t);
     csp_schedule(s);
 }
 
 
-
-
+/* Halt is implemented as the absence of resume. */
 static void csp_send_halt(struct csp_task *t) {
     t->resume = 0;
 }
+
+
+/* Synchronous send.  Note again that CSP is rendez-vous: there is no
+   other place to put a value than inside a receiver's buffer.  If
+   there is no receiver, there is no way to put it and this function
+   will fail, as indicated by the return value. */
 int csp_send(struct csp_scheduler *s,
              int chan,
              void *msg_buf,
@@ -287,10 +300,7 @@ int csp_send(struct csp_scheduler *s,
        The latter we need to check, as it is possible that there was
        no select waiting on the channel, in which case we delete and
        signal failure to caller.
-
-       Note again that CSP is rendez-vous: there is no other place to
-       put a value than inside a receiver's buffer.  If there is no
-       receiver, there is no way to put it. */
+ */
 
     FOR_TASKS(pt, s->cold_send) {
         if (*pt == &t) {
@@ -300,3 +310,12 @@ int csp_send(struct csp_scheduler *s,
     }
     return 1;
 }
+
+
+/* Buffered send.  This will succeed as long as the buffer doesn't
+   overflow.  However it requires a permanent task. */
+#if CSP_HAVE_BUFFERED_SEND
+int csp_send_buffered(struct csp_scheduler *s) {
+    // TODO
+}
+#endif
