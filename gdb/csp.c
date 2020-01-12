@@ -32,6 +32,10 @@
 #define ASSERT(x)
 #endif
 
+#ifndef LOG
+#define LOG(...)
+#endif
+
 #include <stdint.h>
 #include <string.h>
 
@@ -51,8 +55,8 @@ typedef void (*csp_resume)(struct csp_task *k);
 */
 
 struct csp_task {
-    /* Multiple tasks can block on the same channel.  It's simplest to
-       implement the pointers inside the task struct. */
+    /* A task will be part of exactly one task list, so it's simplest
+       to implement the pointers inside the task struct. */
     struct csp_task *next_task;
 
     csp_resume resume; // resume task, updating the continuation in place
@@ -60,6 +64,8 @@ struct csp_task {
     uint32_t msg_size; // size of the message or buffer room for reception
     uint16_t op_type;  // type and nb_channels (can be >1 for select)
     uint16_t chan[1];  // channels (spills over to >1 for select)
+
+    /* Channel spillover + private task data. */
 };
 
 /* Semantics of send: by the time execution resumes, the object has
@@ -84,11 +90,29 @@ struct csp_task {
 
 /* E.g. a computed goto style state machine would have a pointer to
    store the resume point, and any other state data appended to the
-   struct. */
+   struct.  */
 struct csp_task_sm {
     struct csp_task k; // header for scheduler
     void *next;        // next pointer for CG machine
+    /* Other state vars. */
 };
+
+/* For use in computed goto machine.  See test code. */
+#define CSP_CHANOP(e,ch,var,klabel,typ) \
+    e->task.msg_buf = &(var);           \
+    e->task.msg_size = sizeof(var);     \
+    e->task.op_type = typ;              \
+    e->task.chan[0] = ch;               \
+    e->next = &&klabel;                 \
+    return;                             \
+klabel:
+
+#define CSP_SEND(e,ch,var,klabel) CSP_CHANOP(e,ch,var,klabel,CSP_OP_SEND)
+#define CSP_RECV(e,ch,var,klabel) CSP_CHANOP(e,ch,var,klabel,CSP_OP_SELECT(1))
+
+
+
+
 
 /* Task sets, implemented as stacks. */
 struct csp_scheduler {
@@ -103,13 +127,17 @@ static inline struct csp_task *pop(struct csp_task **pstack) {
     struct csp_task *stack = *pstack;
     if (!stack) return 0;
     *pstack = stack->next_task;
-    stack->next_task = 0;
+    stack->next_task = 0; // POST: task is not in any list
     return stack;
 }
 static inline void push(struct csp_task **pstack, struct csp_task *task) {
+    ASSERT(!task->next_task); // PRE: task is not in any list
     task->next_task = *pstack;
     *pstack = task;
 }
+/* Iterate over task list.  Uses double pointer for pop/push. */
+#define FOR_TASKS(pb,list) \
+    for(struct csp_task **pb = &(list); *pb; pb = &((*pb)->next_task))
 
 
 /* Scheduler loop
@@ -159,10 +187,12 @@ static inline int maybe_resume(
         if (send_chan == select->chan[i]) {
             /* Rendez-vous found */
 
-            /* Hot list entry has already been removed by caller.
-               Remove cold list entry here.  This has to be done
-               before adding it to another list.  We don't know which
-               is hot or cold so caller needs to pass this in. */
+            /* Tasks can be removed from lists.  Hot list entry has
+               already been removed by caller.  Remove cold list entry
+               here.  This has to be done before adding the task to
+               another list.  We don't know if this is the select or
+               the send, so caller needs to pass in this extra
+               reference. */
             pop(cold_list_entry);
 
             /* Copy the data over the channel. */
@@ -183,15 +213,20 @@ static inline int maybe_resume(
                 push(&s->hot, send);
             }
 
+            LOG("!");
             return 1;
+        }
+        else {
+            LOG(".");
         }
     }
     return 0;
 }
 
+
 void csp_schedule(struct csp_scheduler *s) {
 
-    struct csp_task *a, *b, **pb;
+    struct csp_task *a;
 
     /* Repeat until hot list is empty. */
   next_hot:
@@ -201,15 +236,15 @@ void csp_schedule(struct csp_scheduler *s) {
        to constantly check which op kind we're looking at.  This leads
        to two cases here with the inner routine shared. */
     if (a->op_type == CSP_OP_SEND) {
-        for (pb = &s->cold_select; (b = *pb); pb = &(b->next_task)) {
-            struct csp_task *select = b, *send = a;
+        FOR_TASKS(pb, s->cold_select) {
+            struct csp_task *select = *pb, *send = a;
             if (maybe_resume(s, pb, select, send)) goto next_hot;
         }
         push(&s->cold_send, a);
     }
     else {
-        for (pb = &s->cold_send; (b = *pb); pb = &(b->next_task)) {
-            struct csp_task *select = a, *send = b;
+        FOR_TASKS(pb, s->cold_send) {
+            struct csp_task *select = a, *send = *pb;
             if (maybe_resume(s, pb, select, send)) goto next_hot;
         }
         push(&s->cold_select, a);
@@ -226,27 +261,15 @@ void csp_start(struct csp_scheduler *s, struct csp_task *t) {
 }
 
 
-/* For use in computed goto machine. */
-#define CSP_COP(ch,var,klabel,typ)      \
-    e->task.msg_buf = &(var);           \
-    e->task.msg_size = sizeof(var);     \
-    e->task.op_type = typ;              \
-    e->task.chan[0] = ch;               \
-    e->next = &&klabel;                 \
-    return;                             \
-klabel:
-
-#define CSP_SEND(ch,var,klabel) CSP_COP(ch,var,klabel,CSP_OP_SEND)
-#define CSP_RECV(ch,var,klabel) CSP_COP(ch,var,klabel,CSP_OP_SELECT(1))
 
 
 static void csp_send_halt(struct csp_task *t) {
     t->resume = 0;
 }
-void csp_send(struct csp_scheduler *s,
-              int chan,
-              void *msg_buf,
-              uint32_t msg_len) {
+int csp_send(struct csp_scheduler *s,
+             int chan,
+             void *msg_buf,
+             uint32_t msg_len) {
     struct csp_task t = {
         .msg_buf = msg_buf,
         .msg_size = msg_len,
@@ -256,8 +279,24 @@ void csp_send(struct csp_scheduler *s,
     };
     push(&s->hot, &t);
     csp_schedule(s);
-    /* FIXME: External send only works if there is something waiting
-     * on the channel since we're getting rid of the task struct here.
-     * If the send didn't trigger, this should really remove the task
-     * from the cold list and indicate failure to caller. */
+
+    /* Post condition when we exit this function:
+       - hot list will be empty, already so after csp_schedule()
+       - cold list does not contain dangling reference to &t
+
+       The latter we need to check, as it is possible that there was
+       no select waiting on the channel, in which case we delete and
+       signal failure to caller.
+
+       Note again that CSP is rendez-vous: there is no other place to
+       put a value than inside a receiver's buffer.  If there is no
+       receiver, there is no way to put it. */
+
+    FOR_TASKS(pt, s->cold_send) {
+        if (*pt == &t) {
+            pop(pt);
+            return 0;
+        }
+    }
+    return 1;
 }
