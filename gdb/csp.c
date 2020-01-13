@@ -333,27 +333,18 @@ void csp_cbuf_task(struct csp_cbuf *b) {
   again:
     if (cbuf_empty(&b->cbuf)) {
         /* Wait for send and interrupt. */
-        b->task.nb_send = 0;
-        b->task.nb_recv = 1;
-        csp_evt(&b->task.evt[0], b->c_int, NULL, 0);
-        b->next = &&r0;
         LOG("cbuf: sel: int wait\n");
-        return;
-      r0:
+        CSP_RCV(b, b->c_int, b->nb_bytes);
         LOG("cbuf: sel: int cont\n");
         goto again;
     }
     else {
         b->token = cbuf_peek(&b->cbuf, 0);
         /* Wait for send and interrupt. */
-        b->task.nb_send = 1;
-        b->task.nb_recv = 1;
-        csp_evt(&b->task.evt[0], b->c_data, &b->token, sizeof(b->token));
-        csp_evt(&b->task.evt[1], b->c_int, NULL, 0);
-        b->next = &&r1;
         LOG("cbuf: sel: int,data wait\n");
-        return;
-      r1:
+        CSP_EVT(b, 0, b->c_data, b->token);     /* SND */
+        CSP_EVT(b, 1, b->c_int,  b->nb_bytes);  /* RCV */
+        CSP_SEL(b, 1, 1);
         switch(b->task.selected) {
         case 0: /* send finished */
             LOG("cbuf: sel: int,data data cont\n");
@@ -378,10 +369,11 @@ void csp_cbuf_start(struct csp_scheduler *s,
     csp_schedule(s);
 }
 void csp_cbuf_notify(struct csp_scheduler *s,
-                     struct csp_cbuf *b) {
+                     struct csp_cbuf *b,
+                     uint16_t nb) {
     /* Unblock the reader task, which is guaranteed to be waiting for
      * an interrupt. */
-    ASSERT(1 == csp_send(s, b->c_int, NULL, 0));
+    ASSERT(1 == csp_send(s, b->c_int, &nb, sizeof(nb)));
 }
 int csp_cbuf_write(struct csp_scheduler *s,
                    struct csp_cbuf *b,

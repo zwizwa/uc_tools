@@ -42,8 +42,6 @@
 
 
 
-#define SND CSP_SEND
-#define RCV CSP_RECV
 
 /* The context's type is not known to the scheduler.  Even the next
    instruction pointer can be kept abstract.  All the scheduler needs
@@ -76,16 +74,16 @@ struct env1 {
 void task1(struct env1 *e) {
     if (e->next) goto *e->next;
   again:
-    RCV(e, 1, e->a, k1);
-    LOG("task1: RCV %d\n", e->a);
+    CSP_RCV(e, 1, e->a);
+    LOG("task1: CSP_RCV %d\n", e->a);
 
     e->b = e->a*2;
-    LOG("task1: SND %d\n", e->b);
-    SND(e, 2, e->b, k2);
+    LOG("task1: CSP_SND %d\n", e->b);
+    CSP_SND(e, 2, e->b);
 
     e->b = e->a*2+1;
-    LOG("task1: SND %d\n", e->b);
-    SND(e, 2, e->b, k3);
+    LOG("task1: CSP_SND %d\n", e->b);
+    CSP_SND(e, 2, e->b);
     goto again;
 }
 
@@ -101,8 +99,8 @@ void task0(struct env0 *e) {
     if (e->next) goto *e->next;
     e->x = 0;
   again:
-    LOG("task0: SND %d\n", e->x);
-    SND(e, 1, e->x, k1);
+    LOG("task0: CSP_SND %d\n", e->x);
+    CSP_SND(e, 1, e->x);
     e->x += 1;
     goto again;
 }
@@ -117,7 +115,8 @@ struct env2 {
 void task2(struct env2 *e) {
     if (e->next) goto *e->next;
     for(e->n = 0; e->n < 10; e->n++) {
-        RCV(e, 2, e->x, k1); LOG("task2: RCV %d\n", e->x);
+        CSP_RCV(e, 2, e->x);
+        LOG("task2: CSP_RCV %d\n", e->x);
     }
     e->task.resume = 0; // HALT
 }
@@ -125,7 +124,7 @@ void task2(struct env2 *e) {
 
 
 
-/* Run until task3 halts and everything blocks on SND. */
+/* Run until task3 halts and everything blocks on CSP_SND. */
 void test1(void) {
     struct env0 env0 = { .task = { .resume = (csp_resume_f)task0 } };
     struct env1 env1 = { .task = { .resume = (csp_resume_f)task1 } };
@@ -165,5 +164,5 @@ void test3(void) {
     csp_cbuf_start(&s, &b, ch_int, ch_data, buf, sizeof(buf));
     uint8_t msg[] = {1,2,3};
     csp_cbuf_write(&s, &b, &msg, sizeof(msg));
-    csp_cbuf_notify(&s, &b);
+    csp_cbuf_notify(&s, &b, 1);
 }

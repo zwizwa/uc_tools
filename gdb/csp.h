@@ -1,6 +1,9 @@
 #ifndef CSP_H
 #define CSP_H
 
+#include "cbuf.h"
+#include "gensym.h"
+
 #include <stdint.h>
 
 /* An event happens on a channel, and is associated with some data
@@ -12,7 +15,7 @@ struct csp_evt {
     void    *msg_buf;
 };
 
-/* Single-channel operation. */
+/* Initialize a single-channel operation. */
 static inline void csp_evt(struct csp_evt *o,
                           uint16_t chan,
                           void *msg_buf, uint32_t msg_len) {
@@ -20,8 +23,6 @@ static inline void csp_evt(struct csp_evt *o,
     o->msg_buf = msg_buf;
     o->msg_len = msg_len;
 }
-#define CSP_EVT(task,n,ch,var) \
-    csp_evt(&(task)->evt[n],ch,&(var),sizeof(var))
 
 
 struct csp_task;
@@ -48,28 +49,64 @@ struct csp_task {
     struct csp_evt evt[];
 };
 
-/* Single event send/receive */
-static inline void csp_evt1(struct csp_task *t,
-                            uint16_t chan,
-                            void *msg_buf, uint32_t msg_len,
-                            uint16_t nb_send,
-                            uint16_t nb_recv) {
-    csp_evt(&t->evt[0], chan, msg_buf, msg_len);
-    t->nb_send = nb_send;
-    t->nb_recv = nb_recv;
+/* For use in computed goto machines. See example below.  Note that
+   the scheduler doesn't care how a task is implemented.  It only
+   knows about 'resume'.  However, we do need to provide a couple of
+   tasks in the library, so the Computed Goto (CG) approach is used.
+
+   Some assumptions to keep the macros simple, state struct has:
+   - csp_task member named 'task'
+   - next code pointer 'next' */
+
+/* Select is the main blocking operation.  It waits for any of a set
+   of channel operations (events) to complete.  Before calling
+   CSP_SELECT, the corresponding csp_evt structures will need to be
+   initialized. */
+
+#define CSP_SEL_K(state,ns,nr,klabel) \
+    (state)->task.nb_send = ns;       \
+    (state)->task.nb_recv = nr;       \
+    (state)->next = &&klabel;         \
+    return;                           \
+klabel:
+#define CSP_SEL(state,ns,nr) \
+    CSP_SEL_K(state,ns,nr,GENSYM(resume_))
+
+/* Data transfer event. */
+#define CSP_EVT(state,n,ch,var) \
+    csp_evt(&((state)->task.evt[n]),ch,&(var),sizeof(var))
+
+/* Single op send and receive are special cases of select */
+#define CSP_SND(state,ch,var)                   \
+    do { CSP_EVT(state,0,ch,var);               \
+         CSP_SEL(state,1,0); } while(0)
+#define CSP_RCV(state,ch,var)                   \
+    do { CSP_EVT(state,0,ch,var);               \
+         CSP_SEL(state,0,1); } while(0)
+
+
+
+#if 1
+/* Example of a Computed Goto (CG) machine with one event buffer,
+ * going through variable initialization and then sending out the
+ * variable's value, alternating channel 1 and 2 */
+struct csp_cg_example {
+    struct csp_task task;
+    struct csp_evt evt[1];
+    void *next;
+    uint32_t a;
+};
+void csp_cg_example_resume(struct csp_cg_example *s /* state */) {
+    if (s->next) goto *s->next;
+    s->a = 123;
+    for(;;) {
+        CSP_SND(s, 1, s->a);
+        CSP_SND(s, 2, s->a);
+    }
 }
 
+#endif
 
-/* For use in computed goto machine.  See csv_test.c
-   The task's struct will need to define the .next member.  See test code. */
-#define CSP_EVT1_CG(e,ch,var,ns,nr,klabel)                           \
-    e->next = &&klabel;                                                 \
-    csp_evt1((struct csp_task *)(e),ch,&(var),sizeof(var),ns,nr);    \
-    return;                                                             \
-klabel:
-
-#define CSP_SEND(e,ch,var,klabel) CSP_EVT1_CG(e,ch,var,1,0,klabel)
-#define CSP_RECV(e,ch,var,klabel) CSP_EVT1_CG(e,ch,var,0,1,klabel)
 
 
 struct csp_scheduler;
@@ -101,6 +138,7 @@ struct csp_cbuf {
     struct cbuf cbuf;
     void *next;
     uint16_t token;
+    uint16_t nb_bytes;
     uint16_t c_int;
     uint16_t c_data;
 };
@@ -113,7 +151,8 @@ int csp_cbuf_write(struct csp_scheduler *s,
                    struct csp_cbuf *b,
                    void *data, uint32_t len);
 void csp_cbuf_notify(struct csp_scheduler *s,
-                     struct csp_cbuf *b);
+                     struct csp_cbuf *b,
+                     uint16_t nb);
 #endif
 
 #endif
