@@ -165,4 +165,9 @@ void test3(void) {
     uint8_t msg[] = {1,2,3};
     csp_cbuf_write(&s, &b, &msg, sizeof(msg));
     csp_cbuf_notify(&s, &b, 1);
+    csp_cbuf_write(&s, &b, &msg, sizeof(msg));
+    csp_cbuf_notify(&s, &b, 1);
 }
+
+
+

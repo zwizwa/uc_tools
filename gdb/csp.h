@@ -1,3 +1,6 @@
+/* Simple CSP scheduler
+   See csp.c for more comments. */
+
 #ifndef CSP_H
 #define CSP_H
 
@@ -5,6 +8,7 @@
 #include "gensym.h"
 
 #include <stdint.h>
+#include <string.h>
 
 /* An event happens on a channel, and is associated with some data
    being transferred.  Direction is based on which array the event
@@ -17,8 +21,8 @@ struct csp_evt {
 
 /* Initialize a single-channel operation. */
 static inline void csp_evt(struct csp_evt *o,
-                          uint16_t chan,
-                          void *msg_buf, uint32_t msg_len) {
+                           uint16_t chan,
+                           void *msg_buf, uint32_t msg_len) {
     o->chan = chan;
     o->msg_buf = msg_buf;
     o->msg_len = msg_len;
@@ -34,7 +38,8 @@ struct csp_task {
     struct csp_task *next_task;
 
     /* After a channel op completes, the code is resumed through this
-     * callback.  The internals of a task are opaque. */
+     * callback.  The internals of a task are opaque.  Set this to
+     * NULL to indicate a halted task. */
     csp_resume_f resume;
 
     /* Each task blocks on a select operation, which can contain a
@@ -85,6 +90,14 @@ klabel:
          CSP_SEL(state,0,1); } while(0)
 
 
+struct csp_scheduler;
+
+/* Run until all tasks are blocked. */
+void csp_schedule(struct csp_scheduler *s);
+
+/* Add a new task and schedule. */
+void csp_start(struct csp_scheduler *s, struct csp_task *t);
+
 
 #if 1
 /* Example of a Computed Goto (CG) machine with one event buffer,
@@ -96,26 +109,24 @@ struct csp_cg_example {
     void *next;
     uint32_t a;
 };
-void csp_cg_example_resume(struct csp_cg_example *s /* state */) {
-    if (s->next) goto *s->next;
-    s->a = 123;
+void csp_cg_example_resume(struct csp_cg_example *t /* task state */) {
+    if (t->next) goto *t->next;
+    t->a = 123;
     for(;;) {
-        CSP_SND(s, 1, s->a);
-        CSP_SND(s, 2, s->a);
+        CSP_SND(t, 1, t->a);
+        CSP_SND(t, 2, t->a);
     }
 }
-
+void csp_cg_example_start(struct csp_scheduler *s, struct csp_cg_example *t) {
+    memset(t,0,sizeof(*t));
+    t->task.resume = (csp_resume_f)csp_cg_example_resume;
+    csp_start(s, &t->task);
+}
 #endif
 
 
 
-struct csp_scheduler;
 
-/* Run until all tasks are blocked. */
-void csp_schedule(struct csp_scheduler *s);
-
-/* Add a new task and schedule. */
-void csp_start(struct csp_scheduler *s, struct csp_task *t);
 
 /* Send something to a channel from the outside of the CSP network.
    This can fail if there is no task waiting on the channel. */
