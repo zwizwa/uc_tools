@@ -161,6 +161,8 @@ void test3(void) {
     csp_start(&s, &env2.task);
     uint8_t buf[64];
     struct csp_cbuf b;
-    csp_cbuf_start(&s, &b, 1, 2, buf, sizeof(buf));
-    csp_schedule(&s);
+    int ch_int = 1, ch_data = 2;
+    csp_cbuf_start(&s, &b, ch_int, ch_data, buf, sizeof(buf));
+    uint8_t msg[] = {1,2,3};
+    csp_send_buffered(&s, &b, ch_int, &msg, sizeof(msg));
 }

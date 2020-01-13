@@ -412,10 +412,12 @@ void csp_cbuf_task(struct csp_cbuf *b) {
         /* Wait for send and interrupt. */
         b->task.nb_send = 0;
         b->task.nb_recv = 1;
-        csp_op(&b->task.op[1], b->c_int, NULL, 0);
+        csp_op(&b->task.op[0], b->c_int, NULL, 0);
         b->next = &&r0;
+        LOG("cbuf: sel: int wait\n");
         return;
       r0:
+        LOG("cbuf: sel: int cont\n");
         goto again;
     }
     else {
@@ -426,23 +428,28 @@ void csp_cbuf_task(struct csp_cbuf *b) {
         csp_op(&b->task.op[0], b->c_data, &b->token, sizeof(b->token));
         csp_op(&b->task.op[1], b->c_int, NULL, 0);
         b->next = &&r1;
+        LOG("cbuf: sel: int,data wait\n");
         return;
       r1:
         switch(b->task.selected) {
         case 0: /* send finished */
+            LOG("cbuf: sel: int,data data cont\n");
             cbuf_drop(&b->cbuf, 1);
             goto again;
         case 1: /* interrupt */
+            LOG("cbuf: sel: int,data int cont\n");
             goto again;
         }
     }
 }
 void csp_cbuf_start(struct csp_scheduler *s,
                     struct csp_cbuf *b,
-                    uint16_t ch_int, uint16_t ch_data,
+                    uint16_t c_int, uint16_t c_data,
                     void *buf, uint32_t size) {
     memset(b,0,sizeof(*b));
     cbuf_init(&b->cbuf, buf, size);
+    b->c_int = c_int;
+    b->c_data = c_data;
     b->task.resume = (csp_resume_f)csp_cbuf_task;
     csp_start(s, &b->task);
     csp_schedule(s);
@@ -450,13 +457,13 @@ void csp_cbuf_start(struct csp_scheduler *s,
 
 int csp_send_buffered(struct csp_scheduler *s,
                       struct csp_cbuf *b,
-                      int reader_chan,
-                      uint8_t *data, uint32_t len) {
+                      int c_int,
+                      void *data, uint32_t len) {
     if (cbuf_room(&b->cbuf) < len) return 0;
     cbuf_write(&b->cbuf, data, len);
 
     /* Unblock the reader task. */
-    ASSERT(1 == csp_send(s, reader_chan, &len, sizeof(len)));
+    ASSERT(1 == csp_send(s, c_int, NULL, 0));
     return 1;
 }
 #endif
