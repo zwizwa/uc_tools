@@ -34,6 +34,10 @@
               (c (+ a b)))
          (send c)   ;; k2
          (send c))) ;; k3
+
+   FIXME: Change the lisp to correspond to task1 again.  I've changed
+   it to make the traces easier to read.
+
 */
 
 
@@ -68,19 +72,20 @@ struct env1 {
     void *next;
     uint32_t a;
     uint32_t b;
-    uint32_t c;
 };
 void task1(struct env1 *e) {
     if (e->next) goto *e->next;
-    e->a = 123;
   again:
-    RCV(e, 1, e->b, k1);
-    LOG("task1: RCV %d\n", e->b);
-    e->c = e->a + e->b;
-    LOG("task1: SND %d\n", e->c);
-    SND(e, 2, e->c, k2);
-    LOG("task1: SND %d\n", e->c);
-    SND(e, 2, e->c, k3);
+    RCV(e, 1, e->a, k1);
+    LOG("task1: RCV %d\n", e->a);
+
+    e->b = e->a*2;
+    LOG("task1: SND %d\n", e->b);
+    SND(e, 2, e->b, k2);
+
+    e->b = e->a*2+1;
+    LOG("task1: SND %d\n", e->b);
+    SND(e, 2, e->b, k3);
     goto again;
 }
 
@@ -98,7 +103,7 @@ void task0(struct env0 *e) {
   again:
     LOG("task0: SND %d\n", e->x);
     SND(e, 1, e->x, k1);
-    e->x += 1000;
+    e->x += 1;
     goto again;
 }
 
@@ -122,9 +127,9 @@ void task2(struct env2 *e) {
 
 /* Run until task3 halts and everything blocks on SND. */
 void test1(void) {
-    struct env0 env0 = { .task = { .resume = (csp_resume)task0 } };
-    struct env1 env1 = { .task = { .resume = (csp_resume)task1 } };
-    struct env2 env2 = { .task = { .resume = (csp_resume)task2 } };
+    struct env0 env0 = { .task = { .resume = (csp_resume_f)task0 } };
+    struct env1 env1 = { .task = { .resume = (csp_resume_f)task1 } };
+    struct env2 env2 = { .task = { .resume = (csp_resume_f)task2 } };
     struct csp_scheduler s = { };
     csp_start(&s, &env0.task);
     csp_start(&s, &env1.task);
@@ -135,17 +140,27 @@ void test1(void) {
    network as a push reactive system.  Note that this requires a
    blocking receiving task to receive the value. */
 void test2(void) {
-    struct env1 env1 = { .task = { .resume = (csp_resume)task1 } };
-    struct env2 env2 = { .task = { .resume = (csp_resume)task2 } };
+    struct env1 env1 = { .task = { .resume = (csp_resume_f)task1 } };
+    struct env2 env2 = { .task = { .resume = (csp_resume_f)task2 } };
     struct csp_scheduler s = { };
     csp_start(&s, &env1.task);
     csp_start(&s, &env2.task);
-    uint32_t inp = 4000;
-    for (int i=0; i<2; i++) {
+    uint32_t inp = 0;
+    for (int i=0; i<3; i++) {
         /* Sucessful send.  Channel 1 has reader. */
         LOG("send: %d\n", csp_send(&s, 1, &inp, sizeof(inp)));
         inp++;
         /* Unsucessful send.  Channel 3 has no reader. */
         LOG("send: %d\n", csp_send(&s, 3, &inp, sizeof(inp)));
     }
+}
+/* Test the buffered external input. */
+void test3(void) {
+    struct env2 env2 = { .task = { .resume = (csp_resume_f)task2 } };
+    struct csp_scheduler s = { };
+    csp_start(&s, &env2.task);
+    uint8_t buf[64];
+    struct csp_cbuf b;
+    csp_cbuf_start(&s, &b, 1, 2, buf, sizeof(buf));
+    csp_schedule(&s);
 }

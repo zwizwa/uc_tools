@@ -40,7 +40,7 @@
 #include <string.h>
 
 struct csp_task;
-typedef void (*csp_resume)(struct csp_task *k);
+typedef void (*csp_resume_f)(struct csp_task *k);
 
 /* The scheduler sees tasks only as continuations, which are opaque C
    structures apart from a small header with bookkeping data.
@@ -147,15 +147,17 @@ struct csp_task {
 
     /* After a channel op completes, the code is resumed through this
      * callback.  The internals of a task are opaque. */
-    csp_resume resume;
+    csp_resume_f resume;
 
     /* Each task blocks on a select operation, which can contain a
        mixture of sends and receives.  A select cotnains nb_send send
        ops and nb_receive receive ops.  There is always at least one
        op.  User needs allocate as many slots as are necessary
        throughout the program. */
-    uint16_t nb_send;
-    uint16_t nb_recv;
+    uint8_t nb_send;
+    uint8_t nb_recv;
+    uint8_t selected;
+    uint8_t _res;
     struct csp_op op[];
 };
 
@@ -230,13 +232,17 @@ static inline int maybe_resume(
                 pop(cold_list_entry);
 
                 /* Copy the data over the channel. */
-                ASSERT(op_recv->msg_len <= op_send->msg_len);
-                //LOG("memcpy %p %p %d\n", op_recv->msg_buf, op_send->msg_buf, op_send->msg_len);
-                memcpy(op_recv->msg_buf, op_send->msg_buf, op_send->msg_len);
-                op_recv->msg_len = op_send->msg_len;
+                if (op_recv->msg_len) {
+                    uint32_t n =
+                        (op_recv->msg_len >= op_send->msg_len) ?
+                        op_send->msg_len : op_recv->msg_len;
+                    memcpy(op_recv->msg_buf, op_send->msg_buf, n);
+                    op_recv->msg_len = n;
+                }
 
-                // FIXME: don't store in op.  Store it in task struct.
-                // op_recv->type_chan = chan(op_send);
+                /* In both tasks, mark which op has completed. */
+                recv->selected = op_recv - &recv->op[0];
+                send->selected = op_send - &send->op[0];
 
                 /* Resume both, and push the resulting continuations
                    to the hot list for further evaluation.  NULL
@@ -326,10 +332,10 @@ int csp_send(struct csp_scheduler *s,
        - hot list will be empty, already so after csp_schedule()
        - cold list does not contain dangling reference to &t
 
-       The latter we need to check, as it is possible that there was
-       no select waiting on the channel, in which case we delete and
-       signal failure to caller.
- */
+       For the latter we need to check, as it is possible that there
+       was no select waiting on the channel, in which case we delete
+       and signal failure to caller.
+    */
 
     FOR_TASKS(pt, s->cold) {
         if (*pt == &t.task) {
@@ -341,6 +347,7 @@ int csp_send(struct csp_scheduler *s,
 }
 
 
+#if 0
 /* E.g. a computed goto style state machine would have a pointer to
    store the resume point, and any other state data appended to the
    struct.  */
@@ -349,29 +356,37 @@ struct csp_task_sm {
     void *next;        // next pointer for CG machine
     /* Other state vars. */
 };
+#endif
 
-/* For use in computed goto machine.  See test code. */
+/* Single-channel operation. */
+static inline void csp_op(struct csp_op *o,
+                          uint16_t chan,
+                          void *msg_buf, uint32_t msg_len) {
+    o->chan = chan;
+    o->msg_buf = msg_buf;
+    o->msg_len = msg_len;
+}
+#define CSP_OP(task,n,ch,var) \
+    csp_op(&(task)->op[n],ch,&(var),sizeof(var))
 static inline void csp_chanop1(struct csp_task *t,
-                               void *msg_buf, uint32_t msg_len,
                                uint16_t chan,
+                               void *msg_buf, uint32_t msg_len,
                                uint16_t nb_send,
                                uint16_t nb_recv) {
-    t->op[0].msg_buf = msg_buf;
-    t->op[0].msg_len = msg_len;
-    t->op[0].chan = chan;
+    csp_op(&t->op[0], chan, msg_buf, msg_len);
     t->nb_send = nb_send;
     t->nb_recv = nb_recv;
 }
-#define CSP_CHANOP1(e,var,klabel,typch,ns,nr)                           \
+/* For use in computed goto machine.  The task's struct will need to
+   define the .next member.  See test code. */
+#define CSP_CHANOP1_CG(e,ch,var,ns,nr,klabel)                           \
     e->next = &&klabel;                                                 \
-    csp_chanop1((struct csp_task *)(e),&(var),sizeof(var),typch,ns,nr); \
+    csp_chanop1((struct csp_task *)(e),ch,&(var),sizeof(var),ns,nr);    \
     return;                                                             \
 klabel:
 
-#define CSP_SEND(e,ch,var,klabel) \
-    CSP_CHANOP1(e,var,klabel,ch,1,0)
-#define CSP_RECV(e,ch,var,klabel) \
-    CSP_CHANOP1(e,var,klabel,ch,0,1)
+#define CSP_SEND(e,ch,var,klabel) CSP_CHANOP1_CG(e,ch,var,1,0,klabel)
+#define CSP_RECV(e,ch,var,klabel) CSP_CHANOP1_CG(e,ch,var,0,1,klabel)
 
 
 
@@ -381,19 +396,60 @@ klabel:
    a transient task to "interrupt" the reader task.  This uses cbuf.
    Use SLIP to encode arbitrary objects. */
 #ifdef CBUF_H
-struct csp_buf {
+struct csp_cbuf {
     struct csp_task task;
+    struct csp_op op[2];    // need to watch send and receive
     struct cbuf cbuf;
+    void *next;
+    uint16_t token;
+    uint16_t c_int;
+    uint16_t c_data;
 };
-void csp_buf_task(struct csp_buf *b) {
-    /* To make the interrupt work, we need to make sure we are always
-     * waiting for it.  This requires synchronization on send AND
-     * receive, which is currently not possible. */
-    // FIXME
+void csp_cbuf_task(struct csp_cbuf *b) {
+    if (b->next) goto *b->next;
+  again:
+    if (cbuf_empty(&b->cbuf)) {
+        /* Wait for send and interrupt. */
+        b->task.nb_send = 0;
+        b->task.nb_recv = 1;
+        csp_op(&b->task.op[1], b->c_int, NULL, 0);
+        b->next = &&r0;
+        return;
+      r0:
+        goto again;
+    }
+    else {
+        b->token = cbuf_peek(&b->cbuf, 0);
+        /* Wait for send and interrupt. */
+        b->task.nb_send = 1;
+        b->task.nb_recv = 1;
+        csp_op(&b->task.op[0], b->c_data, &b->token, sizeof(b->token));
+        csp_op(&b->task.op[1], b->c_int, NULL, 0);
+        b->next = &&r1;
+        return;
+      r1:
+        switch(b->task.selected) {
+        case 0: /* send finished */
+            cbuf_drop(&b->cbuf, 1);
+            goto again;
+        case 1: /* interrupt */
+            goto again;
+        }
+    }
+}
+void csp_cbuf_start(struct csp_scheduler *s,
+                    struct csp_cbuf *b,
+                    uint16_t ch_int, uint16_t ch_data,
+                    void *buf, uint32_t size) {
+    memset(b,0,sizeof(*b));
+    cbuf_init(&b->cbuf, buf, size);
+    b->task.resume = (csp_resume_f)csp_cbuf_task;
+    csp_start(s, &b->task);
+    csp_schedule(s);
 }
 
 int csp_send_buffered(struct csp_scheduler *s,
-                      struct csp_buf *b,
+                      struct csp_cbuf *b,
                       int reader_chan,
                       uint8_t *data, uint32_t len) {
     if (cbuf_room(&b->cbuf) < len) return 0;
