@@ -12,7 +12,7 @@
    - No multi-CPU support.  This is for small microcontrollers.
 
    - Tasks are abstract.  This allows implementation of task to use
-     the most convenient form, e.g. state machine with dispach,
+     the most convenient form, e.g. state machine dispach function,
      computed goto, or some form compiled down from a more traditional
      CSP-like sequential language.
 
@@ -310,16 +310,8 @@ int csp_send(struct csp_scheduler *s,
         struct csp_task task;
         struct csp_evt op;
     } t = {
-        .task = {
-            .resume = csp_send_resume,
-            .nb_send = 1,
-            .nb_recv = 0,
-        },
-        .op = {
-            .chan = chan,
-            .msg_len = msg_len,
-            .msg_buf = msg_buf
-        }
+        .task = { .resume = csp_send_resume, .nb_send = 1, .nb_recv = 0 },
+        .op  =  { .chan = chan, .msg_len = msg_len, .msg_buf = msg_buf }
     };
     task_push(&s->hot, &t.task);
     csp_schedule(s);
