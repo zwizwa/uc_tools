@@ -28,6 +28,8 @@
 
 */
 
+#include "csp.h"
+
 #ifndef ASSERT
 #define ASSERT(x) if(!(x));
 #endif
@@ -39,8 +41,6 @@
 #include <stdint.h>
 #include <string.h>
 
-struct csp_task;
-typedef void (*csp_resume_f)(struct csp_task *k);
 
 /* The scheduler sees tasks only as continuations, which are opaque C
    structures apart from a small header with bookkeping data.
@@ -133,50 +133,25 @@ The general principle:
 */
 
 
-struct csp_op {
-    uint16_t chan;
-    uint16_t msg_len;
-    void    *msg_buf;
-};
 
 
-struct csp_task {
-    /* A task will be part of exactly one task list, so it's simplest
-       to implement the pointers inside the task struct. */
-    struct csp_task *next_task;
 
-    /* After a channel op completes, the code is resumed through this
-     * callback.  The internals of a task are opaque. */
-    csp_resume_f resume;
-
-    /* Each task blocks on a select operation, which can contain a
-       mixture of sends and receives.  A select cotnains nb_send send
-       ops and nb_receive receive ops.  There is always at least one
-       op.  User needs allocate as many slots as are necessary
-       throughout the program. */
-    uint8_t nb_send;
-    uint8_t nb_recv;
-    uint8_t selected;
-    uint8_t _res;
-    struct csp_op op[];
-};
-
-/* The csp_op array has senders first, followed by receivers. */
-static inline struct csp_op *task_op_send(struct csp_task *s) {
-    return s->op;
+/* The csp_evt array has senders first, followed by receivers. */
+static inline struct csp_evt *task_evt_send(struct csp_task *s) {
+    return s->evt;
 }
-static inline struct csp_op *task_op_recv(struct csp_task *s) {
-    return &s->op[s->nb_send];
+static inline struct csp_evt *task_evt_recv(struct csp_task *s) {
+    return &s->evt[s->nb_send];
 }
 
-static inline struct csp_task *pop(struct csp_task **pstack) {
+static inline struct csp_task *task_pop(struct csp_task **pstack) {
     struct csp_task *stack = *pstack;
     if (!stack) return 0;
     *pstack = stack->next_task;
     stack->next_task = 0; // POST: task is not in any list
     return stack;
 }
-static inline void push(struct csp_task **pstack, struct csp_task *task) {
+static inline void task_push(struct csp_task **pstack, struct csp_task *task) {
     ASSERT(!task->next_task); // PRE: task is not in any list
     task->next_task = *pstack;
     *pstack = task;
@@ -194,13 +169,13 @@ struct csp_scheduler {
     struct csp_task *hot;
 };
 
-#define FOR_SENDOP(o, t) \
-    for (struct csp_op *o = task_op_send(t); \
-         o < (task_op_send(t) + t->nb_send); \
+#define FOR_SEND_EVT(o, t) \
+    for (struct csp_evt *o = task_evt_send(t); \
+         o < (task_evt_send(t) + t->nb_send); \
          o++)
-#define FOR_RECVOP(o, t) \
-    for (struct csp_op *o = task_op_recv(t); \
-         o < (task_op_recv(t) + t->nb_recv); \
+#define FOR_RECV_EVT(o, t) \
+    for (struct csp_evt *o = task_evt_recv(t); \
+         o < (task_evt_recv(t) + t->nb_recv); \
          o++)
 
 
@@ -215,9 +190,9 @@ static inline int maybe_resume(
 
     /* Scan sender's send ops, and receiver's receive ops until there
      * is a match. */
-    FOR_SENDOP(op_send, send) {
+    FOR_SEND_EVT(op_send, send) {
 
-        FOR_RECVOP(op_recv, recv) {
+        FOR_RECV_EVT(op_recv, recv) {
 
             if (op_send->chan == op_recv->chan) {
 
@@ -229,7 +204,7 @@ static inline int maybe_resume(
                    the task to another list.  We don't know if this is
                    the select or the send, so caller needs to pass in
                    this extra reference. */
-                pop(cold_list_entry);
+                task_pop(cold_list_entry);
 
                 /* Copy the data over the channel. */
                 if (op_recv->msg_len) {
@@ -241,8 +216,8 @@ static inline int maybe_resume(
                 }
 
                 /* In both tasks, mark which op has completed. */
-                recv->selected = op_recv - &recv->op[0];
-                send->selected = op_send - &send->op[0];
+                recv->selected = op_recv - &recv->evt[0];
+                send->selected = op_send - &send->evt[0];
 
                 /* Resume both, and push the resulting continuations
                    to the hot list for further evaluation.  NULL
@@ -250,11 +225,11 @@ static inline int maybe_resume(
                    first.  That makes debug traces easier to read. */
                 recv->resume(recv);
                 if (recv->resume) {
-                    push(&sched->hot, recv);
+                    task_push(&sched->hot, recv);
                 }
                 send->resume(send);
                 if (send->resume) {
-                    push(&sched->hot, send);
+                    task_push(&sched->hot, send);
                 }
 
                 //LOG("!");
@@ -271,7 +246,7 @@ void csp_schedule(struct csp_scheduler *s) {
 
     /* Repeat until hot list is empty. */
   next_hot:
-    if (!(hot = pop(&s->hot))) return;
+    if (!(hot = task_pop(&s->hot))) return;
 
     //LOG("s %p\n", s);
     FOR_TASKS(pcold, s->cold) {
@@ -281,7 +256,7 @@ void csp_schedule(struct csp_scheduler *s) {
         if (maybe_resume(s, pcold, hot, cold)) goto next_hot;
         if (maybe_resume(s, pcold, cold, hot)) goto next_hot;
     }
-    push(&s->cold, hot);
+    task_push(&s->cold, hot);
     goto next_hot;
 }
 
@@ -293,7 +268,7 @@ void csp_schedule(struct csp_scheduler *s) {
    receive, or halted. */
 void csp_start(struct csp_scheduler *s, struct csp_task *t) {
     t->resume(t);
-    if (t->resume) push(&s->hot, t);
+    if (t->resume) task_push(&s->hot, t);
     csp_schedule(s);
 }
 
@@ -312,7 +287,7 @@ int csp_send(struct csp_scheduler *s,
              uint32_t msg_len) {
     struct {
         struct csp_task task;
-        struct csp_op op;
+        struct csp_evt op;
     } t = {
         .task = {
             .resume = csp_send_halt,
@@ -325,7 +300,7 @@ int csp_send(struct csp_scheduler *s,
             .msg_buf = msg_buf
         }
     };
-    push(&s->hot, &t.task);
+    task_push(&s->hot, &t.task);
     csp_schedule(s);
 
     /* Post condition when we exit this function:
@@ -339,55 +314,12 @@ int csp_send(struct csp_scheduler *s,
 
     FOR_TASKS(pt, s->cold) {
         if (*pt == &t.task) {
-            pop(pt);
+            task_pop(pt);
             return 0;
         }
     }
     return 1;
 }
-
-
-#if 0
-/* E.g. a computed goto style state machine would have a pointer to
-   store the resume point, and any other state data appended to the
-   struct.  */
-struct csp_task_sm {
-    struct csp_task k; // header for scheduler
-    void *next;        // next pointer for CG machine
-    /* Other state vars. */
-};
-#endif
-
-/* Single-channel operation. */
-static inline void csp_op(struct csp_op *o,
-                          uint16_t chan,
-                          void *msg_buf, uint32_t msg_len) {
-    o->chan = chan;
-    o->msg_buf = msg_buf;
-    o->msg_len = msg_len;
-}
-#define CSP_OP(task,n,ch,var) \
-    csp_op(&(task)->op[n],ch,&(var),sizeof(var))
-static inline void csp_chanop1(struct csp_task *t,
-                               uint16_t chan,
-                               void *msg_buf, uint32_t msg_len,
-                               uint16_t nb_send,
-                               uint16_t nb_recv) {
-    csp_op(&t->op[0], chan, msg_buf, msg_len);
-    t->nb_send = nb_send;
-    t->nb_recv = nb_recv;
-}
-/* For use in computed goto machine.  The task's struct will need to
-   define the .next member.  See test code. */
-#define CSP_CHANOP1_CG(e,ch,var,ns,nr,klabel)                           \
-    e->next = &&klabel;                                                 \
-    csp_chanop1((struct csp_task *)(e),ch,&(var),sizeof(var),ns,nr);    \
-    return;                                                             \
-klabel:
-
-#define CSP_SEND(e,ch,var,klabel) CSP_CHANOP1_CG(e,ch,var,1,0,klabel)
-#define CSP_RECV(e,ch,var,klabel) CSP_CHANOP1_CG(e,ch,var,0,1,klabel)
-
 
 
 
@@ -396,15 +328,6 @@ klabel:
    a transient task to "interrupt" the reader task.  This uses cbuf.
    Use SLIP to encode arbitrary objects. */
 #ifdef CBUF_H
-struct csp_cbuf {
-    struct csp_task task;
-    struct csp_op op[2];    // need to watch send and receive
-    struct cbuf cbuf;
-    void *next;
-    uint16_t token;
-    uint16_t c_int;
-    uint16_t c_data;
-};
 void csp_cbuf_task(struct csp_cbuf *b) {
     if (b->next) goto *b->next;
   again:
@@ -412,7 +335,7 @@ void csp_cbuf_task(struct csp_cbuf *b) {
         /* Wait for send and interrupt. */
         b->task.nb_send = 0;
         b->task.nb_recv = 1;
-        csp_op(&b->task.op[0], b->c_int, NULL, 0);
+        csp_evt(&b->task.evt[0], b->c_int, NULL, 0);
         b->next = &&r0;
         LOG("cbuf: sel: int wait\n");
         return;
@@ -425,8 +348,8 @@ void csp_cbuf_task(struct csp_cbuf *b) {
         /* Wait for send and interrupt. */
         b->task.nb_send = 1;
         b->task.nb_recv = 1;
-        csp_op(&b->task.op[0], b->c_data, &b->token, sizeof(b->token));
-        csp_op(&b->task.op[1], b->c_int, NULL, 0);
+        csp_evt(&b->task.evt[0], b->c_data, &b->token, sizeof(b->token));
+        csp_evt(&b->task.evt[1], b->c_int, NULL, 0);
         b->next = &&r1;
         LOG("cbuf: sel: int,data wait\n");
         return;
@@ -454,16 +377,17 @@ void csp_cbuf_start(struct csp_scheduler *s,
     csp_start(s, &b->task);
     csp_schedule(s);
 }
-
-int csp_send_buffered(struct csp_scheduler *s,
-                      struct csp_cbuf *b,
-                      int c_int,
-                      void *data, uint32_t len) {
+void csp_cbuf_notify(struct csp_scheduler *s,
+                     struct csp_cbuf *b) {
+    /* Unblock the reader task, which is guaranteed to be waiting for
+     * an interrupt. */
+    ASSERT(1 == csp_send(s, b->c_int, NULL, 0));
+}
+int csp_cbuf_write(struct csp_scheduler *s,
+                   struct csp_cbuf *b,
+                   void *data, uint32_t len) {
     if (cbuf_room(&b->cbuf) < len) return 0;
     cbuf_write(&b->cbuf, data, len);
-
-    /* Unblock the reader task. */
-    ASSERT(1 == csp_send(s, c_int, NULL, 0));
     return 1;
 }
 #endif

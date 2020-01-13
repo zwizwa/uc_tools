@@ -68,7 +68,7 @@
 
 struct env1 {
     struct csp_task task;
-    struct csp_op op[1];
+    struct csp_evt evt[1];
     void *next;
     uint32_t a;
     uint32_t b;
@@ -93,7 +93,7 @@ void task1(struct env1 *e) {
 /* Two more tasks to test task1 */
 struct env0 {
     struct csp_task task;
-    struct csp_op op[1];
+    struct csp_evt evt[1];
     void *next;
     uint32_t x;
 };
@@ -109,7 +109,7 @@ void task0(struct env0 *e) {
 
 struct env2 {
     struct csp_task task;
-    struct csp_op op[1];
+    struct csp_evt evt[1];
     void *next;
     uint32_t n;
     uint32_t x;
@@ -164,5 +164,6 @@ void test3(void) {
     int ch_int = 1, ch_data = 2;
     csp_cbuf_start(&s, &b, ch_int, ch_data, buf, sizeof(buf));
     uint8_t msg[] = {1,2,3};
-    csp_send_buffered(&s, &b, ch_int, &msg, sizeof(msg));
+    csp_cbuf_write(&s, &b, &msg, sizeof(msg));
+    csp_cbuf_notify(&s, &b);
 }
