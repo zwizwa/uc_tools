@@ -24,8 +24,8 @@
    - Channels are just identifiers.  Currently there is 16 bit of
      channel space.
 
-   - The scheduler essentially implements SELECT, waking up a task
-     when one of a collection of send/receive events has occured.
+   The scheduler essentially implements SELECT, waking up a task when
+   one of a collection of send/receive events has occured.
 
 */
 
@@ -308,10 +308,14 @@ int csp_send(struct csp_scheduler *s,
              uint32_t msg_len) {
     struct {
         struct csp_task task;
-        struct csp_evt op;
+        struct csp_evt  evt;
     } t = {
-        .task = { .resume = csp_send_resume, .nb_send = 1, .nb_recv = 0 },
-        .op  =  { .chan = chan, .msg_len = msg_len, .msg_buf = msg_buf }
+        .task = { .resume  = csp_send_resume,
+                  .nb_send = 1,
+                  .nb_recv = 0 },
+        .evt  = { .chan    = chan,
+                  .msg_len = msg_len,
+                  .msg_buf = msg_buf }
     };
     task_push(&s->hot, &t.task);
     csp_schedule(s);
@@ -341,27 +345,22 @@ int csp_send(struct csp_scheduler *s,
 void csp_cbuf_task(struct csp_cbuf *b) {
     if (b->next) goto *b->next;
   again:
+    /* No data, only wait for interrupt to wake us up. */
     if (cbuf_empty(&b->cbuf)) {
-        /* Wait for send and interrupt. */
-        //LOG("cbuf: sel: int wait\n");
         CSP_RCV(b, b->c_int, b->nb_bytes);
-        //LOG("cbuf: sel: int cont\n");
         goto again;
     }
+    /* Data, wait for send to complete or interrupt to wake us up. */
     else {
         b->token = cbuf_peek(&b->cbuf, 0);
-        /* Wait for send and interrupt. */
-        //LOG("cbuf: sel: int,data wait\n");
         CSP_EVT(b, 0, b->c_data, b->token);     /* SND */
         CSP_EVT(b, 1, b->c_int,  b->nb_bytes);  /* RCV */
         CSP_SEL(b, 1/*nb_send*/, 1/*nb_recv*/);
         switch(b->task.selected) {
         case 0: /* send finished */
-            //LOG("cbuf: sel: int,data data cont\n");
             cbuf_drop(&b->cbuf, 1);
             goto again;
         case 1: /* interrupt */
-            //LOG("cbuf: sel: int,data int cont\n");
             goto again;
         }
     }
