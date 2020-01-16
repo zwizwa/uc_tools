@@ -71,6 +71,3 @@ static inline void NS(_cycle)(NS(_container_t) *q) {
 
 
 
-/* This is considered to be a local parameter to this file, so drop it
- * out of scope. */
-#undef NS

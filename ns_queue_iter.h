@@ -97,6 +97,3 @@ static inline void NS(_fold)(
 
 
 
-/* This is considered to be a local parameter to this file, so drop it
- * out of scope. */
-#undef NS

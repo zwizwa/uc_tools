@@ -35,7 +35,7 @@ typedef void (*csp_resume_f)(struct csp_task *k);
 struct csp_task {
     /* A task will be part of exactly one task list, so it's simplest
        to implement the list pointers inside the task struct. */
-    struct csp_task *next_task;
+    struct csp_task *next;
 
     /* After a channel op completes, the code is resumed through this
      * callback.  The internals of a task are opaque.  Set this to

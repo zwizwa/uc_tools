@@ -154,3 +154,24 @@ void test3(void) {
     csp_cbuf_write(&s, &b, &msg, sizeof(msg));
     csp_cbuf_notify(&s, &b, 1);
 }
+
+#ifndef ARRAY_SIZE
+#define ARRAY_SIZE(x) (sizeof(x)/sizeof(x[0]))
+#endif
+
+/* Indexed scheduler test. */
+void test4(void) {
+    struct csp_ischeduler s;
+    struct csp_evt_list c2e[100];
+    struct csp_chan_to_evt c[100];
+    csp_ischeduler_init(&s, c2e, ARRAY_SIZE(c2e), c, ARRAY_SIZE(c));
+
+    struct state0 state0 = { .task = { .resume = (csp_resume_f)resume0 } };
+    struct state1 state1 = { .task = { .resume = (csp_resume_f)resume1 } };
+    struct state2 state2 = { .task = { .resume = (csp_resume_f)resume2 } };
+    struct csp_scheduler s = { };
+    csp_start(&s, &state0.task);
+    csp_start(&s, &state1.task);
+    csp_start(&s, &state2.task);
+    csp_schedule(&s);
+}

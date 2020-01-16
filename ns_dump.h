@@ -72,4 +72,3 @@ static void NS(_close)(void) {
 }
 
 
-#undef NS
