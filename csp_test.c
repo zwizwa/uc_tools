@@ -111,67 +111,51 @@ void resume2(struct state2 *e) {
 
 
 /* Run until task3 halts and everything blocks on CSP_SND. */
-void test1(void) {
+void test1(struct csp_scheduler *s) {
     struct state0 state0 = { .task = { .resume = (csp_resume_f)resume0 } };
     struct state1 state1 = { .task = { .resume = (csp_resume_f)resume1 } };
     struct state2 state2 = { .task = { .resume = (csp_resume_f)resume2 } };
-    struct csp_scheduler s = { };
-    csp_start(&s, &state0.task);
-    csp_start(&s, &state1.task);
-    csp_start(&s, &state2.task);
-    csp_schedule(&s);
+    csp_start(s, &state0.task);
+    csp_start(s, &state1.task);
+    csp_start(s, &state2.task);
+    csp_schedule(s);
 }
 /* Add something on a channel from the outside.  I.e. use the CSP
    network as a push reactive system.  Note that this requires a
    blocking receiving task to receive the value. */
-void test2(void) {
+void test2(struct csp_scheduler *s) {
     struct state1 state1 = { .task = { .resume = (csp_resume_f)resume1 } };
     struct state2 state2 = { .task = { .resume = (csp_resume_f)resume2 } };
-    struct csp_scheduler s = { };
-    csp_start(&s, &state1.task);
-    csp_start(&s, &state2.task);
+    csp_start(s, &state1.task);
+    csp_start(s, &state2.task);
     uint32_t inp = 0;
     for (int i=0; i<3; i++) {
         /* Sucessful send.  Channel 1 has reader. */
-        ASSERT(1 == csp_send(&s, 1, &inp, sizeof(inp)));
+        ASSERT(1 == csp_send(s, 1, &inp, sizeof(inp)));
         /* Unsucessful send.  Channel 3 has no reader. */
-        ASSERT(0 == csp_send(&s, 3, &inp, sizeof(inp)));
+        ASSERT(0 == csp_send(s, 3, &inp, sizeof(inp)));
         inp++;
     }
 }
 /* Test the buffered external input. */
-void test3(void) {
+void test3(struct csp_scheduler *s) {
     struct state2 state2 = { .task = { .resume = (csp_resume_f)resume2 } };
-    struct csp_scheduler s = { };
-    csp_start(&s, &state2.task);
+    csp_start(s, &state2.task);
     uint8_t buf[64];
     struct csp_cbuf b;
     int ch_int = 1, ch_data = 2;
-    csp_cbuf_start(&s, &b, ch_int, ch_data, buf, sizeof(buf));
+    csp_cbuf_start(s, &b, ch_int, ch_data, buf, sizeof(buf));
     uint8_t msg[] = {1,2,3};
-    csp_cbuf_write(&s, &b, &msg, sizeof(msg));
-    csp_cbuf_notify(&s, &b, 1);
-    csp_cbuf_write(&s, &b, &msg, sizeof(msg));
-    csp_cbuf_notify(&s, &b, 1);
+    csp_cbuf_write(s, &b, &msg, sizeof(msg));
+    csp_cbuf_notify(s, &b, 1);
+    csp_cbuf_write(s, &b, &msg, sizeof(msg));
+    csp_cbuf_notify(s, &b, 1);
 }
 
-#ifndef ARRAY_SIZE
-#define ARRAY_SIZE(x) (sizeof(x)/sizeof(x[0]))
-#endif
-
-/* Indexed scheduler test. */
-void test4(void) {
-    struct csp_ischeduler s;
-    struct csp_evt_list c2e[100];
-    struct csp_chan_to_evt c[100];
-    csp_ischeduler_init(&s, c2e, ARRAY_SIZE(c2e), c, ARRAY_SIZE(c));
-
-    struct state0 state0 = { .task = { .resume = (csp_resume_f)resume0 } };
-    struct state1 state1 = { .task = { .resume = (csp_resume_f)resume1 } };
-    struct state2 state2 = { .task = { .resume = (csp_resume_f)resume2 } };
-    struct csp_scheduler s = { };
-    csp_start(&s, &state0.task);
-    csp_start(&s, &state1.task);
-    csp_start(&s, &state2.task);
-    csp_schedule(&s);
+void with_scheduler(int nb_c2e, int nb_c, void (*f)(struct csp_scheduler *)) {
+    struct csp_scheduler s = {};
+    struct csp_evt_list c2e[nb_c2e];
+    struct csp_chan_to_evt c[nb_c];
+    csp_scheduler_init(&s, c2e, nb_c2e, c, nb_c);
+    f(&s);
 }

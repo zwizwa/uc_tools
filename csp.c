@@ -177,12 +177,6 @@ typedef struct csp_task csp_task_list_t;
     for(struct csp_task **pp = &(list); *pp; pp = &((*pp)->next))
 
 
-/* Task sets, implemented as stacks. */
-struct csp_scheduler {
-    struct csp_task *cold; // blocked, when not considering hot tasks
-    struct csp_task *hot;  // can unblock a cold task, or become a cold task
-};
-
 static inline void do_send(
     struct csp_task *send, struct csp_evt *evt_send,
     struct csp_task *recv, struct csp_evt *evt_recv) {
@@ -207,78 +201,6 @@ static inline void do_send(
 }
 
 
-/* Check if two tasks can rendez-vous as sender and receiver.
-   Update scheduler structure accordingly.
-   See csp_schedule() first. */
-static inline int maybe_resume(
-    struct csp_scheduler *sched,
-    struct csp_task **cold_list_entry,
-    struct csp_task *send,
-    struct csp_task *recv) {
-
-    /* Scan all combinations of send and receive events until there is
-     * a match. */
-    FOR_SEND_EVT(evt_send, send) {
-    FOR_RECV_EVT(evt_recv, recv) {
-    if (evt_send->chan == evt_recv->chan) {
-
-        /* Rendez-vous found */
-
-        /* Tasks can be removed from lists.  Hot list entry has
-           already been removed by caller.  Remove cold list entry for
-           the other task here.  This has to be done before adding the
-           task to another list.  We don't know if this is the select
-           or the send, so let caller pass in this extra reference. */
-        csp_task_pop(cold_list_entry);
-
-        /* Transfer data, mark selected and execute the resume
-           continuation. */
-        do_send(send, evt_send,
-                recv, evt_recv);
-
-        /* Push the resulting continuations to the hot list for
-           further evaluation.  NULL resume means halt after this op,
-           which is implemented by not rescheduling.  Resume receiver
-           first.  Conceptually there is no order, but doing it that
-           way makes debug traces look more like function call chains
-           for SND->RCV. */
-        if (recv->resume) {
-            csp_task_push(&sched->hot, recv);
-        }
-        if (send->resume) {
-            csp_task_push(&sched->hot, send);
-        }
-
-        //LOG("!");
-        return 1;
-    }}}
-    //LOG(".");
-    /* No Rendez-vous found. */
-    return 0;
-}
-
-void csp_schedule(struct csp_scheduler *s) {
-    struct csp_task *hot;
-
-    /* Repeat until hot list is empty. */
-  next_hot:
-    if (!(hot = csp_task_pop(&s->hot))) return;
-
-    //LOG("s %p\n", s);
-    FOR_TASKS(pcold, s->cold) {
-        //LOG("pcold %p\n", pcold);
-        struct csp_task *cold = *pcold;
-        /* Check if these two tasks can rendez-vous.  If so, task
-         * lists are updated by maybe_resume() so we can continue. */
-        if (maybe_resume(s, pcold, hot, cold)) goto next_hot;
-        if (maybe_resume(s, pcold, cold, hot)) goto next_hot;
-    }
-    /* If there is no match, no structures were updated and we can
-     * consider the task blocked. */
-    csp_task_push(&s->cold, hot);
-    goto next_hot;
-}
-
 
 
 
@@ -294,6 +216,175 @@ void csp_start(struct csp_scheduler *s, struct csp_task *t) {
        network.  Propagate until everything is blocked again. */
     csp_task_push(&s->hot, t);
     csp_schedule(s);
+}
+
+
+
+
+
+/* Indexed lookup  (TODO)
+
+   It's possible to create a faster scheduler by using an index
+   structure that can map a channel number to a task directly,
+   avoiding the search in the simpler implementation.
+
+   First attempt to implement this uses plain pointers.  ( It is
+   probably possible to optimize memory use by using object indices
+   instead of pointers. )
+
+   The size of the index is bounded by:
+
+   - One channel_to_task record per channel (12 bytes)
+
+   - One csp_task_list cell for each blocked event (8 bytes).  The
+     upper bound is the max blocked event count per task.
+
+   Basic operation:
+
+   - On suspend, add the task to the corresponding channel_to_task
+     entry using
+
+   - On resume, remove ...
+
+   - To implement the lists linearly, a free list needs to be stored
+     somewhere to implement add/remove as a push+pop combo to the free
+     list.
+
+
+*/
+
+
+/* csp_task_op_push, _pop, _remove come from ns_key_list.h */
+typedef struct csp_evt_list  csp_task_op_list_t;
+typedef struct csp_task*     csp_task_op_key_t;
+#define NS(name) CONCAT(csp_task_op,name)
+#include "ns_key_list.h"
+#undef NS
+
+
+
+/* Initialize the free list from an array. */
+void csp_evt_list_init(struct csp_evt_list *l, int n) {
+    for (int i=0; i<n; i++) {
+        l[i].key = NULL;
+        l[i].next = &l[i+1];
+    }
+    l[n-1].next = NULL;
+}
+
+void csp_schedule_add_task(struct csp_scheduler *s,
+                            struct csp_evt_list **l,
+                            struct csp_task *t,
+                            struct csp_evt *e) {
+    ASSERT(t);
+    struct csp_evt_list *tc = csp_task_op_pop(&s->memory_pool);
+    tc->key = t;
+    tc->evt = e;
+    csp_task_op_push(l, tc);
+}
+void csp_schedule_remove_task(struct csp_scheduler *s,
+                               struct csp_evt_list **l,
+                               struct csp_task *t) {
+    struct csp_evt_list *tc = csp_task_op_remove(l, t);
+    if (tc) csp_task_op_push(&s->memory_pool, tc);
+}
+void csp_schedule_drop_task(
+    struct csp_scheduler *s,
+    struct csp_evt_list **l) {
+
+    struct csp_evt_list *tc = csp_task_op_pop(l);
+    if (tc) csp_task_op_push(&s->memory_pool, tc);
+}
+
+/* A cold task is blocked in a select, waiting for a number of
+   channels.  Each channel has 2 wait lists, one for send and one for
+   receive.  Entries in that list point to task and event, so they can
+   be woken up immediately if a rendez-vous is found. */
+static inline void remove_cold(
+    struct csp_scheduler *s,
+    struct csp_task *cold) {
+    FOR_EVT_INDEX(e, cold) {
+        int cold_dir = task_evt_dir(cold, e);
+        int ch = cold->evt[e].chan;
+        csp_schedule_remove_task(
+            s, &(s->chan_to_evt[ch].evts[cold_dir]),
+            cold);
+    }
+}
+static inline void add_cold(
+    struct csp_scheduler *s,
+    struct csp_task *cold) {
+    FOR_EVT_INDEX(e, cold) {
+        int dir = task_evt_dir(cold, e);
+        int ch = cold->evt[e].chan;
+        ASSERT(ch < s->nb_chans);
+        csp_schedule_add_task(
+            s, &(s->chan_to_evt[ch].evts[dir]),
+            cold, &cold->evt[e]);
+    }
+}
+/* Given a hot task, find a (any) cold task that can rendez-vous with
+   one of the hot task's events and perform the rendez-vous.  If none,
+   return NULL. */
+static void schedule(
+    struct csp_scheduler *s,
+    struct csp_task *hot) {
+    FOR_EVT_INDEX(e, hot) {
+        int cold_dir = !task_evt_dir(hot, e);
+        int ch = hot->evt[e].chan;
+        struct csp_evt_list *el = s->chan_to_evt[ch].evts[cold_dir];
+        if (el) {
+            struct csp_task *cold     = el->key;
+            struct csp_evt  *cold_evt = el->evt;
+            struct csp_evt  *hot_evt  = &hot->evt[e];
+            if (cold_dir == 1) {
+                // hot is send
+                do_send(hot,  hot_evt,
+                        cold, cold_evt);
+            }
+            else {
+                // cold is send
+                do_send(cold, cold_evt,
+                        hot,  hot_evt);
+            }
+            remove_cold(s, cold);
+
+            /* Add both to hot list again. */
+            if(hot->resume)  csp_task_push(&s->hot, hot);
+            if(cold->resume) csp_task_push(&s->hot, cold);
+            return;
+        }
+    }
+    /* None of the events have a corresponding cold task, so this
+     * becomes a cold task. */
+    add_cold(s, hot);
+}
+
+
+
+void csp_schedule(struct csp_scheduler *s) {
+    struct csp_task *hot;
+    while((hot = csp_task_pop(&s->hot))) {
+        schedule(s, hot);
+    }
+}
+
+/* Note on memory allocation: currently it is assumed that the
+   scheduler is initialized with enough memory for chan->event map.
+   Not clear how to make this more explicit. */
+void csp_scheduler_init(
+    struct csp_scheduler *s,
+    struct csp_evt_list *c2e, int nb_c2e,
+    struct csp_chan_to_evt *c, int nb_c) {
+    memset(s,0,sizeof(*s));
+    memset(c2e,0,sizeof(*c2e)*nb_c2e);
+    memset(c,0,sizeof(*c)*nb_c);
+    // Link the freelist
+    csp_evt_list_init(c2e, nb_c2e);
+    s->memory_pool = c2e;
+    s->chan_to_evt = c;
+    s->nb_chans = nb_c;
+    s->hot = NULL;
 }
 
 
@@ -318,6 +409,8 @@ int csp_send(struct csp_scheduler *s,
              int chan,
              void *msg_buf,
              uint32_t msg_len) {
+    ASSERT(chan >= 0);
+    ASSERT(chan < s->nb_chans);
     struct {
         struct csp_task task;
         struct csp_evt  evt;
@@ -329,21 +422,18 @@ int csp_send(struct csp_scheduler *s,
                   .msg_len = msg_len,
                   .msg_buf = msg_buf }
     };
+    t.task.selected = -1;
     csp_task_push(&s->hot, &t.task);
     csp_schedule(s);
+    if (t.task.selected == 0) return 1; // FIXME
 
     /* Hot list is now empty.
 
        Next we need to guarantee that the cold list does not contain
        any reference to to t.  This is possible if the send event was
        not matched with a receive event. */
-    FOR_TASKS(pt, s->cold) {
-        if (*pt == &t.task) {
-            csp_task_pop(pt);
-            return 0;
-        }
-    }
-    return 1;
+    remove_cold(s, &t.task);
+    return 0;
 }
 
 
@@ -405,180 +495,3 @@ int csp_cbuf_write(struct csp_scheduler *s,
 }
 
 
-
-
-/* Indexed lookup  (TODO)
-
-   It's possible to create a faster scheduler by using an index
-   structure that can map a channel number to a task directly,
-   avoiding the search in the simpler implementation.
-
-   First attempt to implement this uses plain pointers.  ( It is
-   probably possible to optimize memory use by using object indices
-   instead of pointers. )
-
-   The size of the index is bounded by:
-
-   - One channel_to_task record per channel (12 bytes)
-
-   - One csp_task_list cell for each blocked event (8 bytes).  The
-     upper bound is the max blocked event count per task.
-
-   Basic operation:
-
-   - On suspend, add the task to the corresponding channel_to_task
-     entry using
-
-   - On resume, remove ...
-
-   - To implement the lists linearly, a free list needs to be stored
-     somewhere to implement add/remove as a push+pop combo to the free
-     list.
-
-
-*/
-
-struct csp_evt_list;
-struct csp_evt_list {
-    struct csp_evt_list *next;
-    struct csp_task     *key;
-    struct csp_evt      *evt;
-};
-
-/* csp_task_op_push, _pop, _remove come from ns_key_list.h */
-typedef struct csp_evt_list  csp_task_op_list_t;
-typedef struct csp_task*     csp_task_op_key_t;
-#define NS(name) CONCAT(csp_task_op,name)
-#include "ns_key_list.h"
-#undef NS
-
-
-struct csp_chan_to_evt {
-    struct csp_evt_list *evts[2];
-};
-
-/* Initialize the free list from an array. */
-void csp_evt_list_init(struct csp_evt_list *l, int n) {
-    for (int i=0; i<n; i++) {
-        l[i].key = NULL;
-        l[i].next = &l[i+1];
-    }
-    l[n-1].next = NULL;
-}
-
-struct csp_ischeduler {
-    struct csp_task     *hot;
-    struct csp_evt_list *free_list;
-    struct csp_chan_to_evt  *chan_to_evt;
-    uint16_t nb_chans;
-};
-void csp_ischedule_add_task(struct csp_ischeduler *s,
-                            struct csp_evt_list **l,
-                            struct csp_task *t,
-                            struct csp_evt *e) {
-    struct csp_evt_list *tc = csp_task_op_pop(&s->free_list);
-    tc->key = t;
-    tc->evt = e;
-    csp_task_op_push(l, tc);
-}
-void csp_ischedule_remove_task(struct csp_ischeduler *s,
-                               struct csp_evt_list **l,
-                               struct csp_task *t) {
-    struct csp_evt_list *tc = csp_task_op_remove(l, t);
-    if (tc) csp_task_op_push(&s->free_list, tc);
-}
-void csp_ischedule_drop_task(
-    struct csp_ischeduler *s,
-    struct csp_evt_list **l) {
-
-    struct csp_evt_list *tc = csp_task_op_pop(l);
-    if (tc) csp_task_op_push(&s->free_list, tc);
-}
-
-/* A cold task is blocked in a select, waiting for a number of
-   channels.  Each channel has 2 wait lists, one for send and one for
-   receive.  Entries in that list point to task and event, so they can
-   be woken up immediately if a rendez-vous is found. */
-static inline void remove_cold(
-    struct csp_ischeduler *s,
-    struct csp_task *cold) {
-    FOR_EVT_INDEX(e, cold) {
-        int cold_dir = task_evt_dir(cold, e);
-        int ch = cold->evt[e].chan;
-        csp_ischedule_remove_task(
-            s, &(s->chan_to_evt[ch].evts[cold_dir]),
-            cold);
-    }
-}
-static inline void add_cold(
-    struct csp_ischeduler *s,
-    struct csp_task *cold) {
-    FOR_EVT_INDEX(e, cold) {
-        int dir = task_evt_dir(cold, e);
-        int ch = cold->evt[e].chan;
-        ASSERT(ch < s->nb_chans);
-        csp_ischedule_add_task(
-            s, &(s->chan_to_evt[ch].evts[dir]),
-            cold, &cold->evt[e]);
-    }
-}
-/* Given a hot task, find a (any) cold task that can rendez-vous with
-   one of the hot task's events and perform the rendez-vous.  If none,
-   return NULL. */
-static void schedule(
-    struct csp_ischeduler *s,
-    struct csp_task *hot) {
-    FOR_EVT_INDEX(e, hot) {
-        int cold_dir = !task_evt_dir(hot, e);
-        int ch = hot->evt[e].chan;
-        struct csp_evt_list *el = s->chan_to_evt[ch].evts[cold_dir];
-        if (el) {
-            struct csp_task *cold     = el->key;
-            struct csp_evt  *cold_evt = el->evt;
-            struct csp_evt  *hot_evt  = &hot->evt[e];
-            if (cold_dir == 1) {
-                // hot is send
-                do_send(hot,  hot_evt,
-                        cold, cold_evt);
-            }
-            else {
-                // cold is send
-                do_send(cold, cold_evt,
-                        hot,  hot_evt);
-            }
-            remove_cold(s, cold);
-
-            /* Add both to hot list again. */
-            if(hot->resume)  csp_task_push(&s->hot, hot);
-            if(cold->resume) csp_task_push(&s->hot, cold);
-            return;
-        }
-    }
-    /* None of the events have a corresponding cold task, so this
-     * becomes a cold task. */
-    add_cold(s, hot);
-}
-
-
-
-void csp_ischedule(struct csp_ischeduler *s) {
-    struct csp_task *hot;
-    while((hot = csp_task_pop(&s->hot))) {
-        schedule(s, hot);
-    }
-}
-
-/* Note on memory allocation: currently it is assumed that the
-   scheduler is initialized with enough memory for chan->event map.
-   Not clear how to make this more explicit. */
-void csp_ischeduler_init(
-    struct csp_ischeduler *s,
-    struct csp_evt_list *c2e, int nb_c2e,
-    struct csp_chan_to_evt *c, int nb_c) {
-    // Link the freelist
-    csp_evt_list_init(c2e, nb_c2e);
-    s->free_list = c2e;
-    s->chan_to_evt = c;
-    s->nb_chans = nb_c;
-    s->hot = NULL;
-}

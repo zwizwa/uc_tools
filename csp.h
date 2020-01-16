@@ -89,8 +89,26 @@ klabel:
     do { CSP_EVT(state,0,ch,var);               \
          CSP_SEL(state,0,1); } while(0)
 
-
-struct csp_scheduler;
+/* Scheduler data struct.  The hot list is the list of tasks to be
+   checked against the cold list.  The cold list is the set of tasks
+   currently blocked.  It is indexed by channel to allow fast pairing.
+   Each channel maps directly to the event that is blocking a task.
+   Multiple tasks can block on the same channel. */
+struct csp_evt_list;
+struct csp_evt_list {
+    struct csp_evt_list *next;
+    struct csp_task     *key;
+    struct csp_evt      *evt;
+};
+struct csp_chan_to_evt {
+    struct csp_evt_list *evts[2];
+};
+struct csp_scheduler {
+    struct csp_task        *hot;
+    struct csp_evt_list    *memory_pool;
+    struct csp_chan_to_evt *chan_to_evt;
+    uint16_t                nb_chans;
+};
 
 /* Run until all tasks are blocked. */
 void csp_schedule(struct csp_scheduler *s);
