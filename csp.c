@@ -3,7 +3,7 @@
    See csp.h for comments inline functions and data structures.
    See csp_test.c for examples
 
-   This structs down the idea.  Some simplifications:
+   General idea:
 
    - No priorities, no pre-emption.  This is for main loop only, and
      purely cooperative.  This is fine for a large class of
@@ -11,21 +11,30 @@
 
    - No multi-CPU support.  This is for small microcontrollers.
 
+   - The scheduler essentially implements SELECT, waking up a task
+     when exactly one of a collection of send/receive events has
+     occured.  Single channel send and receive are a special case.
+
    - Tasks are abstract.  This allows implementation of task to use
      the most convenient form, e.g. state machine dispach function,
      computed goto, or some form compiled down from a more traditional
      CSP-like sequential language.
 
-   - Interrupts can be supported through buffered channels and WFI in
-     the main loop to wake up the scheduler.
+   - Interrupts can be supported through buffered channels, with WFI
+     in the main loop to wake up the scheduler after interrupt.
 
-   - Only a fixed number of static tasks are supported
+   - Currently there is no limit on the amount of tasks.  Memory needs
+     for the scheduler are bound by the number of channels, and the
+     maximum number of simultaneous blocking events.
 
-   - Channels are just identifiers.  Currently there is 16 bit of
-     channel space.
+   - Values communicated over channels are opaque.  Sender and
+     receiver should implement type tags, or associate types to
+     channels.
 
-   The scheduler essentially implements SELECT, waking up a task when
-   one of a collection of send/receive events has occured.
+   - Semantics of send/receive: by the time execution resumes, the
+     object has been delivered to the receiver's buffer, and the
+     storage for the data element can be reclaimed for private use at
+     the sender's end.  No data is shared between tasks.
 
 */
 
@@ -43,38 +52,6 @@
 #include <string.h>
 
 
-/* The scheduler sees tasks only as continuations, which are opaque C
-   structures apart from a small header with bookkeping data.
-
-   It is up to the user how to implement tasks.  E.g. manually coded
-   state machines, or compiled into state machine form from sequential
-   CSP-style code.  We use computed goto style tasks, and provide some
-   macros for this style.  See csp.h
-
-   Values communicated are also completely opaque.  Sender and
-   receiver should implement type tags, or associate types to
-   channels.
-*/
-
-
-/* Semantics of send/receive: by the time execution resumes, the
-   object has been delivered to the receiver's buffer, and the storage
-   for the data element can be reclaimed for private use at the
-   sender's end.
-
-   Single channel send and receive are implemented in terms of the
-   more general select.
-
-   Select returns when one and only one of its events has occured, and
-   'selected' points to the event index.
-*/
-
-
-
-
-
-
-
 
 
 
@@ -82,10 +59,10 @@
 
 Each csp_schedule() call runs until all tasks are blocked.  For this
 to be useful in practice there has to be some external influence that
-creates new channel operations, opon which the scheduler can be used
-to propagate through the network.
+creates channel send or receive operations, opon which the scheduler
+can be used to propagate through the network.
 
-To simplify impelementation, the schedule loop does not assume any
+To simplify implementation, the schedule loop does not assume any
 outside influence: it knows only about tasks, channels and select.
 Any event coming from the outside is injected by emulating a task.
 See e.g. csp_send() and csp_cbuf_send().
@@ -99,7 +76,7 @@ The general principle:
    is added to the hot list.
 
 3. csp_schedule() loop: while there is a task on the hot list, find a
-   corresponding blocked task on the cold list.
+   corresponding blocked task on the cold list
 
    3a.  There is no corresping task. Add the hot task to the cold
         list.
@@ -114,59 +91,50 @@ The general principle:
    This is necessary in case the temporary task was allocated on the C
    stack.
 
+
+
+Implementation details
+
+- In the current form there is no explicit "cold list".  It is
+  implicit in the channel-indexed data structure.
+
+- The index data structure can map a channel number to a task and
+  corresponding event directly.
+
+- The implementation uses plain pointers.  On a small RAM target,
+  32bit pointers are wasteful.  This can probably be optimized.
+
+- There is a memory pool for the linked lists.  An upper bound for its
+  size is the sum of largest select statement for each task.
+  Allocation is left to the library user.
+
+- The hot/cold lists conceptually sets, i.e. there is is no inherent
+  order.  However we do implement them using stacks which will result
+  in some arbitrary priority.  Please do not rely on scheduling order.
+
 */
 
 
-/* Some implementation details:
-
-   - A task is either hot or cold.  Cold tasks are tasks that were
-     blocked in a previous scheduler run.  Hot tasks can potentially
-     rendez-vous with cold tasks.
-
-   - Every blocking action is a select.  Single channel send and
-     receive are special cases of only one blocking action.  Upon
-     resume, exactly one event has completed.
-
-   - Each task points to a select, which is a set of send and a set of
-     receive operations, each with its corresponding channel reference
-     and message data slot.
-
-   - The data structures are conceptually sets, i.e. there is is no
-     inherent order.  However we do implement them using stacks.
-
-*/
 
 
 
-/* The csp_evt array has senders first, followed by receivers. */
-static inline struct csp_evt *task_evt_send(struct csp_task *s) {
-    return &s->evt[0];
-}
-static inline struct csp_evt *task_evt_recv(struct csp_task *s) {
-    return &s->evt[s->nb_send];
-}
-/* Corresponding iterations */
-#define FOR_SEND_EVT(o, t) \
-    for (struct csp_evt *o = task_evt_send(t); \
-         o < (task_evt_send(t) + t->nb_send); \
-         o++)
-#define FOR_RECV_EVT(o, t) \
-    for (struct csp_evt *o = task_evt_recv(t); \
-         o < (task_evt_recv(t) + t->nb_recv); \
-         o++)
-
-#define FOR_EVT_INDEX(e, t) \
-    for(int e=0; e<t->nb_send+t->nb_recv; e++)
 
 
+
+
+
+
+/* The csp_evt array has senders first, followed by receivers.  We use
+ * 0 to indicate send, and 1 to indicate receive. */
 static inline int task_evt_dir(struct csp_task *t, int e) {
     return e >= t->nb_send;
 }
+#define FOR_EVT_INDEX(e, t) \
+    for(int e=0; e<t->nb_send+t->nb_recv; e++)
 
-/* Tasks are only in one list at a time (hot or cold).  This allows
-   the list chaining pointer to be included in the task strcture.
-   This uses ns_list.h "mixin" to implement
-   csp_task_push() and csp_task_pop() */
+/* The hot list is implemented by chaining pointers in the task
+   strcture.  We use ns_list.h "mixin" to implement csp_task_push()
+   and csp_task_pop() */
 typedef struct csp_task csp_task_list_t;
 #define NS(name) CONCAT(csp_task,name)
 #include "ns_list.h"
@@ -220,40 +188,6 @@ void csp_start(struct csp_scheduler *s, struct csp_task *t) {
 
 
 
-
-
-/* Indexed lookup  (TODO)
-
-   It's possible to create a faster scheduler by using an index
-   structure that can map a channel number to a task directly,
-   avoiding the search in the simpler implementation.
-
-   First attempt to implement this uses plain pointers.  ( It is
-   probably possible to optimize memory use by using object indices
-   instead of pointers. )
-
-   The size of the index is bounded by:
-
-   - One channel_to_task record per channel (12 bytes)
-
-   - One csp_task_list cell for each blocked event (8 bytes).  The
-     upper bound is the max blocked event count per task.
-
-   Basic operation:
-
-   - On suspend, add the task to the corresponding channel_to_task
-     entry using
-
-   - On resume, remove ...
-
-   - To implement the lists linearly, a free list needs to be stored
-     somewhere to implement add/remove as a push+pop combo to the free
-     list.
-
-
-*/
-
-
 /* csp_task_op_push, _pop, _remove come from ns_key_list.h */
 typedef struct csp_evt_list  csp_task_op_list_t;
 typedef struct csp_task*     csp_task_op_key_t;
@@ -272,27 +206,20 @@ void csp_evt_list_init(struct csp_evt_list *l, int n) {
     l[n-1].next = NULL;
 }
 
-void csp_schedule_add_task(struct csp_scheduler *s,
-                            struct csp_evt_list **l,
-                            struct csp_task *t,
-                            struct csp_evt *e) {
+static void add_task(struct csp_scheduler *s,
+                     struct csp_evt_list **l,
+                     struct csp_task *t,
+                     struct csp_evt *e) {
     ASSERT(t);
     struct csp_evt_list *tc = csp_task_op_pop(&s->memory_pool);
     tc->key = t;
     tc->evt = e;
     csp_task_op_push(l, tc);
 }
-void csp_schedule_remove_task(struct csp_scheduler *s,
-                               struct csp_evt_list **l,
-                               struct csp_task *t) {
+static void remove_task(struct csp_scheduler *s,
+                        struct csp_evt_list **l,
+                        struct csp_task *t) {
     struct csp_evt_list *tc = csp_task_op_remove(l, t);
-    if (tc) csp_task_op_push(&s->memory_pool, tc);
-}
-void csp_schedule_drop_task(
-    struct csp_scheduler *s,
-    struct csp_evt_list **l) {
-
-    struct csp_evt_list *tc = csp_task_op_pop(l);
     if (tc) csp_task_op_push(&s->memory_pool, tc);
 }
 
@@ -306,7 +233,7 @@ static inline void remove_cold(
     FOR_EVT_INDEX(e, cold) {
         int cold_dir = task_evt_dir(cold, e);
         int ch = cold->evt[e].chan;
-        csp_schedule_remove_task(
+        remove_task(
             s, &(s->chan_to_evt[ch].evts[cold_dir]),
             cold);
     }
@@ -314,11 +241,12 @@ static inline void remove_cold(
 static inline void add_cold(
     struct csp_scheduler *s,
     struct csp_task *cold) {
+    cold->selected = -1;
     FOR_EVT_INDEX(e, cold) {
         int dir = task_evt_dir(cold, e);
         int ch = cold->evt[e].chan;
         ASSERT(ch < s->nb_chans);
-        csp_schedule_add_task(
+        add_task(
             s, &(s->chan_to_evt[ch].evts[dir]),
             cold, &cold->evt[e]);
     }
@@ -389,74 +317,112 @@ void csp_scheduler_init(
 
 
 
-/* External synchronous send.
+/* External synchronous send & recv.
 
-   This is a send from outside of the CSP network.  Note again that
-   CSP is rendez-vous: when sending, there is no other place to put a
-   value than inside a receiver's buffer.  If there is no receiver
-   currently blocked, there is no place to put the value and thus we
-   let this function fail, as indicated by the return value.  See
-   csp_cbuf_send() for a buffered send operation that does not have
-   this drawback.
+   This is a transaction from outside of the CSP network.  Note again
+   that CSP is rendez-vous: when sending, there is no other place to
+   put a value than inside a receiver's buffer, similar for receive:
+   the other task needs to be sitting there with the message.
 
-   External receive would be dual to this, but in practice most
-   systems are push systems, and CSP network output can often be
-   direct procedure calls or buffer writes. */
-static void csp_send_resume(struct csp_task *t) {
+   If there is no peer currently blocked, there is no place to get or
+   put the value and thus we let this function fail, as indicated by
+   the return value.  See csp_cbuf_send() for a buffered send
+   operation that does not have this drawback. */
+
+static void resume_halt(struct csp_task *t) {
     t->resume = 0;
 }
-int csp_send(struct csp_scheduler *s,
-             int chan,
-             void *msg_buf,
-             uint32_t msg_len) {
+static int trans(struct csp_scheduler *s,
+                 int chan,
+                 int dir,
+                 void *msg_buf,
+                 uint32_t msg_len) {
     ASSERT(chan >= 0);
     ASSERT(chan < s->nb_chans);
     struct {
         struct csp_task task;
         struct csp_evt  evt;
     } t = {
-        .task = { .resume  = csp_send_resume,
-                  .nb_send = 1,
-                  .nb_recv = 0 },
+        .task = { .resume  = resume_halt,
+                  .nb_send = !dir,
+                  .nb_recv = !!dir },
         .evt  = { .chan    = chan,
                   .msg_len = msg_len,
                   .msg_buf = msg_buf }
     };
-    t.task.selected = -1;
     csp_task_push(&s->hot, &t.task);
     csp_schedule(s);
-    if (t.task.selected == 0) return 1; // FIXME
 
-    /* Hot list is now empty.
+    /* If the transaction succeeded we're good. */
+    if (t.task.selected == 0) return 1;
 
-       Next we need to guarantee that the cold list does not contain
-       any reference to to t.  This is possible if the send event was
-       not matched with a receive event. */
+    /* If it didn't, we need to explicitly "kill" the task by removing
+       it from the scheduler to avoid a dangling reference to the task
+       object on this stack frame. */
     remove_cold(s, &t.task);
     return 0;
 }
+int csp_send(struct csp_scheduler *s,
+             int chan,
+             void *msg_buf,
+             uint32_t msg_len) {
+    return trans(s, chan, CSP_DIR_SEND, msg_buf, msg_len);
+}
+int csp_recv(struct csp_scheduler *s,
+             int chan,
+             void *msg_buf,
+             uint32_t msg_len) {
+    return trans(s, chan, CSP_DIR_RECV, msg_buf, msg_len);
+}
 
 
-/* External asynchronous send.
 
-   Compared to csp_send(), a external buffered send will succeed as
-   long as the buffer doesn't overflow.  It requires a persistent task
-   to monitor the buffer, and a transient task to signal the reader
-   that new data has arrived. */
+/* External asynchronous send/receive.
 
-void csp_cbuf_task(struct csp_cbuf *b) {
+   Compared to csp_send()/csp_recv(), this employs buffering to handle
+   the case where the CSP network is not ready to send or receive.
+
+   A persistent task monitors a notification channel and will perform
+   a channel send or receive using the cbuf.
+
+   Note that this is likely a little too simple and mostly serves as
+   an example.  A straightforward extension is to transfer chunks or
+   larger complete objects instead of bytes.  In practice i/o adapters
+   at the edge of a CSP network will be likely ad-hoc.
+*/
+
+/* Start and object structure can be shared between send and receive
+ * mode. */
+void csp_async_start(struct csp_scheduler *s,
+                    struct csp_async *b,
+                    void (*task)(struct csp_async *),
+                    uint16_t c_int, uint16_t c_data,
+                    void *buf, uint32_t size) {
+    memset(b,0,sizeof(*b));
+    cbuf_init(&b->cbuf, buf, size);
+    b->c_int = c_int;
+    b->c_data = c_data;
+    b->task.resume = (csp_resume_f)task;
+    csp_start(s, &b->task);
+    csp_schedule(s);
+}
+
+/* csp_async_start takes a task argument, which defines the flavour of
+ * the object: send or receive.   These have directions switched. */
+void csp_async_send_task(struct csp_async *b) {
     if (b->next) goto *b->next;
   again:
     /* No data, only wait for interrupt to wake us up. */
     if (cbuf_empty(&b->cbuf)) {
-        CSP_RCV(b, b->c_int, b->nb_bytes);
+        CSP_SYN(b, 0, b->c_int);                /* RCV */
+        CSP_SEL(b, 0/*nb_send*/, 1/*nb_recv*/);
         goto again;
     }
     /* Data, wait for send to complete or interrupt to wake us up. */
     else {
         b->token = cbuf_peek(&b->cbuf, 0);
         CSP_EVT(b, 0, b->c_data, b->token);     /* SND */
-        CSP_EVT(b, 1, b->c_int,  b->nb_bytes);  /* RCV */
+        CSP_SYN(b, 1, b->c_int);                /* RCV */
         CSP_SEL(b, 1/*nb_send*/, 1/*nb_recv*/);
         switch(b->task.selected) {
         case 0: /* send finished */
@@ -467,31 +433,52 @@ void csp_cbuf_task(struct csp_cbuf *b) {
         }
     }
 }
-void csp_cbuf_start(struct csp_scheduler *s,
-                    struct csp_cbuf *b,
-                    uint16_t c_int, uint16_t c_data,
-                    void *buf, uint32_t size) {
-    memset(b,0,sizeof(*b));
-    cbuf_init(&b->cbuf, buf, size);
-    b->c_int = c_int;
-    b->c_data = c_data;
-    b->task.resume = (csp_resume_f)csp_cbuf_task;
-    csp_start(s, &b->task);
-    csp_schedule(s);
+/* Dual */
+void csp_async_recv_task(struct csp_async *b) {
+    if (b->next) goto *b->next;
+  again:
+    /* Too much data, only wait for interrupt to wake us up so we can
+       retry token receive. */
+    if (cbuf_full(&b->cbuf)) {
+        CSP_SYN(b, 0, b->c_int);                /* RCV */
+        CSP_SEL(b, 0/*nb_send*/, 1/*nb_recv*/);
+        goto again;
+    }
+    /* Data, wait for send to complete or interrupt to wake us up. */
+    else {
+        CSP_EVT(b, 0, b->c_data, b->token);     /* RCV */
+        CSP_SYN(b, 1, b->c_int);                /* RCV */
+        CSP_SEL(b, 0/*nb_send*/, 2/*nb_recv*/);
+        switch(b->task.selected) {
+        case 0: { /* receive finished */
+            ASSERT(b->token < 256);
+            uint8_t byte = b->token;
+            cbuf_write(&b->cbuf, &byte, 1);
+            goto again;
+        }
+        case 1: /* interrupt */
+            goto again;
+        }
+    }
 }
-void csp_cbuf_notify(struct csp_scheduler *s,
-                     struct csp_cbuf *b,
-                     uint16_t nb) {
-    /* Signal the reader task, which is guaranteed to be waiting for
-     * an interrupt. */
-    ASSERT(1 == csp_send(s, b->c_int, &nb, sizeof(nb)));
+void csp_async_notify(struct csp_scheduler *s,
+                      struct csp_async *b,
+                      uint16_t nb) {
+    /* Signal the reader/writer task, which is guaranteed to be
+     * waiting for an interrupt. */
+    ASSERT(1 == csp_send(s, b->c_int, NULL, 0));
 }
-int csp_cbuf_write(struct csp_scheduler *s,
-                   struct csp_cbuf *b,
-                   void *data, uint32_t len) {
+int csp_async_write(struct csp_scheduler *s,
+                    struct csp_async *b,
+                    const void *data, uint32_t len) {
     if (cbuf_room(&b->cbuf) < len) return 0;
     cbuf_write(&b->cbuf, data, len);
     return 1;
 }
-
-
+int csp_async_read(struct csp_scheduler *s,
+                   struct csp_async *b,
+                   void *data, uint32_t len) {
+    if (cbuf_bytes(&b->cbuf) < len) return 0;
+    cbuf_read(&b->cbuf, data, len);
+    return 1;
+}

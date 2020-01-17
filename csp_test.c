@@ -142,14 +142,17 @@ void test3(struct csp_scheduler *s) {
     struct state2 state2 = { .task = { .resume = (csp_resume_f)resume2 } };
     csp_start(s, &state2.task);
     uint8_t buf[64];
-    struct csp_cbuf b;
+    struct csp_async b;
     int ch_int = 1, ch_data = 2;
-    csp_cbuf_start(s, &b, ch_int, ch_data, buf, sizeof(buf));
+    csp_async_start(s, &b,
+                    /* We're sending into the network*/
+                    csp_async_send_task,
+                    ch_int, ch_data, buf, sizeof(buf));
     uint8_t msg[] = {1,2,3};
-    csp_cbuf_write(s, &b, &msg, sizeof(msg));
-    csp_cbuf_notify(s, &b, 1);
-    csp_cbuf_write(s, &b, &msg, sizeof(msg));
-    csp_cbuf_notify(s, &b, 1);
+    csp_async_write(s, &b, &msg, sizeof(msg));
+    csp_async_notify(s, &b, 1);
+    csp_async_write(s, &b, &msg, sizeof(msg));
+    csp_async_notify(s, &b, 1);
 }
 
 void with_scheduler(int nb_c2e, int nb_c, void (*f)(struct csp_scheduler *)) {

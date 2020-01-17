@@ -5,6 +5,7 @@
 #define CSP_H
 
 #include "cbuf.h"
+#include "pbuf.h"
 #include "gensym.h"
 
 #include <stdint.h>
@@ -18,6 +19,7 @@ struct csp_evt {
     uint16_t msg_len;
     void    *msg_buf;
 };
+
 
 /* Initialize a single-channel operation. */
 static inline void csp_evt(struct csp_evt *o,
@@ -54,6 +56,9 @@ struct csp_task {
     struct csp_evt evt[];
 };
 
+#define CSP_DIR_SEND 0
+#define CSP_DIR_RECV 1
+
 /* For use in computed goto machines. See example below.  Note that
    the scheduler doesn't care how a task is implemented.  It only
    knows about 'resume'.  However, we do need to provide a couple of
@@ -74,12 +79,17 @@ struct csp_task {
     (state)->next = &&klabel;         \
     return;                           \
 klabel:
+
 #define CSP_SEL(state,ns,nr) \
     CSP_SEL_K(state,ns,nr,GENSYM(resume_))
 
 /* Data transfer event. */
 #define CSP_EVT(state,n,ch,var) \
     csp_evt(&((state)->task.evt[n]),ch,&(var),sizeof(var))
+/* Same, but no data payload (sync only). */
+#define CSP_SYN(state,n,ch) \
+    csp_evt(&((state)->task.evt[n]),ch,0,0)
+
 
 /* Single op send and receive are special cases of select */
 #define CSP_SND(state,ch,var)                   \
@@ -158,10 +168,10 @@ int csp_send(struct csp_scheduler *s,
 
 #ifdef CBUF_H
 /* Contrasted with csp_send(), which can fail if there is no task
-   waiting.  csp_cbuf_send() will place data in a buffer as long as
+   waiting.  csp_async_send() will place data in a buffer as long as
    there is room.  A CSP task then handles transfer from the cbuf into
-   the CSP network. */
-struct csp_cbuf {
+   the CSP network.  Dual for receive. */
+struct csp_async {
     struct csp_task task;
     struct csp_evt evt[2]; // need to watch send and receive
     struct cbuf cbuf;
@@ -171,17 +181,28 @@ struct csp_cbuf {
     uint16_t c_int;
     uint16_t c_data;
 };
-void csp_cbuf_start(struct csp_scheduler *s,
-                    struct csp_cbuf *b,
-                    uint16_t c_int, uint16_t c_data,
-                    void *buf, uint32_t size);
-/* Write (async) and notify (sync) */
-int csp_cbuf_write(struct csp_scheduler *s,
-                   struct csp_cbuf *b,
+/* The same object cam be started in read or write mode. */
+void csp_async_write_start(struct csp_scheduler *s,
+                           struct csp_async *b,
+                           uint16_t c_int, uint16_t c_data,
+                           void *buf, uint32_t size);
+int csp_async_write(struct csp_scheduler *s,
+                    struct csp_async *b,
+                    const void *data, uint32_t len);
+
+void csp_async_read_start(struct csp_scheduler *s,
+                          struct csp_async *b,
+                          uint16_t c_int, uint16_t c_data,
+                          void *buf, uint32_t size);
+int csp_async_read(struct csp_scheduler *s,
+                   struct csp_async *b,
                    void *data, uint32_t len);
-void csp_cbuf_notify(struct csp_scheduler *s,
-                     struct csp_cbuf *b,
-                     uint16_t nb);
+
+/* Notification: for an external writer, this signals the CSP network
+   that it can read from the buffer.  */
+
+void csp_async_notify(struct csp_scheduler*s, struct csp_async *b, uint16_t nb);
+
 #endif
 
 #endif
