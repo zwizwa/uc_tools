@@ -17,8 +17,8 @@
 
    - Tasks are abstract.  This allows implementation of task to use
      the most convenient form, e.g. state machine dispach function,
-     computed goto, or some form compiled down from a more traditional
-     CSP-like sequential language.
+     computed goto, or compiled from some other form (async/await
+     style).
 
    - Interrupts can be supported through buffered channels, with WFI
      in the main loop to wake up the scheduler after interrupt.
@@ -35,6 +35,12 @@
      object has been delivered to the receiver's buffer, and the
      storage for the data element can be reclaimed for private use at
      the sender's end.  No data is shared between tasks.
+
+   A note on "real" tasks.  I see two options: either plug in a stack
+   switcher, or go to Rust.  The intermediate sweet spot of using a
+   "simple lisp" to compile to async tasks isn't easy to find, and
+   might not really exist.  It would be nice to have something that
+   compiles down to plain C.
 
 */
 
@@ -254,7 +260,7 @@ static inline void add_cold(
 /* Given a hot task, find a (any) cold task that can rendez-vous with
    one of the hot task's events and perform the rendez-vous.  If none,
    return NULL. */
-static void schedule(
+static void schedule_task(
     struct csp_scheduler *s,
     struct csp_task *hot) {
     FOR_EVT_INDEX(e, hot) {
@@ -293,7 +299,7 @@ static void schedule(
 void csp_schedule(struct csp_scheduler *s) {
     struct csp_task *hot;
     while((hot = csp_task_pop(&s->hot))) {
-        schedule(s, hot);
+        schedule_task(s, hot);
     }
 }
 
@@ -461,6 +467,8 @@ void csp_async_recv_task(struct csp_async *b) {
         }
     }
 }
+
+
 void csp_async_notify(struct csp_scheduler *s,
                       struct csp_async *b,
                       uint16_t nb) {
@@ -482,3 +490,29 @@ int csp_async_read(struct csp_scheduler *s,
     cbuf_read(&b->cbuf, data, len);
     return 1;
 }
+
+/* Interrupts.
+
+   I can see two strategies to support interrupts.
+
+   - If there is no danger for buffer overruns, run the CSP network to
+     completion from the ISR through the external event mechanism.
+     This requires all interrupts that participate to be part of the
+     same priority level, so they will not pre-empt each other.  In
+     this scenario, if an event cannot be handled, there is a natural
+     place to drop it.  DMA can be used to decrease interrupt
+     pressure.
+
+   - If running the CSP network to completion is not possible before a
+     new interrupt needs to be handled, and DMA cannot reduce
+     pressure, it is possible to use two effective priority levels:
+
+     - Read/write buffer from ISR (not a CSP network op)
+
+     - Poll buffers from main loop after WFI (CSP sync message +
+       schedule until completion).
+
+       This can even use a single event buffer which makes polling
+       much simpler.
+
+*/
