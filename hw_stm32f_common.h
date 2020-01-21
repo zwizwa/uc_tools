@@ -365,6 +365,9 @@ INLINE void hw_app_stop(void) {
     for (uint32_t irq = 0; irq < NVIC_IRQ_COUNT; irq++) {
         nvic_disable_irq(irq);
     }
+    /* FIXME: Just trying things out..  Something isn't right in one
+       of the apps if TIM2 has been enabled .*/
+    SCB_VTOR = 0x8000000;
 }
 
 

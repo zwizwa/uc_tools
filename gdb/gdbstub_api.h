@@ -87,8 +87,6 @@ extern const struct gdbstub_service _service;
 
 
 
-
-
 /* This reflects core.ld, app.ld
    First partition up to _CONF is bootloader code.
    Second partition between _CONF and _APP is bootloader config (0x800 == minimum erase size).
@@ -200,6 +198,14 @@ struct gdbstub_config {
     void *reserved_15[1+16];
 };
 extern struct gdbstub_config _config; // FLASH
+
+
+/* To stop an application, disable all interrupts and call this function. */
+static inline void gdbstub_service_stop(const struct gdbstub_service *s) {
+    s->reset();
+    *(s->io) = &(s->rsp_io);
+    s->stub->flags &= (~GDBSTUB_FLAG_STARTED);
+}
 
 
 

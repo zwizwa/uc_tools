@@ -286,6 +286,10 @@ INLINE void hw_delay_ack(struct hw_delay c) {
     hw_tim_disable_counter(c.tim);
     TIM_SR(c.tim) &= ~TIM_SR_UIF; /* Clear interrrupt flag. */
 }
+INLINE void hw_delay_disable_interrupt(struct hw_delay c) {
+    timer_disable_irq(c.tim, TIM_DIER_UIE);
+    hw_delay_ack(c);
+}
 INLINE uint32_t hw_delay_poll(struct hw_delay c) {
     return TIM_SR(c.tim) & TIM_SR_UIF;
 }
