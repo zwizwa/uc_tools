@@ -10,6 +10,8 @@
 #include "pbuf.h"
 #include "cbuf.h"
 
+#include "csp.h"
+
 #define TX_EN_OUT   GPIOA,8
 
 static inline void hw_tx_dis(void) {
@@ -20,13 +22,62 @@ static inline void hw_tx_en(void) {
 }
 
 
-/* Incoming SLIP packets are decoded into flat packet, and
-   app_write_end will be called when packet is ready. */
-
 struct pbuf packet_in; uint8_t packet_in_buf[1024 + 64];
 struct cbuf usb_out;   uint8_t usb_out_buf[16];
 struct cbuf ser_out;   uint8_t ser_out_buf[64];
 struct cbuf ser_in;    uint8_t ser_in_buf[64];
+struct cbuf hw_event;  uint8_t hw_event_buf[16];
+
+/* Interrupts are translated to a single event queue. */
+#define HW_EVENT_RX 0
+
+
+
+/* Tasks & Channels */
+
+#define CHAN_USB_IN   0
+#define CHAN_HW_EVENT 1
+#define NB_CHAN 2
+
+struct input_task {
+    struct csp_task task;
+    struct csp_evt evt[2];
+    void *next;
+    uint8_t msg[8];
+} input_task;
+void input_resume(struct input_task *e) {
+    if(e->next) goto *e->next;
+  again:
+    CSP_EVT(e, 0, CHAN_USB_IN,   e->msg);
+    CSP_EVT(e, 1, CHAN_HW_EVENT, e->msg);
+    CSP_SEL(e, 0/*nb_send*/, 2/*nb_recv*/);
+    switch(e->task.selected) {
+    case 0:
+        infof("input RCV: %d\n", e->evt[0].msg_len);
+        goto again;
+    case 1:
+        infof("HW_EVENT %d\n", e->msg[0]);
+        goto again;
+    }
+}
+
+
+
+// FIXME: Properly set scheduler data structure sizes.
+struct csp_scheduler   sched;
+struct csp_evt_list    sched_c2e[NB_CHAN*10]; // FIXME
+struct csp_chan_to_evt sched_c[NB_CHAN];
+
+
+static inline void sched_init(void) {
+    csp_scheduler_init(
+        &sched,
+        sched_c2e, ARRAY_SIZE(sched_c2e),
+        sched_c,   ARRAY_SIZE(sched_c));
+    input_task.task.resume = (csp_resume_f)input_resume;
+    csp_start(&sched, &input_task.task);
+}
+
 
 void app_write_byte(struct slip_write_state *s, uint8_t byte) {
     pbuf_put(&packet_in, byte);
@@ -61,11 +112,30 @@ void app_write_end(struct slip_write_state *s) {
             }
             break;
         default:
+            /* Anything else goes into the CSP network.  We won't
+             * buffer any further.  A task needs to be waiting for the
+             * message. */
+            if (!csp_send(&sched, CHAN_USB_IN, &p->buf[0], p->count)) {
+                infof("CSP USB message dropped: %d bytes\n", p->count);
+            }
             break;
         }
     }
     p->count = 0;
 }
+
+/* FIXME: Only poll on interrupt. */
+static void poll_event(void) {
+    uint16_t token = cbuf_get(&hw_event);
+    if (CBUF_EAGAIN != token) {
+        if (!csp_send(&sched, CHAN_HW_EVENT, &token, sizeof(token))) {
+            infof("CSP hw_event dropped\n");
+        }
+    }
+}
+
+
+
 
 static uint32_t ser_in_read(uint8_t *buf, uint32_t room) {
     return cbuf_read(&ser_in, buf, room);
@@ -103,15 +173,17 @@ static void switch_protocol(const uint8_t *buf, uint32_t size) {
 
 /* Receive DMX on UART and convert to simple SLIP (Break=SLIP_END). */
 /* Call by interrupt system when UART byte arrives. */
+#define DBG(...)
+//#define DBG(...) infof(__VA_ARGS__)
 void usart1_isr(void) {
-    infof("INT\n");
+    DBG("INT\n");
 
     /* Receive is independent, so handle it.  Interrupt flag is
        removed after DR read. */
     if (hw_usart1_recv_ready()) {
         int rv = hw_usart1_getchar_nsr();
-        infof("RX:%d\n", rv);
-        cbuf_put(&ser_in, rv);
+        DBG("RX:%d\n", rv);
+        cbuf_put(&hw_event, rv);
     }
 
     /* There are two transmit interrupts handled here:
@@ -123,17 +195,14 @@ void usart1_isr(void) {
 
     if (hw_usart_send_ready_interrupt_enabled(USART1) &&
         hw_usart1_send_ready()) {
-        /* Ack is done by write to DR.  There are two cases: */
         uint16_t token = cbuf_get(&ser_out);
         if (token != CBUF_EAGAIN) {
-            /* either send the byte if buffer has more. */
-            infof("TX:%d\n", token);
+            DBG("TX:%d\n", token);
             hw_tx_en();
-            hw_usart1_send(token);
+            hw_usart1_send(token);  // This acks, leave interrupt on
         }
         else {
-            /* or start end of transmission sequence. */
-            infof("TX:done\n");
+            DBG("TX:flush\n");
             hw_usart_disable_send_ready_interrupt(USART1);
             hw_usart_enable_send_done_interrupt(USART1);
         }
@@ -142,12 +211,12 @@ void usart1_isr(void) {
     if (hw_usart_send_done_interrupt_enabled(USART1) &&
         hw_usart1_send_done()) {
         hw_usart_disable_send_done_interrupt(USART1);
-        /* Turn off transmitter. */
-        infof("TX:off\n");
+        DBG("TX:off\n");
         hw_tx_dis();
     }
 
 }
+#undef DBG
 
 
 void start(void) {
@@ -159,7 +228,12 @@ void start(void) {
     CBUF_INIT(usb_out);
     CBUF_INIT(ser_out);
     CBUF_INIT(ser_in);
+    CBUF_INIT(hw_event);
     PBUF_INIT(packet_in);
+
+    /* CSP scheduler init. */
+    sched_init();
+
     /* Hardware init. */
 
     // gpio for direction control
@@ -169,6 +243,10 @@ void start(void) {
 
     hw_usart1_init();
     hw_usart1_config(625, 1); // 115k2, receive interrupt enabled.
+
+    /* Polling routine: FIXME: This can go in a WFI loop. */
+    _service.add(poll_event);
+
 }
 
 const char config_manufacturer[] CONFIG_DATA_SECTION = "Zwizwa";

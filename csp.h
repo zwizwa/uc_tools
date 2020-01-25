@@ -120,6 +120,12 @@ struct csp_scheduler {
     uint16_t                nb_chans;
 };
 
+void csp_scheduler_init(
+    struct csp_scheduler *s,
+    struct csp_evt_list *c2e, int nb_c2e,
+    struct csp_chan_to_evt *c, int nb_c);
+
+
 /* Run until all tasks are blocked. */
 void csp_schedule(struct csp_scheduler *s);
 
@@ -137,7 +143,7 @@ struct csp_cg_example {
     void *next;
     uint32_t a;
 };
-void csp_cg_example_resume(struct csp_cg_example *t /* task state */) {
+static inline void csp_cg_example_resume(struct csp_cg_example *t /* task state */) {
     if (t->next) goto *t->next;
     t->a = 123;
     for(;;) {
@@ -145,7 +151,7 @@ void csp_cg_example_resume(struct csp_cg_example *t /* task state */) {
         CSP_SND(t, 2, t->a);
     }
 }
-void csp_cg_example_start(struct csp_scheduler *s, struct csp_cg_example *t) {
+static inline void csp_cg_example_start(struct csp_scheduler *s, struct csp_cg_example *t) {
     memset(t,0,sizeof(*t));
     t->task.resume = (csp_resume_f)csp_cg_example_resume;
     csp_start(s, &t->task);
