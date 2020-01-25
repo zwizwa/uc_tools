@@ -21,6 +21,12 @@ static inline void pbuf_init(struct pbuf *p, uint8_t *buf, uint32_t size) {
     p->buf   = buf;
     memset(buf, 0, size);
 }
+static inline void pbuf_pool_init(struct pbuf *p, uint8_t *buf, uint32_t buf_size, uint32_t n_buf) {
+    for(uint32_t i=0; i<n_buf; i++) {
+        pbuf_init(&p[i], &buf[i * buf_size], buf_size);
+    }
+}
+
 static inline void pbuf_clear(struct pbuf *p) {
     pbuf_init(p, p->buf, p->size);
 }
@@ -85,6 +91,40 @@ struct sbuf {
         pbuf_init(&name.p, &name##_buf[0], sizeof(name##_buf)); \
         cbuf_init(&name.c, &name.c_buf[0], sizeof(name.c_buf)); \
     } while(0)
+
+
+/* The following two methods allow for a pbuf to be fed with a SLIP
+   stream.  To do this, the byte at the write location is used as a
+   1-byte buffer that potentially contains an escape code, which means
+   that we do need to initialize it properly.  This effectively
+   reduces the available space by 1 character. */
+static inline void pbuf_slip_clear(struct pbuf *p) {
+    pbuf_clear(p);
+    p->buf[0] = 0;
+}
+static inline void pbuf_slip_put(struct pbuf *p, uint8_t c) {
+    if (p->count >= p->size-1) return;
+    if (SLIP_END == c) return;
+    switch(p->buf[p->count]) {
+    case SLIP_ESC:
+        if (SLIP_ESC_ESC == c) { c = SLIP_ESC; }
+        if (SLIP_ESC_END == c) { c = SLIP_END; }
+        p->buf[p->count++] = c;
+        break;
+    case 0:
+        p->buf[p->count] = c;
+        if (SLIP_ESC != c) { p->count++; }
+        break;
+    default:
+        // not reached
+        break;
+    }
+    p->buf[p->count] = 0;
+}
+
+
+
+
 
 #endif
 

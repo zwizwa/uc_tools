@@ -313,14 +313,14 @@ void csp_schedule(struct csp_scheduler *s) {
    Not clear how to make this more explicit. */
 void csp_scheduler_init(
     struct csp_scheduler *s,
-    struct csp_evt_list *c2e, int nb_c2e,
+    struct csp_evt_list *e, int nb_e,
     struct csp_chan_to_evt *c, int nb_c) {
     memset(s,0,sizeof(*s));
-    memset(c2e,0,sizeof(*c2e)*nb_c2e);
+    memset(e,0,sizeof(*e)*nb_e);
     memset(c,0,sizeof(*c)*nb_c);
     // Link the freelist
-    csp_evt_list_init(c2e, nb_c2e);
-    s->memory_pool = c2e;
+    csp_evt_list_init(e, nb_e);
+    s->memory_pool = e;
     s->chan_to_evt = c;
     s->nb_chans = nb_c;
     s->hot = NULL;
@@ -520,4 +520,8 @@ int csp_async_read(struct csp_scheduler *s,
        This can even use a single event buffer which makes polling
        much simpler.
 
+   See os.c for an example.
+
 */
+
+

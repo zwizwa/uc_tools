@@ -13,7 +13,22 @@
 
 /* An event happens on a channel, and is associated with some data
    being transferred.  Direction is based on which array the event
-   structure is stored in. */
+   structure is stored in.
+
+   Note that channel payload data is always copied to keep the
+   semantics clean and simple: tasks do not share memory.
+
+   Do not give into the temptation to share buffer memory between two
+   tasks.  It is possible and not too hard to change the scheduler to
+   support this, but it invalidates the no sharing guarnatee and will
+   likely lead to subtle bugs.  The main advantage of the CSP approach
+   is this kind of memory isolation.
+
+   So, if shared memory or "memory moves" are to be implemented, then
+   do it using a separate explicit mechanism.  E.g. a buffer pool that
+   is taylored to the application, and pass buffer references around
+   instead.
+*/
 struct csp_evt {
     uint16_t chan;
     uint16_t msg_len;

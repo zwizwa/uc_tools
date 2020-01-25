@@ -54,12 +54,17 @@ static inline int cbuf_full(struct cbuf *b) {
 }
 static inline void cbuf_put(struct cbuf *b, uint8_t byte) {
     if (!cbuf_full(b)) {
-        b->buf[cbuf_wrap(b, b->write++)] = byte;
+        uint32_t write = b->write;
+        b->buf[cbuf_wrap(b, write)] = byte;
+        b->write = write+1;
     }
 }
 static inline uint16_t cbuf_get(struct cbuf *b) {
     if (cbuf_empty(b)) return CBUF_EAGAIN;
-    return b->buf[cbuf_wrap(b, b->read++)];
+    uint32_t read = b->read;
+    uint16_t rv = b->buf[cbuf_wrap(b, read)];
+    b->read = read+1;
+    return rv;
 }
 static inline uint16_t cbuf_peek(struct cbuf *b, uint32_t offset) {
     if (offset >= cbuf_bytes(b)) return CBUF_EAGAIN;

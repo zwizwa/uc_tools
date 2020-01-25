@@ -1,5 +1,8 @@
-/* OS example.  Main goal here is to combine existing SLIP protocol
-   with interrupt -> cbuf and CSP wakeup in main loop. */
+/* Explore some reusable abstractions once CSP scheduler is part of
+   the picture.  Main goal here is to create some hardware
+   abstractions that communicate with CSP network through protocols
+   instead of functions and callbacks.  This should make it a lot
+   easier to move logic between bare metal and Linux processes. */
 
 #include "base.h"
 #include "gdbstub_api.h"
@@ -25,11 +28,17 @@ static inline void hw_tx_en(void) {
 struct pbuf packet_in; uint8_t packet_in_buf[1024 + 64];
 struct cbuf usb_out;   uint8_t usb_out_buf[16];
 struct cbuf ser_out;   uint8_t ser_out_buf[64];
-struct cbuf ser_in;    uint8_t ser_in_buf[64];
 struct cbuf hw_event;  uint8_t hw_event_buf[16];
 
+
+uint32_t ser_buf = 0;
+struct pbuf ser_in[2];
+uint8_t ser_in_buf[128];
+
+
 /* Interrupts are translated to a single event queue. */
-#define HW_EVENT_RX 0
+#define HW_EVENT_RX_PBUF0 0
+#define HW_EVENT_RX_PBUF1 1
 
 
 
@@ -39,11 +48,17 @@ struct cbuf hw_event;  uint8_t hw_event_buf[16];
 #define CHAN_HW_EVENT 1
 #define NB_CHAN 2
 
+
+/* Dispatch events to a variety of channels.  This task is used to
+   handle external network input.  The idea is that we are always
+   ready to receive a message, hence the sends performed here should
+   also finish as part of a single scheduler run so we can accept the
+   next message. */
 struct input_task {
     struct csp_task task;
     struct csp_evt evt[2];
     void *next;
-    uint8_t msg[8];
+    uint8_t msg[16];
 } input_task;
 void input_resume(struct input_task *e) {
     if(e->next) goto *e->next;
@@ -52,12 +67,45 @@ void input_resume(struct input_task *e) {
     CSP_EVT(e, 1, CHAN_HW_EVENT, e->msg);
     CSP_SEL(e, 0/*nb_send*/, 2/*nb_recv*/);
     switch(e->task.selected) {
-    case 0:
-        infof("input RCV: %d\n", e->evt[0].msg_len);
+
+    case 0: {
+        /* CHAN_USB_IN: Message from USB Host. */
+        uint32_t count = e->evt[0].msg_len;
+        infof("USB_IN: %d\n", count);
+        switch(read_be(e->msg, 2)) {
+        case 0xFF00:
+            infof("write %d bytes to uart\n", count-2);
+            cbuf_write(&ser_out, &e->msg[2], count-2);
+            hw_usart_enable_send_ready_interrupt(USART1);
+            break;
+        case 0xFF01:
+            infof("tx enable %d\n", e->msg[2]);
+            if (e->msg[2]) { hw_tx_en();  }
+            else           { hw_tx_dis(); }
+            break;
+        }
         goto again;
-    case 1:
-        infof("HW_EVENT %d\n", e->msg[0]);
+    }
+    case 1: {
+        /* CHAN_HW_EVENT: Hardware event. */
+        switch(e->msg[0]) {
+        case HW_EVENT_RX_PBUF0:
+        case HW_EVENT_RX_PBUF1: {
+            uint32_t buf = e->msg[0] - HW_EVENT_RX_PBUF0;
+            /* A complete message has been received on serial I/O */
+            infof("HW_EVENT_RX_PBUF: %d %d\n", e->msg[0], ser_in[buf].count);
+            for(int i=0; i<ser_in[buf].count; i++) {
+                infof(" %02x", ser_in[buf].buf[i]);
+            }
+            infof("\n");
+            break;
+        }
+        default:
+            infof("unknown HW_EVENT %d\n", e->msg[0]);
+            break;
+        }
         goto again;
+    }
     }
 }
 
@@ -65,15 +113,15 @@ void input_resume(struct input_task *e) {
 
 // FIXME: Properly set scheduler data structure sizes.
 struct csp_scheduler   sched;
-struct csp_evt_list    sched_c2e[NB_CHAN*10]; // FIXME
+struct csp_evt_list    sched_e[NB_CHAN*2]; // FIXME: make this exact?
 struct csp_chan_to_evt sched_c[NB_CHAN];
 
 
 static inline void sched_init(void) {
     csp_scheduler_init(
         &sched,
-        sched_c2e, ARRAY_SIZE(sched_c2e),
-        sched_c,   ARRAY_SIZE(sched_c));
+        sched_e, ARRAY_SIZE(sched_e),
+        sched_c, ARRAY_SIZE(sched_c));
     input_task.task.resume = (csp_resume_f)input_resume;
     csp_start(&sched, &input_task.task);
 }
@@ -84,41 +132,20 @@ void app_write_byte(struct slip_write_state *s, uint8_t byte) {
 }
 void app_write_end(struct slip_write_state *s) {
     struct pbuf *p = &packet_in;
+    if (!p->count) return;
 
-    if (p->count >= 2) {
-        uint16_t tag = read_be(&p->buf[0], 2);
-        switch(tag) {
-        case TAG_PING:
-            //infof("ping:%d\n",p->count-2);
-            cbuf_write_slip_tagged(&usb_out, TAG_REPLY,
-                                   &p->buf[2], p->count-2);
-            break;
-        case TAG_GDB:
-            // infof("write TAG_GDB %d\n", p->count-2);
-            _service.rsp_io.write(&p->buf[2], p->count-2);
-            break;
-        case 0xFF00:
-            infof("write %d bytes to uart\n", p->count-2);
-            cbuf_write(&ser_out, &p->buf[2], p->count-2);
-            hw_usart_enable_send_ready_interrupt(USART1);
-            break;
-        case 0xFF01:
-            infof("tx enable %d\n", p->buf[2]);
-            if (p->buf[2]) {
-                hw_tx_en();
-            }
-            else {
-                hw_tx_dis();
-            }
-            break;
-        default:
-            /* Anything else goes into the CSP network.  We won't
-             * buffer any further.  A task needs to be waiting for the
-             * message. */
-            if (!csp_send(&sched, CHAN_USB_IN, &p->buf[0], p->count)) {
-                infof("CSP USB message dropped: %d bytes\n", p->count);
-            }
-            break;
+    /* Keep non-CSP buffer drains out of CSP tasks, and move anything
+       else into the CSP input task. */
+    switch(read_be(&p->buf[0], 2)) {
+    case TAG_PING:
+        cbuf_write_slip_tagged(&usb_out, TAG_REPLY, &p->buf[2], p->count-2);
+        break;
+    case TAG_GDB:
+        _service.rsp_io.write(&p->buf[2], p->count-2);
+        break;
+    default:
+        if (!csp_send(&sched, CHAN_USB_IN, &p->buf[0], p->count)) {
+            infof("CSP USB message dropped: %d bytes\n", p->count);
         }
     }
     p->count = 0;
@@ -126,8 +153,8 @@ void app_write_end(struct slip_write_state *s) {
 
 /* FIXME: Only poll on interrupt. */
 static void poll_event(void) {
-    uint16_t token = cbuf_get(&hw_event);
-    if (CBUF_EAGAIN != token) {
+    uint16_t token;
+    if (CBUF_EAGAIN != (token = cbuf_get(&hw_event))) {
         if (!csp_send(&sched, CHAN_HW_EVENT, &token, sizeof(token))) {
             infof("CSP hw_event dropped\n");
         }
@@ -136,10 +163,6 @@ static void poll_event(void) {
 
 
 
-
-static uint32_t ser_in_read(uint8_t *buf, uint32_t room) {
-    return cbuf_read(&ser_in, buf, room);
-}
 
 struct slip_write_state slip_write_state = {
     .byte = app_write_byte,
@@ -151,7 +174,6 @@ static void app_write(const uint8_t *buf, uint32_t len) {
 static uint32_t app_read(uint8_t *buf, uint32_t room) {
     int rv;
     if ((rv = cbuf_read(&usb_out, buf, room))) return rv; // drain this first
-    if ((rv = slip_read_tagged(0xFF01, ser_in_read, buf, room))) return rv;
     if ((rv = slip_read_tagged(TAG_INFO, info_read, buf, room))) return rv;
     if ((rv = slip_read_tagged(TAG_GDB, _service.rsp_io.read, buf, room))) return rv;
     return 0;
@@ -171,19 +193,27 @@ static void switch_protocol(const uint8_t *buf, uint32_t size) {
 
 
 
-/* Receive DMX on UART and convert to simple SLIP (Break=SLIP_END). */
-/* Call by interrupt system when UART byte arrives. */
+/* Interrupt-driven UART I/O.  It is assumed packets are SLIP. */
+
 #define DBG(...)
 //#define DBG(...) infof(__VA_ARGS__)
 void usart1_isr(void) {
     DBG("INT\n");
 
     /* Receive is independent, so handle it.  Interrupt flag is
-       removed after DR read. */
+       removed after DR read.  Interrupt is always enabled. */
     if (hw_usart1_recv_ready()) {
         int rv = hw_usart1_getchar_nsr();
         DBG("RX:%d\n", rv);
-        cbuf_put(&hw_event, rv);
+        if (SLIP_END == rv) {
+            /* Send out buffer token and swap buffers. */
+            cbuf_put(&hw_event, HW_EVENT_RX_PBUF0+ser_buf);
+            ser_buf^=1;
+            pbuf_slip_clear(&ser_in[ser_buf]);
+        }
+        else {
+            pbuf_slip_put(&ser_in[ser_buf], rv);
+        }
     }
 
     /* There are two transmit interrupts handled here:
@@ -227,9 +257,11 @@ void start(void) {
      * initializing interrupt hardware. */
     CBUF_INIT(usb_out);
     CBUF_INIT(ser_out);
-    CBUF_INIT(ser_in);
     CBUF_INIT(hw_event);
     PBUF_INIT(packet_in);
+
+    /* Double buffered: one for ISR and one for CSP network. */
+    pbuf_pool_init(&ser_in[0], ser_in_buf, 64, 2);
 
     /* CSP scheduler init. */
     sched_init();
