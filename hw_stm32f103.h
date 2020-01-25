@@ -920,6 +920,25 @@ INLINE void hw_usart_enable_rx_interrupt(uint32_t usart) {
 INLINE void hw_usart_disable_rx_interrupt(uint32_t usart) {
 	USART_CR1(usart) &= ~USART_CR1_RXNEIE;
 }
+INLINE void hw_usart_enable_send_ready_interrupt(uint32_t usart) {
+	USART_CR1(usart) |= USART_CR1_TXEIE;
+}
+INLINE void hw_usart_disable_send_ready_interrupt(uint32_t usart) {
+	USART_CR1(usart) &= ~USART_CR1_TXEIE;
+}
+INLINE void hw_usart_enable_send_done_interrupt(uint32_t usart) {
+	USART_CR1(usart) |= USART_CR1_TCIE;
+}
+INLINE void hw_usart_disable_send_done_interrupt(uint32_t usart) {
+	USART_CR1(usart) &= ~USART_CR1_TCIE;
+}
+/* Can be used e.g. to turn of transmitter for RS485. */
+INLINE int hw_usart_send_done_interrupt_enabled(uint32_t usart) {
+        return !!(USART_CR1(usart) & USART_CR1_TCIE);
+}
+INLINE int hw_usart_send_ready_interrupt_enabled(uint32_t usart) {
+        return !!(USART_CR1(usart) & USART_CR1_TXEIE);
+}
 
 
 INLINE void hw_usart1_config(uint32_t div, int interrupt) {
@@ -936,8 +955,8 @@ INLINE void hw_usart1_config(uint32_t div, int interrupt) {
     // lower than BRR=16 doesn't work
     USART_BRR(USART1) = div;
 
-    if (interrupt) hw_usart_enable_rx_interrupt(USART1);
-    else           hw_usart_disable_rx_interrupt(USART1);
+    if (interrupt&1) hw_usart_enable_rx_interrupt(USART1);
+    else             hw_usart_disable_rx_interrupt(USART1);
     hw_usart_enable(USART1);
 }
 
@@ -1000,6 +1019,9 @@ INLINE int hw_usart1_recv_ready(void) {
 }
 INLINE int hw_usart1_send_ready(void) {
     return USART_SR(USART1) & USART_SR_TXE;
+}
+INLINE void hw_usart1_send_ready_ack(void) {
+    USART_SR(USART1) &= ~USART_SR_TXE;
 }
 INLINE void hw_usart1_send(uint8_t cmd) {
     // usart_send(USART1, cmd);

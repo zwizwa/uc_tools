@@ -170,6 +170,11 @@ static inline void do_send(
     recv->selected = evt_recv - &recv->evt[0];
     send->selected = evt_send - &send->evt[0];
 
+    /* Receiver is resumed first.  This makes sends look more like
+       function calls, which is useful for debugging as it makes
+       traces more readable.  Note that the tasks cannot rely on this,
+       and if they only use channel communication they don'tt even
+       know about it. */
     recv->resume(recv);
     send->resume(send);
 }
