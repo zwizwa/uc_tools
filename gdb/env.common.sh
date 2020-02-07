@@ -3,7 +3,8 @@
 
 # ---- Configuration
 
-TPF=../../gcc-arm-none-eabi-4_8-2014q2/bin/arm-none-eabi
+TOOL_DIR=../../gcc-arm-none-eabi-4_8-2014q2
+TPF=$TOOL_DIR/bin/arm-none-eabi
 LIBOPENCM3=../../libopencm3
 UC_TOOLS=..
 VERSION=$(git rev-parse HEAD)
