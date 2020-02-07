@@ -67,6 +67,7 @@ void pbuf_packetn_write(
     const uint8_t *buf, uint32_t len,
     pbuf_sink_t sink, void *ctx);
 
+/* FIXME: This is not really necessary.   Use pbuf_slip_write_handle(). */
 void pbuf_slip_write(
     const uint8_t *buf, uint32_t len, // input buffer
     struct cbuf *c,                   // stage 1 buffer for slip stream
@@ -105,21 +106,38 @@ static inline void pbuf_slip_clear(struct pbuf *p) {
 static inline void pbuf_slip_put(struct pbuf *p, uint8_t c) {
     if (p->count >= p->size-1) return;
     if (SLIP_END == c) return;
-    switch(p->buf[p->count]) {
-    case SLIP_ESC:
-        if (SLIP_ESC_ESC == c) { c = SLIP_ESC; }
-        if (SLIP_ESC_END == c) { c = SLIP_END; }
+
+    uint8_t last_was_escape = p->buf[p->count];
+    if (last_was_escape) {
+        if      (SLIP_ESC_ESC == c) { c = SLIP_ESC; }
+        else if (SLIP_ESC_END == c) { c = SLIP_END; }
         p->buf[p->count++] = c;
-        break;
-    case 0:
-        p->buf[p->count] = c;
-        if (SLIP_ESC != c) { p->count++; }
-        break;
-    default:
-        // not reached
-        break;
+        p->buf[p->count] = 0; // not escape
     }
-    p->buf[p->count] = 0;
+    else {
+        if (SLIP_ESC == c) {
+            p->buf[p->count] = 1; // escape
+        }
+        else {
+            p->buf[p->count++] = c;
+            p->buf[p->count] = 0; // not escape
+        }
+    }
+}
+static inline void pbuf_slip_for(
+    struct pbuf *p,
+    const uint8_t *buf, uint32_t len,
+    void (*handle)(struct pbuf *)) {
+
+    for(uint32_t i=0; i<len; i++) {
+        if(SLIP_END == buf[i]) {
+            handle(p);
+            pbuf_slip_clear(p);
+        }
+        else {
+            pbuf_slip_put(p, buf[i]);
+        }
+    }
 }
 
 

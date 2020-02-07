@@ -7,7 +7,7 @@
 
    - No priorities, no pre-emption.  This is for main loop only, and
      purely cooperative.  This is fine for a large class of
-     non-CPU-bound "reactive" systems.
+     non-CPU-bound "reactive" systems, but it is NOT an RTOS.
 
    - No multi-CPU support.  This is for small microcontrollers.
 
@@ -521,6 +521,22 @@ int csp_async_read(struct csp_scheduler *s,
        much simpler.
 
    See os.c for an example.
+
+*/
+
+
+/* Bump allocator for scheduler data structures.
+
+   It might be more convenient to not mess with pre-computing the
+   memory usage and use a bump allocation where:
+
+   - Memory that is no longer needed will be pushed into a free list
+     for that particular type.
+
+   - If a free list is empty, memory is taken from the bump allocator.
+
+   It will still be possible to compute bounds, but in most cases the
+   memory usage will stabilize over time.
 
 */
 

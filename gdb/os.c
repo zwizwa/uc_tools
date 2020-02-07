@@ -1,19 +1,23 @@
 /* Explore some reusable abstractions once CSP scheduler is part of
-   the picture.  Main goal here is to create some hardware
-   abstractions that communicate with CSP network through protocols
-   instead of functions and callbacks.  This should make it a lot
-   easier to move logic between bare metal and Linux processes. */
+   the picture.  Might evolve into more traditional OS.
+
+   Main goal here is to create some hardware abstractions that
+   communicate with CSP network through protocols instead of functions
+   and callbacks.  This should make it a lot easier to move logic
+   between bare metal and Linux processes. */
 
 #include "base.h"
 #include "gdbstub_api.h"
 #include <string.h>
 
-#include "sliplib.h"
-
 #include "pbuf.h"
 #include "cbuf.h"
 
+#include "sliplib.h"
+
 #include "csp.h"
+
+#include "crc.h"
 
 #define TX_EN_OUT   GPIOA,8
 
@@ -23,6 +27,38 @@ static inline void hw_tx_dis(void) {
 static inline void hw_tx_en(void) {
     hw_gpio_write(TX_EN_OUT,1);
 }
+
+static void log_buf(const uint8_t *buf, uint32_t len) {
+    for(int i=0; i<len; i++) {
+        infof(" %02x", buf[i]);
+    }
+    infof("\n");
+}
+
+
+/* For timeouts.  Prescaler is a 16 bit number that divides the 72MHz
+ * clock.  Timescales:
+ * 72   -> 1us
+ * 720  -> 10us
+ * 7200 -> 100us
+ */
+#define TICKS_PER_US 10
+
+const struct hw_delay hw_tim[] = {
+//          rcc       irq            tim   psc
+//-------------------------------------------------------
+    [2] = { RCC_TIM2, NVIC_TIM2_IRQ, TIM2, 72*TICKS_PER_US },
+};
+#define TIM 2
+#define C_TIM hw_tim[TIM]
+
+static inline void hw_set_recv_timeout_us(uint32_t us) {
+    uint32_t ticks = (us / TICKS_PER_US) & 0xFFFF;
+    infof("ticks %d\n", ticks);
+    hw_delay_arm(C_TIM, ticks);
+    hw_delay_trigger(C_TIM);
+}
+
 
 
 struct pbuf packet_in; uint8_t packet_in_buf[1024 + 64];
@@ -39,6 +75,8 @@ uint8_t ser_in_buf[128];
 /* Interrupts are translated to a single event queue. */
 #define HW_EVENT_RX_PBUF0 0
 #define HW_EVENT_RX_PBUF1 1
+#define HW_EVENT_TIMEOUT 255
+
 
 
 
@@ -73,19 +111,33 @@ void input_resume(struct input_task *e) {
         uint32_t count = e->evt[0].msg_len;
         infof("USB_IN: %d\n", count);
         switch(read_be(e->msg, 2)) {
-        case 0xFF00:
+        case 0xFF00: {
+            if (count < sizeof(e->msg)) {
+                e->msg[count] = crc8x_simple(0, &e->msg[2], count-2);
+                count++;
+            }
             infof("write %d bytes to uart\n", count-2);
-            cbuf_write(&ser_out, &e->msg[2], count-2);
+            log_buf(&e->msg[2], count-2);
+            cbuf_write_slip(&ser_out, &e->msg[2], count-2);
             hw_usart_enable_send_ready_interrupt(USART1);
             break;
+        }
         case 0xFF01:
             infof("tx enable %d\n", e->msg[2]);
             if (e->msg[2]) { hw_tx_en();  }
             else           { hw_tx_dis(); }
             break;
+        case 0xFF02: {
+            uint32_t us = read_be(e->msg+2, 4);
+            infof("timeout %d us\n", us);
+            hw_set_recv_timeout_us(us);
+            break;
         }
+        }
+
         goto again;
     }
+
     case 1: {
         /* CHAN_HW_EVENT: Hardware event. */
         switch(e->msg[0]) {
@@ -94,10 +146,9 @@ void input_resume(struct input_task *e) {
             uint32_t buf = e->msg[0] - HW_EVENT_RX_PBUF0;
             /* A complete message has been received on serial I/O */
             infof("HW_EVENT_RX_PBUF: %d %d\n", e->msg[0], ser_in[buf].count);
-            for(int i=0; i<ser_in[buf].count; i++) {
-                infof(" %02x", ser_in[buf].buf[i]);
-            }
-            infof("\n");
+            uint8_t crc = crc8x_simple(0, ser_in[buf].buf, ser_in[buf].count-1);
+            infof("crc %02x %02x\n", crc, ser_in[buf].buf[ser_in[buf].count-1]);
+            log_buf(ser_in[buf].buf, ser_in[buf].count);
             break;
         }
         default:
@@ -127,11 +178,18 @@ static inline void sched_init(void) {
 }
 
 
-void app_write_byte(struct slip_write_state *s, uint8_t byte) {
-    pbuf_put(&packet_in, byte);
+/* FIXME: Only poll on interrupt. */
+static void poll_event(void) {
+    uint16_t token;
+    if (CBUF_EAGAIN != (token = cbuf_get(&hw_event))) {
+        if (!csp_send(&sched, CHAN_HW_EVENT, &token, sizeof(token))) {
+            infof("CSP hw_event dropped\n");
+        }
+    }
 }
-void app_write_end(struct slip_write_state *s) {
-    struct pbuf *p = &packet_in;
+
+
+void app_handle(struct pbuf *p) {
     if (!p->count) return;
 
     /* Keep non-CSP buffer drains out of CSP tasks, and move anything
@@ -148,28 +206,10 @@ void app_write_end(struct slip_write_state *s) {
             infof("CSP USB message dropped: %d bytes\n", p->count);
         }
     }
-    p->count = 0;
 }
-
-/* FIXME: Only poll on interrupt. */
-static void poll_event(void) {
-    uint16_t token;
-    if (CBUF_EAGAIN != (token = cbuf_get(&hw_event))) {
-        if (!csp_send(&sched, CHAN_HW_EVENT, &token, sizeof(token))) {
-            infof("CSP hw_event dropped\n");
-        }
-    }
-}
-
-
-
-
-struct slip_write_state slip_write_state = {
-    .byte = app_write_byte,
-    .end  = app_write_end,
-};
 static void app_write(const uint8_t *buf, uint32_t len) {
-    slip_write_tagged(&slip_write_state, buf, len);
+    /* Incoming SLIP protocol goes to pbuf and is handled when complete. */
+    pbuf_slip_for(&packet_in, buf, len, app_handle);
 }
 static uint32_t app_read(uint8_t *buf, uint32_t room) {
     int rv;
@@ -192,6 +232,15 @@ static void switch_protocol(const uint8_t *buf, uint32_t size) {
 
 
 
+/* Timeout interrupt. */
+volatile uint32_t tim_isr_count = 0;
+void HW_TIM_ISR(TIM)(void) {
+    tim_isr_count++;
+    cbuf_put(&hw_event, HW_EVENT_TIMEOUT);
+    hw_delay_ack(C_TIM);
+}
+
+
 
 /* Interrupt-driven UART I/O.  It is assumed packets are SLIP. */
 
@@ -206,9 +255,10 @@ void usart1_isr(void) {
         int rv = hw_usart1_getchar_nsr();
         DBG("RX:%d\n", rv);
         if (SLIP_END == rv) {
-            /* Send out buffer token and swap buffers. */
-            cbuf_put(&hw_event, HW_EVENT_RX_PBUF0+ser_buf);
-            ser_buf^=1;
+            if (ser_in[ser_buf].count) {
+                cbuf_put(&hw_event, HW_EVENT_RX_PBUF0+ser_buf);
+                ser_buf^=1;
+            }
             pbuf_slip_clear(&ser_in[ser_buf]);
         }
         else {
@@ -273,8 +323,23 @@ void start(void) {
     hw_gpio_config(TX_EN_OUT,HW_GPIO_CONFIG_OUTPUT);
     hw_tx_dis();
 
+    /* */
+    hw_delay_init(C_TIM, 0xFFFF, 1 /*enable interrupt*/);
+
+    /* FIXME: There is a bug in the timer init.  The first arm,trigger
+     * sequence causes the ISR to fire immediately.  After that the
+     * timeouts are correct.  I can't find the problem so this is a
+     * workaround that triggers it once and clears the buffer. */
+    hw_set_recv_timeout_us(10000);
+    while(cbuf_empty(&hw_event)); // interrupt will add char
+    cbuf_clear(&hw_event); // remove the char
+
+
     hw_usart1_init();
-    hw_usart1_config(625, 1); // 115k2, receive interrupt enabled.
+//#define BR 625 // 115k2
+#define BR 16 //4.5M (max)
+
+    hw_usart1_config(BR, 1);
 
     /* Polling routine: FIXME: This can go in a WFI loop. */
     _service.add(poll_event);
