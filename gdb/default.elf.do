@@ -35,11 +35,12 @@ redo-ifchange $ENV
 # .o files that need to be linked in explicitly. contianing the
 # application elf's main and optionally some system .o files
 # configured in $ENV file.
-O="$BN.$ARCH.o $O_SYSTEM"
+O="$BN.$ARCH.o"
 
 # library of .o files for compilation architecture for any remaining unresolved symbols
 A=lib.$ARCH.a
 
+redo-ifchange $O_SYSTEM
 redo-ifchange $O $A
 
 
@@ -47,7 +48,10 @@ LD=$LDT.$ARCH.ld
 
 if [ -f "$LD" ]; then
     redo-ifchange $LD 
-    $GCC $LDFLAGS -T$LD -Wl,-Map=$BN.$ARCH.map -o $3 $O $A $LDLIBS
+    E=$3
+    MAP=$BN.$ARCH.map
+    redo-ifchange build.elf.sh
+    . ./build.elf.sh
     
 else
     # no .ld file, use a custom link step instead.

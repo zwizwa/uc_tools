@@ -1,4 +1,7 @@
-. ./env.common.sh
+# If this is not defined, assume it is current working directory.
+[ -z "$UC_TOOLS_GDB_DIR" ] && UC_TOOLS_GDB_DIR=.
+
+. $UC_TOOLS_GDB_DIR/env.common.sh
 
 MFLAGS=" \
 -mthumb \

@@ -3,11 +3,14 @@
 
 # ---- Configuration
 
-TOOL_DIR=../../gcc-arm-none-eabi-4_8-2014q2
+# If this is not defined, assume it is current working directory.
+[ -z "$UC_TOOLS_GDB_DIR" ] && UC_TOOLS_GDB_DIR=.
+
+TOOL_DIR=$UC_TOOLS_GDB_DIR/../../gcc-arm-none-eabi-4_8-2014q2
 TPF=$TOOL_DIR/bin/arm-none-eabi
-LIBOPENCM3=../../libopencm3
-UC_TOOLS=..
-VERSION=$(git rev-parse HEAD)
+LIBOPENCM3=$UC_TOOLS_GDB_DIR/../../libopencm3
+UC_TOOLS=$UC_TOOLS_GDB_DIR/..
+VERSION=$(cd $UC_TOOLS ; git rev-parse HEAD)
 
 # ---- Implementation
 
@@ -19,8 +22,8 @@ READELF=${TPF}-readelf
 MFLAGS_COMMON=""
 
 CPPFLAGS_COMMON="\
--I. \
--I.. \
+-I$UC_TOOLS_GDB_DIR. \
+-I$UC_TOOLS_GDB_DIR/.. \
 -I$UC_TOOLS/include \
 -I$LIBOPENCM3/include \
 "

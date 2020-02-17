@@ -44,6 +44,8 @@ EOF
 
 redo-ifchange $O
 
-ar -r $3 $O 2>/dev/null
+A=$3
+redo-ifchange build.a.sh
+. ./build.a.sh
 
 

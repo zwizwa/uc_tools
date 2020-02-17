@@ -23,11 +23,9 @@ C=$BN.c
 redo-ifchange $C
 ENV=./env.$ARCH.sh
 redo-ifchange $ENV
-. $ENV
 
 if [ ! -z "$UC_TOOLS_LIB_DIR" ]; then
-    CFLAGS="-I$UC_TOOLS_LIB_DIR $CFLAGS"
-    #echo "CFLAGS=$CFLAGS" >&2
+    CFLAGS_EXTRA="-I$UC_TOOLS_LIB_DIR"
 fi
 
 
@@ -49,10 +47,19 @@ if [ ! -z "REDO_VERBOSE_ENTER" ]; then
     echo "redo: Entering directory '$(readlink -f .)'" >&2
 fi
 
-$GCC $CFLAGS -MD -MF $3.deps.tmp -DFIRMWARE=\"$BN\" -DBUILD=\"$VERSION\" -o $3 -c $C || exit 1
+D=$3.deps.tmp
+O=$3
+
+# This is for build system abstraction.  The purpose of this .do
+# script is to create a configuration dictionary implemented as
+# environment variables, which are then used by the build script.
+# This allows plugging into other build systems easily in a way that
+# everyone can focus on just generating those dictionaries.
+redo-ifchange build.o.sh
+. ./build.o.sh
 
 # Transform the Makefile style dependency list into just a list of
 # prerequisites.
-DEPS=$(sed -e "s/^$3://" -e 's/\\//g' <$3.deps.tmp)
-rm -f $3.deps.tmp
+DEPS=$(sed -e "s/^$3://" -e 's/\\//g' <$D)
+rm -f $D
 redo-ifchange $DEPS

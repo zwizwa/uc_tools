@@ -1,0 +1,3 @@
+UC_TOOLS_GDB_DIR=$(dirname $E)
+. $UC_TOOLS_GDB_DIR/env.$ARCH.sh
+$GCC $LDFLAGS -T$LD -Wl,-Map=$MAP -o $E $O $O_SYSTEM $A $LDLIBS
