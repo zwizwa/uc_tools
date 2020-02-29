@@ -1,4 +1,3 @@
-set -x
 UC_TOOLS=$(dirname $O)/..
 . $UC_TOOLS/host/env.$ARCH.sh
 $GCC \
