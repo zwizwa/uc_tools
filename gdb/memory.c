@@ -28,7 +28,7 @@ int32_t mem_write32(uint32_t addr, uint32_t val) {
    Only allow access to regions that don't cause exceptions.
    FIXME: Catch exception instead! */
 
-uint8_t mem_read(uint32_t addr) 
+uint8_t mem_read(uint32_t addr)
     switch(addr >> 29) {
     case 0x00000000 >> 29: // Flash
     case 0x20000000 >> 29: // RAM

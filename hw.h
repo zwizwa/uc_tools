@@ -14,7 +14,6 @@
 #elif defined(STM32F4)
 #include "hw_stm32f407.h"
 
-#else
 #error Unsupported hardware
 #endif
 

@@ -3,28 +3,28 @@
 
 # ---- Configuration
 
-# If this is not defined, assume it is current working directory.
-[ -z "$UC_TOOLS_GDB_DIR" ] && UC_TOOLS_GDB_DIR=.
+# If this is not defined, assume we're in one of the build
+# directories, one down from top dir.
 
-TOOL_DIR=$UC_TOOLS_GDB_DIR/../../gcc-arm-none-eabi-4_8-2014q2
-TPF=$TOOL_DIR/bin/arm-none-eabi
-LIBOPENCM3=$UC_TOOLS_GDB_DIR/../../libopencm3
-UC_TOOLS=$UC_TOOLS_GDB_DIR/..
+[ -z "$UC_TOOLS" ] && UC_TOOLS=..
+
+# Tool Prefix
+[ -z "$TPF" ] && TPF=$UC_TOOLS/../gcc-arm-none-eabi-4_8-2014q2/bin/arm-none-eabi-
+LIBOPENCM3=$UC_TOOLS/../libopencm3
 VERSION=$(cd $UC_TOOLS ; git rev-parse HEAD)
 
 # ---- Implementation
 
-GCC=${TPF}-gcc
-OBJDUMP=${TPF}-objdump
-OBJCOPY=${TPF}-objcopy
-READELF=${TPF}-readelf
+GCC=${TPF}gcc
+OBJDUMP=${TPF}objdump
+OBJCOPY=${TPF}objcopy
+READELF=${TPF}readelf
 
 MFLAGS_COMMON=""
 
 CPPFLAGS_COMMON="\
--I$UC_TOOLS_GDB_DIR. \
--I$UC_TOOLS_GDB_DIR/.. \
--I$UC_TOOLS/include \
+-I$UC_TOOLS/gdb \
+-I$UC_TOOLS/ \
 -I$LIBOPENCM3/include \
 "
 
