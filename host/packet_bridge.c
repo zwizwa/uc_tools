@@ -198,6 +198,27 @@ static ssize_t udp_write(struct udp_port *p, uint8_t *buf, ssize_t len) {
     return wlen;
 }
 
+#if 0
+struct port *port_open_sock_dgram(const char *path) {
+    int fd;
+    ASSERT_ERRNO(fd = socket(AF_UNIX, SOCK_DGRAM, 0));
+
+    // FIXME: server/client?  compare port_open_udp()
+
+    struct sock_dgram_port *p;
+    ASSERT(p = malloc(sizeof(*p)));
+    memset(p,0,sizeof(*p));
+    p->p.fd = fd;
+    p->p.fd_out = fd;
+    p->p.read  = (port_read_fn)sock_dgram_read;
+    p->p.write = (port_write_fn)sock_dgram_write;
+    p->p.pop = 0;
+
+    return &p->p;
+}
+#endif
+
+
 struct port *port_open_udp(uint16_t port) {
     int fd;
     ASSERT_ERRNO(fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP));
@@ -266,7 +287,7 @@ static ssize_t pop_read(port_pop_fn pop,
         }
     }
     if (rv == 0) {
-        ERROR("eof");
+        ERROR("eof\n");
     }
     ASSERT(rv > 0);
     p->count += rv;
@@ -492,6 +513,9 @@ static ssize_t slip_write(struct slip_port *p, uint8_t *buf, ssize_t len) {
 static ssize_t sys_read(struct port *p, uint8_t *buf, ssize_t len) {
     ssize_t rlen;
     ASSERT_ERRNO(rlen = read(p->fd, buf, len));
+    if (rlen == 0) {
+        ERROR("eof\n");
+    }
     return rlen;
 }
 static ssize_t sys_write(struct port *p, const uint8_t *buf, ssize_t len) {
@@ -659,13 +683,14 @@ void packet_loop(packet_handle_fn handle,
 
     for (int i=0; i<ctx->nb_ports; i++) {
         pfd[i].fd = ctx->port[i]->fd;
-        pfd[i].events = POLLERR | POLLIN;
+        pfd[i].events = POLLIN;
+        pfd[i].revents = 0;
     }
     for(;;) {
         uint8_t buf[PACKET_MAX_SIZE]; // FIXME: Make this configurable
         int rv;
         // LOG("timeout %d\n", ctx->timeout);
-        ASSERT_ERRNO(rv = poll(&pfd[0], 2, ctx->timeout));
+        ASSERT_ERRNO(rv = poll(&pfd[0], ctx->nb_ports, ctx->timeout));
         ASSERT(rv >= 0);
         // LOG("poll rv: %d\n", rv);
         if (rv == 0) {
@@ -698,6 +723,10 @@ void packet_loop(packet_handle_fn handle,
                             count++;
                         }
                     }
+                }
+                else if (pfd[i].revents) {
+                    /* Anything else is an error, e.g. POLLHUP */
+                    ERROR("port %d: revents=0x%x\n", i, pfd[i].revents);
                 }
             }
         }
