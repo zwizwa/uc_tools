@@ -1,1 +1,1 @@
-ar -r $A $O 2>/dev/null
+ar -r $A $O #2>/dev/null

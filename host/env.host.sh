@@ -5,4 +5,20 @@
 [ -z "$UC_TOOLS" ] && UC_TOOLS=..
 
 GCC=gcc
-
+CFLAGS=" \
+-I$UC_TOOLS/host \
+-I$UC_TOOLS/ \
+-I$LIBOPENCM3/include \
+-std=c99 \
+-fno-common \
+-ffunction-sections \
+-fdata-sections \
+-MD \
+-Wall \
+-Werror \
+-Wno-format \
+-Wno-attributes \
+-Wno-multichar \
+-g \
+-Os \
+"
