@@ -40,6 +40,11 @@ static inline void pbuf_put(struct pbuf *p, uint8_t c) {
         p->buf[p->count++] = c;
     }
 }
+static inline void pbuf_write(struct pbuf *p, const uint8_t *buf, uint32_t len) {
+    for(uint32_t i=0; i<len; i++) {
+        pbuf_put(p, buf[i]);
+    }
+}
 
 
 typedef void (*pbuf_sink_t)(void*, const struct pbuf *p);

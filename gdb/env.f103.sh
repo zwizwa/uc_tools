@@ -41,4 +41,4 @@ forth_app.x8.f103.elf
 os.x8.f103.elf
 "
 
-O_SYSTEM=registers_stm32f103.f103.o
+O_SYSTEM=$UC_TOOLS/gdb/registers_stm32f103.f103.o

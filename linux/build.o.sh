@@ -1,5 +1,5 @@
 UC_TOOLS=$(dirname $O)/..
-. $UC_TOOLS/host/env.$ARCH.sh
+. $UC_TOOLS/linux/env.$ARCH.sh
 $GCC \
     $CFLAGS \
     $CFLAGS_EXTRA \

@@ -17,7 +17,7 @@ ssize_t raw_write(int fd, const void *buf, size_t count);
 #define LOG(...) fprintf(stderr, __VA_ARGS__)
 #endif
 #ifndef ERROR
-#define ERROR(...) do{LOG(__VA_ARGS__);exit(1);}while(0)
+#define ERROR(...) do{LOG("ERROR: "__VA_ARGS__);exit(1);}while(0)
 #endif
 #ifndef READ
 #define READ  raw_read
