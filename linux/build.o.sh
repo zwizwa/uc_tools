@@ -1,4 +1,4 @@
-UC_TOOLS=$(dirname $O)/..
+[ -z "$UC_TOOLS" ] && UC_TOOLS=$(dirname $O)/..
 . $UC_TOOLS/linux/env.$ARCH.sh
 $GCC \
     $CFLAGS \
