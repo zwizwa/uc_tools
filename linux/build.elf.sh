@@ -1,5 +1,5 @@
 [ -z "$UC_TOOLS" ] && UC_TOOLS=$(dirname $E)/..
-. $UC_TOOLS/linux/env.$ARCH.sh
+[ -z "$GCC" ] && . $UC_TOOLS/linux/env.$ARCH.sh
 
 # The LD name is fake. Use linker's defaults.
 if [ $(basename "$LD") != dynamic.$ARCH.ld ]; then

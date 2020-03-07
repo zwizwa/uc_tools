@@ -3,10 +3,9 @@
 # to test platform independent code on linux.
 
 [ -z "$UC_TOOLS" ] && UC_TOOLS=..
-
-GCC=gcc
+[ -z "$GCC" ] && GCC=gcc
 CFLAGS=" \
--I$UC_TOOLS/host \
+-I$UC_TOOLS/linux \
 -I$UC_TOOLS/ \
 -I$LIBOPENCM3/include \
 -std=c99 \
