@@ -363,12 +363,13 @@ static ssize_t packetn_read(struct packetn_port *p, uint8_t *buf, ssize_t len) {
 
 static ssize_t packetn_write(struct packetn_port *p, uint8_t *buf, ssize_t len) {
     int fd = p->p.p.fd_out;
-
     //LOG("packetn_write %d\n", len);
-    uint8_t size[p->len_bytes];
-    packetn_packet_write_size(p, len, &size[0]);
-    assert_write(fd, &size[0], p->len_bytes);
-    assert_write(fd, buf, len);
+    // Buffer and copy the data so we can use a single write.
+    uint32_t packet_len = p->len_bytes + len;
+    uint8_t packet[packet_len];
+    packetn_packet_write_size(p, len, &packet[0]);
+    memcpy(&packet[p->len_bytes], buf, len);
+    assert_write(fd, packet, packet_len);
     //LOG("packetn_write %d (done)\n", len);
     return len + p->len_bytes;
 }

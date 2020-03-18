@@ -1,15 +1,14 @@
 # See https://rust-embedded.github.io/cortex-m-quickstart/cortex_m_quickstart/
 # Idempotent install script: install.sh
 
+ELF=bluepill.f103.elf
+
 .PHONY: all
-all: bluepill.elf bluepill.dasm bluepill.readelf
-
-target/thumbv7m-none-eabi/release/bluepill:
+all:
 	cargo build --release
-
-bluepill.elf: target/thumbv7m-none-eabi/release/bluepill
-	rm -rf $@
-	ln -s $< $@
+	ln -sf target/thumbv7m-none-eabi/release/bluepill $(ELF)
+#	md5sum $(ELF)
+	arm-none-eabi-objdump -d $(ELF)
 
 %.readelf: %.elf
 	readelf -a $< >$@.tmp
