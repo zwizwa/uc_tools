@@ -1,0 +1,30 @@
+[package]
+name = "bluepill"
+version = "0.0.1"
+authors = ["Tom Schouten <tom@zwizwa.be>"]
+description = "F4 template"
+keywords = ["arm", "cortex-m", "template"]
+categories = ["embedded", "no-std"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/zwizwa/uc_tools"
+
+
+[dependencies]
+cortex-m = "0.5.7"
+cortex-m-rt = "0.6.12"
+stm32f4 = {version = "0.10.0", features = ["stm32f407", "rt"]}
+
+
+# cortex-m-semihosting = "0.3.1"
+# panic-semihosting = "0.4.0"
+panic-halt = "0.2.0"
+
+[profile.release]
+codegen-units = 1
+debug = true
+lto = true
+opt-level = 's'
+
+[lib]
+path = "src/lib.rs"
+

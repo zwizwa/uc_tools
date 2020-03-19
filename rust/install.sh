@@ -12,7 +12,7 @@ need_target() {
 }
 
 # Cortex M3
-need_target thumbv7m-none-eabi
+# need_target thumbv7m-none-eabi
 
 # Cortex M4
-# need_target thumbv7em-none-eabihf
+need_target thumbv7em-none-eabihf

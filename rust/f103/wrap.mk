@@ -8,7 +8,7 @@ all:
 	cargo build --release
 	ln -sf target/thumbv7m-none-eabi/release/bluepill $(ELF)
 #	md5sum $(ELF)
-	arm-none-eabi-objdump -d $(ELF)
+#	arm-none-eabi-objdump -d $(ELF)
 
 %.readelf: %.elf
 	readelf -a $< >$@.tmp
