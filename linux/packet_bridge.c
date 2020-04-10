@@ -1,5 +1,5 @@
 /*
-Copyright 2019 (c) Tom Schouten
+Copyright 2019-2020 (c) Tom Schouten
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions
@@ -71,6 +71,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <netdb.h>
 
+#include <signal.h>
 
 //#include "/usr/include/asm-generic/termbits.h"
 //#include "/usr/include/asm-generic/ioctls.h"
@@ -250,7 +251,6 @@ struct port *port_open_udp(uint16_t port) {
 
 /***** 1.3. PACKETN */
 
-#if 1  // needs testing
 
 /* For byte streams, some kind of framing is necessary, so use Erlang
  * {packet,N} where every packet is prefixed with a big endian short
@@ -404,14 +404,52 @@ struct port *port_open_packetn_tty(uint32_t len_bytes, const char *dev) {
 
     return port_open_packetn_stream(len_bytes, fd, fd);
 }
+static void handle_signal(int sig) {
+    LOG("SIGNAL %d\n", sig);
+    exit(1);
+}
+struct port *port_open_packetn_command(uint32_t len_bytes, const char *command) {
+    // This is confusing, so spell it out
+    const int read_end = 0;
+    const int write_end = 1;
+    int parent_to_child[2]; pipe(parent_to_child);
+    int child_to_parent[2]; pipe(child_to_parent);
 
-#endif
+    int pid = fork();
+
+    /* CHILD */
+    if (!pid){
+        /* replace stdio with pipes and leave stderr as-is. */
+        close(0); dup(parent_to_child[read_end]);
+        close(1); dup(child_to_parent[write_end]);
+
+        /* No longer needed */
+        close(parent_to_child[read_end]);
+        close(parent_to_child[write_end]);
+        close(child_to_parent[read_end]);
+        close(child_to_parent[write_end]);
+
+        /* execvp requires NULL-terminated array
+           FIXME: only supporting single command, no args */
+        char const* argv[] = {command, NULL};
+        ASSERT_ERRNO(execvp(argv[0], (char **)&argv[0]));
+        /* not reached (exec success or assert error exit) */
+    }
+
+    signal(SIGCHLD, handle_signal);
+
+    /* PARENT */
+    int in_fd  = child_to_parent[read_end];  close(child_to_parent[write_end]);
+    int out_fd = parent_to_child[write_end]; close(parent_to_child[read_end]);
+
+    return port_open_packetn_stream(len_bytes, in_fd, out_fd);
+}
+
 
 
 
 /***** 1.4. SLIP */
 
-#if 1  // needs testing
 
 /* See https://en.wikipedia.org/wiki/Serial_Line_Internet_Protocol */
 #define SLIP_END     0xC0
@@ -571,8 +609,10 @@ struct port *port_open_slip_tty(const char *dev) {
 
     return port_open_slip_stream(fd, fd);
 }
+struct port *port_open_slip_command(const char *command) {
+    ASSERT(0); // not yet implemented
+}
 
-#endif
 
 /***** 1.5. HEX */
 struct hex_port {
@@ -807,6 +847,9 @@ struct port *port_open(const char *spec_ro) {
     char *tok;
     ASSERT(tok = strtok(spec, delim));
 
+    // 1. PACKET INTERFACES
+
+    // TAP:<tapdev>
     if (!strcmp(tok, "TAP")) {
         ASSERT(tok = strtok(NULL, delim));
         const char *tapdev = tok;
@@ -815,6 +858,7 @@ struct port *port_open(const char *spec_ro) {
         return port_open_tap(tapdev);
     }
 
+    // UDP-LISTEN:<port>
     if (!strcmp(tok, "UDP-LISTEN")) {
         ASSERT(tok = strtok(NULL, delim));
         uint16_t port = atoi(tok);
@@ -823,6 +867,7 @@ struct port *port_open(const char *spec_ro) {
         return port_open_udp(port);
     }
 
+    // UDP-LISTEN:<host>:<port>
     if (!strcmp(tok, "UDP")) {
         ASSERT(tok = strtok(NULL, delim));
         const char *host = tok;
@@ -859,6 +904,13 @@ struct port *port_open(const char *spec_ro) {
         return p;
     }
 
+    // 2. FRAME INTERFACES
+    // First argument is always the framing type.
+    // Currently only two kinds are supported:
+    // - slip
+    // - little-endian size prefix
+
+    // TTY:<framing>:<dev>
     if (!strcmp(tok, "TTY")) {
         ASSERT(tok = strtok(NULL, delim));
         if (!strcmp("slip", tok)) {
@@ -877,6 +929,28 @@ struct port *port_open(const char *spec_ro) {
         }
     }
 
+    // EXEC:<framing>:<command>
+    if (!strcmp(tok, "EXEC")) {
+        ASSERT(tok = strtok(NULL, delim));
+        if (!strcmp("slip", tok)) {
+            ASSERT(tok = strtok(NULL, delim));
+            const char *command = tok;
+            ASSERT(NULL == (tok = strtok(NULL, delim)));
+            LOG("port_open_slip_command(%s)\n", command);
+            return port_open_slip_command(command);
+        }
+        else {
+            uint16_t len_bytes = atoi(tok);
+            ASSERT(tok = strtok(NULL, delim));
+            const char *command = tok;
+            ASSERT(NULL == (tok = strtok(NULL, delim)));
+            return port_open_packetn_command(len_bytes, command);
+        }
+    }
+
+
+    // -:<framing>
+    // stdandard i/o
     if (!strcmp(tok, "-")) {
         tok = strtok(NULL, delim);
         if (NULL == tok) {
@@ -898,7 +972,6 @@ struct port *port_open(const char *spec_ro) {
         return port_open_hex_stream(0, 1);
     }
 
-    // FIXME: debug hex output/input
 
     ERROR("unknown type %s\n", tok);
 }
@@ -960,6 +1033,9 @@ int packet_forward_main(int argc, char **argv) {
 
 */
 
+
+/* TODO:
+   - remove port creation duplication wrt. slip vs. packetn */
 
 
 
