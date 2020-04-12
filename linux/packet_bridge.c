@@ -126,7 +126,9 @@ static void assert_write(int fd, uint8_t *buf, uint32_t len) {
 
 
 
-/***** 1.1. TAP */
+
+
+/***** 1.1. TAP PORT */
 
 static ssize_t tap_read(struct port *p, uint8_t *buf, ssize_t len) {
     ssize_t rlen;
@@ -156,7 +158,7 @@ struct port *port_open_tap(const char *dev) {
 }
 
 
-/***** 1.2. UDP */
+/***** 1.2. UDP PORT */
 
 struct udp_port {
     struct port p;
@@ -249,7 +251,75 @@ struct port *port_open_udp(uint16_t port) {
 }
 
 
-/***** 1.3. PACKETN */
+/***** 2. STREAM INTERFACES */
+
+/* Stream interfaces need two layers: a low level FD layer, and a
+   framing layer: packetn or slip. */
+
+
+/***** 2.1  LOW LEVEL FD */
+
+
+/* Low-level open routines that return one or two file descriptors to
+   support multiple framing protocols. */
+static void fd_open_tty(int *pfd, const char *dev) {
+    int fd;
+    ASSERT_ERRNO(fd = open(dev, O_RDWR | O_NONBLOCK));
+
+    struct termios2 tio;
+    ASSERT(0 == ioctl(fd, TCGETS2, &tio));
+
+    // http://www.cs.uleth.ca/~holzmann/C/system/ttyraw.c
+    tio.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+    tio.c_oflag &= ~(OPOST);
+    tio.c_cflag |= (CS8);
+    tio.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+    tio.c_cc[VMIN] = 1;
+    tio.c_cc[VTIME] = 0;
+
+    ASSERT(0 == ioctl(fd, TCSETS2, &tio));
+    *pfd = fd;
+}
+static void handle_signal(int sig) {
+    LOG("SIGNAL %d\n", sig);
+    exit(1);
+}
+static void fd_open_command(int *in_fd, int *out_fd, const char *command) {
+    // This is confusing, so spell it out
+    const int read_end = 0;
+    const int write_end = 1;
+    int parent_to_child[2]; pipe(parent_to_child);
+    int child_to_parent[2]; pipe(child_to_parent);
+
+    int pid = fork();
+
+    /* CHILD */
+    if (!pid){
+        /* replace stdio with pipes and leave stderr as-is. */
+        close(0); dup(parent_to_child[read_end]);
+        close(1); dup(child_to_parent[write_end]);
+
+        /* No longer needed */
+        close(parent_to_child[read_end]);
+        close(parent_to_child[write_end]);
+        close(child_to_parent[read_end]);
+        close(child_to_parent[write_end]);
+
+        /* execvp requires NULL-terminated array
+           FIXME: only supporting single command, no args */
+        char const* argv[] = {command, NULL};
+        ASSERT_ERRNO(execvp(argv[0], (char **)&argv[0]));
+        /* not reached (exec success or assert error exit) */
+    }
+
+    signal(SIGCHLD, handle_signal);
+
+    /* PARENT */
+    *in_fd  = child_to_parent[read_end];  close(child_to_parent[write_end]);
+    *out_fd = parent_to_child[write_end]; close(parent_to_child[read_end]);
+}
+
+/***** 2.2. PACKETN FRAMING */
 
 
 /* For byte streams, some kind of framing is necessary, so use Erlang
@@ -385,70 +455,24 @@ struct port *port_open_packetn_stream(uint32_t len_bytes, int fd, int fd_out) {
     p->len_bytes = len_bytes;
     return &p->p.p;
 }
+
+
+
 struct port *port_open_packetn_tty(uint32_t len_bytes, const char *dev) {
     int fd;
-    ASSERT_ERRNO(fd = open(dev, O_RDWR | O_NONBLOCK));
-
-    struct termios2 tio;
-    ASSERT(0 == ioctl(fd, TCGETS2, &tio));
-
-    // http://www.cs.uleth.ca/~holzmann/C/system/ttyraw.c
-    tio.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
-    tio.c_oflag &= ~(OPOST);
-    tio.c_cflag |= (CS8);
-    tio.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
-    tio.c_cc[VMIN] = 1;
-    tio.c_cc[VTIME] = 0;
-
-    ASSERT(0 == ioctl(fd, TCSETS2, &tio));
-
+    fd_open_tty(&fd, dev);
     return port_open_packetn_stream(len_bytes, fd, fd);
 }
-static void handle_signal(int sig) {
-    LOG("SIGNAL %d\n", sig);
-    exit(1);
-}
+
+
 struct port *port_open_packetn_command(uint32_t len_bytes, const char *command) {
-    // This is confusing, so spell it out
-    const int read_end = 0;
-    const int write_end = 1;
-    int parent_to_child[2]; pipe(parent_to_child);
-    int child_to_parent[2]; pipe(child_to_parent);
-
-    int pid = fork();
-
-    /* CHILD */
-    if (!pid){
-        /* replace stdio with pipes and leave stderr as-is. */
-        close(0); dup(parent_to_child[read_end]);
-        close(1); dup(child_to_parent[write_end]);
-
-        /* No longer needed */
-        close(parent_to_child[read_end]);
-        close(parent_to_child[write_end]);
-        close(child_to_parent[read_end]);
-        close(child_to_parent[write_end]);
-
-        /* execvp requires NULL-terminated array
-           FIXME: only supporting single command, no args */
-        char const* argv[] = {command, NULL};
-        ASSERT_ERRNO(execvp(argv[0], (char **)&argv[0]));
-        /* not reached (exec success or assert error exit) */
-    }
-
-    signal(SIGCHLD, handle_signal);
-
-    /* PARENT */
-    int in_fd  = child_to_parent[read_end];  close(child_to_parent[write_end]);
-    int out_fd = parent_to_child[write_end]; close(parent_to_child[read_end]);
-
+    int in_fd, out_fd;
+    fd_open_command(&in_fd, &out_fd, command);
     return port_open_packetn_stream(len_bytes, in_fd, out_fd);
 }
 
 
-
-
-/***** 1.4. SLIP */
+/***** 2.3. SLIP FRAMING */
 
 
 /* See https://en.wikipedia.org/wiki/Serial_Line_Internet_Protocol */
@@ -547,7 +571,9 @@ static ssize_t slip_write(struct slip_port *p, uint8_t *buf, ssize_t len) {
 }
 
 
-/***** 1.5. SYS */
+/***** 2.4. SYSTEM FRAMING */
+
+/* rely on read/write system call being packet-delimited. */
 
 static ssize_t sys_read(struct port *p, uint8_t *buf, ssize_t len) {
     ssize_t rlen;
@@ -592,21 +618,7 @@ struct port *port_open_slip_stream(int fd, int fd_out) {
 }
 struct port *port_open_slip_tty(const char *dev) {
     int fd;
-    ASSERT_ERRNO(fd = open(dev, O_RDWR | O_NONBLOCK));
-
-    struct termios2 tio;
-    ASSERT(0 == ioctl(fd, TCGETS2, &tio));
-
-    // http://www.cs.uleth.ca/~holzmann/C/system/ttyraw.c
-    tio.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
-    tio.c_oflag &= ~(OPOST);
-    tio.c_cflag |= (CS8);
-    tio.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
-    tio.c_cc[VMIN] = 1;
-    tio.c_cc[VTIME] = 0;
-
-    ASSERT(0 == ioctl(fd, TCSETS2, &tio));
-
+    fd_open_tty(&fd, dev);
     return port_open_slip_stream(fd, fd);
 }
 struct port *port_open_slip_command(const char *command) {
@@ -614,7 +626,8 @@ struct port *port_open_slip_command(const char *command) {
 }
 
 
-/***** 1.5. HEX */
+/***** 2.5. HEX+LINE FRAMING */
+
 struct hex_port {
     struct buf_port p;
     FILE *f_out;
@@ -696,7 +709,7 @@ struct port *port_open_hex_stream(int fd, int fd_out) {
 
 
 
-/***** 2. PACKET HANDLER */
+/***** 3. PACKET HANDLER */
 
 /* Default behavior for the stand-alone program is to just forward a
  * packet to the other port.  Any other processing behavior is left to
@@ -712,7 +725,7 @@ void packet_forward(struct packet_handle_ctx *x, int from, const uint8_t *buf, s
 
 
 
-/***** 3. FORWARDER */
+/***** 4. FORWARDER */
 
 void packet_loop(packet_handle_fn handle,
                  struct packet_handle_ctx *ctx) {
@@ -774,7 +787,7 @@ void packet_loop(packet_handle_fn handle,
     }
 }
 
-/***** 4. RPC */
+/***** 5. RPC */
 
 /* Sometimes it is useful to perform blocking RPC on a port in
    response to some message.  I.e. perform a transaction on one port,
@@ -837,7 +850,7 @@ ssize_t packet_next(struct port *p, int timeout,
 }
 
 
-/***** 5. CONSTRUCTORS */
+/***** 6. CONSTRUCTORS */
 
 struct port *port_open(const char *spec_ro) {
     char spec[strlen(spec_ro)+1];
@@ -975,6 +988,9 @@ struct port *port_open(const char *spec_ro) {
 
     ERROR("unknown type %s\n", tok);
 }
+
+
+/***** 7. DEFAULT MAIN */
 
 int packet_forward_main(int argc, char **argv) {
     ASSERT(argc > 2);
