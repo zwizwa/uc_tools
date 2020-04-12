@@ -27,7 +27,7 @@ csp.c
 O=$(echo $C | sed s/\\.c/\\.${ARCH}\\.o/g)
 
 # User-defined library extensions
-echo "UC_TOOLS_LIB_DIR=$UC_TOOLS_LIB_DIR" >&2
+# echo "UC_TOOLS_LIB_DIR=$UC_TOOLS_LIB_DIR" >&2
 
 if [ ! -z "$UC_TOOLS_LIB_DIR" ]; then
     O_EXTRA=$(cd $UC_TOOLS_LIB_DIR ; ls *.c | sed s/\\.c/\\.${ARCH}\\.o/g)

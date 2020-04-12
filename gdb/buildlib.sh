@@ -38,7 +38,7 @@
 
 need_vars() {
     for var in $@; do
-        echo "checking $var=\"$(eval "echo \$$var")\"" >&2
+        # echo "checking $var=\"$(eval "echo \$$var")\"" >&2
         if [ -z "$(eval "echo \$$var")" ]; then
              echo "$var is undefined" >&2
              exit 1
