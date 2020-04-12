@@ -12,7 +12,7 @@
 
 
 
-ARCH="${2##*.}"
+export ARCH="${2##*.}"
 BN_LDT=$(basename $2 .$ARCH)
 LDT="${BN_LDT##*.}"
 BN=$(basename $BN_LDT .$LDT)
@@ -27,31 +27,34 @@ ENV=$ENV
 EOF
 }
 
+[ -z "$UC_TOOLS" ] && export UC_TOOLS=..
+
 # show_vars
 
 redo-ifchange $ENV
 . $ENV
 
+
 # .o files that need to be linked in explicitly. contianing the
 # application elf's main and optionally some system .o files
 # configured in $ENV file.
-O="$BN.$ARCH.o"
+export O="$BN.$ARCH.o"
 
 # library of .o files for compilation architecture for any remaining unresolved symbols
-A=lib.$ARCH.a
+export A=lib.$ARCH.a
 
 redo-ifchange $O_SYSTEM
 redo-ifchange $O $A
 
 
-LD=$LDT.$ARCH.ld
+export LD=$LDT.$ARCH.ld
 
 if [ -f "$LD" ]; then
     redo-ifchange $LD 
-    E=$3
-    MAP=$BN.$ARCH.map
+    export E=$3
+    export MAP=$BN.$ARCH.map
     redo-ifchange build.elf.sh
-    . ./build.elf.sh
+    ./build.elf.sh
     
 else
     # no .ld file, use a custom link step instead.

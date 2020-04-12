@@ -37,15 +37,16 @@ fi
 echo "O=$O" >&2
 
 
-cat <<EOF >&2
-ARCH=$ARCH
-O=$O
-EOF
+# cat <<EOF >&2
+# ARCH=$ARCH
+# O=$O
+# EOF
 
 redo-ifchange $O
 
-A=$3
+export O
+export A=$3
 redo-ifchange build.a.sh
-. ./build.a.sh
+./build.a.sh
 
 
