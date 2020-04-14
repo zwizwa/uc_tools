@@ -43,7 +43,7 @@
 # - All used variables should be checked with the need() function to
 #   show proper error messages on misconfiguration.
 
-need_vars() {
+assert_vars() {
     for var in $@; do
         # echo "checking $var=\"$(eval "echo \$$var")\"" >&2
         if [ -z "$(eval "echo \$$var")" ]; then
@@ -55,12 +55,12 @@ need_vars() {
 
 
 
-need_vars UC_TOOLS
+assert_vars UC_TOOLS
 [ -z "$VERSION" ] && VERSION=current
 
 case "$TYPE" in
     o)
-        need_vars O C D ARCH FIRMWARE
+        assert_vars O C D ARCH FIRMWARE
         . $UC_TOOLS/gdb/env.$ARCH.sh
         $GCC \
             $CFLAGS \
@@ -74,11 +74,15 @@ case "$TYPE" in
             -c $C
         ;;
     a)
-        need_vars A O
+        assert_vars A O
         ar -r $A $O 2>/dev/null
         ;;
+    ld)
+        assert_vars LD_GEN LD
+        $LD_GEN >$LD
+        ;;
     elf)
-        need_vars ARCH LD MAP E O A
+        assert_vars ARCH LD MAP E O A
         . $UC_TOOLS/gdb/env.$ARCH.sh
         $GCC \
             $LDFLAGS \
