@@ -34,7 +34,7 @@ if [ ! -z "$UC_TOOLS_LIB_DIR" ]; then
     O="$O $O_EXTRA"
 fi
 
-echo "O=$O" >&2
+# echo "O=$O" >&2
 
 
 # cat <<EOF >&2
@@ -46,7 +46,8 @@ redo-ifchange $O
 
 export O
 export A=$3
-redo-ifchange build.a.sh
-./build.a.sh
+redo-ifchange build.sh
+export TYPE=a
+./build.sh
 
 

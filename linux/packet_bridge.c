@@ -57,6 +57,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 
 #include <linux/if.h>
 #include <linux/if_tun.h>
@@ -201,27 +202,6 @@ static ssize_t udp_write(struct udp_port *p, uint8_t *buf, ssize_t len) {
     return wlen;
 }
 
-#if 0
-struct port *port_open_sock_dgram(const char *path) {
-    int fd;
-    ASSERT_ERRNO(fd = socket(AF_UNIX, SOCK_DGRAM, 0));
-
-    // FIXME: server/client?  compare port_open_udp()
-
-    struct sock_dgram_port *p;
-    ASSERT(p = malloc(sizeof(*p)));
-    memset(p,0,sizeof(*p));
-    p->p.fd = fd;
-    p->p.fd_out = fd;
-    p->p.read  = (port_read_fn)sock_dgram_read;
-    p->p.write = (port_write_fn)sock_dgram_write;
-    p->p.pop = 0;
-
-    return &p->p;
-}
-#endif
-
-
 struct port *port_open_udp(uint16_t port) {
     int fd;
     ASSERT_ERRNO(fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP));
@@ -318,6 +298,29 @@ static void fd_open_command(int *in_fd, int *out_fd, const char *command) {
     *in_fd  = child_to_parent[read_end];  close(child_to_parent[write_end]);
     *out_fd = parent_to_child[write_end]; close(parent_to_child[read_end]);
 }
+
+#if 0
+static void fd_open_sock_dgram(int *pfd, const char *path) {
+    int fd;
+    struct sockaddr_un un;
+
+    ASSERT_ERRNO(fd = socket(PF_UNIX, SOCK_STREAM,0));
+    un.sun_family = AF_UNIX;
+    strcpy(un.sun_path, path); // FIXME: strncpyUNIX_PATH_MAX
+    socklen_t addrlen = sizeof(un.sun_family) + strlen(un.sun_path) + 1;
+
+    // server socket
+    if (1) {
+        ASSERT(-1 == bind(fd, (struct sockaddr *)&un, addrlen));
+    }
+    // client socket
+    else {
+        ASSERT(-1 == connect(fd, (struct sockaddr *)&un, addrlen));
+    }
+
+    *pfd = fd;
+}
+#endif
 
 /***** 2.2. PACKETN FRAMING */
 

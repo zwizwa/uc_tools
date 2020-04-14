@@ -53,8 +53,9 @@ if [ -f "$LD" ]; then
     redo-ifchange $LD 
     export E=$3
     export MAP=$BN.$ARCH.map
-    redo-ifchange build.elf.sh
-    ./build.elf.sh
+    redo-ifchange build.sh
+    export TYPE=elf
+    ./build.sh
     
 else
     # no .ld file, use a custom link step instead.

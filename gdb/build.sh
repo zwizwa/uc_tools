@@ -1,3 +1,10 @@
+#!/bin/bash
+
+# TL,DR: Build system is split into two parts:
+# 1. Build tool wrappers (this file)
+# 2. Build rules (either apenwarr redo, or exo redo)
+
+
 # The build system is a little complex as it is constructed to support
 # a number of use cases and is still in flux.  Some history:
 #
@@ -45,3 +52,43 @@ need_vars() {
         fi
     done
 }
+
+
+
+need_vars UC_TOOLS
+[ -z "$VERSION" ] && VERSION=current
+
+case "$TYPE" in
+    o)
+        need_vars O C D ARCH FIRMWARE
+        . $UC_TOOLS/gdb/env.$ARCH.sh
+        $GCC \
+            $CFLAGS \
+            $CFLAGS_EXTRA \
+            -I$UC_TOOLS_GDB_DIR \
+            -I$UC_TOOLS_GDB_DIR/.. \
+            -MD -MF $D \
+            -DFIRMWARE=\"$FIRMWARE\" \
+            -DBUILD=\"$VERSION\" \
+            -o $O \
+            -c $C
+        ;;
+    a)
+        need_vars A O
+        ar -r $A $O 2>/dev/null
+        ;;
+    elf)
+        need_vars ARCH LD MAP E O A
+        . $UC_TOOLS/gdb/env.$ARCH.sh
+        $GCC \
+            $LDFLAGS \
+            -T$LD \
+            -Wl,-Map=$MAP \
+            -o $E \
+            $O $O_SYSTEM $A $LDLIBS
+        ;;
+    *)
+        echo "unknown TYPE=$TYPE"
+        exit 1
+        ;;
+esac

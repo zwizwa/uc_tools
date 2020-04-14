@@ -63,8 +63,9 @@ export O=$3
 # environment variables, which are then used by the build script.
 # This allows plugging into other build systems easily in a way that
 # everyone can focus on just generating those dictionaries.
-redo-ifchange build.o.sh
-./build.o.sh
+redo-ifchange build.sh
+export TYPE=o
+./build.sh
 
 # Transform the Makefile style dependency list into just a list of
 # prerequisites.
