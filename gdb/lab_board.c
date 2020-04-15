@@ -179,10 +179,17 @@ void dispatch(void *ctx, const struct pbuf *p) {
     case TAG_GDB:
         // infof("tag_gdb: %d\n", p->count);
         _service.rsp_io.write(&p->buf[2], p->count-2);
-    case TAG_UART:
+    case TAG_STREAM: {
+        uint16_t stream_tag = read_be(p->buf+2, 2);
         //infof("tag_uart: %d\n", p->count);
-        cbuf_write(&uart1_out, &p->buf[2], p->count-2);
+        if (0 == stream_tag) {
+            cbuf_write(&uart1_out, &p->buf[4], p->count-4);
+        }
+        else {
+            /* Unknown stream. */
+        }
         break;
+    }
     default:
         infof("unknown message: tag=%02x len=%d\n", tag, p->count);
         break;
