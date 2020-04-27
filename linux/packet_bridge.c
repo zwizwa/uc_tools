@@ -933,7 +933,7 @@ struct port *port_open(const char *spec_ro) {
             ASSERT(tok = strtok(NULL, delim));
             const char *dev = tok;
             ASSERT(NULL == (tok = strtok(NULL, delim)));
-            LOG("port_open_slip_tty(%s)\n", dev);
+            //LOG("port_open_slip_tty(%s)\n", dev);
             return port_open_slip_tty(dev);
         }
         else {
@@ -952,7 +952,7 @@ struct port *port_open(const char *spec_ro) {
             ASSERT(tok = strtok(NULL, delim));
             const char *command = tok;
             ASSERT(NULL == (tok = strtok(NULL, delim)));
-            LOG("port_open_slip_command(%s)\n", command);
+            //LOG("port_open_slip_command(%s)\n", command);
             return port_open_slip_command(command);
         }
         else {
