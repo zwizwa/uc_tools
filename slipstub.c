@@ -5,8 +5,9 @@
 #include "gdbstub_api.h"
 
 
-/* Application needs to define this. */
+/* Application needs to define these if they are used. */
 extern struct slipstub slipstub;
+extern struct slipstub_buffers slipstub_buffers;
 
 static void slipstub_dispatch(void *ctx, const struct pbuf *p) {
     struct slipstub *s = &slipstub;
@@ -22,6 +23,7 @@ static void slipstub_dispatch(void *ctx, const struct pbuf *p) {
         _service.rsp_io.write(&p->buf[2], p->count-2);
         break;
     default:
+        //infof("dispatch %d\n", tag);
         s->dispatch(s, tag, p);
         break;
     }
@@ -75,4 +77,16 @@ void slipstub_switch_protocol(const uint8_t *buf, uint32_t size) {
     infof("SLIP on serial port.\n");
     *_service.io = (struct gdbstub_io *)(&slipstub_io);
     (*_service.io)->write(buf, size);
+}
+
+/* Define both slipstub and slipstub_buffers structs if you use
+ * this. */
+void slipstub_init(slipstub_dispatch_t dispatch) {
+    CBUF_INIT(slipstub_buffers.cbuf_from_usb);
+    CBUF_INIT(slipstub_buffers.cbuf_to_usb);
+    PBUF_INIT(slipstub_buffers.pbuf_from_usb);
+    slipstub.slip_in = &slipstub_buffers.cbuf_from_usb;
+    slipstub.packet_in = &slipstub_buffers.pbuf_from_usb;
+    slipstub.slip_out = &slipstub_buffers.cbuf_to_usb;
+    slipstub.dispatch = dispatch;
 }
