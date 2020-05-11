@@ -207,7 +207,9 @@ void HW_TIM_ISR(TIM_PERIODIC)(void) {
     apparently creates enough of a delay. */
     hw_periodic_ack(C_PERIODIC);
 
+#ifdef PDM_PIN_FRAME
     GPIO_BSRR(PDM_PORT) = (1 << PDM_PIN_FRAME);
+#endif
 
     //DEBUG_MARK;
 
@@ -216,9 +218,11 @@ void HW_TIM_ISR(TIM_PERIODIC)(void) {
     uint32_t set_bits = channels_update() >> (32 - NB_CHANNELS - PDM_PIN_CHAN0);
     uint32_t mask     = ((1 << NB_CHANNELS) - 1) << PDM_PIN_CHAN0;
     uint32_t clr_bits = (~set_bits) & mask;
-    uint32_t bsrr     = set_bits  | (clr_bits << 16) | (0x10000 << PDM_PIN_FRAME);
+    uint32_t bsrr     = set_bits  | (clr_bits << 16);
+#ifdef PDM_PIN_FRAME
+    bsrr |= (0x10000 << PDM_PIN_FRAME);
+#endif
     GPIO_BSRR(PDM_PORT) = bsrr;
-
 
     // Log last non-trivial set/clear command
     // if (set_bits) { bsrr_last = bsrr; }
@@ -304,10 +308,12 @@ void start(void) {
 
     /* Frame clock.  Pulse width can be used for CPU usage
      * measurement. */
+#ifdef PDM_PIN_FRAME
     hw_gpio_config(
         PDM_PORT,
         PDM_PIN_FRAME,
         HW_GPIO_CONFIG_OUTPUT);
+#endif
 
     /* One output per channel. */
     for(int i=0; i<NB_CHANNELS; i++) {
@@ -315,7 +321,9 @@ void start(void) {
         hw_gpio_config(
             PDM_PORT,
             PDM_PIN_CHAN0 + i,
-            HW_GPIO_CONFIG_OUTPUT);
+            HW_GPIO_CONFIG_OPEN_DRAIN_2MHZ
+            // HW_GPIO_CONFIG_OUTPUT
+            );
     }
     slipstub_init(handle_tag);
 

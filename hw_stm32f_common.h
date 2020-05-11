@@ -210,11 +210,12 @@ INLINE volatile uint32_t *hw_bitband(volatile uint32_t *ptr, uint32_t bit) {
 
 */
 
-// Common uses:
-#define HW_GPIO_CONFIG_INPUT      0x4  // gpio input, floating
-#define HW_GPIO_CONFIG_INPUT_PULL 0x8  // gpio input, pullup/down  (ODR=pull_dir)
-#define HW_GPIO_CONFIG_OUTPUT     0x3  // gpio output, push-pull
-#define HW_GPIO_CONFIG_ALTFN      0xB  // alternate function output, p
+// Common uses:                             // CNF:2, MODE:2
+#define HW_GPIO_CONFIG_INPUT           0x4  // 0100 gpio input, floating
+#define HW_GPIO_CONFIG_INPUT_PULL      0x8  // 1000 gpio input, pullup/down  (ODR=pull_dir)
+#define HW_GPIO_CONFIG_OUTPUT          0x3  // 0011 gpio output, push-pull
+#define HW_GPIO_CONFIG_ALTFN           0xB  // 1011 alternate function output, 50MHz
+#define HW_GPIO_CONFIG_OPEN_DRAIN_2MHZ 0x5  // 0101 open drain output, 2MHz
 INLINE struct hw_delayed_write hw_gpio_config_dw(uint32_t gpio, uint32_t pin, uint32_t config) {
     uint32_t shift = (pin&7) * 4;
     uint32_t offset = 4 * ((pin>>3) & 1); // CRL=0, CRH=4
