@@ -85,6 +85,14 @@
 
 /* PLATFORM SPECIFIC */
 
+/* CONFIGURATION */
+/* First channel pin.  Other channels are adjacent, incrementing. */
+#define PDM_PIN_CHAN0 3
+/* All channels are part of one port. */
+#define PDM_PORT GPIOA
+/* This sets the number of channels.  Used for struct gen and code gen. */
+#define FOR_CHANNELS(c) c(0) c(1) c(2) c(3)
+
 
 #include "base.h"
 #include "gdbstub_api.h"
@@ -100,7 +108,6 @@ struct slipstub_buffers slipstub_buffers;
 
 
 #define TIM_PERIODIC 4
-#define DBG_PIN GPIOA,3
 
 static const struct hw_periodic hw_periodic_config[] = {
 //          rcc       irq            tim   div  pre
@@ -113,23 +120,85 @@ static const struct hw_periodic hw_periodic_config[] = {
 
 #define C_PERIODIC hw_periodic_config[TIM_PERIODIC]
 
-void start_sampler(void) {
+void start_modulator(void) {
     infof("start\n");
     hw_periodic_init(C_PERIODIC);
 }
-void stop_sampler(void) {
+void stop_modulator(void) {
     infof("stop\n");
     hw_periodic_disable(C_PERIODIC);
 }
-static volatile uint32_t count = 0;
+
+struct channel {
+    uint32_t setpoint;
+    uint32_t accu;
+};
+#define CHANNEL_STRUCT(c) {},
+struct channel channel[] = { FOR_CHANNELS(CHANNEL_STRUCT) };
+
+#define NB_CHANNELS (sizeof(channel) / sizeof(struct channel))
+
+
+
+
+/* The modulator will need to deliver a pulse whenver the accumulator
+   overflows.  ARM can shift LSB and MSB using ADC and RRX
+   respectively. */
+
+INLINE void channel_update(
+    struct channel *channel,
+    uint32_t *shiftreg) {
+
+    __asm__ (
+        "   adds %0, %0, %2  \n"   // update accu, update carry
+      //"   adc  %1, %1, %1  \n"   // shift carry flag into LSB
+        "   rrx %1, %1       \n"   // shift carry flag into MSB
+        : "+r"(channel->accu),     // %0 read/write
+          "+r"(*shiftreg)          // %1 read/write
+        :  "r"(channel->setpoint)  // %2 read
+        : );
+}
+
+#define CHANNEL_UPDATE(c) \
+    channel_update(&channel[c], &shiftreg);
+
+#define DEBUG_MARK \
+    __asm__ volatile ( \
+        "   nop             \n" \
+        "   nop             \n" \
+        "   nop             \n" \
+        : )
+
+INLINE uint32_t channels_update(void) {
+    uint32_t shiftreg = 0;
+    FOR_CHANNELS(CHANNEL_UPDATE);
+    return shiftreg;
+}
+
+
+
+static volatile uint32_t bsrr_last = 0;
+
 void HW_TIM_ISR(TIM_PERIODIC)(void) {
     /* Issiuing ack at the end of the isr will re-trigger it. What is
     the delay necessary to avoid that?  Issuing it at the beginning
     apparently creates enough of a delay. */
     hw_periodic_ack(C_PERIODIC);
 
-    hw_gpio_write(DBG_PIN,count&1);
-    count++;
+    //DEBUG_MARK;
+
+    /* Assume GPIOs are contiguous.  We're using RRX to shift into MSB
+     * to keep the pin order the same as the channel order. */
+    uint32_t set_bits = channels_update() >> (32 - NB_CHANNELS - PDM_PIN_CHAN0);
+    uint32_t mask     = ((1 << NB_CHANNELS) - 1) << PDM_PIN_CHAN0;
+    uint32_t clr_bits = (~set_bits) & mask;
+    uint32_t bsrr     = (set_bits  | (clr_bits << 16));
+    GPIO_BSRR(PDM_PORT) = bsrr;
+
+    // Log last non-trivial set/clear command
+    // if (set_bits) { bsrr_last = bsrr; }
+
+    //DEBUG_MARK;
 }
 
 int handle_tag_u32(void *context,
@@ -137,13 +206,49 @@ int handle_tag_u32(void *context,
                    const uint8_t *bytes, uint32_t nb_bytes) {
     if (nb_args < 1) return -1;
     switch(arg[0]) {
+    case 1: // MODE
+        //  bp2 ! {send_packet, <<16#FFF50002:32, 1:32, 1:32}.
+        if (nb_args < 2) return -1;
+        if (arg[1]) { start_modulator(); }
+        else        { stop_modulator(); }
+        return 0;
+    case 2: { // SETPOINT
+        struct { uint32_t cmd; uint32_t chan; uint32_t val; } *a = (void*)arg;
+        if (nb_args < 3) return -1;
+        if (a->chan >= NB_CHANNELS) return -2;
+        channel[a->chan].setpoint = a->val;
+        infof("setpoint[%d] = %d\n", a->chan, a->val);
+        return 0;
+    }
+    case 101: { // TEST_UPDATE
+        // bp2 ! {send_u32, [101, 1000000000, 1,2,3]}.
+        if (nb_args > 1 + NB_CHANNELS) return -1;
+        for (int i=0; i<nb_args-1; i++) {
+            channel[i].setpoint = arg[1+i];
+        }
+        uint32_t shiftreg_gpio = channels_update();
+        for (int i=0; i<nb_args-1; i++) {
+            infof("%d: %x %x\n", i, channel[i].accu, channel[i].setpoint);
+        }
+        infof("gpio %x\n", shiftreg_gpio);
+        return 0;
+    }
+    case 102: { // TEST_INFO
+        infof("bsrr_last = %x\n", bsrr_last);
+        for (int i=0; i<NB_CHANNELS; i++) {
+            infof("%d: %x %x\n", i, channel[i].accu, channel[i].setpoint);
+        }
+        return 0;
+    }
     default:
-        infof("unknown command:");
+        infof("unknown tag_u32 command:");
         for (int i=0; i<nb_args; i++) { infof(" %d", arg[i]); }
         infof("\n");
         return -2;
     }
 }
+
+
 
 
 /* slipstub calls this one for application tags.  We then patch
@@ -169,16 +274,26 @@ void handle_tag(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
 /* STARTUP */
 void start(void) {
     hw_app_init();
+    /* FIXME: This assumes it's GPIOA */
     rcc_periph_clock_enable(RCC_GPIOA | RCC_AFIO);
-    hw_gpio_config(DBG_PIN,HW_GPIO_CONFIG_OUTPUT);
+
+    for(int i=0; i<NB_CHANNELS; i++) {
+        infof("port %x pin %d\n", PDM_PORT, PDM_PIN_CHAN0 + i);
+        hw_gpio_config(
+            PDM_PORT,
+            PDM_PIN_CHAN0 + i,
+            HW_GPIO_CONFIG_OUTPUT);
+    }
     slipstub_init(handle_tag);
+    channel[0].setpoint = 1000000000;
+    start_modulator();
 }
 void stop(void) {
     hw_app_stop();
     _service.reset();
 }
 const char config_manufacturer[] CONFIG_DATA_SECTION = "Zwizwa";
-const char config_product[]      CONFIG_DATA_SECTION = "PDM Test";
+const char config_product[]      CONFIG_DATA_SECTION = "Pulse Density Modulator";
 const char config_firmware[]     CONFIG_DATA_SECTION = FIRMWARE;
 const char config_version[]      CONFIG_DATA_SECTION = BUILD;
 const char config_protocol[]     CONFIG_DATA_SECTION = "slip";
