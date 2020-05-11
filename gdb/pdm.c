@@ -1,3 +1,5 @@
+#include <stdint.h>
+
 /* Pulse density modulator.
 
    This implements a DAC for controlling set points of analog
@@ -58,7 +60,7 @@
    lower parts of the frequency spectrum if X is small or close to N
    (i.e. negative X is small).
 
-   The appriach we take is to ensure that we do not have to use the
+   The approach we take is to ensure that we do not have to use the
    lower and upper 25 percent of the range of X.  So we sacrifice one
    bit of precision, in order to keep the noise period above 1/4th of
    the update frequency.
@@ -72,9 +74,28 @@
 
 #define DIV 900 // (/ 72000000 (* 20000 4))
 
+/* The circuit is designed such that:
+
+   - open circuit drive transistor is safe (62.5% Vref).  this happens
+     during startup.
+
+   - closed circuit drive transistor never happens because we only
+     modulate between 25% and 100% of the useful range.
+
+   With a 32bit accumulator, the safe() function clips the range.
+*/
+#define SETPOINT_MIN 0x40000000
+#define SETPOINT_MAX 0xC0000000
+uint32_t safe_setpoint(uint32_t setpoint) {
+    if (setpoint < SETPOINT_MIN) return SETPOINT_MIN;
+    if (setpoint > SETPOINT_MAX) return SETPOINT_MAX;
+    return setpoint;
+}
+
+
 /*
    The other constraint is that the output noise spectrum will still
-   be quote periodic, which might cause issues when modulation is
+   be quoite periodic, which might cause issues when modulation is
    involved, as the noise spectrum can end up back into the audio
    spectrum.  The way around this is to add some form of dithering
    into the signal.  We will (TODO: later) insert this as a
@@ -87,7 +108,8 @@
 
 /* CONFIGURATION */
 /* First channel pin.  Other channels are adjacent, incrementing. */
-#define PDM_PIN_CHAN0 3
+#define PDM_PIN_FRAME 3
+#define PDM_PIN_CHAN0 4
 /* All channels are part of one port. */
 #define PDM_PORT GPIOA
 /* This sets the number of channels.  Used for struct gen and code gen. */
@@ -185,6 +207,8 @@ void HW_TIM_ISR(TIM_PERIODIC)(void) {
     apparently creates enough of a delay. */
     hw_periodic_ack(C_PERIODIC);
 
+    GPIO_BSRR(PDM_PORT) = (1 << PDM_PIN_FRAME);
+
     //DEBUG_MARK;
 
     /* Assume GPIOs are contiguous.  We're using RRX to shift into MSB
@@ -192,8 +216,9 @@ void HW_TIM_ISR(TIM_PERIODIC)(void) {
     uint32_t set_bits = channels_update() >> (32 - NB_CHANNELS - PDM_PIN_CHAN0);
     uint32_t mask     = ((1 << NB_CHANNELS) - 1) << PDM_PIN_CHAN0;
     uint32_t clr_bits = (~set_bits) & mask;
-    uint32_t bsrr     = (set_bits  | (clr_bits << 16));
+    uint32_t bsrr     = set_bits  | (clr_bits << 16) | (0x10000 << PDM_PIN_FRAME);
     GPIO_BSRR(PDM_PORT) = bsrr;
+
 
     // Log last non-trivial set/clear command
     // if (set_bits) { bsrr_last = bsrr; }
@@ -277,6 +302,14 @@ void start(void) {
     /* FIXME: This assumes it's GPIOA */
     rcc_periph_clock_enable(RCC_GPIOA | RCC_AFIO);
 
+    /* Frame clock.  Pulse width can be used for CPU usage
+     * measurement. */
+    hw_gpio_config(
+        PDM_PORT,
+        PDM_PIN_FRAME,
+        HW_GPIO_CONFIG_OUTPUT);
+
+    /* One output per channel. */
     for(int i=0; i<NB_CHANNELS; i++) {
         infof("port %x pin %d\n", PDM_PORT, PDM_PIN_CHAN0 + i);
         hw_gpio_config(
@@ -285,6 +318,12 @@ void start(void) {
             HW_GPIO_CONFIG_OUTPUT);
     }
     slipstub_init(handle_tag);
+
+    /* Move all setpoints into a safe range before starting.. */
+    for(int i=0; i<NB_CHANNELS; i++) {
+        channel[i].setpoint = safe_setpoint(0);
+    }
+
     channel[0].setpoint = 1000000000;
     start_modulator();
 }
