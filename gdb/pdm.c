@@ -238,14 +238,36 @@ void HW_TIM_ISR(TIM_PERIODIC)(void) {
 const struct hw_exti c_exti = HW_EXTI_A0_B;
 #define C_EXTI c_exti
 #define C_GPIO GPIOA,0
-volatile uint32_t count_exti_pos, count_exti_neg;
+volatile uint32_t nb_pulses, last_cc, osc_period;
+
+/* Use the ARM 32-bit cycle counter to do time stamping.  It's more
+   convenient than having to work around 16bit counter limitations.
+   The 16 bit timers could later be used as oscillators. */
+
+#define REG(addr) (*((volatile uint32_t*)addr))
+#define DWT_CYCCNT  REG(0xE0001004)
+#define DWT_CONTROL REG(0xE0001000)
+#define DEMCR       REG(0xE000EDFC)
+#define LAR         REG(0xE0001FB0)
+
+// https://stackoverflow.com/questions/36378280/stm32-how-to-enable-dwt-cycle-counter
+static inline void enable_cycle_counter(void) {
+    DEMCR |= 0x01000000;    // enable trace
+    LAR = 0xC5ACCE55;       // <-- added unlock access to DWT (ITM, etc.)registers
+    DWT_CYCCNT = 0;         // clear DWT cycle counter
+    DWT_CONTROL |= 1;       // enable DWT cycle counter
+}
+static inline uint32_t cycle_counter(void) {
+    return DWT_CYCCNT;
+}
+
 void exti0_isr(void) {
     hw_exti_ack(C_EXTI);
     if (hw_gpio_read(C_GPIO)) {
-        count_exti_pos++;
-    }
-    else {
-        count_exti_neg++;
+        nb_pulses++;
+        uint32_t cc = cycle_counter();
+        osc_period = cc - last_cc;
+        last_cc = cc;
     }
 }
 
@@ -289,8 +311,9 @@ int handle_tag_u32(void *context,
         for (int i=0; i<NB_CHANNELS; i++) {
             infof("%d: %x %x\n", i, channel[i].accu, channel[i].setpoint);
         }
-        infof("count_exti_pos: %d\n", count_exti_pos);
-        infof("count_exti_neg: %d\n", count_exti_neg);
+        infof("osc_period: %d\n", osc_period);
+        infof("nb_pulses:  %d\n", nb_pulses);
+        infof("last_cc:    %d\n", last_cc);
         return 0;
     }
     default:
@@ -359,8 +382,10 @@ void start(void) {
     channel[0].setpoint = 1000000000;
     start_modulator();
 
+
     /* External input interrupt for discharge pulse.  This should be
      * lower priority, but not going to worry about that ATM. */
+    enable_cycle_counter();
     hw_exti_init(C_EXTI);
     hw_exti_arm(C_EXTI);
 
