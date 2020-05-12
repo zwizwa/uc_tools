@@ -84,8 +84,8 @@
 
    With a 32bit accumulator, the safe() function clips the range.
 */
-#define SETPOINT_MIN 0x40000000
-#define SETPOINT_MAX 0xC0000000
+#define SETPOINT_MIN 0x40000000ULL
+#define SETPOINT_MAX 0xC0000000ULL
 uint32_t safe_setpoint(uint32_t setpoint) {
     if (setpoint < SETPOINT_MIN) return SETPOINT_MIN;
     if (setpoint > SETPOINT_MAX) return SETPOINT_MAX;
@@ -207,9 +207,7 @@ void HW_TIM_ISR(TIM_PERIODIC)(void) {
     apparently creates enough of a delay. */
     hw_periodic_ack(C_PERIODIC);
 
-#ifdef PDM_PIN_FRAME
     GPIO_BSRR(PDM_PORT) = (1 << PDM_PIN_FRAME);
-#endif
 
     //DEBUG_MARK;
 
@@ -218,10 +216,7 @@ void HW_TIM_ISR(TIM_PERIODIC)(void) {
     uint32_t set_bits = channels_update() >> (32 - NB_CHANNELS - PDM_PIN_CHAN0);
     uint32_t mask     = ((1 << NB_CHANNELS) - 1) << PDM_PIN_CHAN0;
     uint32_t clr_bits = (~set_bits) & mask;
-    uint32_t bsrr     = set_bits  | (clr_bits << 16);
-#ifdef PDM_PIN_FRAME
-    bsrr |= (0x10000 << PDM_PIN_FRAME);
-#endif
+    uint32_t bsrr     = set_bits  | (clr_bits << 16) | (0x10000 << PDM_PIN_FRAME);
     GPIO_BSRR(PDM_PORT) = bsrr;
 
     // Log last non-trivial set/clear command
@@ -245,15 +240,15 @@ int handle_tag_u32(void *context,
         struct { uint32_t cmd; uint32_t chan; uint32_t val; } *a = (void*)arg;
         if (nb_args < 3) return -1;
         if (a->chan >= NB_CHANNELS) return -2;
-        channel[a->chan].setpoint = a->val;
-        infof("setpoint[%d] = %d\n", a->chan, a->val);
+        channel[a->chan].setpoint = safe_setpoint(a->val);
+        infof("setpoint[%d] = %d\n", a->chan, channel[a->chan].setpoint);
         return 0;
     }
     case 101: { // TEST_UPDATE
         // bp2 ! {send_u32, [101, 1000000000, 1,2,3]}.
         if (nb_args > 1 + NB_CHANNELS) return -1;
         for (int i=0; i<nb_args-1; i++) {
-            channel[i].setpoint = arg[1+i];
+            channel[i].setpoint = safe_setpoint(arg[1+i]);
         }
         uint32_t shiftreg_gpio = channels_update();
         for (int i=0; i<nb_args-1; i++) {
