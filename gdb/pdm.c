@@ -72,23 +72,27 @@
 
 */
 
-#define DIV 900 // (/ 72000000 (* 20000 4))
+#define DIV (72000 / 100)
 
 /* The circuit is designed such that:
 
-   - open circuit drive transistor is safe (62.5% Vref).  this happens
-     during startup.
+   - Operation modes are save regardless of how the modulator is
+     driven.
 
-   - closed circuit drive transistor never happens because we only
-     modulate between 25% and 100% of the useful range.
+   - The usable range is between 25% and 75% modulation to keep the
+     modulation frequency high, as explained above.
 
-   With a 32bit accumulator, the safe() function clips the range.
+   All setpoints assignments go through this function.  It can later
+   be clipped is necessary, but since the circuit is safe over the
+   entire range, that might not be necessary.
 */
 #define SETPOINT_MIN 0x40000000ULL
 #define SETPOINT_MAX 0xC0000000ULL
 uint32_t safe_setpoint(uint32_t setpoint) {
+#if 0
     if (setpoint < SETPOINT_MIN) return SETPOINT_MIN;
     if (setpoint > SETPOINT_MAX) return SETPOINT_MAX;
+#endif
     return setpoint;
 }
 
@@ -113,7 +117,9 @@ uint32_t safe_setpoint(uint32_t setpoint) {
 /* All channels are part of one port. */
 #define PDM_PORT GPIOA
 /* This sets the number of channels.  Used for struct gen and code gen. */
-#define FOR_CHANNELS(c) c(0) c(1) c(2) c(3)
+#define FOR_CHANNELS(c) \
+    c(0) c(1) c(2) c(3) \
+    c(4) c(5) c(6) c(7) \
 
 
 #include "base.h"
@@ -241,7 +247,7 @@ int handle_tag_u32(void *context,
         if (nb_args < 3) return -1;
         if (a->chan >= NB_CHANNELS) return -2;
         channel[a->chan].setpoint = safe_setpoint(a->val);
-        infof("setpoint[%d] = %d\n", a->chan, channel[a->chan].setpoint);
+        infof("setpoint[%d] = %x\n", a->chan, channel[a->chan].setpoint);
         return 0;
     }
     case 101: { // TEST_UPDATE
@@ -316,15 +322,15 @@ void start(void) {
         hw_gpio_config(
             PDM_PORT,
             PDM_PIN_CHAN0 + i,
-            HW_GPIO_CONFIG_OPEN_DRAIN_2MHZ
-            // HW_GPIO_CONFIG_OUTPUT
+            // HW_GPIO_CONFIG_OPEN_DRAIN_2MHZ
+            HW_GPIO_CONFIG_OUTPUT
             );
     }
     slipstub_init(handle_tag);
 
     /* Move all setpoints into a safe range before starting.. */
     for(int i=0; i<NB_CHANNELS; i++) {
-        channel[i].setpoint = safe_setpoint(0);
+        channel[i].setpoint = safe_setpoint(0x40000000ULL);
     }
 
     channel[0].setpoint = 1000000000;
@@ -338,7 +344,7 @@ const char config_manufacturer[] CONFIG_DATA_SECTION = "Zwizwa";
 const char config_product[]      CONFIG_DATA_SECTION = "Pulse Density Modulator";
 const char config_firmware[]     CONFIG_DATA_SECTION = FIRMWARE;
 const char config_version[]      CONFIG_DATA_SECTION = BUILD;
-const char config_protocol[]     CONFIG_DATA_SECTION = "slip";
+const char config_protocol[]     CONFIG_DATA_SECTION = "{driver,pdm,slip}";
 
 struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .manufacturer    = config_manufacturer,
