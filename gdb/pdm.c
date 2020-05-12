@@ -204,6 +204,7 @@ INLINE uint32_t channels_update(void) {
 }
 
 
+/* PDM TIMER INTERRUPT */
 
 static volatile uint32_t bsrr_last = 0;
 
@@ -230,6 +231,26 @@ void HW_TIM_ISR(TIM_PERIODIC)(void) {
 
     //DEBUG_MARK;
 }
+
+
+/* OSCILLATOR PULSE INTERRUPT */
+
+const struct hw_exti c_exti = HW_EXTI_A0_B;
+#define C_EXTI c_exti
+#define C_GPIO GPIOA,0
+volatile uint32_t count_exti_pos, count_exti_neg;
+void exti0_isr(void) {
+    hw_exti_ack(C_EXTI);
+    if (hw_gpio_read(C_GPIO)) {
+        count_exti_pos++;
+    }
+    else {
+        count_exti_neg++;
+    }
+}
+
+
+
 
 int handle_tag_u32(void *context,
                    const uint32_t *arg,  uint32_t nb_args,
@@ -268,6 +289,8 @@ int handle_tag_u32(void *context,
         for (int i=0; i<NB_CHANNELS; i++) {
             infof("%d: %x %x\n", i, channel[i].accu, channel[i].setpoint);
         }
+        infof("count_exti_pos: %d\n", count_exti_pos);
+        infof("count_exti_neg: %d\n", count_exti_neg);
         return 0;
     }
     default:
@@ -335,6 +358,12 @@ void start(void) {
 
     channel[0].setpoint = 1000000000;
     start_modulator();
+
+    /* External input interrupt for discharge pulse.  This should be
+     * lower priority, but not going to worry about that ATM. */
+    hw_exti_init(C_EXTI);
+    hw_exti_arm(C_EXTI);
+
 }
 void stop(void) {
     hw_app_stop();
