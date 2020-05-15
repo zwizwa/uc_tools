@@ -45,9 +45,8 @@ int main(void) {
     /* When BOOT0==0 (boot from flash), BOOT1 is ignored, so we can
      * use it as an application start toggle. */
     uint32_t boot1 = hw_gpio_read(GPIOB,2);
-    if (boot1) { _config.start(); }
+    if (boot1 && !flash_null(_config.start)) _config.start();
 
-    if (!flash_null(_config.start)) _config.start();
 
 
     /* For now, the loop takeover routine is implemented on a per
@@ -68,6 +67,9 @@ int main(void) {
          * is useful for running USB in ISR.  This mechanism is
          * separate from start() because start() is executed from the
          * main loop already, and needs to return. */
+#if 0
+        bootloader_tick();
+#else
         if ((bootloader_stub.flags & GDBSTUB_FLAG_STARTED) && (_config.loop)) {
             bootloader_stub.flags |= GDBSTUB_FLAG_LOOP;
             _config.loop(&bootloader_tick);
@@ -77,6 +79,7 @@ int main(void) {
         else {
             bootloader_tick();
         }
+#endif
     }
     return 0;
 }
