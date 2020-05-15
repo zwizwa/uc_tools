@@ -47,4 +47,27 @@ KEEP uint32_t info_read(uint8_t *buf, uint32_t len) {
         nb++;
     }
 }
+KEEP uint32_t info_read_crlf(uint8_t *buf, uint32_t len) {
+    uint32_t nb = 0;
+    for(;;) {
+        if (len < 2) return nb;
+        int32_t todo = info_bytes();
+        if (!todo) return nb;
+        uint8_t c = info_buf[info_read_next & INFO_MASK];
+        if (todo < INFO_SIZE) {
+            if (c == '\n') {
+                *buf++ = '\r';
+                len--;
+                nb++;
+            }
+            *buf++ = c;
+        }
+        else {
+            *buf++ ='?'; // be verbose about buffer overrun
+        }
+        len--;
+        info_read_next++;
+        nb++;
+    }
+}
 #endif

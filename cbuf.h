@@ -134,7 +134,7 @@ static inline uint32_t cbuf_read(struct cbuf *b, uint8_t *buf, uint32_t len) {
     return len;
 }
 static inline uint16_t cbuf_get(struct cbuf *b) {
-    uint8_t byte;
+    uint8_t byte = 0;
     if (1 == cbuf_read(b, &byte, 1)) { return byte; }
     else return CBUF_EAGAIN;
 }

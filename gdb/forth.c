@@ -1,4 +1,5 @@
 #include "base.h"
+#include "forth.h"
 
 /* Revisiting Forth
 
@@ -48,23 +49,10 @@
      long time.
 */
 
-union word;
-typedef void (*code_fn)(union word *);
-typedef void (*void_fn)(void);
-union word {
-    int i;
-    uint32_t u32;
-    uint32_t *u32p;
-    uint8_t b;
-    char c;
-    code_fn code;
-    void_fn vcode;
-    union word *pw;
-    const union word *cpw;
-};
-typedef union word w;
 
 #include "cbuf.h"
+
+
 
 
 /* Some design constraints for the inner interpreter.
@@ -135,11 +123,22 @@ void run(w xt) {
 }
 
 
+#ifndef FORTH_OUT_INFO
+#define FORTH_OUT_INFO 0
+#endif
+
+/* Use the shared info log for output. */
+#if FORTH_OUT_INFO
+#include "infof.h"
+#else
+
 /* Output needs to be buffered for USB polling.  Input is buffered as
  * well because the Forth interpreter uses a pull interface input, not
  * a push interface that we could call when data comes in. */
 uint8_t     forth_out_buf[64];
 struct cbuf forth_out;
+
+#endif
 
 /* Input is a cbuf, such both the C outer interpreter and the forth
  * word ?rx can read from the input. */
@@ -192,7 +191,11 @@ static void rx(w* _) {
 }
 // TX! ( c -- )
 static void tx(w* _) {
+#if FORTH_OUT_INFO
+    info_putchar(pop().u32);
+#else
     cbuf_put(&forth_out, pop().u32);
+#endif
 }
 static void print_hex(uint32_t val, uint32_t nb_digits) {
     const uint8_t c[] = "0123456789ABCDEF";
@@ -278,7 +281,7 @@ struct record dict[] = {
 
 /* The idea is to just include forth.c in a wrapper .c file, and
  * define some extra application words before including. */
-#ifdef FORT_WORDS
+#ifdef FORTH_WORDS
 FORTH_WORDS
 #endif
 
@@ -332,6 +335,7 @@ w forth_find(const char *word) {
     }
     return (w)0;
 }
+
 uint32_t forth_accept(uint8_t *buf, uint32_t len) {
     /* Written char count. */
     uint32_t i = 0;
@@ -374,8 +378,13 @@ uint32_t forth_accept(uint8_t *buf, uint32_t len) {
 
 /* TAG_PLUGIO stream will be routed here. */
 uint32_t forth_read(uint8_t *buf, uint32_t size) {
+#if FORTH_OUT_INFO
+    return 0;
+#else
     return cbuf_read(&forth_out, buf, size);
+#endif
 }
+
 void forth_write(const uint8_t *buf, uint32_t len) {
     cbuf_write(&forth_in, buf, len);
     uint8_t word[16];
@@ -404,9 +413,12 @@ void forth_write(const uint8_t *buf, uint32_t len) {
 void forth_start(void) {
     infof("forth_start()\n");
     CBUF_INIT(forth_in);
+#if FORTH_OUT_INFO
+#else
     CBUF_INIT(forth_out);
     const uint8_t hello[] = "forth_start()\r\n";
     cbuf_write(&forth_out, hello, sizeof(hello)-1);
+#endif
 
 #ifdef FORTH_TEST
     infof("(pre)  di = %d\n", di);
