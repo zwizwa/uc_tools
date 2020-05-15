@@ -72,7 +72,7 @@
 
 */
 
-#define DIV (72000 / 100)
+#define DIV (72000 / 200)
 
 /* The circuit is designed such that:
 
@@ -244,18 +244,16 @@ volatile uint32_t nb_pulses, last_cc, osc_period;
    convenient than having to work around 16bit counter limitations.
    The 16 bit timers could later be used as oscillators. */
 
-#define REG(addr) (*((volatile uint32_t*)addr))
-#define DWT_CYCCNT  REG(0xE0001004)
-#define DWT_CONTROL REG(0xE0001000)
-#define DEMCR       REG(0xE000EDFC)
-#define LAR         REG(0xE0001FB0)
+#include <libopencm3/cm3/dwt.h>
+#define DEMCR  MMIO32(0xE000EDFC)
+#define LAR    MMIO32(0xE0001FB0)
 
 // https://stackoverflow.com/questions/36378280/stm32-how-to-enable-dwt-cycle-counter
 static inline void enable_cycle_counter(void) {
     DEMCR |= 0x01000000;    // enable trace
     LAR = 0xC5ACCE55;       // <-- added unlock access to DWT (ITM, etc.)registers
     DWT_CYCCNT = 0;         // clear DWT cycle counter
-    DWT_CONTROL |= 1;       // enable DWT cycle counter
+    DWT_CTRL |= 1;          // enable DWT cycle counter
 }
 static inline uint32_t cycle_counter(void) {
     return DWT_CYCCNT;
@@ -385,9 +383,20 @@ void start(void) {
 
     /* External input interrupt for discharge pulse.  This should be
      * lower priority, but not going to worry about that ATM. */
+#if 1
     enable_cycle_counter();
     hw_exti_init(C_EXTI);
     hw_exti_arm(C_EXTI);
+#endif
+
+    /* Note that the hw_stm32f103.h code sets priority to 1, but the
+       lower bits are stripped so that shows up as 0.  We only need
+       them to be the same such that they do not pre-empt each other
+       while writing to cbuf_from_dmx. */
+    NVIC_IPR(NVIC_EXTI0_IRQ) = 16;
+    infof("TIM5  pri %d\n", NVIC_IPR(NVIC_TIM4_IRQ));
+    infof("EXTI0 pri %d\n", NVIC_IPR(NVIC_EXTI0_IRQ));
+
 
 }
 void stop(void) {
