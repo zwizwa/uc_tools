@@ -37,9 +37,18 @@ void bootloader_tick(void) {
 
 int main(void) {
     rcc_clock_setup_in_hse_8mhz_out_72mhz();
+    rcc_periph_clock_enable(RCC_GPIOB);
     rcc_periph_clock_enable(RCC_GPIOC);
     hw_gpio_config(LED,HW_GPIO_CONFIG_OUTPUT);
     bootloader_init();
+
+    /* When BOOT0==0 (boot from flash), BOOT1 is ignored, so we can
+     * use it as an application start toggle. */
+    uint32_t boot1 = hw_gpio_read(GPIOB,2);
+    if (boot1) { _config.start(); }
+
+    if (!flash_null(_config.start)) _config.start();
+
 
     /* For now, the loop takeover routine is implemented on a per
        loader basis as it is still under test.
