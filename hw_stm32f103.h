@@ -208,18 +208,18 @@ struct hw_periodic {
 
 INLINE void hw_periodic_init(struct hw_periodic c) {
     rcc_periph_clock_enable(c.rcc);
-    nvic_set_priority(c.irq, 1);
+    //nvic_set_priority(c.irq, 1);
     nvic_enable_irq(c.irq);
 
     // Setup tim for periodic clock (only xD has TIM5,6!)
     rcc_periph_reset_pulse(c.tim);
     timer_set_mode(c.tim, TIM_CR1_CKD_CK_INT,TIM_CR1_CMS_EDGE,TIM_CR1_DIR_UP);
-    timer_set_prescaler(c.tim, c.pre-1); // 72MHz in
+    timer_set_prescaler(c.tim, c.pre-1); // 72MHz or 36MHz in depending on bus
     hw_tim_set_period(c.tim, c.div-1); // -> periodic frequency
-    timer_enable_irq(c.tim, TIM_DIER_UIE);
     timer_continuous_mode(c.tim);
     hw_tim_set_counter(c.tim, 0);
     timer_enable_counter(c.tim);
+    timer_enable_irq(c.tim, TIM_DIER_UIE);
 }
 INLINE void hw_periodic_ack(struct hw_periodic c) {
     //TIM_SR(tim) &= ~TIM_SR_UIF; /* Clear interrrupt flag. */
@@ -252,7 +252,7 @@ struct hw_delay {
 INLINE void hw_delay_init(struct hw_delay c, uint32_t default_ticks, int interrupt) {
     rcc_periph_clock_enable(c.rcc);
     if (interrupt) {
-        nvic_set_priority(c.irq, 1);
+        //nvic_set_priority(c.irq, 1);
         nvic_enable_irq(c.irq);
     }
     rcc_periph_reset_pulse(c.tim);
@@ -378,6 +378,7 @@ struct hw_clockgen {
     uint32_t pol;
     uint32_t chan;              // OC channel
     int32_t gate_itr;           // if >= 0 this is a gated timer
+    uint32_t irq;               // if non-zero this is the interrupt
 };
 
 
@@ -434,6 +435,11 @@ INLINE void hw_clockgen_init(struct hw_clockgen c) {
     hw_tim_set_period(c.tim, c.div-1);
     timer_enable_preload(c.tim); // load from ARR on UE
 
+    if (c.irq) {
+        //nvic_set_priority(c.irq, 1);
+        nvic_enable_irq(c.irq);
+        timer_enable_irq(c.tim, TIM_DIER_UIE);
+    }
 }
 
 // B14 SPI2_MISO
@@ -474,6 +480,32 @@ INLINE void hw_clockgen_wait(struct hw_clockgen c) {
     while (!*hw_bitband(&(TIM_SR(c.tim)), 0)); // wait for IF
     *hw_bitband(&(TIM_SR(c.tim)), 0) = 0; // clear IF
 }
+
+INLINE void hw_clockgen_ack(struct hw_clockgen c) {
+    //TIM_SR(tim) &= ~TIM_SR_UIF; /* Clear interrrupt flag. */
+    *hw_bitband(&(TIM_SR(c.tim)), 0) = 0;
+}
+INLINE void hw_clockgen_duty(struct hw_clockgen c, uint32_t value) {
+    /* Copied from timer_common.all.c to allow inline. */
+    // timer_set_oc_value(c.tim, c.chan, c.duty);
+    switch (c.chan) {
+    case TIM_OC1:
+        TIM_CCR1(c.tim) = value;
+        break;
+    case TIM_OC2:
+        TIM_CCR2(c.tim) = value;
+        break;
+    case TIM_OC3:
+        TIM_CCR3(c.tim) = value;
+        break;
+    case TIM_OC4:
+        TIM_CCR4(c.tim) = value;
+        break;
+    }
+
+}
+
+
 
 
 
@@ -531,7 +563,7 @@ INLINE void hw_capture_init(struct hw_capture c) {
     rcc_periph_clock_enable(c.rcc_tim);
     rcc_periph_clock_enable(c.rcc_gpio);
     if (c.irq) {
-        nvic_set_priority(c.irq, 1);
+        //nvic_set_priority(c.irq, 1);
         nvic_enable_irq(c.irq);
     }
 
@@ -639,6 +671,7 @@ struct hw_spi_nodma {
     uint32_t in;  // pin
     uint32_t sck; // pin
     uint32_t mode;
+    uint32_t div; // 0 == SPI_CR1_BAUDRATE_FPCLK_DIV_2
 };
 
 INLINE void hw_spi_nodma_reset(struct hw_spi_nodma c) {
@@ -660,7 +693,7 @@ INLINE void hw_spi_nodma_reset(struct hw_spi_nodma c) {
     cr1 |= SPI_CR1_MSTR
         |  SPI_CR1_SSM // software NSS
         |  SPI_CR1_SSI
-        |  SPI_CR1_BAUDRATE_FPCLK_DIV_2;
+        |  c.div;
 
 
     hw_gpio_high(c.gpio, c.out);
@@ -716,6 +749,7 @@ struct hw_spi {
     uint32_t ie; // interrupt enable
     uint32_t bits;
     uint32_t mode;
+    uint32_t div; // 0 == SPI_CR1_BAUDRATE_FPCLK_DIV_2
 };
 
 
@@ -761,7 +795,7 @@ INLINE void hw_spi_reset(struct hw_spi c) {
         cr1 |= SPI_CR1_MSTR
             |  SPI_CR1_SSM // software NSS
             |  SPI_CR1_SSI
-            |  SPI_CR1_BAUDRATE_FPCLK_DIV_2;
+            |  c.div;
     }
     else {
         if (c.gpio) {
@@ -775,8 +809,11 @@ INLINE void hw_spi_reset(struct hw_spi c) {
     if (c.tx) {
         if (c.gpio) {
             hw_gpio_high(c.gpio, c.data);
-            // FIXME: not ALTFN! - hardcoded for emu_dimod.
-            hw_gpio_config(c.gpio, c.data, HW_GPIO_CONFIG_OUTPUT); 
+            // Note: this had: FIXME: not ALTFN! - hardcoded for emu_dimod.
+            // This should be fixed in the downstream firmware.
+            // This really should be ALTFN.  Spent half an hour debugging...
+            // hw_gpio_config(c.gpio, c.data, HW_GPIO_CONFIG_OUTPUT);
+            hw_gpio_config(c.gpio, c.data, HW_GPIO_CONFIG_ALTFN);
             /* After this it's possible to switch switch alt / gpo=1 using
                bitband write in hw_gpio_config_ag_dw(). */
         }
@@ -797,7 +834,7 @@ INLINE void hw_spi_init(struct hw_spi c) {
     rcc_periph_clock_enable(c.d.rcc_dma);
 
     if (c.ie) {
-        nvic_set_priority(c.d.nvic_irq, 1);
+        //nvic_set_priority(c.d.nvic_irq, 1);
         nvic_enable_irq(c.d.nvic_irq);
     }
 
@@ -982,7 +1019,7 @@ INLINE void hw_usart1_init(void) {
     rcc_periph_clock_enable(RCC_GPIOA);
     rcc_periph_clock_enable(RCC_USART1);
 
-    nvic_set_priority(NVIC_USART1_IRQ, 1);
+    //nvic_set_priority(NVIC_USART1_IRQ, 1);
     nvic_enable_irq(NVIC_USART1_IRQ);
 
     hw_gpio_config(GPIOA, 9, HW_GPIO_CONFIG_ALTFN); // USART1_TX
@@ -1059,7 +1096,7 @@ struct hw_exti {
 INLINE void hw_exti_init(struct hw_exti c) {
     rcc_periph_clock_enable(c.rcc_gpio);
     rcc_periph_clock_enable(RCC_AFIO);
-    nvic_set_priority(c.nvic_irq, 1);
+    //nvic_set_priority(c.nvic_irq, 1);
     nvic_enable_irq(c.nvic_irq);
 }
 INLINE void hw_exti_arm(struct hw_exti c) {
