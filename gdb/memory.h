@@ -34,12 +34,14 @@ static inline void hw_flash_erase_page(uint32_t page_address) {
     FLASH_CR &= ~FLASH_CR_PER;
 }
 static inline void hw_flash_lock(void) {
+    //__asm__ volatile("cpsid if\n");
     FLASH_CR |= FLASH_CR_LOCK;
 }
 static inline void hw_flash_unlock(void) {
     FLASH_CR |= FLASH_CR_LOCK;
     FLASH_KEYR = FLASH_KEYR_KEY1;
     FLASH_KEYR = FLASH_KEYR_KEY2;
+    //__asm__ volatile("cpsie if\n");
 }
 static inline void hw_flash_program_half_word(uint32_t address, uint16_t data) {
     hw_flash_wait_for_last_operation();

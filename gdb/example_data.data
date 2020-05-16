@@ -1,0 +1,8 @@
+EXAMPLE DATA
+
+This file is here mainly to test the build system for producting
+.data.f103.elf files from raw bin files.
+
+The convention for binary files is that they are self-delimiting.  To
+simplify linking, the application only receives the start address.
+

@@ -19,6 +19,8 @@ GCC=${TPF}gcc
 OBJDUMP=${TPF}objdump
 OBJCOPY=${TPF}objcopy
 READELF=${TPF}readelf
+ELFTYPE=elf32-littlearm
+BINARCH=arm
 
 MFLAGS_COMMON=""
 

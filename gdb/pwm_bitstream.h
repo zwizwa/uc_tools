@@ -1,9 +1,11 @@
 #ifndef PWM_BITSTREAM_H
 #define PWM_BITSTREAM_H
 
+/* 1. BITBANG */
+
 /* Require this to be overridden. */
 #ifndef PWM_BITSTREAM_SET_PIN
-#warn PWM_BITSTREAM_SET_PIN not defined
+// #warn PWM_BITSTREAM_SET_PIN not defined
 #define PWM_BITSTREAM_SET_PIN(s, val)
 #endif
 
@@ -89,5 +91,27 @@ static inline void pwm_bitstream_update(
     }
 }
 
+/* 2. BYTE STREAM GENERATION */
+
+/* Alternative implementation, generating a byte stream that can be
+   sent out, e.g. using DMA with a 400ns clock signal.  This assumes
+   the buffers are large enough to not have to perform bounds checking
+   in the converter loop. */
+
+// FIXME: This compiles but is not tested.
+
+#include "bitbuf.h"
+void pwm_bitstream_write(uint8_t *dst_buf, uint8_t *src_buf, uint32_t nb_bits) {
+    struct bitbuf src, dst;
+    bitbuf_init(&src, src_buf);
+    bitbuf_init(&dst, dst_buf);
+    for(uint32_t i=0; i<nb_bits; i++) {
+        uint32_t bit = bitbuf_read(&src);
+        bitbuf_write(&dst, 1);
+        bitbuf_write(&dst, bit);
+        bitbuf_write(&dst, 0);
+    }
+    bitbuf_flush(&dst);
+}
 
 #endif

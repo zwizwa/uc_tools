@@ -73,9 +73,20 @@ case "$TYPE" in
             -o $O \
             -c $C
         ;;
+    o_data)
+        assert_vars O DATA ARCH 
+        . $UC_TOOLS/gdb/env.$ARCH.sh
+        assert_vars ELFTYPE BINARCH
+        $OBJCOPY \
+            --input-target=binary \
+            --output-target=$ELFTYPE \
+            --binary-architecture=$BINARCH \
+            "$DATA" "$O"
+        ;;
     a)
-        assert_vars A O
-        ar -r $A $O 2>/dev/null
+        # Objects is allowed to be empty for empty stub libs
+        assert_vars A
+        ar -r $A $OBJECTS 2>/dev/null
         ;;
     ld)
         assert_vars LD_GEN LD

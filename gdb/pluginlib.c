@@ -43,7 +43,46 @@ uint32_t plugin_read(uint8_t *buf, uint32_t len) {
    application should ensure no messages are interleaved that would
    see a partially programmed flash state. */
 
-uint32_t plugin_write_message(const uint8_t *buf, uint32_t len) {
+/* Flash is a separate function to allow it to be used in isolation. */
+uint32_t flash_handle_message(const uint8_t *buf, uint32_t len) {
+    uint16_t tag = read_be(buf, 2);
+    switch(tag) {
+
+    // bp4 ! {send_packet,<<16#FFF6:16,16#08005000:32, 1024:32, 10:32>>}.
+    case TAG_FLASH_ERASE: {
+        plugin_active = 0;
+        uint32_t addr = map_addr(read_be(buf+2,  4));
+        uint32_t size = read_be(buf+6,  4);
+        uint32_t log  = read_be(buf+10, 4);
+        int rv = hw_flash_erase(addr, size, log);
+        //int rv = 0;
+        //if (rv) {
+            infof("e:%08x:%d:%d:%d\n", addr, size, log, rv);
+        //}
+        return len;
+    }
+    // <<16##FFF7:16,Addr:32,Data/binary>>
+    // bp4 ! {send_packet,<<16#FFF7:16,16#08005000:32,1,2,3,4>>}.
+    case TAG_FLASH_WRITE: {
+        plugin_active = 0;
+        uint32_t req_addr = read_be(buf+2, 4);
+        const uint8_t *data_buf  = &buf[6];
+        uint32_t addr = map_addr(req_addr);
+        uint32_t data_len  = len - 6;
+        int rv = hw_flash_write(addr, data_buf, data_len);
+        //int rv = 0; (void)data_buf;
+        //if (rv) {
+            infof("w:%08x:%d:%d\n", addr, data_len, rv);
+        //}
+        return len;
+    }
+    default:
+        return 0;
+    }
+}
+
+
+uint32_t plugin_handle_message(const uint8_t *buf, uint32_t len) {
     uint16_t tag = read_be(buf, 2);
     switch(tag) {
 
@@ -125,31 +164,11 @@ uint32_t plugin_write_message(const uint8_t *buf, uint32_t len) {
         }
         break;
 
-    // bp4 ! {send_packet,<<16#FFF6:16,16#08005000:32, 1024:32, 10:32>>}.
-    case TAG_FLASH_ERASE: {
-        plugin_active = 0;
-        uint32_t addr = map_addr(read_be(buf+2,  4));
-        uint32_t size = read_be(buf+6,  4);
-        uint32_t log  = read_be(buf+10, 4);
-        int rv = hw_flash_erase(addr, size, log);
-        //if (rv) {
-            infof("e:%08x:%d:%d:%d\n", addr, size, log, rv);
-        //}
+    case TAG_FLASH_ERASE:
+    case TAG_FLASH_WRITE:
+        flash_handle_message(buf, len);
         goto handled;
-    }
-    // bp4 ! {send_packet,<<16#FFF7:16,16#08005000:32,1,2,3,4>>}.
-    case TAG_FLASH_WRITE: {
-        plugin_active = 0;
-        uint32_t req_addr = read_be(buf+2, 4);
-        const uint8_t *data_buf  = &buf[6];
-        uint32_t addr = map_addr(req_addr);
-        uint32_t data_len  = len - 6;
-        int rv = hw_flash_write(addr, data_buf, data_len);
-        //if (rv) {
-            infof("w:%08x:%d:%d\n", addr, data_len, rv);
-        //}
-        goto handled;
-    }
+
     }
   not_handled:
     return 0;
@@ -157,3 +176,27 @@ uint32_t plugin_write_message(const uint8_t *buf, uint32_t len) {
     return len;
 }
 
+
+
+/* Small utility to print out memory usage. */
+int flash_used(uint8_t *block, uint32_t page_size) {
+    uint8_t acc = 0xFF;
+    for(uint32_t b=0; b<page_size; b++) {
+        acc &= block[b];
+    }
+    return acc != 0xFF;
+}
+void info_flash(uint32_t addr, uint32_t page_size, uint32_t nb_pages) {
+    infof("addr     0123456789abcdef\n");
+    for(uint32_t p=0; p<nb_pages; p++) {
+        if ((p % 16) == 0) {
+            infof("%x ", addr);
+        }
+        char c = flash_used((void*)addr, page_size) ? 'x' : '.';
+        info_putchar(c);
+        addr += page_size;
+        if ((p % 16) == 15) {
+            infof("\n");
+        }
+    }
+}

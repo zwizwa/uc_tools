@@ -165,7 +165,7 @@ void dispatch(void *ctx, const struct pbuf *p) {
     if (p->count < 2) return;
     uint16_t tag = read_be(p->buf, 2);
 
-    if (plugin_write_message(p->buf, p->count)) return;
+    if (plugin_handle_message(p->buf, p->count)) return;
 
     switch(tag) {
     case TAG_PING:

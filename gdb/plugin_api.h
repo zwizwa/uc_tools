@@ -68,9 +68,15 @@ static inline void plugin_init_memory(void) {
 }
 
 /* Host side handling.  Takes a tagged message.  Nonzero return means
- * message was handled. */
-uint32_t plugin_write_message(const uint8_t *buf, uint32_t len);
+ * message was handled.  Note these were called "flash_write" and
+ * "plugin_write", but that is too confusing. */
+uint32_t flash_handle_message(const uint8_t *buf, uint32_t len);
+
+uint32_t plugin_handle_message(const uint8_t *buf, uint32_t len);
 uint32_t plugin_read(uint8_t *buf, uint32_t len);
+
+
+void info_flash(uint32_t addr, uint32_t page_size, uint32_t nb_pages);
 
 
 
