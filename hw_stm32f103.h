@@ -782,6 +782,10 @@ INLINE void hw_spi_reset(struct hw_spi c) {
     // emu_dimod uses hw_spi_set_high() before reset
     hw_rcc_periph_reset_pulse(c.rst);
 
+    // FIXME: Make pin speed configurable.
+    uint32_t altfn =  HW_GPIO_CONFIG_ALTFN;
+    //uint32_t altfn =  HW_GPIO_CONFIG_ALTFN_2MHZ;
+
     uint32_t cr1 =
         c.mode |
         (c.bits == 16 ? SPI_CR1_DFF_16BIT : SPI_CR1_DFF_8BIT) |
@@ -789,7 +793,7 @@ INLINE void hw_spi_reset(struct hw_spi c) {
 
     if (c.master) {
         if (c.gpio) {
-            hw_gpio_config(c.gpio, c.sck,  HW_GPIO_CONFIG_ALTFN);
+            hw_gpio_config(c.gpio, c.sck, altfn);
         }
 
         cr1 |= SPI_CR1_MSTR
@@ -813,7 +817,7 @@ INLINE void hw_spi_reset(struct hw_spi c) {
             // This should be fixed in the downstream firmware.
             // This really should be ALTFN.  Spent half an hour debugging...
             // hw_gpio_config(c.gpio, c.data, HW_GPIO_CONFIG_OUTPUT);
-            hw_gpio_config(c.gpio, c.data, HW_GPIO_CONFIG_ALTFN);
+            hw_gpio_config(c.gpio, c.data, altfn);
             /* After this it's possible to switch switch alt / gpo=1 using
                bitband write in hw_gpio_config_ag_dw(). */
         }

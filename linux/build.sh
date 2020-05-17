@@ -30,8 +30,8 @@ case "$TYPE" in
             -c $C
         ;;
     a)
-        assert_vars A O
-        ar -r $A $O #2>/dev/null
+        assert_vars A OBJECTS
+        ar -r $A $OBJECTS #2>/dev/null
         ;;
     ld)
         # This is not a real file for linux builds.

@@ -101,9 +101,9 @@ static inline void pwm_bitstream_update(
 // FIXME: This compiles but is not tested.
 
 #include "bitbuf.h"
-void pwm_bitstream_write(uint8_t *dst_buf, uint8_t *src_buf, uint32_t nb_bits) {
+uint32_t pwm_bitstream_write(uint8_t *dst_buf, const uint8_t *src_buf, uint32_t nb_bits) {
     struct bitbuf src, dst;
-    bitbuf_init(&src, src_buf);
+    bitbuf_init(&src, (void*)src_buf);
     bitbuf_init(&dst, dst_buf);
     for(uint32_t i=0; i<nb_bits; i++) {
         uint32_t bit = bitbuf_read(&src);
@@ -111,7 +111,7 @@ void pwm_bitstream_write(uint8_t *dst_buf, uint8_t *src_buf, uint32_t nb_bits) {
         bitbuf_write(&dst, bit);
         bitbuf_write(&dst, 0);
     }
-    bitbuf_flush(&dst);
+    return bitbuf_flush(&dst);
 }
 
 #endif

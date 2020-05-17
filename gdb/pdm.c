@@ -72,7 +72,7 @@
 
 */
 
-#define DIV (72000 / 200)
+#define PDM_DIV (72000 / 200)
 
 /* The circuit is designed such that:
 
@@ -135,26 +135,27 @@ struct slipstub slipstub;
 struct slipstub_buffers slipstub_buffers;
 
 
-#define TIM_PERIODIC 4
+/* Don't use TIM2. It interacts badly with Flash programming. */
+#define TIM_PDM      4
+#define TIM_CONTROL  3
 
-static const struct hw_periodic hw_periodic_config[] = {
-//          rcc       irq            tim   div  pre
-//---------------------------------------------------
-    [2] = { RCC_TIM2, NVIC_TIM2_IRQ, TIM2, DIV, 1 },
-    [3] = { RCC_TIM3, NVIC_TIM3_IRQ, TIM3, DIV, 1 },
-    [4] = { RCC_TIM4, NVIC_TIM4_IRQ, TIM4, DIV, 1 },
-    [5] = { RCC_TIM5, NVIC_TIM5_IRQ, TIM5, DIV, 1 },
+static const struct hw_periodic hw_pdm_config[] = {
+//          rcc       irq            tim   div      pre
+//-------------------------------------------------------
+    [3] = { RCC_TIM3, NVIC_TIM3_IRQ, TIM3, PDM_DIV, 1 },
+    [4] = { RCC_TIM4, NVIC_TIM4_IRQ, TIM4, PDM_DIV, 1 },
+    [5] = { RCC_TIM5, NVIC_TIM5_IRQ, TIM5, PDM_DIV, 1 },
 };
 
-#define C_PERIODIC hw_periodic_config[TIM_PERIODIC]
+#define C_PDM hw_pdm_config[TIM_PDM]
 
 void start_modulator(void) {
     infof("start\n");
-    hw_periodic_init(C_PERIODIC);
+    hw_periodic_init(C_PDM);
 }
 void stop_modulator(void) {
     infof("stop\n");
-    hw_periodic_disable(C_PERIODIC);
+    hw_periodic_disable(C_PDM);
 }
 
 struct channel {
@@ -208,11 +209,8 @@ INLINE uint32_t channels_update(void) {
 
 static volatile uint32_t bsrr_last = 0;
 
-void HW_TIM_ISR(TIM_PERIODIC)(void) {
-    /* Issiuing ack at the end of the isr will re-trigger it. What is
-    the delay necessary to avoid that?  Issuing it at the beginning
-    apparently creates enough of a delay. */
-    hw_periodic_ack(C_PERIODIC);
+void HW_TIM_ISR(TIM_PDM)(void) {
+    hw_periodic_ack(C_PDM);
 
     GPIO_BSRR(PDM_PORT) = (1 << PDM_PIN_FRAME);
 
@@ -271,6 +269,37 @@ void exti0_isr(void) {
 
 
 
+/* CONTROL RATE TIMER INTERRUPT */
+
+/* It seems simplest to run synchronous regulator and control code
+   from a lower priority timer interrupt, and only use the lowest
+   priority main loop for communication.  */
+
+// FIXME: something is not right here...
+#define CONTROL_DIV (72000 / 2)
+
+static const struct hw_periodic hw_control_config[] = {
+//          rcc       irq            tim   div          pre
+//---------------------------------------------------------
+    [3] = { RCC_TIM3, NVIC_TIM3_IRQ, TIM3, CONTROL_DIV, 1 },
+    [4] = { RCC_TIM4, NVIC_TIM4_IRQ, TIM4, CONTROL_DIV, 1 },
+    [5] = { RCC_TIM5, NVIC_TIM5_IRQ, TIM5, CONTROL_DIV, 1 },
+};
+
+#define C_CONTROL hw_control_config[TIM_CONTROL]
+
+
+volatile uint32_t control_count;
+
+void HW_TIM_ISR(TIM_CONTROL)(void) {
+    hw_periodic_ack(C_CONTROL);
+    control_count++;
+}
+
+
+
+
+/* COMMUNICATION */
 
 int handle_tag_u32(void *context,
                    const uint32_t *arg,  uint32_t nb_args,
@@ -322,9 +351,6 @@ int handle_tag_u32(void *context,
     }
 }
 
-
-
-
 /* slipstub calls this one for application tags.  We then patch
    through to command handler. */
 void handle_tag(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
@@ -351,8 +377,8 @@ void start(void) {
     /* FIXME: This assumes it's GPIOA */
     rcc_periph_clock_enable(RCC_GPIOA | RCC_AFIO);
 
-    /* Frame clock.  Pulse width can be used for CPU usage
-     * measurement. */
+    /* PDM frame clock.  This is set/reset at beginning/end of PDM
+       ISR, so can be used as a CPU usage measurement. */
 #ifdef PDM_PIN_FRAME
     hw_gpio_config(
         PDM_PORT,
@@ -360,7 +386,13 @@ void start(void) {
         HW_GPIO_CONFIG_OUTPUT);
 #endif
 
-    /* One output per channel. */
+    /* PDM outputs, one per channel.  Note that these really need to
+       go through some digital cleanup, e.g. an inverter or a buffer
+       that is on a stable supply, before being fed into the analog
+       low pass filter.  I've found the STM32F103 outputs to be quite
+       noisy, and there is variable voltage drop depending on whether
+       the chip is driving high current through other I/Os,
+       e.g. driving an ELED.  */
     for(int i=0; i<NB_CHANNELS; i++) {
         infof("port %x pin %d\n", PDM_PORT, PDM_PIN_CHAN0 + i);
         hw_gpio_config(
@@ -370,33 +402,42 @@ void start(void) {
             HW_GPIO_CONFIG_OUTPUT
             );
     }
+
+    /* Use framwork for handling incoming USB SLIP commands. */
     slipstub_init(handle_tag);
 
-    /* Move all setpoints into a safe range before starting.. */
+    /* Move all setpoints into a safe range before starting the
+       modulator. */
     for(int i=0; i<NB_CHANNELS; i++) {
         channel[i].setpoint = safe_setpoint(0x40000000ULL);
     }
-
     channel[0].setpoint = 1000000000;
     start_modulator();
 
 
-    /* External input interrupt for discharge pulse.  This should be
-     * lower priority, but not going to worry about that ATM. */
+    /* External input interrupt for discharge pulse.  This needs to be
+       lower priority than the PDM because it will cause modulation
+       effects. */
 #if 1
     enable_cycle_counter();
     hw_exti_init(C_EXTI);
     hw_exti_arm(C_EXTI);
 #endif
 
-    /* Note that the hw_stm32f103.h code sets priority to 1, but the
-       lower bits are stripped so that shows up as 0.  We only need
-       them to be the same such that they do not pre-empt each other
-       while writing to cbuf_from_dmx. */
-    NVIC_IPR(NVIC_EXTI0_IRQ) = 16;
-    infof("TIM5  pri %d\n", NVIC_IPR(NVIC_TIM4_IRQ));
-    infof("EXTI0 pri %d\n", NVIC_IPR(NVIC_EXTI0_IRQ));
+    /* Use another timer for the control loop. */
+    hw_periodic_init(C_CONTROL);
 
+    /* Smaller values mean higher priorities.  STM32F103 strips the
+       low 4 bits, so these have increments of 16.  Print the actual
+       value at boot to be sure. */
+    NVIC_IPR(C_PDM.irq)       = 0;
+    NVIC_IPR(C_CONTROL.irq)   = 16;
+    NVIC_IPR(NVIC_EXTI0_IRQ)  = 32;
+    infof("TIM_PDM     pri %d\n", NVIC_IPR(C_PDM.irq));
+    infof("TIM_CONTROL pri %d\n", NVIC_IPR(C_CONTROL.irq));
+    infof("EXTI0       pri %d\n", NVIC_IPR(NVIC_EXTI0_IRQ));
+
+    infof("C_CONTROL.div = %d\n", C_CONTROL.div);
 
 }
 void stop(void) {
