@@ -28,5 +28,19 @@ static inline uint32_t read_hex_nibbles(const uint8_t *buf, int nibbles) {
     return word;
 }
 
+static inline int32_t read_hex_nibbles_check(const uint8_t *buf, int nibbles,
+                                             uint32_t *pword) {
+    uint32_t word = 0;
+    for(int i=0; i<nibbles; i++) {
+        word <<= 4;
+        int rv = hex_char2int_check(buf[i]);
+        if (rv < 0) return rv;
+        word |= 0xF & rv;
+    }
+    *pword = word;
+    return 0;
+}
+
+
 
 #endif

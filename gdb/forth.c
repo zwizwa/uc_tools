@@ -1,5 +1,6 @@
 #include "base.h"
 #include "forth.h"
+#include "cbuf.h"
 
 /* Revisiting Forth
 
@@ -189,13 +190,21 @@ static void rx(w* _) {
         push((w)(uint32_t)-1);
     }
 }
+
+void forth_putchar(int c) {
+#if FORTH_OUT_INFO
+    info_putchar(c);
+#else
+    cbuf_put(&forth_out, c);
+#endif
+}
+void forth_puts(char *s) {
+    while(*s) { forth_putchar(*s++); }
+}
+
 // TX! ( c -- )
 static void tx(w* _) {
-#if FORTH_OUT_INFO
-    info_putchar(pop().u32);
-#else
-    cbuf_put(&forth_out, pop().u32);
-#endif
+    forth_putchar(pop().u32);
 }
 static void print_hex(uint32_t val, uint32_t nb_digits) {
     const uint8_t c[] = "0123456789ABCDEF";
@@ -277,6 +286,8 @@ struct record {
     w xt;
 };
 
+void words(void);
+
 struct record dict[] = {
 
 /* The idea is to just include forth.c in a wrapper .c file, and
@@ -284,6 +295,8 @@ struct record dict[] = {
 #ifdef FORTH_WORDS
 FORTH_WORDS
 #endif
+
+    {"words",   (w)words},
 
     // eForth primitives
     // System interface
@@ -329,6 +342,15 @@ FORTH_WORDS
     {}
 };
 
+void words(void) {
+    for(const struct record *r = &dict[0]; r->name; r++) {
+        forth_puts((char*)r->name);
+        forth_putchar(' ');
+    }
+    forth_putchar('\n');
+}
+
+
 w forth_find(const char *word) {
     for(const struct record *r = &dict[0]; r->name; r++) {
         if(!strcmp(word, r->name)) return r->xt;
@@ -361,6 +383,7 @@ uint32_t forth_accept(uint8_t *buf, uint32_t len) {
                  * when complete word is in. */
                 // FIXME: there is no error mechanism to signal bad words.
                 cbuf_drop(&forth_in, i);
+                
                 // infof("w:%d\n", i);
                 return i;
             }
@@ -403,10 +426,27 @@ void forth_write(const uint8_t *buf, uint32_t len) {
             /* There is no error handling here: any words that are not
              * defined are interpreted as hex, with bad digits mapped
              * to 0. */
-            uint32_t lit = read_hex_nibbles(&word[0], len);
-            //infof("lit: %08x %s\n", lit, word);
-            push((w)lit);
+            uint32_t lit;
+            if (0 == read_hex_nibbles_check(&word[0], len, &lit)) {
+                //infof("lit: %08x %s\n", lit, word);
+                push((w)lit);
+            }
+            else {
+                forth_puts((char*)word);
+                forth_puts("? ");
+            }
         }
+    }
+}
+
+// FIXME: This is hardcoded to info_putchar.
+// Wrap forth_write (command to interpeter) with echo to info log.
+void forth_write_echo(const uint8_t *buf, uint32_t len) {
+    while(len) {
+        uint8_t c = *buf++; len--;
+        forth_putchar(c);
+        if (c == '\r') { forth_putchar('\n'); }
+        forth_write(&c, 1);
     }
 }
 
@@ -425,5 +465,4 @@ void forth_start(void) {
     run((w)test);
     infof("(post) di = %d\n", di);
 #endif
-
 }

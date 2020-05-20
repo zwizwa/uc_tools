@@ -1,6 +1,8 @@
 #ifndef FORTH_H
 #define FORTH_H
 
+#include "stdint.h"
+
 union word;
 typedef void (*code_fn)(union word *);
 typedef void (*void_fn)(void);
@@ -21,5 +23,8 @@ void forth_start(void);
 
 uint32_t forth_read(uint8_t *buf, uint32_t size);
 void forth_write(const uint8_t *buf, uint32_t len);
+
+void forth_putchar(int c);
+void forth_puts(char *s);
 
 #endif

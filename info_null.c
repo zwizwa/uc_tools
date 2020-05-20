@@ -30,6 +30,14 @@ KEEP int info_putchar(int c) {
 KEEP uint32_t info_bytes() {
     return info_write_next - info_read_next;
 }
+
+/* This is counterproductive: when overflow happens, it is usually due
+ * to some runaway process.  In that case it is much more useful to
+ * have a slight indicator of overrun, instead of dumping a huge
+ * number of '?' characters.  So for now it is disabled.  TODO: A
+ * little more elegance. */
+#define INFO_LOG_OVERFLOW 0
+
 KEEP uint32_t info_read(uint8_t *buf, uint32_t len) {
     uint32_t nb = 0;
     for(;;) {
@@ -38,13 +46,15 @@ KEEP uint32_t info_read(uint8_t *buf, uint32_t len) {
         if (!todo) return nb;
         if (todo < INFO_SIZE) {
             *buf++ = info_buf[info_read_next & INFO_MASK];
+            len--; nb++;
         }
+#if INFO_LOG_OVERFLOW
         else {
             *buf++ ='?'; // be verbose about buffer overrun
+            len--; nb++;
         }
-        len--;
+#endif
         info_read_next++;
-        nb++;
     }
 }
 KEEP uint32_t info_read_crlf(uint8_t *buf, uint32_t len) {
@@ -57,17 +67,18 @@ KEEP uint32_t info_read_crlf(uint8_t *buf, uint32_t len) {
         if (todo < INFO_SIZE) {
             if (c == '\n') {
                 *buf++ = '\r';
-                len--;
-                nb++;
+                len--; nb++;
             }
             *buf++ = c;
+            len--; nb++;
         }
+#if INFO_LOG_OVERFLOW
         else {
             *buf++ ='?'; // be verbose about buffer overrun
+            len--; nb++;
         }
-        len--;
+#endif
         info_read_next++;
-        nb++;
     }
 }
 #endif

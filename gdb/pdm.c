@@ -1,4 +1,6 @@
 #include <stdint.h>
+#include "fixedpoint.h"
+
 
 /* Pulse density modulator.
 
@@ -125,6 +127,20 @@ uint32_t safe_setpoint(uint32_t setpoint) {
 #include "base.h"
 #include "gdbstub_api.h"
 #include <string.h>
+
+
+struct fixedpoint_svf filter = {
+    .ai = 0xFF000000ULL,
+    .ar = 0x01000000ULL,
+    .c0 = 0xFFFFFFFFULL,
+    .c1 = 0xFFFFFFFFULL,
+    .c2 = 0xFFFFFFFFULL,
+};
+KEEP int32_t ortho_test(int32_t input) {
+    return fixedpoint_svf_update(&filter, input);
+}
+
+
 
 /* Protocol-wise we don't really need anything special, so use
    slipstub_buffered to do the basics (SLIP framing, PING, GDB, INFO)
@@ -257,13 +273,33 @@ static inline uint32_t cycle_counter(void) {
     return DWT_CYCCNT;
 }
 
+
+
+
 void exti0_isr(void) {
     hw_exti_ack(C_EXTI);
     if (hw_gpio_read(C_GPIO)) {
-        nb_pulses++;
+        /* Time base is ARM cycle counter @72MHz.  Sample this early
+           in the ISR to avoid any variable delay. */
         uint32_t cc = cycle_counter();
-        osc_period = cc - last_cc;
+
+        /* New measurement is the elapsed time since last capture. */
+        uint32_t osc_period_new = cc - last_cc;
+
+        /* We filter that using a first order filter.  Note that this
+           is updated at the oscilattor's current rate, so the filter
+           pole depends on the frequency of the oscillator. */
+        uint32_t osc_period_estimate = osc_period;
+        uint32_t coef = 0xFF000000ULL;
+        osc_period_estimate =
+            fixedpoint_mul(coef,  osc_period_estimate) +
+            fixedpoint_mul(~coef, osc_period_new);
+        // FIXME: create a signed multiplication
+
+        /* Save state */
+        osc_period = osc_period_estimate;
         last_cc = cc;
+        nb_pulses++;
     }
 }
 
@@ -411,7 +447,7 @@ void start(void) {
     for(int i=0; i<NB_CHANNELS; i++) {
         channel[i].setpoint = safe_setpoint(0x40000000ULL);
     }
-    channel[0].setpoint = 1000000000;
+    channel[0].setpoint = 2000000000;
     start_modulator();
 
 
