@@ -42,6 +42,16 @@ int main(void) {
     hw_gpio_config(LED,HW_GPIO_CONFIG_OUTPUT);
     bootloader_init();
 
+
+
+    /* When BOOT0==0 (boot from flash), BOOT1 is ignored by the STM
+       boot ROM, so we can use it as an application start toggle. */
+    /* FIXME: Find out why this is not 100% reliable. */
+    uint32_t boot1 = hw_gpio_read(GPIOB,2);
+    if (boot1 && !flash_null(_config.start)) _config.start();
+
+
+
     /* For now, the loop takeover routine is implemented on a per
        loader basis as it is still under test.
 
@@ -60,7 +70,7 @@ int main(void) {
          * is useful for running USB in ISR.  This mechanism is
          * separate from start() because start() is executed from the
          * main loop already, and needs to return. */
-#if 0
+#if 1
         bootloader_tick();
 #else
         if ((bootloader_stub.flags & GDBSTUB_FLAG_STARTED) && (_config.loop)) {

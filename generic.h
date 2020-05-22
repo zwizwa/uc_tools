@@ -31,11 +31,13 @@
 #define CT_ASSERT_UNION_SIZE(name, size) \
     CT_ASSERT(union_##name, sizeof(union name) == size)
 
+#ifndef ASSERT
 #define ASSERT(assertion) ({ \
             if(!(assertion)) { \
                 LOG("%s: %d: ASSERT FAIL: " #assertion "\n", __FILE__, __LINE__); \
                 ABORT; \
             } })
+#endif
 #define ASSERT_EQ(a,b) ({ \
             __typeof__(a) _a = (a); \
             __typeof__(b) _b = (b); \

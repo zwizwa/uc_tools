@@ -2,6 +2,8 @@
 #include "forth.h"
 #include "cbuf.h"
 
+// FIXME: rename functions to avoid clashes
+
 /* Revisiting Forth
 
    This time, think about the tradeoffs.  There are a lot of different
@@ -175,7 +177,7 @@ static w popr(void) { w rv = TOPR; ri--; return rv; }
 
 // static w index(uint32_t i) { return ds[(di + i) & DS_MASK]; }
 
-static void dup(w* _) { di++; TOP = SND; }
+static void w_dup(w* _) { di++; TOP = SND; }
 static void add(w* _) { SND.u32 += TOP.u32; pop(); }
 
 
@@ -246,7 +248,7 @@ static void enter(w* list) {
     push_ip();
     ip = list;
 }
-static void exit(w* _) {
+static void w_exit(w* _) {
     ip = popr().pw;
 }
 static void execute(w* _) {
@@ -268,8 +270,8 @@ static void s(w* _) {
 
 // #define FORTH_TEST
 #ifdef FORTH_TEST
-const w lit1[] = { (w)enter, (w)lit, (w)1, (w)exit };
-const w test[] = { (w)enter, (w)lit1, (w)lit1, (w)add, (w)p, (w)exit };
+const w lit1[] = { (w)enter, (w)lit, (w)1, (w)w_exit };
+const w test[] = { (w)enter, (w)lit1, (w)lit1, (w)add, (w)p, (w)w_exit };
 #endif
 
 /* ... but gets tedious when conditional jumps are involved.
@@ -305,7 +307,7 @@ FORTH_WORDS
     // Inner interpreter
     {"lit",     (w)lit},
     {"enter",   (w)enter},
-    {"exit",    (w)exit},
+    {"exit",    (w)w_exit},
     {"execute", (w)execute},
     {"yield",   (w)YIELD},
     {"s",       (w)s},
@@ -326,7 +328,7 @@ FORTH_WORDS
     {"SP@",     (w)TODO},
     {"SP!",     (w)TODO},
     {"drop",    (w)(code_fn)pop},
-    {"dup",     (w)dup},
+    {"dup",     (w)w_dup},
     {"SWAP",    (w)TODO},
     {"OVER",    (w)TODO},
     //Logic
@@ -383,7 +385,7 @@ uint32_t forth_accept(uint8_t *buf, uint32_t len) {
                  * when complete word is in. */
                 // FIXME: there is no error mechanism to signal bad words.
                 cbuf_drop(&forth_in, i);
-                
+
                 // infof("w:%d\n", i);
                 return i;
             }
