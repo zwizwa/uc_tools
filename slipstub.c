@@ -52,7 +52,9 @@ static void slipstub_poll_streams(struct cbuf *b) {
     if (slipstub_poll_read(b, TAG_GDB, _service.rsp_io.read)) return;
 }
 static uint32_t slipstub_read(uint8_t *buf, uint32_t room) {
-    /* Flush old */
+    /* Flush the output buffer that can be filled by the application.
+     * This always needs to run to the end before we can send anything
+     * else.  Application should perform a single atomic write.  */
     struct cbuf *c = slipstub.slip_out;
     uint32_t nb = cbuf_read(c, buf, room);
     buf += nb;  room -= nb;

@@ -138,7 +138,10 @@ static inline void dht11_hw_io_write(struct dht11 *s, int val) {
  * DHT11 only uses high byte for integral values, DHT22 uses hi:lo big
  * endian for decimal .1 increments. */
 static inline void dht11_hw_response(struct dht11 *s, int ok, uint8_t *d) {
-    switch(2) {
+    // FIXME: There is a (slipstub?) polling bug: messages are not
+    // sent to the usb unless we also write something to the info log.
+    if (1) { // verbose
+        switch(2) {
         case 1: { // dht11
             infof("dht11: %d %d %d\n", ok, d[0], d[2]);
             break;
@@ -149,6 +152,7 @@ static inline void dht11_hw_response(struct dht11 *s, int ok, uint8_t *d) {
             infof("dht11: %d %d %d\n", ok, rh, t);
             break;
         }
+        }
     }
     CBUF_WRITE(&cbuf_to_usb, {1, 1, ok, d[0], d[1], d[2], d[3]});
     /* FIXME: Resources can be freed here. */
@@ -157,12 +161,26 @@ static inline void dht11_hw_response(struct dht11 *s, int ok, uint8_t *d) {
 /* This function receives complete SLIP packets from USB.
    Note that the pbuf contains the tag in the first 2 bytes. */
 static void dispatch(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
-    infof("handle tag %04x\n", tag);
+    // infof("handle tag %04x\n", tag);
     switch(tag) {
     case 0x101:
-        infof("dht_request()\n");
+        // dht11 ! {send_packet,<<16#101:16>>}.
+        // info ends up on usb, tagged with 0x101.
+        // TAG_REPLY isn't really necessary. This will only have a
+        // single process attached.
+        // infof("dht_request()\n");
         dht11_request(&dht11);
         break;
+
+#if 0 // example TAG_REPLY
+    case TAG_PING:
+        //infof("ping:%d\n",p->count-2);
+        cbuf_write_slip_tagged(&slip_out, TAG_REPLY,
+                               &p->buf[2], p->count-2);
+        break;
+#endif
+
+
     default:
         infof("bad tag\n");
     }
@@ -201,14 +219,14 @@ void start(void) {
      * directly. */
     hw_periodic_init(C_TIM);
 
-    infof("product: %s\n",&config_product[0]);
+    infof("product: %s \n",&config_product[0]);
 }
 
 const char config_manufacturer[] CONFIG_DATA_SECTION = "Zwizwa";
 const char config_product[]      CONFIG_DATA_SECTION = "DHT11 interface board";
 const char config_firmware[]     CONFIG_DATA_SECTION = FIRMWARE;
 const char config_version[]      CONFIG_DATA_SECTION = BUILD;
-const char config_protocol[]     CONFIG_DATA_SECTION = "slip";
+const char config_protocol[]     CONFIG_DATA_SECTION = "{driver,dht11_slip,slip}";
 
 struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .manufacturer    = config_manufacturer,
@@ -219,9 +237,3 @@ struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .start           = start,
     .switch_protocol = slipstub_switch_protocol,
 };
-
-
-
-
-
-
