@@ -12,10 +12,16 @@
  8003ebc:	4618      	mov	r0, r3
  8003ebe:	4770      	bx	lr
 
+   So this left here as an example.  In practice it is easier to use
+   ordinary multiplication and explicit shifts, as that also allows
+
 */
-static inline uint32_t fixedpoint_mul(uint32_t a, uint32_t b) {
+static inline uint32_t fixedpoint_mul_shift(uint32_t a, uint32_t b, uint32_t n) {
     uint64_t ab = ((uint64_t)a) * ((uint64_t)b);
-    return ab >> 32;
+    return ab >> n;
+}
+static inline uint32_t fixedpoint_mul(uint32_t a, uint32_t b) {
+    return fixedpoint_mul_shift(a,b,32);
 }
 
 
