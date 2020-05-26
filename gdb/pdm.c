@@ -252,26 +252,9 @@ void HW_TIM_ISR(TIM_PDM)(void) {
 const struct hw_exti c_exti = HW_EXTI_A0_B;
 #define C_EXTI c_exti
 #define C_GPIO GPIOA,0
-volatile uint32_t nb_pulses, last_cc, osc_period;
+volatile uint32_t osc_period, nb_pulses, last_cc;
 
-/* Use the ARM 32-bit cycle counter to do time stamping.  It's more
-   convenient than having to work around 16bit counter limitations.
-   The 16 bit timers could later be used as oscillators. */
-
-#include <libopencm3/cm3/dwt.h>
-#define DEMCR  MMIO32(0xE000EDFC)
-#define LAR    MMIO32(0xE0001FB0)
-
-// https://stackoverflow.com/questions/36378280/stm32-how-to-enable-dwt-cycle-counter
-static inline void enable_cycle_counter(void) {
-    DEMCR |= 0x01000000;    // enable trace
-    LAR = 0xC5ACCE55;       // <-- added unlock access to DWT (ITM, etc.)registers
-    DWT_CYCCNT = 0;         // clear DWT cycle counter
-    DWT_CTRL |= 1;          // enable DWT cycle counter
-}
-static inline uint32_t cycle_counter(void) {
-    return DWT_CYCCNT;
-}
+#include "cycle_counter.h"
 
 
 
@@ -455,6 +438,7 @@ void start(void) {
        lower priority than the PDM because it will cause modulation
        effects. */
 #if 1
+    // FIXME: init last_cc here?
     enable_cycle_counter();
     hw_exti_init(C_EXTI);
     hw_exti_arm(C_EXTI);

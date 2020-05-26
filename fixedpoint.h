@@ -74,6 +74,7 @@ struct fixedpoint_svf {
 
 /* Compiler uses SMLAL as long as inputs are casted from i32 to i64 */
 #define I64(x) ((int64_t)(int32_t)(x))
+#define U64(x) ((uint64_t)(uint32_t)(x))
 
 static inline int32_t fixedpoint_svf_update(struct fixedpoint_svf *s, int32_t input) {
     uint64_t d1_next =
