@@ -14,16 +14,14 @@ struct playback {
     uint32_t speed; // 24.8 fractional
 };
 
-static inline uint8_t playback_next(struct playback *p) {
+
+/* No interpolation. This sounds schirpy at 8kHz.  Returns uint32_t
+   but is limited to uint8_t range. */
+static inline uint32_t playback_next_8p0(struct playback *p) {
     uint32_t read_i = p->read >> 8;
-    uint8_t duty;
+    uint32_t duty;
     if (read_i < p->len) {
-        if (p->buf) {
-            duty = p->buf[read_i];
-        }
-        else {
-            duty = (read_i % 256); // saw
-        }
+        duty = p->buf[read_i];
         p->read += p->speed;
     }
     else {
@@ -31,6 +29,25 @@ static inline uint8_t playback_next(struct playback *p) {
     }
     return duty;
 }
+
+/* Linear interpolation, with result returned as 8.8 fixed point. */
+static inline uint32_t playback_next_li_8p8(struct playback *p) {
+    uint32_t read_i = p->read >> 8;
+    uint32_t duty;
+    if (read_i < p->len-1) {
+        uint32_t a = p->buf[read_i];
+        uint32_t b = p->buf[read_i+1];
+        uint32_t frac = p->read % 256;
+        duty = ((a * (256 - frac)) + (b * frac));
+        p->read += p->speed;
+    }
+    else {
+        duty = 128*256; // silence
+    }
+    return duty;
+}
+
+
 static inline void playback_trigger(struct playback *p, uint32_t speed, uint32_t len, uint8_t *buf) {
     p->buf = buf;
     p->len = len;
