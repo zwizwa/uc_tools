@@ -1032,50 +1032,77 @@ INLINE void hw_usart1_init(void) {
     //hw_usart1_3M();
     hw_usart1_115k2();
 }
+INLINE void hw_usart3_init(void) {
+    rcc_periph_clock_enable(RCC_GPIOB);
+    rcc_periph_clock_enable(RCC_USART3);
+
+    //nvic_set_priority(NVIC_USART1_IRQ, 1);
+    nvic_enable_irq(NVIC_USART3_IRQ);
+
+    hw_gpio_config(GPIOB, 10, HW_GPIO_CONFIG_ALTFN); // USART3_TX
+    hw_gpio_config(GPIOB, 11, HW_GPIO_CONFIG_INPUT); // USART3_RX
+
+    //hw_usart1_3M();
+    hw_usart1_115k2();
+}
+
 // FIXME: only use getchar (error checking)
-INLINE uint8_t hw_usart1_recv(void) {
+INLINE uint8_t hw_usart_recv(uint32_t usart) {
     // SR flags RXNE and ORE cause interrupt
-    USART_SR(USART1);               // clears ORE if followed by DR read
-    uint32_t dr = USART_DR(USART1); // clears RXNE
+    USART_SR(usart);               // clears ORE if followed by DR read
+    uint32_t dr = USART_DR(usart); // clears RXNE
     return dr & USART_DR_MASK;
 }
-INLINE int hw_usart1_getchar(void) {
+INLINE int hw_usart_getchar(uint32_t usart) {
     // SR flags RXNE and ORE cause interrupt
-    uint32_t sr = USART_SR(USART1); // clears ORE if followed by DR read
-    uint32_t dr = USART_DR(USART1); // clears RXNE
+    uint32_t sr = USART_SR(usart); // clears ORE if followed by DR read
+    uint32_t dr = USART_DR(usart); // clears RXNE
     if (sr & 0xF) return -1; // check errors: [ORE NE FE PE]
     return dr & USART_DR_MASK;
 }
 /* Same as getchar, but in case of error create a negative error code
  * containing SR and DR. */
-INLINE int hw_usart1_getchar_nsr(void) {
+INLINE int hw_usart_getchar_nsr(uint32_t usart) {
     // SR flags RXNE and ORE cause interrupt
-    int32_t  sr = USART_SR(USART1);   // clears ORE if followed by DR read
-    uint32_t dr = USART_DR(USART1);   // clears RXNE
+    int32_t  sr = USART_SR(usart);   // clears ORE if followed by DR read
+    uint32_t dr = USART_DR(usart);   // clears RXNE
     if (sr & 0xF) return (-1 << 12) | ((sr & 0xF) << 8) | (dr & 0xFF);
     return dr & USART_DR_MASK;
 }
-INLINE int hw_usart1_recv_ready(void) {
-    return USART_SR(USART1) & USART_SR_RXNE;
+INLINE int hw_usart_recv_ready(uint32_t usart) {
+    return USART_SR(usart) & USART_SR_RXNE;
 }
-INLINE int hw_usart1_send_ready(void) {
-    return USART_SR(USART1) & USART_SR_TXE;
+INLINE int hw_usart_send_ready(uint32_t usart) {
+    return USART_SR(usart) & USART_SR_TXE;
 }
-INLINE void hw_usart1_send_ready_ack(void) {
-    USART_SR(USART1) &= ~USART_SR_TXE;
+INLINE void hw_usart_send_ready_ack(uint32_t usart) {
+    USART_SR(usart) &= ~USART_SR_TXE;
 }
-INLINE void hw_usart1_send(uint8_t cmd) {
+INLINE void hw_usart_send(uint32_t usart, uint8_t cmd) {
     // usart_send(USART1, cmd);
-    USART_DR(USART1) = (cmd & USART_DR_MASK); // inline
+    USART_DR(usart) = (cmd & USART_DR_MASK); // inline
 }
-INLINE int hw_usart1_send_done(void) {
-    return USART_SR(USART1) & USART_SR_TC;
+INLINE int hw_usart_send_done(uint32_t usart) {
+    return USART_SR(usart) & USART_SR_TC;
 }
-INLINE void hw_usart1_send_flush(void) {
+INLINE void hw_usart_send_flush(uint32_t usart) {
     // Busywait until all data went out on the wire.
-    while(!hw_usart1_send_ready());
-    while(!hw_usart1_send_done());
+    while(!hw_usart_send_ready(usart));
+    while(!hw_usart_send_done(usart));
 }
+
+/* Old routines, hardcoded to usart1 */
+INLINE uint8_t hw_usart1_recv(void)        { return hw_usart_recv(USART1); }
+INLINE int hw_usart1_getchar(void)         { return hw_usart_getchar(USART1); }
+INLINE int hw_usart1_getchar_nsr(void)     { return hw_usart_getchar_nsr(USART1); }
+INLINE int hw_usart1_recv_ready(void)      { return hw_usart_recv_ready(USART1); }
+INLINE int hw_usart1_send_ready(void)      { return hw_usart_send_ready(USART1); }
+INLINE int hw_usart1_send_done(void)       { return hw_usart_send_done(USART1); }
+INLINE void hw_usart1_send_ready_ack(void) { hw_usart_send_ready_ack(USART1); }
+INLINE void hw_usart1_send(uint8_t cmd)    { hw_usart_send(USART1, cmd); }
+INLINE void hw_usart1_send_flush(void)     { hw_usart_send_flush(USART1); }
+
+
 
 /* ---------------------------------------------------------------------
    PA0-PC0 -> EXTI0
