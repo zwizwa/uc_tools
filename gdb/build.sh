@@ -95,10 +95,13 @@ case "$TYPE" in
     elf)
         assert_vars ARCH LD MAP E O A
         . $UC_TOOLS/gdb/env.$ARCH.sh
+        # Optionally link to parent elf file
+        [ ! -z "$PARENT_ELF" ] && PARENT_ELF_LDFLAGS=-Wl,--just-symbols=$PARENT_ELF
         $GCC \
             $LDFLAGS \
             -T$LD \
             -Wl,-Map=$MAP \
+            $PARENT_ELF_LDFLAGS \
             -o $E \
             $O $O_SYSTEM $A $LDLIBS
         ;;

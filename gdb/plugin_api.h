@@ -38,6 +38,7 @@ struct plugin_service {
     /* 4 */   gdbstub_fn_stop  stop;  // If nonzero, needs to be called before code is reloaded.
     /* 5 */   void *load_addr;        // Where this is supposed to go.
     /* 6 */   void *endx_addr;        // End of image.
+    /* 7 */   uint8_t sha256[32];     // Hash of host elf this was linked against
 };
 
 // FIXME: Some tag to identify which host this was compiled for.

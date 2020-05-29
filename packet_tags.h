@@ -30,7 +30,7 @@
 #define TAG_FLASH_ERASE 0xFFF6
 #define TAG_FLASH_WRITE 0xFFF7
 #define TAG_PLUGCTL     0xFFF8  // loadable plugin control
-// 0xFFF9
+#define TAG_CHECKSUM    0xFFF9  // compute checksum
 #define TAG_PLUGIO      0xFFFA  // loadable plugin i/o messages
 #define TAG_STREAM      0xFFFB  // byte stream encapsulation.
 #define TAG_PING        0xFFFC  // request TAG_REPLY echo

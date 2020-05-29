@@ -37,12 +37,6 @@ uint32_t plugin_read(uint8_t *buf, uint32_t len) {
 
 /* Handle all plugin related messages. */
 
-/* Note that the messages are not implemented by RPC to keep
-   implementation simple and to avoid round-trip delays.  At the end
-   of a programming operation, send a ping to synchronize.  The
-   application should ensure no messages are interleaved that would
-   see a partially programmed flash state. */
-
 /* Flash is a separate function to allow it to be used in isolation. */
 uint32_t flash_handle_message(const uint8_t *buf, uint32_t len) {
     uint16_t tag = read_be(buf, 2);
