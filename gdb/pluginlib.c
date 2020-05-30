@@ -1,3 +1,11 @@
+/* Alternative Flash and RAM code loading.
+   Compared to GDB stub, this:
+   - Loads _much_ faster
+   - Handles start/stop tracking for the plugin with host app running
+   - Should be straightforward to extend to multiple plugins
+   - Adds an I/O pipe
+*/
+
 /* Code for handling plugin load & start */
 #include "plugin_api.h"
 #include "pbuf.h"
@@ -6,10 +14,11 @@
 
 /* Note that plugins have undefined state before they are started, so
    we have to keep track of whether they are started or not. */
-
 int plugin_started_ = 0;
 struct plugin_service *plugin_service_ = 0;
 static struct plugin_service *plugin_service(void) {
+    /* Anything programmed during this session gets priority,
+       otherwise use what's stored in Flash */
     if (!plugin_service_) plugin_service_ = &_eflash;
     if (plugin_service_->version != PLUGIN_API_VERSION) return NULL;
     return plugin_service_;
@@ -20,10 +29,10 @@ static struct plugin_service *plugin_started(void) {
     return NULL;
 }
 static void plugin_start(void) {
-    if (!plugin_started_) {
-        if (plugin_service() && plugin_service()->start) {
-            plugin_service()->start();
-        }
+    struct plugin_service *s = plugin_service();
+    /* Start method is required. */
+    if (s && s->start && ! plugin_started_) {
+        s->start();
         plugin_started_ = 1;
     }
 }
@@ -116,6 +125,12 @@ uint32_t plugin_handle_message(const uint8_t *buf, uint32_t len) {
             // Note that this message won't get to the host if
             // we crash in the function call.
             plugin_start();
+            goto handled;
+
+        case 2:  // STOP
+            // Note that this message won't get to the host if
+            // we crash in the function call.
+            plugin_stop();
             goto handled;
 
         case 1: { // WRITE BLOCK

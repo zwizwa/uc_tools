@@ -109,7 +109,7 @@ case "$TYPE" in
         set -x
         assert_vars ARCH
         . $UC_TOOLS/gdb/env.$ARCH.sh
-        $OBJDUMP -d $E
+        # $OBJDUMP -d $E
         $OBJCOPY -O binary $E $BIN
         ;;
 

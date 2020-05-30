@@ -18,6 +18,37 @@
 
 #include "crc.h"
 
+
+/* Run a timer interrupt in the background, to see if that keeps
+   working.  This is pwm audio. */
+
+/* This is a division scheme that has exact audio rate subsampling for
+   8kHz audio, and integral second time keeping.  The PWM samples need
+   to be scaled to fit the range.  That calcluation is combined with
+   linear interpolation. */
+#define AUDIO_DIV         1125  // giving 64kHz PWM rate, also PWM scale
+#define AUDIO_RATE_KHZ    (72000 / AUDIO_DIV)
+
+const struct hw_clockgen hw_audio_playback[] = {
+//          rcc_tim   rcc_gpio   tim   gpio   pin div         duty          phase  pol chan     itr  irq (optional)
+//-------------------------------------------------------------------------------------------------------------------
+    [3] = { RCC_TIM3, RCC_GPIOB, TIM3, GPIOB, 0,  AUDIO_DIV,  AUDIO_DIV/2,  0,     1,  TIM_OC3, -1,  NVIC_TIM3_IRQ },
+
+};
+#define TIM_AUDIO 3
+#define C_AUDIO hw_audio_playback[TIM_AUDIO]
+
+volatile uint32_t audio_count;
+
+void HW_TIM_ISR(TIM_AUDIO)(void) {
+    hw_clockgen_ack(C_AUDIO);
+    audio_count++;
+}
+
+
+
+
+
 /* See plugin_handle_message.
    Required buffer size is Flash block size + some header space. */
 uint8_t packet_in_buf[1024 + 64];
@@ -116,6 +147,12 @@ void start(void) {
     hw_app_init();
     CBUF_INIT(slip_out);
     PBUF_INIT(packet_in);
+#if 1
+    hw_clockgen_init(C_AUDIO);
+    hw_clockgen_arm(C_AUDIO);
+    hw_clockgen_trigger(C_AUDIO);
+#endif
+
 }
 
 const char config_manufacturer[] CONFIG_DATA_SECTION = "Zwizwa";
