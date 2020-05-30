@@ -105,6 +105,14 @@ case "$TYPE" in
             -o $E \
             $O $O_SYSTEM $A $LDLIBS
         ;;
+    bin)
+        set -x
+        assert_vars ARCH
+        . $UC_TOOLS/gdb/env.$ARCH.sh
+        $OBJDUMP -d $E
+        $OBJCOPY -O binary $E $BIN
+        ;;
+
     *)
         echo "unknown TYPE=$TYPE"
         exit 1

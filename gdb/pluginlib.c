@@ -4,14 +4,36 @@
 
 #include "memory.h"
 
+/* Note that plugins have undefined state before they are started, so
+   we have to keep track of whether they are started or not. */
 
-int plugin_active = 0;
-struct plugin_service *plugin_service = 0;
-
-static int plugin_ok(void) {
-    return plugin_service
-        && (plugin_service->version == PLUGIN_API_VERSION)
-        && plugin_active;
+int plugin_started_ = 0;
+struct plugin_service *plugin_service_ = 0;
+static struct plugin_service *plugin_service(void) {
+    if (!plugin_service_) plugin_service_ = &_eflash;
+    if (plugin_service_->version != PLUGIN_API_VERSION) return NULL;
+    return plugin_service_;
+}
+static struct plugin_service *plugin_started(void) {
+    struct plugin_service *s;
+    if ((s = plugin_service()) && plugin_started_) return s;
+    return NULL;
+}
+static void plugin_start(void) {
+    if (!plugin_started_) {
+        if (plugin_service() && plugin_service()->start) {
+            plugin_service()->start();
+        }
+        plugin_started_ = 1;
+    }
+}
+static void plugin_stop(void) {
+    if (plugin_started()) {
+        if (plugin_service()->stop) {
+            plugin_service()->stop();
+        }
+        plugin_started_ = 0;
+    }
 }
 
 static uint32_t map_addr(uint32_t addr) {
@@ -31,8 +53,11 @@ static uint32_t map_addr(uint32_t addr) {
 uint32_t plugin_read(uint8_t *buf, uint32_t len) {
     /* Do not call any code if the plugin has not explicitly been
      * activated. */
-    if (!plugin_ok()) return 0;
-    return plugin_service->io.read(buf, len);
+    struct plugin_service *s;
+    if ((s = plugin_started()) && s->io.read) {
+        return plugin_service()->io.read(buf, len);
+    }
+    return 0;
 }
 
 /* Handle all plugin related messages. */
@@ -42,9 +67,9 @@ uint32_t flash_handle_message(const uint8_t *buf, uint32_t len) {
     uint16_t tag = read_be(buf, 2);
     switch(tag) {
 
-    // bp4 ! {send_packet,<<16#FFF6:16,16#08005000:32, 1024:32, 10:32>>}.
+    // bp4 ! {send_packet,<<16#FFF6:16, 16#08005000:32, 1024:32, 10:32>>}.
     case TAG_FLASH_ERASE: {
-        plugin_active = 0;
+        plugin_stop();
         uint32_t addr = map_addr(read_be(buf+2,  4));
         uint32_t size = read_be(buf+6,  4);
         uint32_t log  = read_be(buf+10, 4);
@@ -58,7 +83,7 @@ uint32_t flash_handle_message(const uint8_t *buf, uint32_t len) {
     // <<16##FFF7:16,Addr:32,Data/binary>>
     // bp4 ! {send_packet,<<16#FFF7:16,16#08005000:32,1,2,3,4>>}.
     case TAG_FLASH_WRITE: {
-        plugin_active = 0;
+        plugin_stop();
         uint32_t req_addr = read_be(buf+2, 4);
         const uint8_t *data_buf  = &buf[6];
         uint32_t addr = map_addr(req_addr);
@@ -75,8 +100,12 @@ uint32_t flash_handle_message(const uint8_t *buf, uint32_t len) {
     }
 }
 
-
+/* Returns 0 when message is not handled, len otherwise.
+   Note that errors do mean the message is handled. */
 uint32_t plugin_handle_message(const uint8_t *buf, uint32_t len) {
+
+    if (len < 4) goto not_handled;
+
     uint16_t tag = read_be(buf, 2);
     switch(tag) {
 
@@ -86,21 +115,19 @@ uint32_t plugin_handle_message(const uint8_t *buf, uint32_t len) {
         case 0:  // START
             // Note that this message won't get to the host if
             // we crash in the function call.
-            if (plugin_service) {
-                infof("starting plugin: 0x%08x\n", plugin_service->start);
-                plugin_service->start();
-                plugin_active = 1;
+            plugin_start();
+            goto handled;
+
+        case 1: { // WRITE BLOCK
+            /* Need at least one byte. */
+            if (len < (12 + 1)) {
+                infof("WRITE_BLOCK short packet %d\n", len);
                 goto handled;
             }
-            else {
-                /* FIXME: There could be one in flash. */
-                infof("plugin_service == NULL\n");
-            }
-        case 1: { // WRITE BLOCK
             void *ram_load_addr = &_ebss;
             void *flash_load_addr = &_eflash;
 
-            plugin_active = 0;
+            plugin_stop();
             uint32_t rel_addr = read_be(buf+4, 4);
             uint32_t block_log_size = read_be(buf+8, 4);
             const uint8_t *data_buf = &buf[12];
@@ -115,22 +142,33 @@ uint32_t plugin_handle_message(const uint8_t *buf, uint32_t len) {
                 infof("plugin->version   = 0x%08x\n", plugin->version);
                 infof("plugin->load_addr = 0x%08x\n", plugin->load_addr);
                 infof("plugin->endx_addr = 0x%08x\n", plugin->endx_addr);
+                infof("plugin->start     = 0x%08x\n", plugin->start);
+                infof("plugin->stop      = 0x%08x\n", plugin->stop);
 
                 /* Keep a copy of the pointer so we can read it out on the
                    next iteration. */
-                plugin_service = plugin->load_addr;
+                if (plugin->version == PLUGIN_API_VERSION) {
+                    plugin_service_ = plugin->load_addr;
+                }
+                else {
+                    goto bad_plugin;
+                }
             }
             else {
-                plugin = plugin_service;
+                /* On subsequent block, the plugin header will be in
+                   Flash. */
+                plugin = plugin_service();
+                if (!plugin) goto bad_plugin;
             }
+
             /* We're going to constrain loading to where we expect
              * data to be going. */
-            void *abs_addr;
+            void *abs_addr = 0;
             if (plugin->load_addr == flash_load_addr) {
                 abs_addr = flash_load_addr + rel_addr;
-                int rv;
+                int rv=0;
                 if ((rv = hw_flash_erase((uint32_t)abs_addr, data_len, block_log_size))) {
-                    infof("ERROR:erase:%08x\n", abs_addr);
+                    infof("ERROR:erase:%08x:%d:%d\n", abs_addr, data_len, block_log_size);
                 }
                 if ((rv = hw_flash_write((uint32_t)abs_addr, data_buf, data_len))) {
                     infof("ERROR:write:%08x\n", abs_addr);
@@ -141,8 +179,8 @@ uint32_t plugin_handle_message(const uint8_t *buf, uint32_t len) {
                 memcpy(abs_addr, data_buf, data_len);
             }
             else {
-                infof("load_addr doesn't match Flash %08x or RAM %08x\n",
-                      &_eflash, &_ebss);
+                infof("load_addr %08x doesn't match Flash %08x or RAM %08x\n",
+                      plugin->load_addr, &_eflash, &_ebss);
                 goto not_handled;
             }
             infof("R:%08x -> A:%08x\n", rel_addr, abs_addr);
@@ -150,13 +188,18 @@ uint32_t plugin_handle_message(const uint8_t *buf, uint32_t len) {
         }
         }
         break;
+    }
+#if 1
+    case TAG_PLUGIO: {
+        struct plugin_service *s;
+        if ((s = plugin_started()) && s->io.write) {
+            s->io.write(buf+2, len-2);
         }
-    case TAG_PLUGIO:
-        if (plugin_ok()) {
-            plugin_service->io.write(buf+2, len-2);
-            goto handled;
-        }
+        goto handled;
         break;
+    }
+
+#endif
 
     case TAG_FLASH_ERASE:
     case TAG_FLASH_WRITE:
@@ -168,6 +211,10 @@ uint32_t plugin_handle_message(const uint8_t *buf, uint32_t len) {
     return 0;
   handled:
     return len;
+  bad_plugin:
+    infof("bad plugin\n");
+    goto handled;
+
 }
 
 
