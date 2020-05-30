@@ -14,9 +14,8 @@ CPPFLAGS="$CPPFLAGS_COMMON"
 CFLAGS="$CFLAGS_COMMON $CPPFLAGS $MFLAGS -DSTM32F1"
 LDFLAGS="$LDFLAGS_COMMON $MFLAGS"
 LDLIBS="$LDLIBS_COMMON -lopencm3_stm32f1"
-ELF="$ELF_COMMON"
 
-ELF="
+ELFS="
 bl_hyministm32v.core.f103.elf
 bl_hyministm32v_autostart.core.f103.elf
 bl_c8t6.core.f103.elf

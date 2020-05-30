@@ -1,6 +1,7 @@
 /* Alternative Flash and RAM code loading.
    Compared to GDB stub, this:
    - Loads _much_ faster
+   - Has a much simpler protocol
    - Handles start/stop tracking for the plugin with host app running
    - Should be straightforward to extend to multiple plugins
    - Adds an I/O pipe
@@ -37,12 +38,11 @@ static void plugin_start(void) {
     }
 }
 static void plugin_stop(void) {
-    if (plugin_started()) {
-        if (plugin_service()->stop) {
-            plugin_service()->stop();
-        }
-        plugin_started_ = 0;
+    struct plugin_service *s;
+    if ((s = plugin_started()) && s->stop) {
+        s->stop();
     }
+    plugin_started_ = 0;
 }
 
 static uint32_t map_addr(uint32_t addr) {
