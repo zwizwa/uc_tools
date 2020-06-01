@@ -708,11 +708,17 @@ INLINE void hw_spi_nodma_init(struct hw_spi_nodma c) {
     rcc_periph_clock_enable(c.rcc_spi);
     hw_spi_nodma_reset(c);
 }
-INLINE uint8_t hw_spi_nodma_rdwr(struct hw_spi_nodma c, uint8_t byte) {
+INLINE void hw_spi_nodma_wr(struct hw_spi_nodma c, uint8_t byte) {
     while (!(SPI_SR(c.spi) & SPI_SR_TXE));
     SPI_DR(c.spi) = byte;
+}
+INLINE uint8_t hw_spi_nodma_rd(struct hw_spi_nodma c) {
     while (!(SPI_SR(c.spi) & SPI_SR_RXNE));
     return SPI_DR(c.spi);
+}
+INLINE uint8_t hw_spi_nodma_rdwr(struct hw_spi_nodma c, uint8_t byte) {
+    hw_spi_nodma_wr(c, byte);
+    return hw_spi_nodma_rd(c);
 }
 INLINE void hw_spi_nodma_end(struct hw_spi_nodma c) {
     /* Wait to transmit last data */
@@ -776,11 +782,7 @@ INLINE void hw_spi_high(struct hw_spi c) {
 }
 
 
-INLINE void hw_spi_reset(struct hw_spi c) {
-
-    // During reset pulse, SPI data pin will be glitching and floating.
-    // emu_dimod uses hw_spi_set_high() before reset
-    hw_rcc_periph_reset_pulse(c.rst);
+INLINE void hw_spi_reinit(struct hw_spi c) {
 
     // FIXME: Make pin speed configurable.
     uint32_t altfn =  HW_GPIO_CONFIG_ALTFN;
@@ -830,6 +832,16 @@ INLINE void hw_spi_reset(struct hw_spi c) {
     }
     SPI_CR1(c.spi) = cr1 | SPI_CR1_SPE; // enable
 }
+
+INLINE void hw_spi_reset(struct hw_spi c) {
+
+    // During reset pulse, SPI data pin will be glitching and floating.
+    // emu_dimod uses hw_spi_set_high() before reset
+    hw_rcc_periph_reset_pulse(c.rst);
+    hw_spi_reinit(c);
+}
+
+
 
 INLINE void hw_spi_init(struct hw_spi c) {
     // shared between master and slave

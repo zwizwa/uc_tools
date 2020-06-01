@@ -7,3 +7,15 @@
 *.a
 *.bin
 out.list
+build
+\#*\#
+cscope.files
+cscope.in.out
+cscope.out
+cscope.po.out
+.do_built*
+.stamp
+core
+*.rej
+target
+

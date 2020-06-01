@@ -425,14 +425,13 @@ void forth_write(const uint8_t *buf, uint32_t len) {
             run(xt);
         }
         else {
-            /* There is no error handling here: any words that are not
-             * defined are interpreted as hex, with bad digits mapped
-             * to 0. */
+            /* Words that are not defined are interpreted as hex. */
             uint32_t lit;
             if (0 == read_hex_nibbles_check(&word[0], len, &lit)) {
                 //infof("lit: %08x %s\n", lit, word);
                 push((w)lit);
             }
+            /* If that fails an error is printed inline. */
             else {
                 forth_puts((char*)word);
                 forth_puts("? ");
