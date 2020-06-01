@@ -1,0 +1,1 @@
+../ble_simple/CMakeLists.txt
