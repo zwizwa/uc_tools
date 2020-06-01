@@ -64,7 +64,13 @@ void for_appdatas(const struct appdata_service **services,
 void printk_appdata(void *ctx,
                     const struct appdata_service *s,
                     const struct appdata_characteristic *c) {
-    printk("%04x %04x %s (%s)\n", s->uuid.val, c->uuid.val, c->desc, c->type);
+    // FIXME: this assumes 16-bit uuid, e.g.:
+    //if (s->uuid.uuod == BT_UUID_TYPE_16) {}
+    //if (c->uuid.uuod == BT_UUID_TYPE_16) {}
+    printk("%04x %04x %s (%s)\n",
+           s->uuid.uuid_16.val,
+           c->uuid.uuid_16.val,
+           c->desc, c->type);
 }
 void printk_services(const struct appdata_service **services) {
     for_appdatas(services, printk_appdata, NULL);

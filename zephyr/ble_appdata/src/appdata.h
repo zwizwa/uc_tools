@@ -27,12 +27,22 @@ union appdata {
     float32_t float32;
     uint8_t raw[4];
 };
+
+/* Reuse the bluetooth/uuid.h structures.  Note that this has some
+   Flash overhead in case the uids are 16 bit, but that doesn't really
+   seem to be a problem. */
+union appdata_uuid {
+    struct bt_uuid     uuid;
+    struct bt_uuid_16  uuid_16;
+    struct bt_uuid_128 uuid_128;
+};
+
 /* All access is abstract through get/set methods. */
 typedef void                 (*appdata_set_fn)(const union appdata *value);
 typedef const union appdata* (*appdata_get_fn)(void);
 
 struct appdata_characteristic {
-    struct bt_uuid_16 uuid;
+    union appdata_uuid uuid;
     appdata_get_fn get;
     appdata_set_fn set;
     uint16_t len;
@@ -40,7 +50,7 @@ struct appdata_characteristic {
     const char *type;
 };
 struct appdata_service {
-    struct bt_uuid_16 uuid;
+    union appdata_uuid uuid;
     const char *desc;
     const struct appdata_characteristic **characteristics;
 };

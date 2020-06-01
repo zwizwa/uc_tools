@@ -5,6 +5,15 @@
 #ifndef SPEC_IMPL_H
 #define SPEC_IMPL_H
 
+/* These are referenced in spec.h and implemented in terms of Zephyr's
+   bluetooth/uuid.h */
+#define UUID_16(_uuid)  {.uuid_16  = BT_UUID_INIT_16(_uuid) }
+
+/* It is a pain to read 128 bit uids backwards, so this does the byte
+   reversal. That keeps the spec.h more readable. */
+#define UUID_128(b15,b14,b13,b12,b11,b10,b9,b8,b7,b6,b5,b4,b3,b2,b1,b0) \
+    {.uuid_128 = BT_UUID_INIT_128(b0,b1,b2,b3,b4,b5,b6,b7,b8,b9,b10,b11,b12,b13,b14,b15) }
+
 #include "spec.h"
 #include "appdata.h"
 
@@ -17,12 +26,15 @@
 #define MAYBE_INIT_SET_APPDATA_R(_cname)
 #define MAYBE_INIT_SET_APPDATA_RN(_cname)
 
+// FIXME: support 128 bit.  This has some silly double union wrapping.
+#define INIT_UUID(_uuid) {.uuid_16 = BT_UUID_INIT_16(_uuid)}
+
 #define DEF_CHARACTERISTIC(_cname, _desc, _char_uuid, _type, _cap, _notes) \
     const struct appdata_characteristic characteristic_##_cname = {     \
         .get     = get_##_cname,                                        \
         .set     = set_##_cname,                                        \
         .desc    = _desc,                                               \
-        .uuid    = BT_UUID_INIT_16(0x##_char_uuid),                     \
+        .uuid    = _char_uuid,                                          \
         .len     = sizeof(_type),                                       \
         .type    = #_type,                                              \
         MAYBE_INIT_SET_APPDATA_##_cap(_cname)                           \
@@ -33,13 +45,13 @@
 
 #define DEF_SERVICE(_cname, _desc, _serv_uuid, _FOR_CHARACTERISTICS)    \
     _FOR_CHARACTERISTICS(DEF_CHARACTERISTIC)                            \
-    const struct appdata_characteristic *characteristics_##_serv_uuid[] = { \
+    const struct appdata_characteristic *characteristics_##_cname[] = { \
         _FOR_CHARACTERISTICS(REF_CHARACTERISTIC) NULL                   \
     };                                                                  \
     const struct appdata_service service_##_cname = {                   \
         .desc = _desc,                                                  \
-        .uuid = BT_UUID_INIT_16(0x##_serv_uuid),                        \
-        .characteristics = characteristics_##_serv_uuid                 \
+        .uuid = _serv_uuid,                                             \
+        .characteristics = characteristics_##_cname                     \
     };
 #define REF_SERVICE(_cname, _desc, _serv_uuid, _FOR_CHARACTERISTICS)    \
     &service_##_cname,
@@ -125,6 +137,10 @@ FOR_SERVICES(DECL_SERVICE)
 
 #define CHARACTERISTIC(_cname, _desc, _char_uuid, _type, _cap, _notes) \
     ,CHARACTERISTIC_##_cap(characteristic_##_cname)
+
+// Note: referenceing uuid.uuid_16.uuid or uuid.uuid_128.uuid has the
+// same effect.  FIXME: re-arrange this so the double wrapping is not
+// necessary.
 
 #define SERVICE(_cname, _desc, _serv_uuid, _FOR_CHARACTERISTICS) \
     BT_GATT_SERVICE_DEFINE(\
