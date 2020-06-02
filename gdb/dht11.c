@@ -32,158 +32,15 @@ struct sbuf sbuf_from_usb; uint8_t sbuf_from_usb_buf[1024];
 struct cbuf cbuf_to_usb;   uint8_t cbuf_to_usb_buf[1024];
 
 
-/* The header has generic code, parameterized by platform dependent
- * functionality in terms of inline functions. */
-#include "dht11.h"
-struct dht11 dht11;
-
-/* Instantiate the event handler. */
-static void send(uint32_t event) {
-    dht11_handle(&dht11, event);
-}
-
-
-/* A single general-purpose timer is used to provide two time-based
-   mechanisms at different time scales:
-
-   - The ability to measure microsecond-level time differences for
-     decoding pulse width modulation.
-
-   - A periodic interrupt to schedule millisecond-level events for
-     output pulse width and overall timeout.
-
-   Time differences are simplest to perform when the timer runs over
-   the entire 16 bit range.  That requires div=0x10000 and gives a
-   base clock of
-
-   (/ 72000.0 #x10000) 1.1 kHz or 0.9us
-
-   This fits perfectly tot the millisecond-level requirement for the
-   interrupt, so set the prescaler to 1.
-*/
-
-const struct hw_periodic hw_tim_10us[] = {
-//          rcc       irq            tim   div      pre
-//-------------------------------------------------------
-    [2] = { RCC_TIM2, NVIC_TIM2_IRQ, TIM2, 0x10000, 1 },
-};
-#define TIM 2
-#define C_TIM hw_tim_10us[TIM]
-
-
-/* Number of integral ticks per millisecond. */
-#define ITICKS_PER_MS (72000.0/((double)0x10000))
-
-/* Number of microseconds per fractional tick. */
-#define US_PER_FTICK ((double)(1.0/72.0))
+#define TIMEBASE_DIV 0x10000
+#define DHT11_POWER GPIOB,14
+#define DHT11_COMM  GPIOB,15
+#include "mod_dht11.c"
 
 
 
-/* The current hardware timer value is used for fine scale
- * measurements. */
-volatile uint16_t timer_frac_mark;
-static inline void dht11_hw_time_zero(struct dht11 *s) {
-    timer_frac_mark = hw_tim_counter(C_TIM.tim);
-}
-static inline uint32_t dht11_hw_time_elapsed_us(struct dht11 *s) {
-    uint16_t fticks = hw_tim_counter(C_TIM.tim) - timer_frac_mark;
-    uint32_t us = (((double)fticks) * US_PER_FTICK);
-    // infof("us = %d\n", us);
-    return us;
-}
 
 
-/* The integral number of 1.1kHz ticks is used for alarm events. */
-volatile uint32_t timer_ticks;
-volatile uint32_t timer_alarm_mark;
-volatile uint32_t timer_alarm_enable;
-void HW_TIM_ISR(TIM)(void) {
-    hw_periodic_ack(C_TIM);
-    uint32_t ticks = timer_ticks++;
-    if (timer_alarm_enable && (timer_alarm_mark == ticks)) {
-        timer_alarm_enable = 0;
-        send(DHT11_EVENT_ALARM);
-    }
-}
-static inline void dht11_hw_alarm_start_ms(struct dht11 *s, uint32_t ms) {
-    uint32_t tticks = (uint32_t)(ITICKS_PER_MS*((double)ms));
-    //infof("alarm_start: ms=%d, tticks=%d\n", ms, tticks);
-    timer_alarm_enable = 1;
-    timer_alarm_mark = timer_ticks + tticks;
-}
-
-
-/* Power control.  This can be on when not communicating.
-
-   From observing the charge over a 470uS cap, the device seems to
-   perform a measurement after communication is done for about 200 ms.
-   That is when we turn on the power on the line.
-
- */
-#define POWER GPIOB,14
-void power_on(void) {
-    hw_gpio_config(POWER, HW_GPIO_CONFIG_OPEN_DRAIN_2MHZ);
-    hw_gpio_write(POWER, 0);
-}
-void power_off(void) {
-    hw_gpio_config(POWER, HW_GPIO_CONFIG_OPEN_DRAIN_2MHZ);
-    hw_gpio_write(POWER, 1);
-}
-
-
-/* EXTI and GPIO interfaces.  This uses B15 as one of the 5V tolerant
-   inputs for parasitic power operation. */
-const struct hw_exti c_exti = HW_EXTI_B15_B;
-#define COMM  GPIOB,15
-
-#define C_EXTI c_exti
-volatile uint32_t count_exti;
-void exti15_10_isr(void) {
-    hw_exti_ack(C_EXTI);
-    uint32_t event = hw_gpio_read(COMM) ?
-        DHT11_EVENT_POSEDGE :
-        DHT11_EVENT_NEGEDGE;
-    send(event);
-    count_exti++;
-}
-void exti_init(void) {
-    dht11_hw_io_write(&dht11, 1);
-    hw_exti_init(C_EXTI);
-    hw_exti_arm(C_EXTI);
-}
-
-
-// Write a weak 1 and a strong 0.
-static inline void dht11_hw_io_write(struct dht11 *s, int val) {
-    hw_gpio_config(COMM, HW_GPIO_CONFIG_OPEN_DRAIN_2MHZ);
-    hw_gpio_write(COMM, val);
-}
-
-
-/* Measurement result sink.  DHT11 and DHT22 use different encoding:
- * DHT11 only uses high byte for integral values, DHT22 uses hi:lo big
- * endian for decimal .1 increments. */
-static inline void dht11_hw_response(struct dht11 *s, int ok, uint8_t *d) {
-
-    /* UC has released line.  We can turn the power on again. */
-    power_on();
-
-    // FIXME: There is a (slipstub?) polling bug: messages are not
-    // sent to the usb unless we also write something to the info log.
-    if (1) { // verbose
-        uint16_t rh = d[0]*256+d[1];
-        uint16_t  t = d[2]*256+d[3];
-        int disp = 3;
-        if (disp & 2) {
-            infof("dht22: %d %d %d\n", ok, rh, t);
-        }
-        if (disp & 1) {
-            infof("dht11: %d %d %d\n", ok, d[0], d[2]);
-        }
-    }
-    CBUF_WRITE(&cbuf_to_usb, {1, 1, ok, d[0], d[1], d[2], d[3]});
-    /* FIXME: Resources can be freed here. */
-}
 
 /* This function receives complete SLIP packets from USB.
    Note that the pbuf contains the tag in the first 2 bytes. */
@@ -196,7 +53,6 @@ static void dispatch(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
         // TAG_REPLY isn't really necessary. This will only have a
         // single process attached.
         // infof("dht_request()\n");
-        power_off();
         dht11_request(&dht11);
         break;
 
@@ -243,7 +99,7 @@ void start(void) {
      * requirement because CPU will do more work -- this is almost
      * always simpler than messing with timer configurations
      * directly. */
-    hw_periodic_init(C_TIM);
+    timebase_init();
 
     infof("product: %s \n",&config_product[0]);
 }

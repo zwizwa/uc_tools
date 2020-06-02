@@ -114,6 +114,9 @@ static inline uint32_t dht11_hw_time_elapsed_us(struct dht11 *);
 static inline void dht11_hw_alarm_start_ms(struct dht11 *, uint32_t ms);
 
 
+/* Power control (optional) */
+static inline void dht11_hw_power_on(struct dht11 *);
+static inline void dht11_hw_power_off(struct dht11 *);
 
 
 
@@ -131,6 +134,8 @@ static inline void dht11_hw_alarm_start_ms(struct dht11 *, uint32_t ms);
 
 static inline void dht11_request(struct dht11 *s) {
     memset(s, 0, sizeof(*s));
+
+    dht11_hw_power_off(s);
 
     /* Edge events will be active by this point, so we will see
      * everything: the ones sent out by us, the initial acknowledgment
@@ -172,6 +177,8 @@ static inline void dht11_handle(struct dht11 *s, uint32_t event) {
             uint8_t cs = 0;
             for (int i=0; i<4; i++) cs += s->data[i];
             int ok = (s->count == 40) && (cs == s->data[4]);
+            /* UC has released line.  We can turn the power on again. */
+            dht11_hw_power_on(s);
             dht11_hw_response(s, ok, &s->data[0]);
 
             s->phase++;
