@@ -26,6 +26,7 @@
 
 */
 
+#define TAG_RESET       0xFFF4  // reset board
 #define TAG_U32         0xFFF5  // skeleton for flat u32 commands
 #define TAG_FLASH_ERASE 0xFFF6
 #define TAG_FLASH_WRITE 0xFFF7
@@ -49,6 +50,13 @@
    N:    u16_be number of u32 arguments, high bit=endianness: 0=big
    Wx:   u32_be argument
    rest: opaque binary payload
+*/
+
+/* Reserved ranges:
+   0x4xxx IPv4 standard slip
+   0x6xxx IPv6 standard slip
+
+   Also, don't use Ether tags so we can transport ethernet as is.
 */
 
 #endif

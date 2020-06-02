@@ -21,7 +21,9 @@
    Wish list:
    - bit-bang routines for different protocols (SPI, MII, ...)
    - programmable bit-bang?
-
+   - universal time-stamped differential analyzer
+   - host
+   - self-reset
 */
 
 #include "base.h"
@@ -31,6 +33,7 @@
 #include "cbuf.h"
 #include "pbuf.h"
 
+#include "reset_device.h"
 
 /* Buffering.
 
@@ -159,6 +162,63 @@ static void command_io(const struct pbuf *p) {
 }
 
 
+
+
+// Multicast/broadcast seems most convenient.
+// https://networklessons.com/multicast/multicast-ip-address-to-mac-address-mapping
+// socat - UDP4-RECVFROM:1234,ip-add-membership=224.0.13.1:10.1.3.2,fork | hd
+// socat - UDP4-RECVFROM:1234,fork | hd
+
+#define SIP 10,1,3,123  // does this really matter? (only for SSM?)
+#if 1
+// multicast
+#define MULTICAST 0,13,1
+#define DIP 224,MULTICAST
+#else
+// broadcast
+#define DIP 255,255,255,255
+#endif
+#include "ethernet.h"
+
+struct __attribute__((packed)) headers {
+    struct ip  i;
+    struct udp u;
+};
+
+#define HEADERS_INIT(_sip)  {                           \
+    .i = {                                              \
+        .version_ihl = 0x45,                            \
+        .dscp_ecn = 0,                                  \
+        .identification = HTONS(0x1234), /* ?? */       \
+        .flags_fo = HTONS(0x4000), /* don't fragment */ \
+        .ttl = 0x40,                                    \
+        .protocol = 0x11, /* UDP */                     \
+        .s_ip = {_sip},                                 \
+        .d_ip = {DIP}                                   \
+    },                                                  \
+    .u = {                                              \
+        .s_port = HTONS(4321),                          \
+        .d_port = HTONS(1234),                          \
+    }                                                   \
+}
+
+static void send_udp(const uint8_t *buf, uint32_t len) {
+    struct headers h = HEADERS_INIT(SIP);
+    h.i.total_length = htons(28 + len);
+    h.i.header_checksum = ip_checksum(&h.i, sizeof(h.i));
+    h.u.length   = htons( 8 + len);
+    h.u.checksum = 0;
+
+    // For ipv4 we use standard slip, where ip header provides the tag
+    // which is in range 0x4000 0x4fff
+    const struct slice slices[] = {
+        {.buf = (uint8_t*)&h, sizeof(h) },
+        {.buf = buf, len },
+    };
+    cbuf_write_slip_slices(&slip_out, slices, 2);
+}
+
+
 #include "plugin_api.h"
 
 void dispatch(void *ctx, const struct pbuf *p) {
@@ -175,6 +235,10 @@ void dispatch(void *ctx, const struct pbuf *p) {
         break;
     case TAG_SET_PIN:
         if (p->count >= 3) command_io(p);
+        break;
+    case TAG_RESET:
+        reset_device();
+        infof("reset failed\n");
         break;
     case TAG_GDB:
         // infof("tag_gdb: %d\n", p->count);
@@ -206,6 +270,9 @@ int poll_status(struct cbuf *b) {
 
         // cbuf_write_slip_tagged(b, TAG_STATUS, (void*)&tick_last, 4);
         tick_last++;
+        // infof("tick\n");
+        uint32_t payload = 123;
+        send_udp((uint8_t*)&payload, sizeof(payload));
         return 1;
     }
     else {
@@ -221,7 +288,7 @@ int poll_read(struct cbuf *b, uint16_t tag,
     cbuf_write_slip_tagged(b, tag, buf, n);
     return 1;
 }
-static uint32_t uart1_read(uint8_t *buf, uint32_t len) {
+uint32_t uart1_read(uint8_t *buf, uint32_t len) {
     return cbuf_read(&uart1_in, buf, len);
 }
 
@@ -229,7 +296,7 @@ void poll_machines(struct cbuf *b) {
     if (poll_status(b)) return;
     if (poll_read(b, TAG_INFO, info_read)) return;
     if (poll_read(b, TAG_GDB, _service.rsp_io.read)) return;
-    if (poll_read(b, TAG_UART, uart1_read)) return;
+    //if (poll_read(b, TAG_UART, uart1_read)) return;
     if (poll_read(b, TAG_PLUGIO, plugin_read)) return;
 }
 
@@ -292,7 +359,7 @@ void start(void) {
     hw_app_init();
 
     /* IO init */
-    rcc_periph_clock_enable(RCC_GPIOA | RCC_AFIO);
+    rcc_periph_clock_enable(RCC_GPIOA | RCC_GPIOB | RCC_GPIOC | RCC_AFIO);
 
     /* Data structure init */
     CBUF_INIT(uart1_in);
@@ -306,7 +373,10 @@ void start(void) {
 
     _service.add(poll_uart1_tx);
 
-    infof("lab_board.c\n");
+
+
+
+    infof("lab_board.c\n\n");
     infof("_eflash = 0x%08x\n", &_eflash);
     infof("_ebss   = 0x%08x\n", &_ebss);
 

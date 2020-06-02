@@ -1132,8 +1132,11 @@ struct hw_exti {
     uint32_t gpio;
     uint32_t trigger;
 };
-//                     rcc_gpio   nvic_irq        pin  gpio   trigger
-#define HW_EXTI_A0_B { RCC_GPIOA, NVIC_EXTI0_IRQ, 0,   GPIOA, EXTI_TRIGGER_BOTH }
+//                      rcc_gpio   nvic_irq            pin  gpio   trigger
+#define HW_EXTI_A0_B  { RCC_GPIOA, NVIC_EXTI0_IRQ,      0,  GPIOA, EXTI_TRIGGER_BOTH }  // ext0_isr()
+#define HW_EXTI_B15_B { RCC_GPIOB, NVIC_EXTI15_10_IRQ, 15,  GPIOB, EXTI_TRIGGER_BOTH }  // ext15_10_isr()
+
+// Note that 5-9 and 10-15 use shared interrupts.
 
 // libopencm3-examples/examples/stm32/f1/stm32-h103/exti_rising_falling/exti_rising_falling.c
 INLINE void hw_exti_init(struct hw_exti c) {

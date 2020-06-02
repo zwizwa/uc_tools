@@ -14,6 +14,12 @@
    - EXTI GPIO edge detection
    - GPIO read/write
 
+   The there is an additional control for a high side PNP switch to
+   feed the device on the data line through a 22Ohm resistor.  We turn
+   that off when the device sends a message. A 100uF cap + diode is
+   enough to bridge the communication time (20ms), causing about a
+   400mV drop in VCC down from about 4.2V.  Ask Tom for schematics.
+
 */
 
 #include "base.h"
@@ -107,30 +113,50 @@ static inline void dht11_hw_alarm_start_ms(struct dht11 *s, uint32_t ms) {
 }
 
 
-/* EXTI and GPIO interfaces. */
-const struct hw_exti c_exti = HW_EXTI_A0_B;
+/* Power control.  This can be on when not communicating.
+
+   From observing the charge over a 470uS cap, the device seems to
+   perform a measurement after communication is done for about 200 ms.
+   That is when we turn on the power on the line.
+
+ */
+#define POWER GPIOB,14
+void power_on(void) {
+    hw_gpio_config(POWER, HW_GPIO_CONFIG_OPEN_DRAIN_2MHZ);
+    hw_gpio_write(POWER, 0);
+}
+void power_off(void) {
+    hw_gpio_config(POWER, HW_GPIO_CONFIG_OPEN_DRAIN_2MHZ);
+    hw_gpio_write(POWER, 1);
+}
+
+
+/* EXTI and GPIO interfaces.  This uses B15 as one of the 5V tolerant
+   inputs for parasitic power operation. */
+const struct hw_exti c_exti = HW_EXTI_B15_B;
+#define COMM  GPIOB,15
+
 #define C_EXTI c_exti
-#define C_GPIO GPIOA,0
 volatile uint32_t count_exti;
-void exti0_isr(void) {
+void exti15_10_isr(void) {
     hw_exti_ack(C_EXTI);
-    uint32_t event = hw_gpio_read(C_GPIO) ?
+    uint32_t event = hw_gpio_read(COMM) ?
         DHT11_EVENT_POSEDGE :
         DHT11_EVENT_NEGEDGE;
     send(event);
     count_exti++;
 }
+void exti_init(void) {
+    dht11_hw_io_write(&dht11, 1);
+    hw_exti_init(C_EXTI);
+    hw_exti_arm(C_EXTI);
+}
+
+
 // Write a weak 1 and a strong 0.
 static inline void dht11_hw_io_write(struct dht11 *s, int val) {
-    if (val) {
-        hw_gpio_high(C_GPIO); // pull up direction
-        hw_gpio_config(C_GPIO, HW_GPIO_CONFIG_OUTPUT); // jolt
-        hw_gpio_config(C_GPIO, HW_GPIO_CONFIG_INPUT_PULL); // keep
-    }
-    else {
-        hw_gpio_low(C_GPIO);
-        hw_gpio_config(C_GPIO, HW_GPIO_CONFIG_OUTPUT);
-    }
+    hw_gpio_config(COMM, HW_GPIO_CONFIG_OPEN_DRAIN_2MHZ);
+    hw_gpio_write(COMM, val);
 }
 
 
@@ -138,20 +164,21 @@ static inline void dht11_hw_io_write(struct dht11 *s, int val) {
  * DHT11 only uses high byte for integral values, DHT22 uses hi:lo big
  * endian for decimal .1 increments. */
 static inline void dht11_hw_response(struct dht11 *s, int ok, uint8_t *d) {
+
+    /* UC has released line.  We can turn the power on again. */
+    power_on();
+
     // FIXME: There is a (slipstub?) polling bug: messages are not
     // sent to the usb unless we also write something to the info log.
     if (1) { // verbose
-        switch(2) {
-        case 1: { // dht11
+        uint16_t rh = d[0]*256+d[1];
+        uint16_t  t = d[2]*256+d[3];
+        int disp = 3;
+        if (disp & 2) {
+            infof("dht22: %d %d %d\n", ok, rh, t);
+        }
+        if (disp & 1) {
             infof("dht11: %d %d %d\n", ok, d[0], d[2]);
-            break;
-        }
-        case 2: { // dht22 am2302
-            uint16_t rh = d[0]*256+d[1];
-            uint16_t  t = d[2]*256+d[3];
-            infof("dht11: %d %d %d\n", ok, rh, t);
-            break;
-        }
         }
     }
     CBUF_WRITE(&cbuf_to_usb, {1, 1, ok, d[0], d[1], d[2], d[3]});
@@ -169,6 +196,7 @@ static void dispatch(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
         // TAG_REPLY isn't really necessary. This will only have a
         // single process attached.
         // infof("dht_request()\n");
+        power_off();
         dht11_request(&dht11);
         break;
 
@@ -208,9 +236,7 @@ void start(void) {
     rcc_periph_clock_enable(RCC_GPIOA | RCC_AFIO);
 
     /* Idle line */
-    dht11_hw_io_write(&dht11, 1);
-    hw_exti_init(C_EXTI);
-    hw_exti_arm(C_EXTI);
+    exti_init();
 
     /* Use a single periodic timer to provide time base.  If the
      * application allows for it -- basically a power consumption

@@ -40,8 +40,12 @@ int main(void) {
     rcc_periph_clock_enable(RCC_GPIOC);
     hw_gpio_config(LED,HW_GPIO_CONFIG_OUTPUT);
 
-    /* USB full speed D+ pullup.  This is tied to B5 to be able to
-       trigger USB device detach.  */
+    /* For modded board: 1k5 between A12 and B5 with the original R10
+       pullup removed.  We set B5 high here to assert the pullup and
+       signal the host we are a full speed device.  This does two
+       things: on reset the pin will be de-asserted, signalling the
+       host we are disconnected.  Additionally it places the pullup
+       under program control. */
     rcc_periph_clock_enable(RCC_GPIOB | RCC_AFIO);
     hw_gpio_high(GPIOB,5);
     hw_gpio_config(GPIOB,5,HW_GPIO_CONFIG_OUTPUT);

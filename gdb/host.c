@@ -133,7 +133,7 @@ const struct gdbstub_io app_io = {
 };
 
 static void switch_protocol(const uint8_t *buf, uint32_t size) {
-    infof("host.c: SLIP on serial port.\n\n");
+    infof("host.c: SLIP on serial port.\n");
     infof("_eflash = 0x%08x\n", &_eflash);
     infof("_ebss   = 0x%08x\n", &_ebss);
     *_service.io = (struct gdbstub_io *)(&app_io);

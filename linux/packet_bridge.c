@@ -141,10 +141,10 @@ static ssize_t tap_write(struct port *p, const uint8_t *buf, ssize_t len) {
     return write(p->fd, buf, len);
 }
 
-struct port *port_open_tap(const char *dev) {
+struct port *port_open_tundev(const char *dev, int flags) {
     int fd;
     ASSERT_ERRNO(fd = open("/dev/net/tun", O_RDWR));
-    struct ifreq ifr = { .ifr_flags = IFF_TAP | IFF_NO_PI };
+    struct ifreq ifr = { .ifr_flags = flags };
     strncpy(ifr.ifr_name, dev, IFNAMSIZ);
     ASSERT_ERRNO(ioctl(fd, TUNSETIFF, (void *) &ifr));
     LOG("tap: %s\n", dev);
@@ -865,13 +865,21 @@ struct port *port_open(const char *spec_ro) {
 
     // 1. PACKET INTERFACES
 
-    // TAP:<tapdev>
+    // TAP:<tundev>
     if (!strcmp(tok, "TAP")) {
         ASSERT(tok = strtok(NULL, delim));
-        const char *tapdev = tok;
+        const char *tundev = tok;
         ASSERT(NULL == (tok = strtok(NULL, delim)));
-        //LOG("TAP:%s\n", tapdev);
-        return port_open_tap(tapdev);
+        //LOG("TAP:%s\n", tundev);
+        return port_open_tundev(tundev, IFF_TAP | IFF_NO_PI);
+    }
+
+    if (!strcmp(tok, "TUN")) {
+        ASSERT(tok = strtok(NULL, delim));
+        const char *tundev = tok;
+        ASSERT(NULL == (tok = strtok(NULL, delim)));
+        //LOG("TAP:%s\n", tundev);
+        return port_open_tundev(tundev, IFF_TUN | IFF_NO_PI);
     }
 
     // UDP-LISTEN:<port>

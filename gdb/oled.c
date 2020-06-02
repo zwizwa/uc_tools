@@ -146,7 +146,7 @@ void play_sample(uint32_t n) {
 
 //   A07 DATA
 //   A05 CLK
-//   A04 CS
+//   A04 CS    (dedicated NSS, but we do it manually)
 //   A03 DC
 //   A02 RES
 
