@@ -1,9 +1,12 @@
-/* Ethernet testing.  Note that this does not make a whole lot of
-   sense on its own over USB serial.  It's usually much easier to keep
-   the protocol simple and have some driver on the host end.
+/* Bridge custom bus network of blue pill boards to local Ethernet
+   This has {packet,4} Ethernet on ttyACM.
 
-   However, this code is intended to explore Ethernet development for
-   two projects in progress:
+   Note that in general it is often much easier to keep the USB
+   protocol simple and provide a custom routing program at the host
+   side.  This firmware attempts to be a playground for all cases
+   where stand alone operation is desireable.
+
+   Some two projects in progress:
 
    1) A standard RNDIS or CDC-ECM gadget.
 
@@ -11,10 +14,7 @@
       - high bw MAC<->FPGA<->busses
       - low bw management application on uC
 
-   For both we have Ethernet/UDP + possible minimalistic TCP on the
-   uC.  The FPGA presents data frames over SPI.
-
-
+   3) Bridge to RS485 or other custom busses
 
 */
 
@@ -24,7 +24,9 @@
 #include "cbuf.h"
 #include "pbuf.h"
 
-#include "ethernet."
+#include "ethernet.h"
+
+#include "crc.h"
 
 struct pbuf incoming; uint8_t incoming_buf[1522];
 struct cbuf outgoing; uint8_t outgoing_buf[4096];
@@ -65,7 +67,7 @@ uint32_t packet_count = 0;
 // socat - UDP4-RECVFROM:1234,ip-add-membership=224.0.13.1:10.1.3.2,fork | hd
 // socat - UDP4-RECVFROM:1234,fork | hd
 
-#define SIP 10,1,3,123  // does this really matter? (only for SSM?)
+#define SIP 10,5,1,2  // does this really matter? (only for SSM?)
 #define SMAC 0xAE, 0, SIP
 #if 1
 // multicast
@@ -106,6 +108,23 @@ static struct headers headers = {
         .d_port = HTONS(1234),
     }
 };
+
+
+void init_sip_from_device_id(uint8_t *ip) {
+    const uint8_t *stm_id = (void*)0x1FFFF7E8;
+    uint32_t crc = crc32b(stm_id, 12);
+    // modulo and offset to leave out network address (0), gateway
+    // (1), and broadcast (-1).
+    uint32_t id = 2 + (crc % (0x10000 - 3));
+    ip[2] = id >> 8;
+    ip[3] = id;
+    infof("ip: %d.%d.%d.%d\n", ip[0], ip[1], ip[2], ip[3]);
+}
+
+void init_addresses_from_device_id(void) {
+    init_sip_from_device_id(headers.i.s_ip);
+    memcpy(headers.m.s_mac + 2, headers.i.s_ip, 4);
+}
 
 static void send_udp(const struct headers *headers,
                      const uint8_t *buf, uint32_t len) {
@@ -224,20 +243,23 @@ void start(void) {
     hw_periodic_init(C_PERIODIC);
     _service.add(poll);
 
-    infof("ethernet.c\n");
+    init_addresses_from_device_id();
+    infof("bp_ethernet.c\n");
+    // infof("ip=%d.%d.%d.%d\n", i[0], i[1], i[2], i[3]);
 }
 
 const char config_manufacturer[] CONFIG_DATA_SECTION = "Zwizwa";
-const char config_product[]      CONFIG_DATA_SECTION = "Ethernet Test Board";
-const char config_serial[]       CONFIG_DATA_SECTION = "ae:00:00:00:00:01";
+/* The product name is used to start a packet4 bridge to the local
+   trusted Ethernet segment.  See /etc/net/udev/tty/bp_ethernet.sh */
+const char config_product[]      CONFIG_DATA_SECTION = "bp_ethernet";
 const char config_firmware[]     CONFIG_DATA_SECTION = FIRMWARE;
 const char config_version[]      CONFIG_DATA_SECTION = BUILD;
+/* When this runs in tethered setup we can attach a special driver. */
 const char config_protocol[]     CONFIG_DATA_SECTION = "{driver,ethernet,{packet,4}}";
 
 struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .manufacturer    = config_manufacturer,
     .product         = config_product,
-    .serial          = config_serial,
     .firmware        = config_firmware,
     .version         = config_version,
     .protocol        = config_protocol,

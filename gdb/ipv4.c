@@ -1,5 +1,5 @@
 /* Stand alone host.c clone that talks over ipv4 using standard
-   "slattach" slip. */
+   "slattach" slip.  You probably want bp_ethernet.c instad. */
 
 // FIXME: Turn this into a generic wrapper that tunnels the normal
 // protocol over udp.

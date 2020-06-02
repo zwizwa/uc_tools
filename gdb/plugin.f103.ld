@@ -1,5 +1,5 @@
 MEMORY {
-        rom (rx)  : ORIGIN = 0x08004400, LENGTH = 0xFFFFFFFF
+        rom (rx)  : ORIGIN = 0x08004800, LENGTH = 0xFFFFFFFF
         ram (rwx) : ORIGIN = 0x2000288c, LENGTH = 0xFFFFFFFF
 }
 INCLUDE uc_tools/gdb/stm32f1.ld

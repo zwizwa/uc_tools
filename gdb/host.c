@@ -18,6 +18,8 @@
 
 #include "crc.h"
 
+#include "reset_device.h"
+
 
 /* Run a timer interrupt in the background, to see if that keeps
    working.  This is pwm audio. */
@@ -72,6 +74,10 @@ void app_write_end(struct slip_write_state *s) {
             //infof("ping:%d\n",p->count-2);
             cbuf_write_slip_tagged(&slip_out, TAG_REPLY,
                                    &p->buf[2], p->count-2);
+            break;
+        case TAG_RESET:
+            reset_device();
+            infof("reset failed\n");
             break;
         case TAG_GDB:
             // infof("write TAG_GDB %d\n", p->count-2);
@@ -132,10 +138,9 @@ const struct gdbstub_io app_io = {
     .write = app_write,
 };
 
+void info_firmware(void);
 static void switch_protocol(const uint8_t *buf, uint32_t size) {
-    infof("host.c: SLIP on serial port.\n");
-    infof("_eflash = 0x%08x\n", &_eflash);
-    infof("_ebss   = 0x%08x\n", &_ebss);
+    info_firmware();
     *_service.io = (struct gdbstub_io *)(&app_io);
     (*_service.io)->write(buf, size);
 }
@@ -155,8 +160,12 @@ void start(void) {
 
 }
 
+#ifndef PRODUCT
+#define PRODUCT "host"
+#endif
+
 const char config_manufacturer[] CONFIG_DATA_SECTION = "Zwizwa";
-const char config_product[]      CONFIG_DATA_SECTION = "host";
+const char config_product[]      CONFIG_DATA_SECTION = PRODUCT;
 const char config_firmware[]     CONFIG_DATA_SECTION = FIRMWARE;
 const char config_version[]      CONFIG_DATA_SECTION = BUILD;
 const char config_protocol[]     CONFIG_DATA_SECTION = "{driver,host_slip,slip}";
@@ -170,6 +179,10 @@ struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .start           = start,
     .switch_protocol = switch_protocol,
 };
-
+void info_firmware(void) {
+    infof("%s: SLIP on serial port.\n", config_product);
+    infof("_eflash = 0x%08x\n", &_eflash);
+    infof("_ebss   = 0x%08x\n", &_ebss);
+}
 
 
