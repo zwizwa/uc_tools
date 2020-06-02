@@ -56,7 +56,15 @@
    0x4xxx IPv4 standard slip
    0x6xxx IPv6 standard slip
 
-   Also, don't use Ether tags so we can transport ethernet as is.
+   This makes the protocol compatible with "slattach" on Linux.
+   Note however that it is not very convenient to do so.
+
+   If encapsulation is necessary, it makes more sense to dedicate an
+   Ethernet segment and wrap the protocol as Ethernet.  To allow for
+   this, we also reserve the standard EtherTypes:
+
+   https://en.wikipedia.org/wiki/EtherType
+
 */
 
 #endif
