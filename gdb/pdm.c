@@ -319,7 +319,7 @@ static inline void pdm_update(void) {
 
 const struct hw_exti c_exti = {
 //  rcc_gpio   nvic_irq            pin  gpio   trigger
-    RCC_GPIOA, NVIC_EXTI0_IRQ,      0,  GPIOA, EXTI_TRIGGER_BOTH
+    RCC_GPIOA, NVIC_EXTI0_IRQ,      0,  GPIOA, EXTI_TRIGGER_FALLING
 };
 
 #define C_EXTI c_exti
@@ -338,21 +338,12 @@ void exti0_isr(void) {
 
     /* CRITICAL CONSTANT LATENCY */
 
-    /* It's set to trigger on both edges, and we reject falling edges.
-       Pulse width is about 2us so if we sample early and run with
-       highest priority we will catch it.  Setting EXTI_TRIGGER_RISING
-       / FALLING does not seem to work: it still trigges on the other
-       edge from time to time judging from where the subosc output
-       transition shows up.
-
-       Do not modify the sequence or the interrupt priorities! I can't
-       explain the magic yet...  The problem this solved is that
-       sometimes either sub or pwm sync don't happen, and then
-       suddenly the problem went away. */
+    /* Note that the Schmitt trigger discharge pulse derived from the
+       buffered SAW wave has a slow rise time.  I've double buffered
+       it through the Schmitt trigger to push clean edges into the
+       STM.  Otherwise there was odd EXTI behavior. */
 
     hw_exti_ack(C_EXTI);
-    uint32_t val = hw_gpio_read(EXTI_GPIO);
-    if (!val) return;
 
     /* Reset the PWM digital state machine. */
     pwm_phase = 0;
