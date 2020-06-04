@@ -219,14 +219,18 @@ void stop_modulator(void) {
     infof("stop: FIXME: not implemented\n");
 }
 
+volatile uint32_t pwm_phase = 0;
+
 void HW_TIM_ISR(TIM_PDM)(void) {
-    static uint16_t val = 0;
     hw_clockgen_ack(C_PDM);
     pdm_update();
-    // FIXME: also update PWM
-    hw_clockgen_duty(C_PDM, val);
-    if (val >= PDM_DIV) val = 0;
-    val++;
+    // FIXME: Currently this is just a SAW, but it should be the
+    // FM/Wavetable part.
+    uint32_t phase = pwm_phase;
+    hw_clockgen_duty(C_PDM, phase);
+    phase++;
+    if (phase >= PDM_DIV) phase = 0;
+    pwm_phase = phase;
 }
 
 #endif
@@ -306,41 +310,85 @@ static inline void pdm_update(void) {
 
 /* OSCILLATOR PULSE INTERRUPT */
 
-const struct hw_exti c_exti = HW_EXTI_A0_B;
+const struct hw_exti c_exti = {
+//  rcc_gpio   nvic_irq            pin  gpio   trigger
+    RCC_GPIOA, NVIC_EXTI0_IRQ,      0,  GPIOA, EXTI_TRIGGER_BOTH
+};
+
 #define C_EXTI c_exti
-#define C_GPIO GPIOA,0
+#define EXTI_GPIO GPIOA,0
 volatile uint32_t osc_period, nb_pulses, last_cc;
 
 #include "cycle_counter.h"
 
-
-
+#define SUBOSC_GPIOB_PIN 1
+#define SUBOSC_GPIO GPIOB,SUBOSC_GPIOB_PIN
+static inline void init_subosc(void) {
+    hw_gpio_config(SUBOSC_GPIO, HW_GPIO_CONFIG_OUTPUT);
+}
 
 void exti0_isr(void) {
+
+    /* CRITICAL CONSTANT LATENCY */
+
+    /* It's set to trigger on both edges, and we reject falling edges.
+       Pulse width is about 2us so if we sample early and run with
+       highest priority we will catch it.  Setting EXTI_TRIGGER_RISING
+       / FALLING does not seem to work: it still triggeres on both
+       edges judging from where the subosc output transition shows up.
+       Do not modify the sequence or the interrupt priorities: I can't
+       explain the magic yet...  The problem this solved is that
+       sometimes either sub or pwm sync don't happen. */
+
     hw_exti_ack(C_EXTI);
-    if (hw_gpio_read(C_GPIO)) {
-        /* Time base is ARM cycle counter @72MHz.  Sample this early
-           in the ISR to avoid any variable delay. */
-        uint32_t cc = cycle_counter();
+    uint32_t val = hw_gpio_read(EXTI_GPIO);
+    if (!val) return;
 
-        /* New measurement is the elapsed time since last capture. */
-        uint32_t osc_period_new = cc - last_cc;
 
-        /* We filter that using a first order filter.  Note that this
-           is updated at the oscilattor's current rate, so the filter
-           pole depends on the frequency of the oscillator. */
-        uint32_t osc_period_estimate = osc_period;
-        uint32_t coef = 0xFF000000ULL;
-        osc_period_estimate =
-            fixedpoint_mul(coef,  osc_period_estimate) +
-            fixedpoint_mul(~coef, osc_period_new);
-        // FIXME: create a signed multiplication
+    /* Reset the PWM digital state machine. */
+    pwm_phase = 0;
 
-        /* Save state */
-        osc_period = osc_period_estimate;
-        last_cc = cc;
-        nb_pulses++;
-    }
+    /* Update the sub osc. */
+    GPIOB_ODR ^= (1 << SUBOSC_GPIOB_PIN);
+
+
+    /* Time base is ARM cycle counter @72MHz.  The instruction stream
+       above has constant latency, so it's ok to sample here. */
+    uint32_t cc = cycle_counter();
+
+
+
+    /* NON CRITICAL LATENCY */
+
+    /* New measurement is the elapsed time since last capture. */
+    uint32_t osc_period_new = cc - last_cc;
+
+    /* We filter that using a first order filter.  Note that this is
+       updated at the oscilattor's current rate, so the filter pole
+       depends on the frequency of the oscillator. */
+    uint32_t osc_period_estimate = osc_period;
+    uint32_t coef = 0xFF000000ULL;
+    osc_period_estimate =
+        fixedpoint_mul(coef,  osc_period_estimate) +
+        fixedpoint_mul(~coef, osc_period_new);
+    // FIXME: create a signed multiplication
+
+    /* Save state */
+    osc_period = osc_period_estimate;
+    last_cc = cc;
+    nb_pulses++;
+}
+
+void init_osc_in(void) {
+    /* External input interrupt for discharge pulse.  This needs to be
+       lower priority than the PDM because it will cause modulation
+       effects. */
+#if 1
+    // FIXME: init last_cc here?
+    enable_cycle_counter();
+    hw_exti_init(C_EXTI);
+    hw_exti_arm(C_EXTI);
+#endif
 }
 
 
@@ -371,7 +419,10 @@ void HW_TIM_ISR(TIM_CONTROL)(void) {
     hw_periodic_ack(C_CONTROL);
     control_count++;
 }
-
+void init_control(void) {
+    /* Use another timer for the control loop, running at lower priority. */
+    hw_periodic_init(C_CONTROL);
+}
 
 
 
@@ -491,25 +542,17 @@ void start(void) {
     start_modulator();
 
 
-    /* External input interrupt for discharge pulse.  This needs to be
-       lower priority than the PDM because it will cause modulation
-       effects. */
-#if 1
-    // FIXME: init last_cc here?
-    enable_cycle_counter();
-    hw_exti_init(C_EXTI);
-    hw_exti_arm(C_EXTI);
-#endif
+    init_osc_in();
 
-    /* Use another timer for the control loop, running at lower priority. */
-    hw_periodic_init(C_CONTROL);
+
+    init_subosc();
 
     /* Smaller values mean higher priorities.  STM32F103 strips the
        low 4 bits, so these have increments of 16.  Print the actual
        value at boot to be sure. */
     NVIC_IPR(C_PDM.irq)       = 0;
-    NVIC_IPR(C_CONTROL.irq)   = 16;
-    NVIC_IPR(NVIC_EXTI0_IRQ)  = 32;
+    NVIC_IPR(NVIC_EXTI0_IRQ)  = 16;
+    NVIC_IPR(C_CONTROL.irq)   = 32;
     infof("TIM_PDM     pri %d\n", NVIC_IPR(C_PDM.irq));
     infof("TIM_CONTROL pri %d\n", NVIC_IPR(C_CONTROL.irq));
     infof("EXTI0       pri %d\n", NVIC_IPR(NVIC_EXTI0_IRQ));
