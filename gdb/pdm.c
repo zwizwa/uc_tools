@@ -81,10 +81,18 @@
    clear yet which is best. */
 
 #if 1
+#define PDM_DIV 256
+#define PWM_HZ (72000000 / PDM_DIV)
+CT_ASSERT(pwm_hz, 281250 == PWM_HZ);
+#endif
+
+#if 0
 #define PDM_DIV 512
 #define PWM_HZ (72000000 / PDM_DIV)
 CT_ASSERT(pwm_hz, 140625 == PWM_HZ);
-#else
+#endif
+
+#if 0
 #define PDM_DIV 360
 #define PWM_HZ (72000000 / PDM_DIV)
 CT_ASSERT(pwm_hz, 200000 == PWM_HZ);
@@ -228,7 +236,7 @@ volatile uint32_t pwm_phase = 0;
 void HW_TIM_ISR(TIM_PDM)(void) {
     hw_clockgen_ack(C_PDM);
 
-    //hw_gpio_high(PDM_CPU_USAGE_MARK);
+    hw_gpio_high(PDM_CPU_USAGE_MARK);
 
     pdm_update();
     // FIXME: Currently this is just a SAW, but it should be the
@@ -239,7 +247,7 @@ void HW_TIM_ISR(TIM_PDM)(void) {
     if (phase >= PDM_DIV) phase = 0;
     pwm_phase = phase;
 
-    //hw_gpio_low(PDM_CPU_USAGE_MARK);
+    hw_gpio_low(PDM_CPU_USAGE_MARK);
 }
 
 #endif
@@ -339,9 +347,10 @@ void exti0_isr(void) {
     /* CRITICAL CONSTANT LATENCY */
 
     /* Note that the Schmitt trigger discharge pulse derived from the
-       buffered SAW wave has a slow rise time.  I've double buffered
-       it through the Schmitt trigger to push clean edges into the
-       STM.  Otherwise there was odd EXTI behavior. */
+       buffered SAW wave is stressing that 74HC11 and has a slow rise
+       time.  I've double buffered it through the Schmitt trigger,
+       which straightens the edges before they go into the STM.
+       Otherwise there was odd EXTI behavior. */
 
     hw_exti_ack(C_EXTI);
 
