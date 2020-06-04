@@ -26,6 +26,7 @@
 
 */
 
+#define TAG_EVENT       0xFFF3  // generic event, uint16_t subtag
 #define TAG_RESET       0xFFF4  // reset board
 #define TAG_U32         0xFFF5  // skeleton for flat u32 commands
 #define TAG_FLASH_ERASE 0xFFF6
@@ -41,6 +42,11 @@
 
 /* TAG_STREAM
    u16_be: byte stream ID
+   rest:   byte stream data
+*/
+
+/* TAG_EVENT
+   u16_be: event ID:  0000 = DHT11
    rest:   byte stream data
 */
 

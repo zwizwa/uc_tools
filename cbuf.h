@@ -204,7 +204,19 @@ void cbuf_write_slip_slices(struct cbuf *b, const struct slice *buf, uint32_t n_
 void cbuf_write_slip_tagged(struct cbuf *b, uint16_t tag, const uint8_t *buf, uint32_t len);
 
 
+#define CBUF_WRITE_SLIP(buf, ...) \
+    do { uint8_t msg[] = __VA_ARGS__; cbuf_write_slip(buf, msg, sizeof(msg)); } while(0)
 
+
+/* This isn't a great abstraction, but it's the best I have atm and it
+   is quite useful.  The idea is to spill some abstract reader into a
+   slip cbuf once there is some room.  This avoids "expanding"
+   multiple slip messages. */
+int cbuf_write_slip_from_read(
+    struct cbuf *b,
+    const uint8_t *hdr, uint32_t hdr_len,
+    uint32_t buf_size,
+    uint32_t (*read)(uint8_t *buf, uint32_t len));
 
 
 #endif

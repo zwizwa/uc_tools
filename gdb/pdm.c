@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include "fixedpoint.h"
+#include "base.h"
 
 
 /* Pulse density modulator.
@@ -74,7 +75,21 @@
 
 */
 
-#define PDM_DIV (72000 / 200)
+
+/* Two alternative time bases.  First is optimized for "round" power
+   of two PWM output, second is optimized for round update rate.  Not
+   clear yet which is best. */
+
+#if 1
+#define PDM_DIV 512
+#define PWM_HZ (72000000 / PDM_DIV)
+CT_ASSERT(pwm_hz, 140625 == PWM_HZ);
+#else
+#define PDM_DIV 360
+#define PWM_HZ (72000000 / PDM_DIV)
+CT_ASSERT(pwm_hz, 200000 == PWM_HZ);
+#endif
+
 
 /* The circuit is designed such that:
 
@@ -124,7 +139,6 @@ uint32_t safe_setpoint(uint32_t setpoint) {
     c(4) c(5) c(6) c(7) \
 
 
-#include "base.h"
 #include "gdbstub_api.h"
 #include <string.h>
 
@@ -151,10 +165,13 @@ struct slipstub slipstub;
 struct slipstub_buffers slipstub_buffers;
 
 
-/* Don't use TIM2. It interacts badly with Flash programming. */
-#define TIM_PDM      4
-#define TIM_CONTROL  3
+static inline void pdm_update(void);
 
+/* Don't use TIM2. It interacts badly with Flash programming. */
+#define TIM_PDM      3
+#define TIM_CONTROL  4
+
+#if 0
 static const struct hw_periodic hw_pdm_config[] = {
 //          rcc       irq            tim   div      pre
 //-------------------------------------------------------
@@ -173,6 +190,48 @@ void stop_modulator(void) {
     infof("stop\n");
     hw_periodic_disable(C_PDM);
 }
+
+void HW_TIM_ISR(TIM_PDM)(void) {
+    hw_periodic_ack(C_PDM);
+    pdm_update();
+}
+
+#else
+
+/* PDM, and additionally provide a single fixed rate PWM channel,
+   e.g. for digital effects. */
+
+const struct hw_clockgen hw_pdm_config[] = {
+//          rcc_tim   rcc_gpio   tim   gpio   pin div       duty        phase  pol chan     itr  irq (optional)
+//-------------------------------------------------------------------------------------------------------------------
+    [3] = { RCC_TIM3, RCC_GPIOB, TIM3, GPIOB, 0,  PDM_DIV,  PDM_DIV/2,  0,     1,  TIM_OC3, -1,  NVIC_TIM3_IRQ },
+
+};
+#define C_PDM hw_pdm_config[TIM_PDM]
+
+void start_modulator(void) {
+    infof("start\n");
+    hw_clockgen_init(C_PDM);
+    hw_clockgen_arm(C_PDM);
+    hw_clockgen_trigger(C_PDM);
+}
+void stop_modulator(void) {
+    infof("stop: FIXME: not implemented\n");
+}
+
+void HW_TIM_ISR(TIM_PDM)(void) {
+    static uint16_t val = 0;
+    hw_clockgen_ack(C_PDM);
+    pdm_update();
+    // FIXME: also update PWM
+    hw_clockgen_duty(C_PDM, val);
+    if (val >= PDM_DIV) val = 0;
+    val++;
+}
+
+#endif
+
+
 
 struct channel {
     uint32_t setpoint;
@@ -225,9 +284,7 @@ INLINE uint32_t channels_update(void) {
 
 static volatile uint32_t bsrr_last = 0;
 
-void HW_TIM_ISR(TIM_PDM)(void) {
-    hw_periodic_ack(C_PDM);
-
+static inline void pdm_update(void) {
     GPIO_BSRR(PDM_PORT) = (1 << PDM_PIN_FRAME);
 
     //DEBUG_MARK;
@@ -394,7 +451,7 @@ void handle_tag(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
 void start(void) {
     hw_app_init();
     /* FIXME: This assumes it's GPIOA */
-    rcc_periph_clock_enable(RCC_GPIOA | RCC_AFIO);
+    rcc_periph_clock_enable(RCC_GPIOA | RCC_GPIOB | RCC_AFIO);
 
     /* PDM frame clock.  This is set/reset at beginning/end of PDM
        ISR, so can be used as a CPU usage measurement. */
@@ -444,7 +501,7 @@ void start(void) {
     hw_exti_arm(C_EXTI);
 #endif
 
-    /* Use another timer for the control loop. */
+    /* Use another timer for the control loop, running at lower priority. */
     hw_periodic_init(C_CONTROL);
 
     /* Smaller values mean higher priorities.  STM32F103 strips the

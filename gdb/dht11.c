@@ -15,10 +15,10 @@
    - GPIO read/write
 
    The there is an additional control for a high side PNP switch to
-   feed the device on the data line through a 22Ohm resistor.  We turn
-   that off when the device sends a message. A 100uF cap + diode is
-   enough to bridge the communication time (20ms), causing about a
-   400mV drop in VCC down from about 4.2V.  Ask Tom for schematics.
+   feed the device 5V on the data line.  We turn that off when the
+   device sends a message. A 100uF cap + diode is enough to bridge the
+   communication time (20ms), causing about a 400mV drop in VCC down
+   from about 4.2V.  Ask Tom for schematics.
 
 */
 
@@ -32,13 +32,10 @@ struct sbuf sbuf_from_usb; uint8_t sbuf_from_usb_buf[1024];
 struct cbuf cbuf_to_usb;   uint8_t cbuf_to_usb_buf[1024];
 
 
-#define TIMEBASE_DIV 0x10000
+#define DHT11_SLIP_CBUF (&cbuf_to_usb)
 #define DHT11_POWER GPIOB,14
 #define DHT11_COMM  GPIOB,15
 #include "mod_dht11.c"
-
-
-
 
 
 
@@ -48,6 +45,7 @@ static void dispatch(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
     // infof("handle tag %04x\n", tag);
     switch(tag) {
     case 0x101:
+        // FIXME: Send these out periodically maybe?
         // dht11 ! {send_packet,<<16#101:16>>}.
         // info ends up on usb, tagged with 0x101.
         // TAG_REPLY isn't really necessary. This will only have a
@@ -91,17 +89,14 @@ void start(void) {
     /* GPIO & EXTI */
     rcc_periph_clock_enable(RCC_GPIOA | RCC_AFIO);
 
-    /* Idle line */
-    exti_init();
-
     /* Use a single periodic timer to provide time base.  If the
      * application allows for it -- basically a power consumption
      * requirement because CPU will do more work -- this is almost
      * always simpler than messing with timer configurations
      * directly. */
-    timebase_init();
+    dht11_init();
 
-    infof("product: %s \n",&config_product[0]);
+    infof("product: %s\n",&config_product[0]);
 }
 
 const char config_manufacturer[] CONFIG_DATA_SECTION = "Zwizwa";

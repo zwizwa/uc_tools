@@ -6,6 +6,7 @@
 #include "infof.h"
 
 #include "cbuf.h"
+#include "byteswap.h"
 
 /* Generic packet buffer. */
 struct pbuf {
@@ -50,22 +51,6 @@ static inline void pbuf_write(struct pbuf *p, const uint8_t *buf, uint32_t len) 
 typedef void (*pbuf_sink_t)(void*, const struct pbuf *p);
 
 
-static inline uint64_t read_be(const uint8_t *buf, uint32_t nb) {
-    uint64_t accu = 0;
-    while(nb) {
-        accu = (accu << 8) | (*buf++);
-        nb--;
-    }
-    return accu;
-}
-static inline void write_be(uint8_t *buf, uint64_t word, uint32_t nb) {
-    buf += nb;
-    while(nb) {
-        *(--buf) = word;
-        word = word >> 8;
-        nb--;
-    }
-}
 
 void pbuf_packetn_write(
     struct pbuf *p, int len_len,

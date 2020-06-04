@@ -43,12 +43,33 @@ const struct hw_periodic hw_tim_10us[] = {
 #define US_PER_FTICK ((double)(1.0/72.0))
 
 
-/* The integral number of 1.1kHz ticks is used for alarm events. */
+/* The integral number of 1.1kHz ticks (in case of DIV 0x10000) is
+ * used for alarm events. */
 volatile uint32_t timebase_ticks;
+
+/* Sync for main polling routine. */
+int timebase_sync(uint32_t *handled) {
+    if (*handled != timebase_ticks) {
+        (*handled)++;
+        return 1;
+    }
+    else {
+        return 0;
+    }
+}
+int timebase_sync_sub(uint32_t *handled, int bit) {
+    uint32_t mask = (1 << bit)-1;
+    return timebase_sync(handled) && (0 == (timebase_ticks & mask));
+}
+
+
 #ifdef TIMEBASE_ALARM
 /* The current hardware timer value is used for fine scale
  * measurements. */
 volatile uint16_t timebase_frac_mark;
+
+volatile uint32_t timebase_alarm_mark;
+volatile uint32_t timebase_alarm_enable;
 
 static inline void timebase_set_mark(void) {
     timebase_frac_mark = hw_tim_counter(TIMEBASE_C_TIM.tim);
@@ -62,31 +83,29 @@ static inline uint32_t timebase_elapsed_us(void) {
     // infof("us = %d\n", us);
     return us;
 }
-#endif
-
-volatile uint32_t timebase_alarm_mark;
-volatile uint32_t timebase_alarm_enable;
-#endif
-void HW_TIM_ISR(TIMEBASE_TIM)(void) {
-    hw_periodic_ack(TIMEBASE_C_TIM);
-    uint32_t ticks = timebase_ticks++;
-#ifdef TIMEBASE_ALARM
-    if (timebase_alarm_enable && (timebase_alarm_mark == ticks)) {
-        timebase_alarm_enable = 0;
-        TIMEBASE_ALARM();
-    }
-#endif
-}
 static inline void timebase_alarm_start_ms(uint32_t ms) {
     uint32_t tticks = (uint32_t)(ITICKS_PER_MS*((double)ms));
     //infof("alarm_start: ms=%d, tticks=%d\n", ms, tticks);
     timebase_alarm_enable = 1;
     timebase_alarm_mark = timebase_ticks + tticks;
 }
+#endif
 
+#endif
+void HW_TIM_ISR(TIMEBASE_TIM)(void) {
+    hw_periodic_ack(TIMEBASE_C_TIM);
+#ifdef TIMEBASE_ALARM
+    uint32_t ticks = timebase_ticks++;
+    if (timebase_alarm_enable && (timebase_alarm_mark == ticks)) {
+        timebase_alarm_enable = 0;
+        TIMEBASE_ALARM();
+    }
+#else
+    timebase_ticks++;
+#endif
+}
 static inline void timebase_init(void) {
     hw_periodic_init(TIMEBASE_C_TIM);
 }
-
 
 #endif

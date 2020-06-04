@@ -35,6 +35,8 @@
 
 #include "reset_device.h"
 
+
+
 /* Buffering.
 
    There is plenty of space, so use it.  Below is the general
@@ -74,32 +76,14 @@ struct cbuf uart1_out; uint8_t uart1_out_buf[1024];
 struct pbuf packet_in; uint8_t packet_in_buf[64+1024]; // FLASH_WRITE
 
 
-// Main rate is just base clock for audio
-#define DIV 1500 // (/ 72000000 48000)
-#define TIM_PERIODIC 4
-static volatile uint32_t sample;
-static volatile uint32_t tick;
-uint32_t tick_last;
-uint32_t tick_period = 48000;
+/* Each lab board can have a temperature sensor attached. */
+#define TIMEBASE_DIV 0x10000
+#define DHT11_COMM  GPIOB,15
+#define DHT11_SLIP_CBUF (&slip_out)
+#include "mod_dht11.c"
 
-static const struct hw_periodic hw_periodic_config[] = {
-//          rcc       irq            tim   div  pre
-//---------------------------------------------------
-    [2] = { RCC_TIM2, NVIC_TIM2_IRQ, TIM2, DIV, 1 },
-    [3] = { RCC_TIM3, NVIC_TIM3_IRQ, TIM3, DIV, 1 },
-    [4] = { RCC_TIM4, NVIC_TIM4_IRQ, TIM4, DIV, 1 },
-    [5] = { RCC_TIM5, NVIC_TIM5_IRQ, TIM5, DIV, 1 },
-};
-#define C_PERIODIC hw_periodic_config[TIM_PERIODIC]
 
-void HW_TIM_ISR(TIM_PERIODIC)(void) {
-    hw_periodic_ack(C_PERIODIC);
-    sample++;
-    if (sample == tick_period) {
-        sample = 0;
-        tick++;
-    }
-}
+
 
 void usart1_isr(void) {
     /* Get SR + DR from the UART. Low 8 bits are received data, the 4
@@ -126,9 +110,14 @@ static void usart1_init(void) {
 }
 
 
-KEEP void set_pin(int pin, int val) {
-    hw_gpio_write(GPIOA,pin,val);
-    hw_gpio_config(GPIOA,pin,HW_GPIO_CONFIG_OUTPUT);
+KEEP void set_pin(uint32_t gpio, int pin, int val) {
+    hw_gpio_write(gpio,pin,val);
+    hw_gpio_config(gpio,pin,HW_GPIO_CONFIG_OUTPUT);
+}
+// open drain pulldown, useful for 5V tolerant pins
+KEEP void pdn_pin(uint32_t gpio, int pin, int val) {
+    hw_gpio_write(gpio,pin,val);
+    hw_gpio_config(gpio,pin,HW_GPIO_CONFIG_OPEN_DRAIN_2MHZ);
 }
 
 
@@ -145,15 +134,19 @@ static void command_io(const struct pbuf *p) {
     /* This doesn't need to be complicated.  Support 26 I/O lines,
        where capital letter corresponds to high and lower caps is
        low. */
+    if (p->count < 3) return;
     switch(p->buf[2]) {
-    case 'A': set_pin(3,1); break;
-    case 'B': set_pin(4,1); break;
-    case 'C': set_pin(5,1); break;
-    case 'D': set_pin(6,1); break;
-    case 'a': set_pin(3,0); break;
-    case 'b': set_pin(4,0); break;
-    case 'c': set_pin(5,0); break;
-    case 'd': set_pin(6,0); break;
+
+    case 'A': set_pin(GPIOA, 3,1); break; case 'a': set_pin(GPIOA, 3,0); break;
+    case 'B': set_pin(GPIOA, 4,1); break; case 'b': set_pin(GPIOA, 4,0); break;
+    case 'C': set_pin(GPIOA, 5,1); break; case 'c': set_pin(GPIOA, 5,0); break;
+    case 'D': set_pin(GPIOA, 6,1); break; case 'd': set_pin(GPIOA, 6,0); break;
+
+    case 'E': pdn_pin(GPIOB,12,1); break; case 'e': pdn_pin(GPIOB,12,0); break;
+    case 'F': pdn_pin(GPIOB,13,1); break; case 'f': pdn_pin(GPIOB,13,0); break;
+    case 'G': pdn_pin(GPIOB,14,1); break; case 'g': pdn_pin(GPIOB,14,0); break;
+    case 'H': pdn_pin(GPIOB,15,1); break; case 'h': pdn_pin(GPIOB,15,0); break;
+
     }
     /* Caller supplies ack message so we can be dumb here and just
        echo it back.  This allows for CPS-style synchronization. */
@@ -163,60 +156,6 @@ static void command_io(const struct pbuf *p) {
 
 
 
-
-// Multicast/broadcast seems most convenient.
-// https://networklessons.com/multicast/multicast-ip-address-to-mac-address-mapping
-// socat - UDP4-RECVFROM:1234,ip-add-membership=224.0.13.1:10.1.3.2,fork | hd
-// socat - UDP4-RECVFROM:1234,fork | hd
-
-#define SIP 10,1,3,123  // does this really matter? (only for SSM?)
-#if 1
-// multicast
-#define MULTICAST 0,13,1
-#define DIP 224,MULTICAST
-#else
-// broadcast
-#define DIP 255,255,255,255
-#endif
-#include "ethernet.h"
-
-struct __attribute__((packed)) headers {
-    struct ip  i;
-    struct udp u;
-};
-
-#define HEADERS_INIT(_sip)  {                           \
-    .i = {                                              \
-        .version_ihl = 0x45,                            \
-        .dscp_ecn = 0,                                  \
-        .identification = HTONS(0x1234), /* ?? */       \
-        .flags_fo = HTONS(0x4000), /* don't fragment */ \
-        .ttl = 0x40,                                    \
-        .protocol = 0x11, /* UDP */                     \
-        .s_ip = {_sip},                                 \
-        .d_ip = {DIP}                                   \
-    },                                                  \
-    .u = {                                              \
-        .s_port = HTONS(4321),                          \
-        .d_port = HTONS(1234),                          \
-    }                                                   \
-}
-
-static void send_udp(const uint8_t *buf, uint32_t len) {
-    struct headers h = HEADERS_INIT(SIP);
-    h.i.total_length = htons(28 + len);
-    h.i.header_checksum = ip_checksum(&h.i, sizeof(h.i));
-    h.u.length   = htons( 8 + len);
-    h.u.checksum = 0;
-
-    // For ipv4 we use standard slip, where ip header provides the tag
-    // which is in range 0x4000 0x4fff
-    const struct slice slices[] = {
-        {.buf = (uint8_t*)&h, sizeof(h) },
-        {.buf = buf, len },
-    };
-    cbuf_write_slip_slices(&slip_out, slices, 2);
-}
 
 
 #include "plugin_api.h"
@@ -262,42 +201,28 @@ void dispatch(void *ctx, const struct pbuf *p) {
 }
 
 
-int poll_status(struct cbuf *b) {
-    if (tick != tick_last) {
-        // FIXME: Don't send out status info unless someone is
-        // actually listening.  Uart will be buffered (indefinitely?)
-        // by linux, which creates a flood on opening.
-
-        // cbuf_write_slip_tagged(b, TAG_STATUS, (void*)&tick_last, 4);
-        tick_last++;
+void poll_timebase(void) {
+    static uint32_t dht11_sync;
+    if (timebase_sync_sub(&dht11_sync, 14)) {
+        // 10 is 1.07 Hz
+        // (/ 72000000.0 (* 1024 64 1024))
         // infof("tick\n");
-        uint32_t payload = 123;
-        send_udp((uint8_t*)&payload, sizeof(payload));
-        return 1;
-    }
-    else {
-        return 0;
+        dht11_request(&dht11);
     }
 }
 
-int poll_read(struct cbuf *b, uint16_t tag,
-              uint32_t (*read)(uint8_t *buf, uint32_t len)) {
-    uint8_t buf[40]; // What's a good size?
-    uint32_t n = read(buf, sizeof(buf));
-    if (!n) return 0;
-    cbuf_write_slip_tagged(b, tag, buf, n);
-    return 1;
-}
 uint32_t uart1_read(uint8_t *buf, uint32_t len) {
     return cbuf_read(&uart1_in, buf, len);
 }
 
-void poll_machines(struct cbuf *b) {
-    if (poll_status(b)) return;
-    if (poll_read(b, TAG_INFO, info_read)) return;
-    if (poll_read(b, TAG_GDB, _service.rsp_io.read)) return;
-    //if (poll_read(b, TAG_UART, uart1_read)) return;
-    if (poll_read(b, TAG_PLUGIO, plugin_read)) return;
+/* Poll the state machines, and splill a message from the first one
+   that has data, tagging with proper header prefix. */
+#include "mod_slip_out.c"
+void to_slipout() {
+    if (SLIP_OUT_FROM(hdr_info,    info_read)) return;
+    if (SLIP_OUT_FROM(hdr_gdb,     _service.rsp_io.read)) return;
+    if (SLIP_OUT_FROM(hdr_stream0, uart1_read)) return;
+    if (SLIP_OUT_FROM(hdr_plugio,  plugin_read)) return;
 }
 
 // Poll independent of read
@@ -322,7 +247,7 @@ static uint32_t slip_read(uint8_t *buf, uint32_t room) {
      * often a lot more efficient to let machines hold on to state
      * that can produce a new message, than it is to have them dump
      * serialized data into a buffer at an earlier stage. */
-    poll_machines(&slip_out);
+    to_slipout();
     return nb + cbuf_read(&slip_out, buf, room);
 }
 
@@ -368,12 +293,13 @@ void start(void) {
     CBUF_INIT(slip_out);
     PBUF_INIT(packet_in);
 
-    hw_periodic_init(C_PERIODIC);
+    /* This includes timebase_init() */
+    dht11_init();
+
     usart1_init();
 
     _service.add(poll_uart1_tx);
-
-
+    _service.add(poll_timebase);
 
 
     infof("lab_board.c\n\n");

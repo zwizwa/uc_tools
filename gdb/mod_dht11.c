@@ -1,5 +1,8 @@
 /* Macro-configurable module for DHT11 support.
 
+   This instantiates couples dht11.h to a hal, with some compile time
+   configuration.
+
    Apart from libraries, the "module system" is just a convention,
    where .c files with a mod_ prefix are supposed to be included from
    main.c while depending on some configuration macros to be defined.
@@ -12,15 +15,22 @@
 #ifndef MOD_DHT11_C
 #define MOD_DHT11_C
 
+#include "cbuf.h"
+
 /* The header has generic code, parameterized by platform dependent
  * functionality in terms of inline functions. */
 #include "dht11.h"
 struct dht11 dht11;
 
 /* This module relies on a particular time base. */
+#ifdef TIMEBASE_DIV
 CT_ASSERT(timebase_div, TIMEBASE_DIV == 0x10000);
+#else
+#define TIMEBASE_DIV 0x10000
+#endif
+
 #define TIMEBASE_ALARM() dht11_handle(&dht11, DHT11_EVENT_ALARM)
-#include "mod_timebase.c"
+#include "mod_timebase_pow2.c"
 
 /* Link some of the dht11.h hal hooks. */
 static inline void dht11_hw_time_zero(struct dht11 *s) {
@@ -40,17 +50,18 @@ static inline void dht11_hw_alarm_start_ms(struct dht11 *s, uint32_t ms) {
    That is when we turn on the power on the line.
 
  */
-#ifndef DHT11_POWER
-#error  DHT11_POWER
-#endif
 
 static inline void dht11_hw_power_on(struct dht11 *s) {
+#ifdef DHT11_POWER
     hw_gpio_config(DHT11_POWER, HW_GPIO_CONFIG_OPEN_DRAIN_2MHZ);
     hw_gpio_write(DHT11_POWER, 0);
+#endif
 }
-void dht11_hw_power_off(struct dht11 *s) {
+static inline void dht11_hw_power_off(struct dht11 *s) {
+#ifdef DHT11_POWER
     hw_gpio_config(DHT11_POWER, HW_GPIO_CONFIG_OPEN_DRAIN_2MHZ);
     hw_gpio_write(DHT11_POWER, 1);
+#endif
 }
 
 
@@ -98,7 +109,7 @@ static inline void dht11_hw_response(struct dht11 *s, int ok, uint8_t *d) {
     if (1) { // verbose
         uint16_t rh = d[0]*256+d[1];
         uint16_t  t = d[2]*256+d[3];
-        int disp = 3;
+        int disp = 0;
         if (disp & 2) {
             infof("dht22: %d %d %d\n", ok, rh, t);
         }
@@ -106,8 +117,16 @@ static inline void dht11_hw_response(struct dht11 *s, int ok, uint8_t *d) {
             infof("dht11: %d %d %d\n", ok, d[0], d[2]);
         }
     }
-    CBUF_WRITE(&cbuf_to_usb, {1, 1, ok, d[0], d[1], d[2], d[3]});
+
+    CBUF_WRITE_SLIP(DHT11_SLIP_CBUF, {
+            0xFF, 0xF3, 0, 0,  // TAG_EVENT, type
+            ok, d[0], d[1], d[2], d[3]});
     /* FIXME: Resources can be freed here. */
+}
+
+void dht11_init(void) {
+    exti_init();
+    timebase_init();
 }
 
 
