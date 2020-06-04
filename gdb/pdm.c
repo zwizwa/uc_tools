@@ -128,11 +128,15 @@ uint32_t safe_setpoint(uint32_t setpoint) {
 /* PLATFORM SPECIFIC */
 
 /* CONFIGURATION */
+
 /* First channel pin.  Other channels are adjacent, incrementing. */
-#define PDM_PIN_FRAME 3
 #define PDM_PIN_CHAN0 4
+
 /* All channels are part of one port. */
 #define PDM_PORT GPIOA
+
+#define PDM_CPU_USAGE_MARK GPIOA,3
+
 /* This sets the number of channels.  Used for struct gen and code gen. */
 #define FOR_CHANNELS(c) \
     c(0) c(1) c(2) c(3) \
@@ -223,6 +227,9 @@ volatile uint32_t pwm_phase = 0;
 
 void HW_TIM_ISR(TIM_PDM)(void) {
     hw_clockgen_ack(C_PDM);
+
+    //hw_gpio_high(PDM_CPU_USAGE_MARK);
+
     pdm_update();
     // FIXME: Currently this is just a SAW, but it should be the
     // FM/Wavetable part.
@@ -231,6 +238,8 @@ void HW_TIM_ISR(TIM_PDM)(void) {
     phase++;
     if (phase >= PDM_DIV) phase = 0;
     pwm_phase = phase;
+
+    //hw_gpio_low(PDM_CPU_USAGE_MARK);
 }
 
 #endif
@@ -270,7 +279,7 @@ INLINE void channel_update(
 #define CHANNEL_UPDATE(c) \
     channel_update(&channel[c], &shiftreg);
 
-#define DEBUG_MARK \
+#define ASM_DEBUG_MARK \
     __asm__ volatile ( \
         "   nop             \n" \
         "   nop             \n" \
@@ -289,22 +298,20 @@ INLINE uint32_t channels_update(void) {
 static volatile uint32_t bsrr_last = 0;
 
 static inline void pdm_update(void) {
-    GPIO_BSRR(PDM_PORT) = (1 << PDM_PIN_FRAME);
-
-    //DEBUG_MARK;
+    //ASM_DEBUG_MARK;
 
     /* Assume GPIOs are contiguous.  We're using RRX to shift into MSB
      * to keep the pin order the same as the channel order. */
     uint32_t set_bits = channels_update() >> (32 - NB_CHANNELS - PDM_PIN_CHAN0);
     uint32_t mask     = ((1 << NB_CHANNELS) - 1) << PDM_PIN_CHAN0;
     uint32_t clr_bits = (~set_bits) & mask;
-    uint32_t bsrr     = set_bits  | (clr_bits << 16) | (0x10000 << PDM_PIN_FRAME);
+    uint32_t bsrr     = set_bits  | (clr_bits << 16);
     GPIO_BSRR(PDM_PORT) = bsrr;
 
     // Log last non-trivial set/clear command
     // if (set_bits) { bsrr_last = bsrr; }
 
-    //DEBUG_MARK;
+    //ASM_DEBUG_MARK;
 }
 
 
@@ -334,23 +341,24 @@ void exti0_isr(void) {
     /* It's set to trigger on both edges, and we reject falling edges.
        Pulse width is about 2us so if we sample early and run with
        highest priority we will catch it.  Setting EXTI_TRIGGER_RISING
-       / FALLING does not seem to work: it still triggeres on both
-       edges judging from where the subosc output transition shows up.
-       Do not modify the sequence or the interrupt priorities: I can't
+       / FALLING does not seem to work: it still trigges on the other
+       edge from time to time judging from where the subosc output
+       transition shows up.
+
+       Do not modify the sequence or the interrupt priorities! I can't
        explain the magic yet...  The problem this solved is that
-       sometimes either sub or pwm sync don't happen. */
+       sometimes either sub or pwm sync don't happen, and then
+       suddenly the problem went away. */
 
     hw_exti_ack(C_EXTI);
     uint32_t val = hw_gpio_read(EXTI_GPIO);
     if (!val) return;
-
 
     /* Reset the PWM digital state machine. */
     pwm_phase = 0;
 
     /* Update the sub osc. */
     GPIOB_ODR ^= (1 << SUBOSC_GPIOB_PIN);
-
 
     /* Time base is ARM cycle counter @72MHz.  The instruction stream
        above has constant latency, so it's ok to sample here. */
@@ -383,12 +391,9 @@ void init_osc_in(void) {
     /* External input interrupt for discharge pulse.  This needs to be
        lower priority than the PDM because it will cause modulation
        effects. */
-#if 1
-    // FIXME: init last_cc here?
     enable_cycle_counter();
     hw_exti_init(C_EXTI);
     hw_exti_arm(C_EXTI);
-#endif
 }
 
 
@@ -506,12 +511,9 @@ void start(void) {
 
     /* PDM frame clock.  This is set/reset at beginning/end of PDM
        ISR, so can be used as a CPU usage measurement. */
-#ifdef PDM_PIN_FRAME
     hw_gpio_config(
-        PDM_PORT,
-        PDM_PIN_FRAME,
+        PDM_CPU_USAGE_MARK,
         HW_GPIO_CONFIG_OUTPUT);
-#endif
 
     /* PDM outputs, one per channel.  Note that these really need to
        go through some digital cleanup, e.g. an inverter or a buffer
@@ -546,6 +548,13 @@ void start(void) {
 
 
     init_subosc();
+
+    /* Turn off the LED.  It introduces too much noise. */
+    hw_gpio_config(GPIOC,13,HW_GPIO_CONFIG_INPUT);
+
+
+    // FIXME: init last_cc here?
+
 
     /* Smaller values mean higher priorities.  STM32F103 strips the
        low 4 bits, so these have increments of 16.  Print the actual
