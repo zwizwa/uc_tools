@@ -1,0 +1,333 @@
+#ifndef MOD_PDM_C
+#define MOD_PDM_C
+
+/* Pulse density modulator.
+
+   This implements a DAC for controlling set points of analog
+   audio circuits.  Currently we see roughly 3 solutions:
+
+   - Resistor-ladder based Digital Analog Converter (DAC)
+
+   - Pulse Width Modulation (PWM)
+
+   - Pulse Density Modulation (PDM)
+
+   Preliminary conclusion is that the DAC solution is too expensive as
+   it requires extra hardware, the PWM solution has a noise spectrum
+   that is too correlated for use in the application when run at low
+   rate, and when running from hardware the number of modulators is
+   limited, so we end up with bit-banged PDM as a reasonable option.
+
+   We start off with a first order PDM scheme, where we send out the
+   carry bit of a discrete integrator.  I.e. with X the input to the
+   PDM and A the accumulator, the output at any time instance is the
+   carry bit of A = A + X with A and X limited to the desired
+   resulution, which in our case is 16 bit.
+
+   The noise spectrum of this modulation scheme strongly depends on
+   the value of X.  Some examples to illustrate the idea.
+
+   - If X is a power of 2, for a resolution of N also a power of 2,
+     e.g. N=2^B where B is the number of bits of the accumulator, the
+     output will be a periodic signal with one pulse every P samples:
+
+       X     P
+     ---------
+       1     N
+       2   N/2
+       4   N/4
+      N/2    2
+       N     1
+
+   - When X is coprime with N the period will be N, but there will
+     still be a prominent spectral peak.  E.g. for N=8 and X=3, the
+     sequence of A and carry bits is:
+
+     A: 0 3 6 1 4 7 2 5 0 ...
+     C: 1 0 0 1 0 0 1 0 1 ...
+
+     Note the complementary pattern when X = 5 = 8 - 3 produces the
+     same waveform, but in reverse.
+
+     A: 0 5 2 7 4 1 6 3 0 ...
+     C: 1 0 1 0 0 1 0 0 1 ...
+
+     Both have a dominant peak around 3/8.
+
+     TODO: Make this more precise, or include some plots.
+
+   Now, what we want to accomplish is to move that dominant peak up
+   into higher frequences.  A very crude and simple way to do this is
+   to not use part of the range.  The noise will only appear in the
+   lower parts of the frequency spectrum if X is small or close to N
+   (i.e. negative X is small).
+
+   The approach we take is to ensure that we do not have to use the
+   lower and upper 25 percent of the range of X.  So we sacrifice one
+   bit of precision, in order to keep the noise period above 1/4th of
+   the update frequency.
+
+   This brings us to the first design parameter: requiring the
+   dominant peak of the noise spectrum to be be above the audio range,
+   e.g. >20kHz, we only need to oversample 4x, so we can set the
+   update frequency in the range of 80kHz.
+
+*/
+
+
+/* Some alternative time bases.  Either ptimized for "round" power of
+   two PWM output, or optimized for round decimal update rate.  Not
+   clear yet which is best. */
+
+#if 1
+#define PDM_DIV 256
+#define PWM_HZ (72000000 / PDM_DIV)
+CT_ASSERT(pwm_hz, 281250 == PWM_HZ);
+#endif
+
+#if 0
+#define PDM_DIV 512
+#define PWM_HZ (72000000 / PDM_DIV)
+CT_ASSERT(pwm_hz, 140625 == PWM_HZ);
+#endif
+
+#if 0
+#define PDM_DIV 360
+#define PWM_HZ (72000000 / PDM_DIV)
+CT_ASSERT(pwm_hz, 200000 == PWM_HZ);
+#endif
+
+
+/* The circuit is designed such that:
+
+   - Operation modes are safe regardless of how the modulator is
+     driven.
+
+   - The usable range is between 25% and 75% modulation to keep the
+     modulation frequency high, as explained above.
+
+   All setpoints assignments go through this function.  It can later
+   be clipped if necessary.  The original circuit was not safe over
+   the entire range so relied on this to be set carefully.
+
+   Current hardware design does not have an unsafe setting.  For
+   settings that are too high, a base resistor will limit current.
+   This introduces a non-linearity that can be conmpensated for.
+
+*/
+#define SETPOINT_MIN 0x40000000ULL
+#define SETPOINT_MAX 0xC0000000ULL
+uint32_t safe_setpoint(uint32_t setpoint) {
+#if 0
+    if (setpoint < SETPOINT_MIN) return SETPOINT_MIN;
+    if (setpoint > SETPOINT_MAX) return SETPOINT_MAX;
+#endif
+    return setpoint;
+}
+
+
+
+/* PLATFORM SPECIFIC */
+
+/* CONFIGURATION */
+
+/* First channel pin.  Other channels are adjacent, incrementing. */
+#define PDM_PIN_CHAN0 4
+
+/* All channels are part of one port. */
+#define PDM_PORT GPIOA
+
+#define PDM_CPU_USAGE_MARK GPIOA,3
+
+/* This sets the number of channels.  Used for struct gen and code gen. */
+#define FOR_CHANNELS(c) \
+    c(0) c(1) c(2) c(3) \
+    c(4) c(5) c(6) c(7) \
+
+static inline void pdm_update(void);
+
+/* Don't use TIM2. It interacts badly with Flash programming. */
+#define TIM_PDM      3
+#define TIM_CONTROL  4
+
+#if 0
+static const struct hw_periodic hw_pdm_config[] = {
+//          rcc       irq            tim   div      pre
+//-------------------------------------------------------
+    [3] = { RCC_TIM3, NVIC_TIM3_IRQ, TIM3, PDM_DIV, 1 },
+    [4] = { RCC_TIM4, NVIC_TIM4_IRQ, TIM4, PDM_DIV, 1 },
+    [5] = { RCC_TIM5, NVIC_TIM5_IRQ, TIM5, PDM_DIV, 1 },
+};
+
+#define C_PDM hw_pdm_config[TIM_PDM]
+
+void pdm_start(void) {
+    infof("start\n");
+    hw_periodic_init(C_PDM);
+}
+void pdm_stop(void) {
+    infof("stop\n");
+    hw_periodic_disable(C_PDM);
+}
+
+void HW_TIM_ISR(TIM_PDM)(void) {
+    hw_periodic_ack(C_PDM);
+    pdm_update();
+}
+
+#else
+
+/* PDM, and additionally provide a single fixed rate PWM channel,
+   e.g. for digital effects. */
+
+const struct hw_clockgen hw_pdm_config[] = {
+//          rcc_tim   rcc_gpio   tim   gpio   pin div       duty        phase  pol chan     itr  irq (optional)
+//-------------------------------------------------------------------------------------------------------------------
+    [3] = { RCC_TIM3, RCC_GPIOB, TIM3, GPIOB, 0,  PDM_DIV,  PDM_DIV/2,  0,     1,  TIM_OC3, -1,  NVIC_TIM3_IRQ },
+
+};
+#define C_PDM hw_pdm_config[TIM_PDM]
+
+void pdm_start(void) {
+    infof("start\n");
+    hw_clockgen_init(C_PDM);
+    hw_clockgen_arm(C_PDM);
+    hw_clockgen_trigger(C_PDM);
+}
+void pdm_stop(void) {
+    infof("stop: FIXME: not implemented\n");
+}
+
+volatile uint32_t pwm_phase = 0;
+volatile uint32_t pwm_speed = 256 * 13;
+#define PHASE_MASK 0xFFFFFF
+
+void HW_TIM_ISR(TIM_PDM)(void) {
+    hw_clockgen_ack(C_PDM);
+
+    hw_gpio_high(PDM_CPU_USAGE_MARK);
+
+    pdm_update();
+    // FIXME: Currently this is just a SAW, but it should be the
+    // FM/Wavetable part.
+    uint32_t phase = pwm_phase;
+    hw_clockgen_duty(C_PDM, phase >> 16);
+    phase = (phase + pwm_speed + (phase >> 9)) & PHASE_MASK;
+    pwm_phase = phase;
+
+    hw_gpio_low(PDM_CPU_USAGE_MARK);
+}
+
+#endif
+
+
+
+struct channel {
+    uint32_t setpoint;
+    uint32_t accu;
+};
+#define CHANNEL_STRUCT(c) {},
+struct channel channel[] = { FOR_CHANNELS(CHANNEL_STRUCT) };
+
+#define NB_CHANNELS (sizeof(channel) / sizeof(struct channel))
+
+
+
+
+/* The modulator will need to deliver a pulse whenver the accumulator
+   overflows.  ARM can shift LSB and MSB using ADC and RRX
+   respectively. */
+
+INLINE void channel_update(
+    struct channel *channel,
+    uint32_t *shiftreg) {
+
+    __asm__ (
+        "   adds %0, %0, %2  \n"   // update accu, update carry
+      //"   adc  %1, %1, %1  \n"   // shift carry flag into LSB
+        "   rrx %1, %1       \n"   // shift carry flag into MSB
+        : "+r"(channel->accu),     // %0 read/write
+          "+r"(*shiftreg)          // %1 read/write
+        :  "r"(channel->setpoint)  // %2 read
+        : );
+}
+
+#define CHANNEL_UPDATE(c) \
+    channel_update(&channel[c], &shiftreg);
+
+#define ASM_DEBUG_MARK \
+    __asm__ volatile ( \
+        "   nop             \n" \
+        "   nop             \n" \
+        "   nop             \n" \
+        : )
+
+INLINE uint32_t channels_update(void) {
+    uint32_t shiftreg = 0;
+    FOR_CHANNELS(CHANNEL_UPDATE);
+    return shiftreg;
+}
+
+
+/* PDM TIMER INTERRUPT */
+
+static volatile uint32_t bsrr_last = 0;
+
+static inline void pdm_update(void) {
+    //ASM_DEBUG_MARK;
+
+    /* Assume GPIOs are contiguous.  We're using RRX to shift into MSB
+     * to keep the pin order the same as the channel order. */
+    uint32_t set_bits = channels_update() >> (32 - NB_CHANNELS - PDM_PIN_CHAN0);
+    uint32_t mask     = ((1 << NB_CHANNELS) - 1) << PDM_PIN_CHAN0;
+    uint32_t clr_bits = (~set_bits) & mask;
+    uint32_t bsrr     = set_bits  | (clr_bits << 16);
+    GPIO_BSRR(PDM_PORT) = bsrr;
+
+    // Log last non-trivial set/clear command
+    // if (set_bits) { bsrr_last = bsrr; }
+
+    //ASM_DEBUG_MARK;
+}
+
+
+
+void pdm_init(void) {
+    /* PDM frame clock.  This is set/reset at beginning/end of PDM
+       ISR, so can be used as a CPU usage measurement. */
+    hw_gpio_config(
+        PDM_CPU_USAGE_MARK,
+        HW_GPIO_CONFIG_OUTPUT);
+
+    /* PDM outputs, one per channel.  Note that these really need to
+       go through some digital cleanup, e.g. an inverter or a buffer
+       that is on a stable supply, before being fed into the analog
+       low pass filter.  I've found the STM32F103 outputs to be quite
+       noisy, and there is variable voltage drop depending on whether
+       the chip is driving high current through other I/Os,
+       e.g. driving an LED.  */
+    for(int i=0; i<NB_CHANNELS; i++) {
+        infof("port %x pin %d\n", PDM_PORT, PDM_PIN_CHAN0 + i);
+        hw_gpio_config(
+            PDM_PORT,
+            PDM_PIN_CHAN0 + i,
+            // HW_GPIO_CONFIG_OPEN_DRAIN_2MHZ
+            HW_GPIO_CONFIG_OUTPUT
+            );
+    }
+
+    /* Move all setpoints into a safe range before starting the
+       modulator. */
+    for(int i=0; i<NB_CHANNELS; i++) {
+        channel[i].setpoint = safe_setpoint(0x40000000ULL);
+    }
+    channel[0].setpoint = 2000000000;
+
+
+
+
+
+}
+
+
+#endif

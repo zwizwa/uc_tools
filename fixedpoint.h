@@ -25,6 +25,8 @@ static inline uint32_t fixedpoint_mul(uint32_t a, uint32_t b) {
 }
 
 
+/* NOTE: Be careful with signed multiplication and 32-bit shift: it
+   can only represent values up to 0.5 at both ends! */
 
 
 /* This is a non-variable fixed point implementation derived from
@@ -124,3 +126,5 @@ static inline int32_t fixedpoint_svf_update(struct fixedpoint_svf *s, int32_t in
 
 
 #endif
+
+

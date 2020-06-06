@@ -47,6 +47,14 @@ static inline void info_write(uint8_t *buf, uint32_t len) {
     while(len--) info_putchar(*buf++);
 }
 
+static inline void info_tagged_hex(const char *tag, const uint8_t *buf, uint32_t len) {
+    infof("%s", tag);
+    for(uint32_t i=0; i<len; i++) {
+        infof("%02x", buf[i]);
+    }
+    infof("\n");
+}
+
 #endif
 
 
