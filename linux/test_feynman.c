@@ -6,6 +6,8 @@
 
 
 
+
+
 #define N 32
 
 uint32_t table[N];
@@ -14,9 +16,10 @@ double log2(double x) {
     return log(x)/log(2.0);
 }
 double log2_(double x) {
-    double argument = x * 0x40000000;
-    uint32_t log = feynman_log(table, N, argument);
-    return ((double)log) / 0x100000000;
+    double argument = x * FEYNMAN_ONE;
+    uint32_t headroom = 8;
+    int32_t log = feynman_log(table, N, headroom, argument);
+    return ((double)log) / (0x100000000 >> headroom);
 }
 
 void init_table(void) {
@@ -37,8 +40,8 @@ void test(double x) {
 int main(void) {
     printf("feynman\n");
     init_table();
-    for (int i=10; i<=20; i++) {
-        test(((double)i) / 10);
+    for (double d = 0.001; d < 4; d *= 1.1) {
+        test(d);
     }
 
 }

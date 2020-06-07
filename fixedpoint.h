@@ -1,6 +1,8 @@
 #ifndef FIXEDPOINT_H
 #define FIXEDPOINT_H
 
+#include <stdint.h>
+
 /* CM3 has no floating point, so use 32x32->64 UMULL instruction for
    implementing filters.  According to this:
    https://stackoverflow.com/questions/57755041/how-to-do-3232-bit-multiplication-in-cortex-m3
@@ -16,6 +18,7 @@
    ordinary multiplication and explicit shifts, as that also allows
 
 */
+
 static inline uint32_t fixedpoint_mul_shift(uint32_t a, uint32_t b, uint32_t n) {
     uint64_t ab = ((uint64_t)a) * ((uint64_t)b);
     return ab >> n;

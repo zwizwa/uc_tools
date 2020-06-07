@@ -9,6 +9,7 @@
    - Start mapping parameters to midi
    - Set frequency, glide
    - Add some dynamic wavetables
+   - Use EXTI software events for control updates
 */
 
 #include <stdint.h>
@@ -158,25 +159,56 @@ void init_control(void) {
 
 /* COMMUNICATION */
 
+#define FOR_PARAMETERS(p) \
+    p(0, uint32, period_cyc, 72*1000*10, "Period in CPU cycles") \
+    p(1, uint32, glide_0p32, 0x10000000, "Period regulator pole, 0.32 fixed point") \
+
+union types {
+    uint32_t uint32;
+};
+#define DEF_PARAMETER(_num, _type, _name, _init, _info) \
+    union types _name = { ._type = _init };
+FOR_PARAMETERS(DEF_PARAMETER)
+
+struct parameter_info {
+    const char *type;
+    const char *name;
+    const char *info;
+    union types *data;
+    uint32_t size;
+};
+struct parameter_info parameter_info[] = {
+#define DEF_PARAMETER_INFO(_num, _type, _name, _init, _info)    \
+    [_num] = {.type = #_type, .name = #_name, .info = _info,    \
+              .data = &_name, .size = sizeof(_name)  },
+FOR_PARAMETERS(DEF_PARAMETER_INFO)
+};
+
+void set_parameter(uint32_t index, void *buf, uint32_t len) {
+    if (index >= ARRAY_SIZE(parameter_info)) {
+        infof("%d: bad_param\n", index);
+        return;
+    }
+    struct parameter_info *pi = &parameter_info[index];
+    if (pi->size != len) {
+        infof("%d: bad_size: %d\n", index, len);
+        return;
+    }
+    /* FIXME: signed ints not yet supported. */
+    uint32_t val = read_be(buf, len);
+    pi->data->uint32 = val;
+    infof("%d: %s = %d\n", index, pi->name, val);
+}
+
+
+
+/* Ad-hoc multi-argument messages are not in the table. */
 int handle_tag_u32(void *context,
                    const uint32_t *arg,  uint32_t nb_args,
                    const uint8_t *bytes, uint32_t nb_bytes) {
     if (nb_args < 1) return -1;
     switch(arg[0]) {
-    case 1: // MODE
-        //  bp2 ! {send_packet, <<16#FFF50002:32, 1:32, 1:32}.
-        if (nb_args < 2) return -1;
-        if (arg[1]) { pdm_start(); }
-        else        { pdm_stop(); }
-        return 0;
-    case 2: { // SETPOINT
-        struct { uint32_t cmd; uint32_t chan; uint32_t val; } *a = (void*)arg;
-        if (nb_args < 3) return -1;
-        if (a->chan >= NB_CHANNELS) return -2;
-        channel[a->chan].setpoint = safe_setpoint(a->val);
-        infof("setpoint[%d] = %x\n", a->chan, channel[a->chan].setpoint);
-        return 0;
-    }
+        /* Ad hoc */
     case 101: { // TEST_UPDATE
         // bp2 ! {send_u32, [101, 1000000000, 1,2,3]}.
         if (nb_args > 1 + NB_CHANNELS) return -1;
@@ -200,6 +232,21 @@ int handle_tag_u32(void *context,
         infof("last_cc:    %d\n", last_cc);
         return 0;
     }
+    case 1: // MODE
+        //  bp2 ! {send_packet, <<16#FFF50002:32, 1:32, 1:32}.
+        if (nb_args < 2) return -1;
+        if (arg[1]) { pdm_start(); }
+        else        { pdm_stop(); }
+        return 0;
+    case 2: { // SETPOINT
+        struct { uint32_t cmd; uint32_t chan; uint32_t val; } *a = (void*)arg;
+        if (nb_args < 3) return -1;
+        if (a->chan >= NB_CHANNELS) return -2;
+        channel[a->chan].setpoint = safe_setpoint(a->val);
+        infof("setpoint[%d] = %x\n", a->chan, channel[a->chan].setpoint);
+        return 0;
+    }
+
     default:
         infof("unknown tag_u32 command:");
         for (int i=0; i<nb_args; i++) { infof(" %d", arg[i]); }
@@ -213,6 +260,16 @@ int handle_tag_u32(void *context,
 void handle_tag(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
     infof("tag %d\n", tag);
     switch(tag) {
+    case 0: {
+        if (p->count < 4) {
+            infof("short packet\n");
+        }
+        else {
+            uint32_t index = read_be(p->buf+2, 2);
+            set_parameter(index, p->buf+4, p->count-4);
+        }
+        break;
+    }
     case TAG_U32: {
         int rv = tag_u32_dispatch(handle_tag_u32, NULL, p->buf, p->count);
         if (rv) {

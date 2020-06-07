@@ -144,38 +144,12 @@ uint32_t safe_setpoint(uint32_t setpoint) {
     c(0) c(1) c(2) c(3) \
     c(4) c(5) c(6) c(7) \
 
-static inline void pdm_update(void);
+static inline void     pdm_update(void);
+static inline uint32_t pwm_update(void);
 
 /* Don't use TIM2. It interacts badly with Flash programming. */
 #define TIM_PDM      3
 #define TIM_CONTROL  4
-
-#if 0
-static const struct hw_periodic hw_pdm_config[] = {
-//          rcc       irq            tim   div      pre
-//-------------------------------------------------------
-    [3] = { RCC_TIM3, NVIC_TIM3_IRQ, TIM3, PDM_DIV, 1 },
-    [4] = { RCC_TIM4, NVIC_TIM4_IRQ, TIM4, PDM_DIV, 1 },
-    [5] = { RCC_TIM5, NVIC_TIM5_IRQ, TIM5, PDM_DIV, 1 },
-};
-
-#define C_PDM hw_pdm_config[TIM_PDM]
-
-void pdm_start(void) {
-    infof("start\n");
-    hw_periodic_init(C_PDM);
-}
-void pdm_stop(void) {
-    infof("stop\n");
-    hw_periodic_disable(C_PDM);
-}
-
-void HW_TIM_ISR(TIM_PDM)(void) {
-    hw_periodic_ack(C_PDM);
-    pdm_update();
-}
-
-#else
 
 /* PDM, and additionally provide a single fixed rate PWM channel,
    e.g. for digital effects. */
@@ -202,23 +176,26 @@ volatile uint32_t pwm_phase = 0;
 volatile uint32_t pwm_speed = 256 * 13;
 #define PHASE_MASK 0xFFFFFF
 
-void HW_TIM_ISR(TIM_PDM)(void) {
-    hw_clockgen_ack(C_PDM);
-
-    hw_gpio_high(PDM_CPU_USAGE_MARK);
-
-    pdm_update();
+static inline uint32_t pwm_update(void) {
     // FIXME: Currently this is just a SAW, but it should be the
     // FM/Wavetable part.
     uint32_t phase = pwm_phase;
-    hw_clockgen_duty(C_PDM, phase >> 16);
+    uint32_t duty = phase >> 16;
     phase = (phase + pwm_speed + (phase >> 9)) & PHASE_MASK;
     pwm_phase = phase;
+    return duty;
+}
+
+void HW_TIM_ISR(TIM_PDM)(void) {
+    hw_clockgen_ack(C_PDM);
+    hw_gpio_high(PDM_CPU_USAGE_MARK);
+
+    pdm_update();
+    uint32_t val = pwm_update();
+    hw_clockgen_duty(C_PDM, val);
 
     hw_gpio_low(PDM_CPU_USAGE_MARK);
 }
-
-#endif
 
 
 

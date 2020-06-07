@@ -21,3 +21,6 @@ CFLAGS=" \
 -g \
 -Os \
 "
+LDFLAGS=" \
+-lm \
+"
