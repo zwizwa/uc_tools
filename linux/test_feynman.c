@@ -1,4 +1,4 @@
-#include "feynman.h"
+#include "fixedpoint_log.h"
 
 #include <stdio.h>
 #include <stdint.h>
@@ -8,7 +8,7 @@
 
 
 
-#define N 32
+#define N FEYNMAN_PRECISION
 
 uint32_t table[N];
 
