@@ -23,7 +23,11 @@
 #include "mod_pdm.c"
 
 
-
+#include "fixedpoint_log.h"
+uint32_t feynman_table[] = { FEYNMAN_TABLE_INIT };
+static inline uint32_t nlog2(uint32_t arg) {
+    return feynman_nlog_5_27(feynman_table, FEYNMAN_PRECISION, arg);
+}
 #if 0
 struct fixedpoint_svf filter = {
     .ai = 0xFF000000ULL,
@@ -56,7 +60,7 @@ const struct hw_exti c_exti = {
     RCC_GPIOA, NVIC_EXTI0_IRQ,      0,  GPIOA, EXTI_TRIGGER_FALLING
 };
 
-#define C_EXTI c_exti
+#define C_OSC c_exti
 #define EXTI_GPIO GPIOA,0
 volatile uint32_t osc_period, nb_pulses, last_cc;
 
@@ -78,7 +82,7 @@ void exti0_isr(void) {
        which straightens the edges before they go into the STM.
        Otherwise there was odd EXTI behavior. */
 
-    hw_exti_ack(C_EXTI);
+    hw_exti_ack(C_OSC);
 
     /* Reset the PWM digital state machine. */
     pwm_phase = 0;
@@ -94,11 +98,18 @@ void exti0_isr(void) {
 
     /* NON CRITICAL LATENCY */
 
+#if 1
+    /* Do not do any filtering here.  Write the current measurement,
+       and do other computations in the control loop. */
+
+ // FIXME: probably this is not necessary.
+    osc_period = cc - last_cc;
+#else
     /* New measurement is the elapsed time since last capture. */
     uint32_t osc_period_new = cc - last_cc;
 
     /* We filter that using a first order filter.  Note that this is
-       updated at the oscilattor's current rate, so the filter pole
+       updated at the oscillator's current rate, so the filter pole
        depends on the frequency of the oscillator. */
     uint32_t osc_period_estimate = osc_period;
     uint32_t coef = 0xFF000000ULL;
@@ -109,6 +120,8 @@ void exti0_isr(void) {
 
     /* Save state */
     osc_period = osc_period_estimate;
+#endif
+
     last_cc = cc;
     nb_pulses++;
 }
@@ -118,13 +131,61 @@ void init_osc_in(void) {
        lower priority than the PDM because it will cause modulation
        effects. */
     enable_cycle_counter();
-    hw_exti_init(C_EXTI);
-    hw_exti_arm(C_EXTI);
+    hw_exti_init(C_OSC);
+    hw_exti_arm(C_OSC);
 }
 
 
 
 /* CONTROL RATE TIMER INTERRUPT */
+
+#define BEAT_DIV 1024
+
+volatile uint32_t control_count;
+
+volatile uint32_t beat_pulse;
+volatile uint32_t beat_handled;
+volatile uint32_t log_period;
+
+/* Interrupt context so it can pre-empt the main loop. */
+void control_update(void) {
+    /* 5.27 negative fixed point base 2 log. */
+    log_period = nlog2(osc_period);
+
+    if ((control_count % BEAT_DIV) == 0) {
+        beat_pulse++;
+    }
+
+    control_count++;
+}
+
+/* Main loop context. */
+void beat_poll(void) {
+    if (beat_handled != beat_pulse) {
+        beat_handled++;
+        //infof("log_period = %d\n", log_period);
+    }
+}
+
+
+
+#if 1
+
+/* Use a software interrupt triggered as a subdiv from pwm/pdm interrupt. */
+
+const struct hw_swi hw_control = HW_SWI_1;
+#define C_CONTROL hw_control
+
+static inline void control_trigger(void) {
+    hw_swi_trigger(C_CONTROL);
+    control_update();
+}
+void init_control(void) {
+    hw_swi_init(C_CONTROL);
+    hw_swi_arm(C_CONTROL);
+}
+
+#else
 
 /* It seems simplest to run synchronous regulator and control code
    from a lower priority timer interrupt, and only use the lowest
@@ -144,17 +205,16 @@ static const struct hw_periodic hw_control_config[] = {
 #define C_CONTROL hw_control_config[TIM_CONTROL]
 
 
-volatile uint32_t control_count;
 
 void HW_TIM_ISR(TIM_CONTROL)(void) {
     hw_periodic_ack(C_CONTROL);
-    control_count++;
+    control_update();
 }
 void init_control(void) {
     /* Use another timer for the control loop, running at lower priority. */
     hw_periodic_init(C_CONTROL);
 }
-
+#endif
 
 
 /* COMMUNICATION */
@@ -307,21 +367,20 @@ void start(void) {
     /* Turn off the LED.  It introduces too much noise. */
     hw_gpio_config(GPIOC,13,HW_GPIO_CONFIG_INPUT);
 
-
-    // FIXME: init last_cc here?
-
+    /* Main loop tasks. */
+    _service.add(beat_poll);
 
     /* Smaller values mean higher priorities.  STM32F103 strips the
        low 4 bits, so these have increments of 16.  Print the actual
        value at boot to be sure. */
-    NVIC_IPR(C_PDM.irq)       = 0;
-    NVIC_IPR(NVIC_EXTI0_IRQ)  = 16;
-    NVIC_IPR(C_CONTROL.irq)   = 32;
-    infof("TIM_PDM     pri %d\n", NVIC_IPR(C_PDM.irq));
-    infof("TIM_CONTROL pri %d\n", NVIC_IPR(C_CONTROL.irq));
-    infof("EXTI0       pri %d\n", NVIC_IPR(NVIC_EXTI0_IRQ));
+    NVIC_IPR(C_PDM.irq)     = 0;
+    NVIC_IPR(C_OSC.irq)     = 16;
+    NVIC_IPR(C_CONTROL.irq) = 32;
+    infof("pri: pdm     %d\n", NVIC_IPR(C_PDM.irq));
+    infof("pri: osc     %d\n", NVIC_IPR(C_OSC.irq));
+    infof("pri: control %d\n", NVIC_IPR(C_CONTROL.irq));
 
-    infof("C_CONTROL.div = %d\n", C_CONTROL.div);
+    //infof("C_CONTROL.div = %d\n", C_CONTROL.div);
 
 }
 void stop(void) {

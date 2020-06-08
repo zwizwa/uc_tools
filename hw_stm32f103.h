@@ -1127,12 +1127,12 @@ INLINE void hw_usart1_send_flush(void)     { hw_usart_send_flush(USART1); }
 */
 struct hw_exti {
     uint32_t rcc_gpio;
-    uint32_t nvic_irq;
+    uint32_t irq;
     uint32_t pin;
     uint32_t gpio;
     uint32_t trigger;
 };
-//                      rcc_gpio   nvic_irq            pin  gpio   trigger
+//                      rcc_gpio   irq                 pin  gpio   trigger
 #define HW_EXTI_A0_B  { RCC_GPIOA, NVIC_EXTI0_IRQ,      0,  GPIOA, EXTI_TRIGGER_BOTH }  // ext0_isr()
 #define HW_EXTI_B15_B { RCC_GPIOB, NVIC_EXTI15_10_IRQ, 15,  GPIOB, EXTI_TRIGGER_BOTH }  // ext15_10_isr()
 
@@ -1142,8 +1142,8 @@ struct hw_exti {
 INLINE void hw_exti_init(struct hw_exti c) {
     rcc_periph_clock_enable(c.rcc_gpio);
     rcc_periph_clock_enable(RCC_AFIO);
-    //nvic_set_priority(c.nvic_irq, 1);
-    nvic_enable_irq(c.nvic_irq);
+    //nvic_set_priority(c.irq, 1);
+    nvic_enable_irq(c.irq);
 }
 INLINE void hw_exti_arm(struct hw_exti c) {
     uint32_t exti = 1 << c.pin;
@@ -1160,6 +1160,50 @@ INLINE void hw_exti_ack(struct hw_exti c) {
     *hw_bitband(&EXTI_EMR, c.pin) = 0; // rmw
     EXTI_PR = 1 << c.pin; // w
 }
+
+
+
+/* ---------------------------------------------------------------------
+   hw_swi_* : EXTIx software events
+   - init:   one time initialization, call before start
+   - arm:    call from anywhere, enables trigger
+   - ack:    call from exti6_isr()
+
+   Note that pin edge events in hw_exti_* can also be triggered
+   manually, but for pure software interrupts that do not have an
+   external pin associated, we provide a separate construct.
+
+*/
+struct hw_swi {
+    uint32_t irq;
+    uint32_t pin;
+};
+
+//                  irq                 pin
+#define HW_SWI_0  { NVIC_EXTI0_IRQ,      0 }  // ext0_isr()
+#define HW_SWI_1  { NVIC_EXTI1_IRQ,      1 }  // ext1_isr()
+#define HW_SWI_15 { NVIC_EXTI15_10_IRQ, 15 }  // ext15_10_isr()
+
+// Note that 5-9 and 10-15 use shared interrupts.
+
+INLINE void hw_swi_init(struct hw_swi c) {
+    nvic_enable_irq(c.irq);
+}
+INLINE void hw_swi_arm(struct hw_swi c) {
+    uint32_t exti = 1 << c.pin;
+    exti_enable_request(exti);
+}
+INLINE void hw_swi_ack(struct hw_swi c) {
+    /* FIXME: This was in the hw_exti_ code when I copied it to
+       hw_swi_, but I can't explain it.  Why is this EMR write
+       necessary?  Doesn't that mask setting disable interrupts? */
+    *hw_bitband(&EXTI_EMR, c.pin) = 0; // rmw
+    EXTI_PR = 1 << c.pin; // w
+}
+INLINE void hw_swi_trigger(struct hw_swi c) {
+    *hw_bitband(&EXTI_SWIER, c.pin) = 1; // rmw
+}
+
 
 
 

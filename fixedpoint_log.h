@@ -57,7 +57,8 @@ static inline uint32_t feynman_nlog_5_27(
     const uint32_t point = 5;
     const uint32_t one = 1 << (32 - point);
 
-    /* Clip gracefully near the pole to the max value. */
+    /* Clip gracefully near the pole to the max value to make this
+     * function total. */
     if (arg <= 2) return (31 * one);
 
     /* Scale argument to max out mantissa. */

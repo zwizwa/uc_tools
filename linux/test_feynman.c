@@ -33,7 +33,9 @@ void init_table(void) {
 
 void test(double x) {
     //double scaled_x = ((double)0x100000000);
-    printf("%f %f %f\n", x, log2(x), log2_(x));
+    double l  = log2(x);
+    double l_ = log2_(x);
+    printf("%f %f %f %f\n", x, l, l_, l_-l);
 }
 
 void at_limit(uint32_t arg) {

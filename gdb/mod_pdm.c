@@ -147,6 +147,8 @@ uint32_t safe_setpoint(uint32_t setpoint) {
 static inline void     pdm_update(void);
 static inline uint32_t pwm_update(void);
 
+static inline void     control_trigger(void);
+
 /* Don't use TIM2. It interacts badly with Flash programming. */
 #define TIM_PDM      3
 #define TIM_CONTROL  4
@@ -176,6 +178,9 @@ volatile uint32_t pwm_phase = 0;
 volatile uint32_t pwm_speed = 256 * 13;
 #define PHASE_MASK 0xFFFFFF
 
+#define CONTROL_DIV 256
+uint32_t control_div_count = 0;
+
 static inline uint32_t pwm_update(void) {
     // FIXME: Currently this is just a SAW, but it should be the
     // FM/Wavetable part.
@@ -194,6 +199,14 @@ void HW_TIM_ISR(TIM_PDM)(void) {
     uint32_t val = pwm_update();
     hw_clockgen_duty(C_PDM, val);
 
+    if (control_div_count == 0) {
+        /* Swap buffers: previously computed control values are now
+           used in main PDM/PWM interrupt, and the control interrupt
+           can start a new update. */
+        // FIXME
+        control_trigger();
+    }
+    control_div_count = (control_div_count + 1) % CONTROL_DIV;
     hw_gpio_low(PDM_CPU_USAGE_MARK);
 }
 
