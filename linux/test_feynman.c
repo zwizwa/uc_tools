@@ -15,11 +15,11 @@ uint32_t table[N];
 double log2(double x) {
     return log(x)/log(2.0);
 }
-double log2_(double x) {
-    double argument = x * FEYNMAN_ONE;
-    uint32_t headroom = 8;
-    int32_t log = feynman_log(table, N, headroom, argument);
-    return ((double)log) / (0x100000000 >> headroom);
+#define SCALE(shift) ((double)(0x100000000ULL >> shift))
+double log2_(double x) { /* x < 0 */
+    double arg = x * SCALE(0);
+    uint32_t log = feynman_nlog_5_27(table, N, arg);
+    return -((double)log) / SCALE(5);
 }
 
 void init_table(void) {
@@ -36,12 +36,28 @@ void test(double x) {
     printf("%f %f %f\n", x, log2(x), log2_(x));
 }
 
+void at_limit(uint32_t arg) {
+    uint32_t log = feynman_nlog_5_27(table, N, arg);
+    double limit = -((double)log) / SCALE(5);
+    printf("limit %d -> %ff\n", arg, limit);
+}
 
 int main(void) {
     printf("feynman\n");
     init_table();
-    for (double d = 0.001; d < 4; d *= 1.1) {
+    for (double d = 0.0000000001; d < 1.0; d *= 1.123456789) {
         test(d);
     }
 
+    /* Also test the extreme points. */
+    at_limit(0);
+    at_limit(1);
+    at_limit(2);
+    at_limit(3);
+
+    /* This is a ball park figure: 20Hz-20kHz measured with 72MHz
+       cycle counter.  Wich is interestingly smack int the middle of
+       the useful range. */
+    at_limit(72000000 / 20000);
+    at_limit(72000000 / 20);
 }
