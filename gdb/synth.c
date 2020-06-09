@@ -24,8 +24,7 @@
 
 #define FOR_PARAMETERS(p) \
     p(0, uint32, osc_setpoint, (15 << 27), "Main oscillator setpoint, in 5.27 nlog2(period_cycles)") \
-    p(1, uint32, osc_glide,    0x00100000, "Main oscillator regulator gain, 0.32 fixed point, units: measurement/control") \
-    p(2, uint32, osc_mfilter,  0x01000000, "Main oscillator measurement anit-aliasing filter pole 0.32 fixed point") \
+
 
 union types {
     uint32_t uint32;
@@ -112,6 +111,37 @@ static inline void init_subosc(void) {
     hw_gpio_config(SUBOSC_GPIO, HW_GPIO_CONFIG_OUTPUT);
 }
 
+struct period_measurement {
+    /* Config */
+    uint32_t log_max; // max = 1<<log_max
+
+    /* User state */
+    uint32_t write;   // low bit points to current measurement
+    uint32_t read;    // ..
+    uint32_t avg[2];  // last masurement with (32-log_max) fractional bits
+
+    /* For ISR only. */
+    uint32_t num;   // number of measurements
+    uint32_t accu;  // current sum
+};
+
+
+volatile struct period_measurement period_measurement = {
+    .log_max = 26, /* One second is about 1<26 cycles. */
+};
+void period_measurement_poll(void) {
+#if 0
+    volatile struct period_measurement *p = &period_measurement;
+    if (p->read != p->write) {
+        uint32_t read = ++p->read;
+        uint32_t avg = p->avg[read&1];
+        infof("period_avg: %d\n", avg);
+    }
+#endif
+}
+
+
+
 void exti0_isr(void) {
 
     /* CRITICAL CONSTANT LATENCY */
@@ -135,35 +165,43 @@ void exti0_isr(void) {
     uint32_t cc = cycle_counter();
 
 
-
     /* NON CRITICAL LATENCY */
 
-#if 0
-    /* Do not do any filtering here.  Write the current measurement,
-       and do other computations in the control loop. */
-
- // FIXME: probably this is not necessary.
-    osc_period = cc - last_cc;
-#else
-    /* New measurement is the elapsed time since last capture. */
-    int32_t measurement = cc - last_cc;
-
-    /* We filter that using a first order filter.  Note that this is
-       updated at the oscillator's current rate, so the filter time
-       constant in real time depends on the frequency of the
-       oscillator. */
-    int32_t estimate = osc_period;
-    int32_t coef = (osc_mfilter.uint32 >> 1);
-    int32_t diff = measurement - estimate;
-    int32_t update = (I64(coef) * I64(diff)) >> 31;
-    estimate += update;
-
-    /* Save state */
-    osc_period = estimate;
-#endif
-
+    /* Current period measurement. */
+    uint32_t meas = cc - last_cc;
     last_cc = cc;
-    nb_pulses++;
+
+
+    /* Update average.  The oscillator is quite unstable, so we need
+       to measure for a long time if we want a good reading (e.g. for
+       about a second).  */
+    volatile struct period_measurement *p = &period_measurement;
+    uint32_t accu = p->accu;
+    uint32_t accu1 = accu + meas;
+    uint32_t log_max = p->log_max;
+    uint32_t max = 1 << log_max;
+    if (accu1 < max) {
+        p->num++;
+        p->accu = accu1;
+    }
+    else {
+        /* Double buffering is used to pass data to the low rate task.
+           It can sync on p->sync changing and pick up
+           p->avg[p->sync]. */
+        uint32_t write = p->write + 1;
+        uint32_t avg = (accu << (32-log_max)) / p->num;
+        p->avg[write & 1] = avg;
+        p->write = write;
+        p->num = 1;
+        p->accu = meas;
+    }
+
+    /* Note that it took a while to realize that there are two
+       problems to solve: calibration of static components, and
+       compensation of temperature variations.  The temperature
+       variations are slow, so we can use a fairly slow control
+       algorithm for that, which allows us to focus on taking our time
+       to get precise measurements. */
 }
 
 void init_osc_in(void) {
@@ -189,58 +227,6 @@ volatile uint32_t log_period;
 
 /* Interrupt context so it can pre-empt the main loop. */
 void control_update(void) {
-    /* 5.27 negative fixed point base 2 log. */
-
-    // FIXME: 1. double buffer the pdm setpoint, 2. do linear
-    // interpolation of the actual set point.
-
-    /* We regulate the log_period to the setpoint using a linear
-       integrating regulator.
-
-       The basic first order integrating control algorithm is:
-
-          c += g e
-          e  = s - m
-
-       Where:
-
-          c   control input        (channel[0].setpoint)
-          g   loop gain            (osc_glide)
-          e   error signal         (error)
-          s   setpoint             (osc_setpoint)
-          m   output measurement   (osc_measurement)
-
-
-       The measurement and setpoint ar in 5.27 negative fixed point
-       base 2 log.  The log operation ensures that the relationship
-       between the control and measurement is roughly linear.  Any
-       remaining non-linearity can be handled by the feedback.
-
-       There are a couple of inversions in the control and feedback
-       chain:
-
-       - setpoint: inc
-       - 74HC14 inverting buffer: dec
-       - saw frequency: dec
-       - saw period: inc
-       - perod nlog2: dec
-
-       So from setpoint to nlog2 we have an inversion.  Expressing the
-       algorithm in standard form where the measurement has a minus
-       sign, we need to add another minus sign in the loop to
-       compensate for the extra inversion, e.g. "-="
-
-       The control pole is in 0.32 form, but we perform 1.31 signed
-       arithmetic because the error is signed, so it is shifted by
-       one.
-    */
-
-    uint32_t osc_measurement = nlog2(osc_period);
-    int32_t e = osc_setpoint.uint32 - osc_measurement;
-    int32_t g = osc_glide.uint32 >> 1;
-    int32_t g_e = (I64(g) * I64(e)) >> 31;
-    channel[0].setpoint -= g_e;
-
     /* Signal synchronous main loop task. */
     if ((control_count % BEAT_DIV) == 0) {
         beat_pulse++;
@@ -399,6 +385,7 @@ void start(void) {
 
     /* Main loop tasks. */
     _service.add(beat_poll);
+    _service.add(period_measurement_poll);
 
     /* Smaller values mean higher priorities.  STM32F103 strips the
        low 4 bits, so these have increments of 16.  Print the actual
