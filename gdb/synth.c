@@ -20,6 +20,43 @@
 #include <string.h>
 
 
+/* CONFIGURATION */
+
+#define FOR_PARAMETERS(p) \
+    p(0, uint32, osc_setpoint, (15 << 27), "Main oscillator setpoint, in 5.27 nlog2(period_cycles)") \
+    p(1, uint32, osc_glide,    0x00100000, "Main oscillator regulator gain, 0.32 fixed point, units: measurement/control") \
+    p(2, uint32, osc_mfilter,  0x01000000, "Main oscillator measurement anit-aliasing filter pole 0.32 fixed point") \
+
+union types {
+    uint32_t uint32;
+};
+#define DEF_PARAMETER(_num, _type, _name, _init, _info) \
+    volatile union types _name = { ._type = _init };
+FOR_PARAMETERS(DEF_PARAMETER)
+
+struct parameter_info {
+    const char *type;
+    const char *name;
+    const char *info;
+    union types init;
+    volatile union types *data;
+    uint32_t size;
+};
+struct parameter_info parameter_info[] = {
+#define DEF_PARAMETER_INFO(_num, _type, _name, _init, _info)            \
+    [_num] = {                                                          \
+        .type = #_type,                                                 \
+        .name = #_name,                                                 \
+        .info = _info,                                                  \
+        .init._type = _init,                                            \
+        .data = &_name,                                                 \
+        .size = sizeof(_name)                                           \
+    },
+FOR_PARAMETERS(DEF_PARAMETER_INFO)
+};
+
+
+
 #include "mod_pdm.c"
 
 
@@ -40,6 +77,9 @@ KEEP int32_t ortho_test(int32_t input) {
     return fixedpoint_svf_update(&filter, input);
 }
 #endif
+
+
+
 
 
 
@@ -98,7 +138,7 @@ void exti0_isr(void) {
 
     /* NON CRITICAL LATENCY */
 
-#if 1
+#if 0
     /* Do not do any filtering here.  Write the current measurement,
        and do other computations in the control loop. */
 
@@ -106,20 +146,20 @@ void exti0_isr(void) {
     osc_period = cc - last_cc;
 #else
     /* New measurement is the elapsed time since last capture. */
-    uint32_t osc_period_new = cc - last_cc;
+    int32_t measurement = cc - last_cc;
 
     /* We filter that using a first order filter.  Note that this is
-       updated at the oscillator's current rate, so the filter pole
-       depends on the frequency of the oscillator. */
-    uint32_t osc_period_estimate = osc_period;
-    uint32_t coef = 0xFF000000ULL;
-    osc_period_estimate =
-        fixedpoint_mul(coef,  osc_period_estimate) +
-        fixedpoint_mul(~coef, osc_period_new);
-    // FIXME: create a signed multiplication
+       updated at the oscillator's current rate, so the filter time
+       constant in real time depends on the frequency of the
+       oscillator. */
+    int32_t estimate = osc_period;
+    int32_t coef = (osc_mfilter.uint32 >> 1);
+    int32_t diff = measurement - estimate;
+    int32_t update = (I64(coef) * I64(diff)) >> 31;
+    estimate += update;
 
     /* Save state */
-    osc_period = osc_period_estimate;
+    osc_period = estimate;
 #endif
 
     last_cc = cc;
@@ -150,12 +190,61 @@ volatile uint32_t log_period;
 /* Interrupt context so it can pre-empt the main loop. */
 void control_update(void) {
     /* 5.27 negative fixed point base 2 log. */
-    log_period = nlog2(osc_period);
 
+    // FIXME: 1. double buffer the pdm setpoint, 2. do linear
+    // interpolation of the actual set point.
+
+    /* We regulate the log_period to the setpoint using a linear
+       integrating regulator.
+
+       The basic first order integrating control algorithm is:
+
+          c += g e
+          e  = s - m
+
+       Where:
+
+          c   control input        (channel[0].setpoint)
+          g   loop gain            (osc_glide)
+          e   error signal         (error)
+          s   setpoint             (osc_setpoint)
+          m   output measurement   (osc_measurement)
+
+
+       The measurement and setpoint ar in 5.27 negative fixed point
+       base 2 log.  The log operation ensures that the relationship
+       between the control and measurement is roughly linear.  Any
+       remaining non-linearity can be handled by the feedback.
+
+       There are a couple of inversions in the control and feedback
+       chain:
+
+       - setpoint: inc
+       - 74HC14 inverting buffer: dec
+       - saw frequency: dec
+       - saw period: inc
+       - perod nlog2: dec
+
+       So from setpoint to nlog2 we have an inversion.  Expressing the
+       algorithm in standard form where the measurement has a minus
+       sign, we need to add another minus sign in the loop to
+       compensate for the extra inversion, e.g. "-="
+
+       The control pole is in 0.32 form, but we perform 1.31 signed
+       arithmetic because the error is signed, so it is shifted by
+       one.
+    */
+
+    uint32_t osc_measurement = nlog2(osc_period);
+    int32_t e = osc_setpoint.uint32 - osc_measurement;
+    int32_t g = osc_glide.uint32 >> 1;
+    int32_t g_e = (I64(g) * I64(e)) >> 31;
+    channel[0].setpoint -= g_e;
+
+    /* Signal synchronous main loop task. */
     if ((control_count % BEAT_DIV) == 0) {
         beat_pulse++;
     }
-
     control_count++;
 }
 
@@ -167,12 +256,7 @@ void beat_poll(void) {
     }
 }
 
-
-
-#if 1
-
 /* Use a software interrupt triggered as a subdiv from pwm/pdm interrupt. */
-
 const struct hw_swi hw_control = HW_SWI_1;
 #define C_CONTROL hw_control
 
@@ -185,64 +269,10 @@ void init_control(void) {
     hw_swi_arm(C_CONTROL);
 }
 
-#else
-
-/* It seems simplest to run synchronous regulator and control code
-   from a lower priority timer interrupt, and only use the lowest
-   priority main loop for communication.  */
-
-// FIXME: something is not right here...
-#define CONTROL_DIV (72000 / 2)
-
-static const struct hw_periodic hw_control_config[] = {
-//          rcc       irq            tim   div          pre
-//---------------------------------------------------------
-    [3] = { RCC_TIM3, NVIC_TIM3_IRQ, TIM3, CONTROL_DIV, 1 },
-    [4] = { RCC_TIM4, NVIC_TIM4_IRQ, TIM4, CONTROL_DIV, 1 },
-    [5] = { RCC_TIM5, NVIC_TIM5_IRQ, TIM5, CONTROL_DIV, 1 },
-};
-
-#define C_CONTROL hw_control_config[TIM_CONTROL]
-
-
-
-void HW_TIM_ISR(TIM_CONTROL)(void) {
-    hw_periodic_ack(C_CONTROL);
-    control_update();
-}
-void init_control(void) {
-    /* Use another timer for the control loop, running at lower priority. */
-    hw_periodic_init(C_CONTROL);
-}
-#endif
 
 
 /* COMMUNICATION */
 
-#define FOR_PARAMETERS(p) \
-    p(0, uint32, period_cyc, 72*1000*10, "Period in CPU cycles") \
-    p(1, uint32, glide_0p32, 0x10000000, "Period regulator pole, 0.32 fixed point") \
-
-union types {
-    uint32_t uint32;
-};
-#define DEF_PARAMETER(_num, _type, _name, _init, _info) \
-    union types _name = { ._type = _init };
-FOR_PARAMETERS(DEF_PARAMETER)
-
-struct parameter_info {
-    const char *type;
-    const char *name;
-    const char *info;
-    union types *data;
-    uint32_t size;
-};
-struct parameter_info parameter_info[] = {
-#define DEF_PARAMETER_INFO(_num, _type, _name, _init, _info)    \
-    [_num] = {.type = #_type, .name = #_name, .info = _info,    \
-              .data = &_name, .size = sizeof(_name)  },
-FOR_PARAMETERS(DEF_PARAMETER_INFO)
-};
 
 void set_parameter(uint32_t index, void *buf, uint32_t len) {
     if (index >= ARRAY_SIZE(parameter_info)) {

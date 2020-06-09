@@ -90,8 +90,9 @@ void cbuf_write_slip(struct cbuf *b, uint8_t *buf, uint32_t len) {
 void cbuf_write_slip_slices(struct cbuf *b, const struct slice *slice, uint32_t n_slices) {
     cbuf_put(b, SLIP_END);
     for(uint32_t s=0; s<n_slices; s++) {
+        const uint8_t *buf = slice[s].buf;
         for(uint32_t i=0; i<slice[s].len; i++) {
-            cbuf_put_slip(b, slice[s].buf[i]);
+            cbuf_put_slip(b, buf[i]);
         }
     }
     cbuf_put(b, SLIP_END);

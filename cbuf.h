@@ -196,7 +196,7 @@ void cbuf_write_slip(struct cbuf *b, uint8_t *buf, uint32_t len);
 
 
 struct slice {
-    const uint8_t *buf;
+    const void *buf;
     uint32_t len;
 };
 void cbuf_write_slip_slices(struct cbuf *b, const struct slice *buf, uint32_t n_slices);
