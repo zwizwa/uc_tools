@@ -120,7 +120,13 @@ static void assert_write(int fd, uint8_t *buf, uint32_t len) {
     uint32_t written = 0;
     while(written < len) {
         int rv;
-        ASSERT((rv = write(fd, buf, len)) > 0);
+        while ((rv = write(fd, buf, len)) <= 0) {
+            /* FIXME: i/o is still non-blocking.  I don't remember why
+               this was, because in theory the poll() should ensure we
+               never end up in a blocking read. */
+            ERROR("write(%d,%p,%d) == %d, errno=%d, strerror=\"%s\"\n",
+                         fd,buf,len,  rv, errno,    strerror(errno));
+        }
         written += rv;
     }
 }
@@ -244,7 +250,10 @@ struct port *port_open_udp(uint16_t port) {
    support multiple framing protocols. */
 static void fd_open_tty(int *pfd, const char *dev) {
     int fd;
+
+    // FIXME: Explain why this should be non-blocking?
     ASSERT_ERRNO(fd = open(dev, O_RDWR | O_NONBLOCK));
+    // ASSERT_ERRNO(fd = open(dev, O_RDWR));
 
     struct termios2 tio;
     ASSERT(0 == ioctl(fd, TCGETS2, &tio));

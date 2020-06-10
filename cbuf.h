@@ -10,10 +10,16 @@
 /* Control codes. */
 #define CBUF_EAGAIN ((uint16_t)0x100)
 
+/* Only one word, much less headache.  Maybe enable by default? */
+#define CBUF_WATERMARK 1
+
 struct cbuf {
     volatile uint32_t write;
     volatile uint32_t read;
     uint32_t mask;
+#ifdef CBUF_WATERMARK
+    volatile uint32_t watermark;
+#endif
     volatile uint8_t *buf;
 };
 
@@ -89,6 +95,12 @@ static inline int cbuf_empty(struct cbuf *b) {
 static inline int cbuf_full(struct cbuf *b) {
     return b->mask == cbuf_bytes(b);
 }
+static inline void cbuf_update_watermark(struct cbuf *b) {
+#if CBUF_WATERMARK
+    uint32_t bytes = cbuf_bytes(b);
+    if (bytes > b->watermark) b->watermark = bytes;
+#endif
+}
 static inline uint16_t cbuf_peek(struct cbuf *b, uint32_t offset) {
     if (offset >= cbuf_bytes(b)) return CBUF_EAGAIN;
     return b->buf[cbuf_wrap(b, b->read + offset)];
@@ -102,6 +114,13 @@ static inline void cbuf_clear(struct cbuf *b) {
     cbuf_drop(b, 0xFFFFFFFF);
 }
 
+/* For last resort unhandled overflow debugging... */
+#define DEBUG_OVERFLOW 0
+
+#if DEBUG_OVERFLOW
+#include "infof.h"
+#endif
+
 #define CBUF_V2 1
 #if CBUF_V2
 /* Write is a transaction.  Everything or nothing gets written. */
@@ -111,11 +130,17 @@ static inline uint32_t cbuf_write(struct cbuf *b, const uint8_t *buf, uint32_t l
     uint32_t bytes = write - read;
     uint32_t mask  = b->mask;
     uint32_t room  = mask - bytes;
-    if (len > room) return 0;
+    if (len > room) {
+#if DEBUG_OVERFLOW
+        infof("cbuf_write overflow %p %p %d %d\n", b, buf, len, room);
+#endif
+        return 0;
+    }
     for (uint32_t i=0; i<len; i++) {
         b->buf[(write+i) & mask] = buf[i];
     }
     b->write = write + len;
+    cbuf_update_watermark(b);
     return len;
 }
 /* Reads can't just be transactions as we don't know the size, so
@@ -157,6 +182,7 @@ static inline void cbuf_put(struct cbuf *b, uint8_t byte) {
         b->buf[cbuf_wrap(b, write)] = byte;
         b->write = write+1;
     }
+    update_watermark(b);
 }
 static inline void cbuf_write(struct cbuf *b, const uint8_t *buf, uint32_t len) {
     for (uint32_t i=0; i<len; i++) {
@@ -200,6 +226,23 @@ struct slice {
     uint32_t len;
 };
 void cbuf_write_slip_slices(struct cbuf *b, const struct slice *buf, uint32_t n_slices);
+
+/* It is otherwise such a pain... */
+#define CBUF_WRITE_2(b, buf0, buf1) {          \
+        struct slice slices[] = {              \
+            {.buf = buf0, .len = sizeof(buf0)} \
+            {.buf = buf1, .len = sizeof(buf1)} \
+        };                                     \
+        cbuf_write_slip_slices(b, slices, 2);  \
+    }
+#define CBUF_WRITE_3(b, buf0, buf1, buf2) { \
+        struct slice slices[] = {               \
+            {.buf = buf0, .len = sizeof(buf0)}  \
+            {.buf = buf1, .len = sizeof(buf1)}  \
+            {.buf = buf2, .len = sizeof(buf2)}  \
+        };                                      \
+        cbuf_write_slip_slices(b, slices, 3);   \
+    }
 
 void cbuf_write_slip_tagged(struct cbuf *b, uint16_t tag, const uint8_t *buf, uint32_t len);
 

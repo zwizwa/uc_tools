@@ -73,4 +73,12 @@
 
 */
 
+/* TAG_REPLY implements RPC replies.
+   This works as follows:
+
+   A request can embed an opaque return address.  A reply is then
+   constructed by appending TAG_REPLY, the return address, and any
+   payload message.
+*/
+
 #endif

@@ -8,11 +8,16 @@
 #include "cbuf.h"
 #include "byteswap.h"
 
+#define PBUF_WATERMARK 1
+
 /* Generic packet buffer. */
 struct pbuf {
     uint32_t count;  /* Number of valid bytes in buffer */
     uint32_t size;   /* Total allocated size of buffer */
     uint8_t *buf;
+#ifdef PBUF_WATERMARK
+    uint32_t watermark;
+#endif
 };
 #define PBUF_INIT_FROM_BUF(b) { .buf = &b[0], .size = sizeof(b), .count = sizeof(b) }
 
@@ -32,6 +37,11 @@ static inline void pbuf_clear(struct pbuf *p) {
     pbuf_init(p, p->buf, p->size);
 }
 
+static inline void pbuf_update_watermark(struct pbuf *p) {
+#if PBUF_WATERMARK
+    if (p->count > p->watermark) p->watermark = p->count;
+#endif
+}
 
 /* Initialize with statically allocated buffer with _buf postfix. */
 #define PBUF_INIT(name) pbuf_init(&name, &name##_buf[0], sizeof(name##_buf))
@@ -40,6 +50,7 @@ static inline void pbuf_put(struct pbuf *p, uint8_t c) {
     if (p->count < p->size) {
         p->buf[p->count++] = c;
     }
+    pbuf_update_watermark(p);
 }
 static inline void pbuf_write(struct pbuf *p, const uint8_t *buf, uint32_t len) {
     for(uint32_t i=0; i<len; i++) {

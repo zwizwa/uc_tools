@@ -993,6 +993,12 @@ INLINE int hw_usart_send_ready_interrupt_enabled(uint32_t usart) {
         return !!(USART_CR1(usart) & USART_CR1_TXEIE);
 }
 
+/* Note on baud divisors:
+   USART1 wrt. APB2 @72Mhz
+   USART3 wrt. APB1 @36Mhz
+*/
+
+
 
 INLINE void hw_usart1_config(uint32_t div, int interrupt) {
 
@@ -1012,6 +1018,26 @@ INLINE void hw_usart1_config(uint32_t div, int interrupt) {
     else             hw_usart_disable_rx_interrupt(USART1);
     hw_usart_enable(USART1);
 }
+
+INLINE void hw_usart_config(uint32_t usart, uint32_t div, int interrupt) {
+
+    hw_usart_disable(usart);
+    hw_usart_set_databits(usart, 8);
+    hw_usart_set_stopbits(usart, USART_STOPBITS_1);
+    hw_usart_set_mode(usart, USART_MODE_TX_RX);
+    hw_usart_set_parity(usart, USART_PARITY_NONE);
+    hw_usart_set_flow_control(usart, USART_FLOWCONTROL_NONE);
+
+    // usart_set_baudrate(USART1, 115200);
+    // UART1 is clocked with PCLK2 @72MHz
+    // lower than BRR=16 doesn't work
+    USART_BRR(usart) = div;
+
+    if (interrupt&1) hw_usart_enable_rx_interrupt(usart);
+    else             hw_usart_disable_rx_interrupt(usart);
+    hw_usart_enable(usart);
+}
+
 
 // Do this before being able to use TIM1_CH2 in PA9
 INLINE void hw_usart1_off(void) {
@@ -1054,8 +1080,7 @@ INLINE void hw_usart3_init(void) {
     hw_gpio_config(GPIOB, 10, HW_GPIO_CONFIG_ALTFN); // USART3_TX
     hw_gpio_config(GPIOB, 11, HW_GPIO_CONFIG_INPUT); // USART3_RX
 
-    //hw_usart1_3M();
-    hw_usart1_115k2();
+    hw_usart_config(USART3, 625, 0); // 115200 Baud, interrupt disable.
 }
 
 // FIXME: only use getchar (error checking)

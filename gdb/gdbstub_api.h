@@ -73,6 +73,8 @@ struct gdbstub_service {
     struct gdbstub_io          rsp_io;     // access GDB RSP state machine (1)
     struct gdbstub_io const ** io;         // current serial port connection (2)
     struct gdbstub*            stub;       // bootloader's GDB RSP stub state
+    void*                      stack_lo;   // low and high address of stack space
+    void*                      stack_hi;
 };
 /* Instance is stored in Flash - see stm32f1.ld */
 extern const struct gdbstub_service _service;

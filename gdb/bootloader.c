@@ -61,6 +61,8 @@ void bootloader_write(const uint8_t *buf, uint32_t size) {
 }
 
 /* Stored in Flash, fixed location.  See stm32f1.ld */
+extern uint8_t _ebss;
+extern uint8_t _stack;
 const struct gdbstub_service service SERVICE_SECTION = {
     .add   = poll_add,
     .reset = poll_reset,
@@ -70,6 +72,8 @@ const struct gdbstub_service service SERVICE_SECTION = {
     },
     .io = &io,
     .stub = &bootloader_stub,
+    .stack_lo = &_ebss,
+    .stack_hi = &_stack,
 };
 
 /* Connect serial port to the GDB RSP state machine. */

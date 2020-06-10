@@ -22,4 +22,11 @@ static inline uint32_t cycle_counter(void) {
 }
 
 
+
+/* Run once every <time> cycles.  Needs a uint32_t state var. */
+#define CYCLE_COUNTER_PERIODIC(state, time) \
+    for(uint32_t _cc_cur = cycle_counter(); \
+        (_cc_cur - (state)) > (time); \
+        (state) = _cc_cur)
+
 #endif

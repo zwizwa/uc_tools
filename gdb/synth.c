@@ -129,17 +129,42 @@ struct period_measurement {
 volatile struct period_measurement period_measurement = {
     .log_max = 26, /* One second is about 1<26 cycles. */
 };
+
+/* This buffer stores continuations for reply messages.  E.g. pids of
+   waiting erlang tasks.  An Erlang pid is 27 bytes, plus one byte for
+   the size.  So this can fit two pids. */
+struct cbuf measurement_wait; uint8_t measurement_wait_buf[64]; // FIXME
+
 void period_measurement_poll(void) {
 #if 0
     volatile struct period_measurement *p = &period_measurement;
+
     if (p->read != p->write) {
+        // FIXME: make sure they are equal after incrementing.  The
+        // buffer is only one deep so other variables are not valid.
         uint32_t read = ++p->read;
         uint32_t avg = p->avg[read&1];
         infof("period_avg: %d\n", avg);
+
+        /* Poll the waiter queue. */
+        struct cbuf *b = &measurement_wait;
+        if (cbuf_bytes(b)) {
+            uint8_t len = cbuf_read(b);
+            if (cbuf_bytes(b) >= len) {
+                uint8_t h[] = { U16_BE(TAG_REPLY) };
+                uint8_t k[len]; cbuf_read(b, k, len);
+                uint8_t a[] = { U16_BE(avg) };
+                CBUF_WRITE_3(b, h, k, a);
+            }
+            else {
+                infof("bad measurement_wait size. clearing.\n");
+                cbuf_clear(b);
+            }
+        }
+
     }
 #endif
 }
-
 
 
 void exti0_isr(void) {
@@ -186,8 +211,8 @@ void exti0_isr(void) {
     }
     else {
         /* Double buffering is used to pass data to the low rate task.
-           It can sync on p->sync changing and pick up
-           p->avg[p->sync]. */
+           It can sync on p->write changing and pick up
+           p->avg[p->write & 1]. */
         uint32_t write = p->write + 1;
         uint32_t avg = (accu << (32-log_max)) / p->num;
         p->avg[write & 1] = avg;
@@ -208,6 +233,7 @@ void init_osc_in(void) {
     /* External input interrupt for discharge pulse.  This needs to be
        lower priority than the PDM because it will cause modulation
        effects. */
+    CBUF_INIT(measurement_wait);
     enable_cycle_counter();
     hw_exti_init(C_OSC);
     hw_exti_arm(C_OSC);
@@ -285,6 +311,24 @@ int handle_tag_u32(void *context,
     if (nb_args < 1) return -1;
     switch(arg[0]) {
         /* Ad hoc */
+    case 1: // MODE
+        //  bp2 ! {send_packet, <<16#FFF50002:32, 1:32, 1:32}.
+        if (nb_args < 2) return -1;
+        if (arg[1]) { pdm_start(); }
+        else        { pdm_stop(); }
+        return 0;
+    case 2: { // SETPOINT
+        struct { uint32_t cmd; uint32_t chan; uint32_t val; } *a = (void*)arg;
+        if (nb_args < 3) return -1;
+        if (a->chan >= NB_CHANNELS) return -2;
+        channel[a->chan].setpoint = safe_setpoint(a->val);
+        infof("setpoint[%d] = %x\n", a->chan, channel[a->chan].setpoint);
+        return 0;
+    }
+    case 3: {
+        // FIXME: queue continuation into measurement_wait
+        return 0;
+    }
     case 101: { // TEST_UPDATE
         // bp2 ! {send_u32, [101, 1000000000, 1,2,3]}.
         if (nb_args > 1 + NB_CHANNELS) return -1;
@@ -308,21 +352,6 @@ int handle_tag_u32(void *context,
         infof("last_cc:    %d\n", last_cc);
         return 0;
     }
-    case 1: // MODE
-        //  bp2 ! {send_packet, <<16#FFF50002:32, 1:32, 1:32}.
-        if (nb_args < 2) return -1;
-        if (arg[1]) { pdm_start(); }
-        else        { pdm_stop(); }
-        return 0;
-    case 2: { // SETPOINT
-        struct { uint32_t cmd; uint32_t chan; uint32_t val; } *a = (void*)arg;
-        if (nb_args < 3) return -1;
-        if (a->chan >= NB_CHANNELS) return -2;
-        channel[a->chan].setpoint = safe_setpoint(a->val);
-        infof("setpoint[%d] = %x\n", a->chan, channel[a->chan].setpoint);
-        return 0;
-    }
-
     default:
         infof("unknown tag_u32 command:");
         for (int i=0; i<nb_args; i++) { infof(" %d", arg[i]); }
@@ -336,10 +365,11 @@ int handle_tag_u32(void *context,
 void handle_tag(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
     infof("tag %d\n", tag);
     switch(tag) {
-    case 0: {
-        if (p->count < 4) {
-            infof("short packet\n");
-        }
+    case 0x0000: {
+        /* It's very convenient in Erlang to have parameters be 32 bit
+           big endian ints, as sending 123 to parameter 5 amounts to:
+           name ! {send_packet, <<5:32,123:32>>}. */
+        if (p->count < 4) { infof("short packet\n"); }
         else {
             uint32_t index = read_be(p->buf+2, 2);
             set_parameter(index, p->buf+4, p->count-4);
@@ -347,10 +377,11 @@ void handle_tag(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
         break;
     }
     case TAG_U32: {
+        /* Similarly, this has some wrapper support as well
+           name ! {send_u32, [101, 1000000000, 1,2,3]}. */
+
         int rv = tag_u32_dispatch(handle_tag_u32, NULL, p->buf, p->count);
-        if (rv) {
-            infof("tag_u32_dispatch returned %d\n", rv);
-        }
+        if (rv) { infof("tag_u32_dispatch returned %d\n", rv); }
         break;
     }
     default:
