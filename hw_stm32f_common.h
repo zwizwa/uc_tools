@@ -44,6 +44,7 @@
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/usb/usbd.h>
 #include <libopencm3/usb/cdc.h>
+#include <libopencm3/stm32/i2c.h>
 
 
 
@@ -211,13 +212,15 @@ INLINE volatile uint32_t *hw_bitband(volatile uint32_t *ptr, uint32_t bit) {
 */
 
 // Common uses:                             // CNF:2, MODE:2
-#define HW_GPIO_CONFIG_INPUT           0x4  // 0100 gpio input, floating
-#define HW_GPIO_CONFIG_INPUT_PULL      0x8  // 1000 gpio input, pullup/down  (ODR=pull_dir)
-#define HW_GPIO_CONFIG_OUTPUT          0x3  // 0011 gpio output, push-pull
-#define HW_GPIO_CONFIG_OUTPUT_2MHZ     0x2  // 0010 gpio output, push-pull, 2MHz
-#define HW_GPIO_CONFIG_ALTFN           0xB  // 1011 alternate function output, 50MHz
-#define HW_GPIO_CONFIG_ALTFN_2MHZ      0xA  // 1010 alternate function output, 2MHz
-#define HW_GPIO_CONFIG_OPEN_DRAIN_2MHZ 0x6  // 0110 open drain output, 2MHz
+#define HW_GPIO_CONFIG_INPUT            0x4  // 0100 gpio input, floating
+#define HW_GPIO_CONFIG_INPUT_PULL       0x8  // 1000 gpio input, pullup/down  (ODR=pull_dir)
+#define HW_GPIO_CONFIG_OUTPUT           0x3  // 0011 gpio output, push-pull
+#define HW_GPIO_CONFIG_OUTPUT_2MHZ      0x2  // 0010 gpio output, push-pull, 2MHz
+#define HW_GPIO_CONFIG_ALTFN            0xB  // 1011 alternate function output, 50MHz
+#define HW_GPIO_CONFIG_ALTFN_2MHZ       0xA  // 1010 alternate function output, 2MHz
+#define HW_GPIO_CONFIG_OPEN_DRAIN_2MHZ  0x6  // 0110 open drain output, 2MHz
+#define HW_GPIO_CONFIG_ALTFN_OPEN_DRAIN 0xF  // 1111 alternate function, open drain, 50MHz
+
 
 
 INLINE struct hw_delayed_write hw_gpio_config_dw(uint32_t gpio, uint32_t pin, uint32_t config) {
