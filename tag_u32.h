@@ -11,7 +11,11 @@
    constraints are imposed externally, but I've found that in 99% of
    ad-hoc cases, all I want is an array of u32 values plus some opaque
    payload.  This maps to C function calls in the most straightforward
-   way.  TAG_U32 is reserved in packet_tags.h */
+   way.  TAG_U32 is reserved in packet_tags.h
+
+   For RPC, the continuation can be embedded in the binary payload.
+   It doesn't seem appropriate to standardize that here.
+*/
 
 
 typedef int (*tag_u32_handle_fn)(

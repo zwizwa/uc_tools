@@ -24,7 +24,7 @@ static inline void write_be(uint8_t *buf, uint64_t word, uint32_t nb) {
 
 // Array splices with embedded commas
 #define U16_BE(t) ((t) >> 8), ((t) & 0xFF)
-#define U32_BE(t) (U16_BE((t) >> 16)), U16_BE((t) & 0xFFFF)
+#define U32_BE(t) U16_BE((t) >> 16), U16_BE((t) & 0xFFFF)
 
 
 // ---- SWAPPERS

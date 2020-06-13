@@ -228,20 +228,20 @@ struct slice {
 void cbuf_write_slip_slices(struct cbuf *b, const struct slice *buf, uint32_t n_slices);
 
 /* It is otherwise such a pain... */
-#define CBUF_WRITE_2(b, buf0, buf1) {          \
-        struct slice slices[] = {              \
-            {.buf = buf0, .len = sizeof(buf0)} \
-            {.buf = buf1, .len = sizeof(buf1)} \
-        };                                     \
-        cbuf_write_slip_slices(b, slices, 2);  \
+#define CBUF_WRITE_2(b, buf0, buf1) {           \
+        struct slice slices[] = {               \
+            {.buf = buf0, .len = sizeof(buf0)}, \
+            {.buf = buf1, .len = sizeof(buf1)}  \
+        };                                      \
+        cbuf_write_slip_slices(b, slices, 2);   \
     }
 #define CBUF_WRITE_3(b, buf0, buf1, buf2) { \
-        struct slice slices[] = {               \
-            {.buf = buf0, .len = sizeof(buf0)}  \
-            {.buf = buf1, .len = sizeof(buf1)}  \
-            {.buf = buf2, .len = sizeof(buf2)}  \
-        };                                      \
-        cbuf_write_slip_slices(b, slices, 3);   \
+        struct slice slices[] = {                \
+            {.buf = buf0, .len = sizeof(buf0)},  \
+            {.buf = buf1, .len = sizeof(buf1)},  \
+            {.buf = buf2, .len = sizeof(buf2)}   \
+        };                                       \
+        cbuf_write_slip_slices(b, slices, 3);    \
     }
 
 void cbuf_write_slip_tagged(struct cbuf *b, uint16_t tag, const uint8_t *buf, uint32_t len);

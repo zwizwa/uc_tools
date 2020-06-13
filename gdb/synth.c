@@ -22,14 +22,17 @@
 
 /* CONFIGURATION */
 
-#define FOR_PARAMETERS(p) \
-    p(0, uint32, osc_setpoint, (15 << 27), "Main oscillator setpoint, in 5.27 nlog2(period_cycles)") \
+/* Init is at the end here to allow non-scalar parameters.  Ideally,
+   code at the other end will use symbolic names, and not parameter
+   ids. */
 
+#define FOR_PARAMETERS(p) \
+    p(0, uint32,   osc_setpoint, "Main oscillator setpoint, in 5.27 nlog2(period_cycles)", (15 << 27)) \
 
 union types {
-    uint32_t uint32;
+    uint32_t   uint32;
 };
-#define DEF_PARAMETER(_num, _type, _name, _init, _info) \
+#define DEF_PARAMETER(_num, _type, _name, _info, _init) \
     volatile union types _name = { ._type = _init };
 FOR_PARAMETERS(DEF_PARAMETER)
 
@@ -42,7 +45,7 @@ struct parameter_info {
     uint32_t size;
 };
 struct parameter_info parameter_info[] = {
-#define DEF_PARAMETER_INFO(_num, _type, _name, _init, _info)            \
+#define DEF_PARAMETER_INFO(_num, _type, _name,  _info, _init)           \
     [_num] = {                                                          \
         .type = #_type,                                                 \
         .name = #_name,                                                 \
@@ -136,7 +139,7 @@ volatile struct period_measurement period_measurement = {
 struct cbuf measurement_wait; uint8_t measurement_wait_buf[64]; // FIXME
 
 void period_measurement_poll(void) {
-#if 0
+#if 1
     volatile struct period_measurement *p = &period_measurement;
 
     if (p->read != p->write) {
@@ -144,24 +147,40 @@ void period_measurement_poll(void) {
         // buffer is only one deep so other variables are not valid.
         uint32_t read = ++p->read;
         uint32_t avg = p->avg[read&1];
-        infof("period_avg: %d\n", avg);
+        (void)avg;
+        //infof("period_avg: %d\n", avg);
 
         /* Poll the waiter queue. */
         struct cbuf *b = &measurement_wait;
+        struct cbuf *o = slipstub.slip_out;
+
+#if 0
+        uint16_t w;
+        infof("cbuf:");
+        while (CBUF_EAGAIN != (w = cbuf_get(b))) {
+            infof(" %d", w);
+        }
+        infof("\n");
+#endif
+
+#if 1
         if (cbuf_bytes(b)) {
-            uint8_t len = cbuf_read(b);
-            if (cbuf_bytes(b) >= len) {
-                uint8_t h[] = { U16_BE(TAG_REPLY) };
-                uint8_t k[len]; cbuf_read(b, k, len);
-                uint8_t a[] = { U16_BE(avg) };
-                CBUF_WRITE_3(b, h, k, a);
-            }
-            else {
-                infof("bad measurement_wait size. clearing.\n");
+            uint16_t len  = cbuf_get(b);
+            uint32_t have = cbuf_bytes(b);
+            if (len < have) {
+                infof("bad measurement_wait size %d, %d. clearing.\n",
+                      cbuf_bytes(b), len);
                 cbuf_clear(b);
             }
+            else {
+                infof("sending measurement reply: avg=%d, cont=%d\n", avg, len);
+                uint8_t h[] = { U16_BE(TAG_REPLY) };
+                uint8_t k[len]; cbuf_read(b, k, len);
+                uint8_t a[] = { U32_BE(avg) };
+                CBUF_WRITE_3(o, h, k, a);
+            }
         }
-
+#endif
     }
 #endif
 }
@@ -286,6 +305,8 @@ void init_control(void) {
 /* COMMUNICATION */
 
 
+#if 0
+// FIXME: Remove?  This now uses TAG_U32
 void set_parameter(uint32_t index, void *buf, uint32_t len) {
     if (index >= ARRAY_SIZE(parameter_info)) {
         infof("%d: bad_param\n", index);
@@ -301,6 +322,7 @@ void set_parameter(uint32_t index, void *buf, uint32_t len) {
     pi->data->uint32 = val;
     infof("%d: %s = %d\n", index, pi->name, val);
 }
+#endif
 
 
 
@@ -310,14 +332,18 @@ int handle_tag_u32(void *context,
                    const uint8_t *bytes, uint32_t nb_bytes) {
     if (nb_args < 1) return -1;
     switch(arg[0]) {
-        /* Ad hoc */
-    case 1: // MODE
-        //  bp2 ! {send_packet, <<16#FFF50002:32, 1:32, 1:32}.
+
+        /* Ad hoc commands that do not fit the simple parameter table
+           structure. */
+
+    case 100: { // MODE
+        //  bp2 ! {send_packet, <<16#FFF50002:32, 100:32, 1:32}.
         if (nb_args < 2) return -1;
         if (arg[1]) { pdm_start(); }
         else        { pdm_stop(); }
         return 0;
-    case 2: { // SETPOINT
+    }
+    case 101: { // SETPOINT
         struct { uint32_t cmd; uint32_t chan; uint32_t val; } *a = (void*)arg;
         if (nb_args < 3) return -1;
         if (a->chan >= NB_CHANNELS) return -2;
@@ -325,10 +351,51 @@ int handle_tag_u32(void *context,
         infof("setpoint[%d] = %x\n", a->chan, channel[a->chan].setpoint);
         return 0;
     }
-    case 3: {
-        // FIXME: queue continuation into measurement_wait
+    case 102: { // MEASURE
+        if (nb_bytes) {
+            // Binary payload is the continuation.  The following
+            // measurement result will be forwarded.
+            infof("measurement_wait queue: %d\n", nb_bytes);
+            struct cbuf *b = &measurement_wait;
+            cbuf_put(b, nb_bytes);
+            cbuf_write(b, bytes, nb_bytes);
+        }
         return 0;
     }
+    case 103: { // INFO
+        //infof("bsrr_last = %x\n", bsrr_last);
+        for (int i=0; i<NB_CHANNELS; i++) {
+            infof("%d: %x %x\n", i, channel[i].accu, channel[i].setpoint);
+        }
+        infof("osc_period: %d\n", osc_period);
+        infof("nb_pulses:  %d\n", nb_pulses);
+        infof("last_cc:    %d\n", last_cc);
+        return 0;
+    }
+
+    default:
+        /* Simple parameters can be specified in the parameter table
+           and don't need much protocol handling. */
+        if ((nb_args  == 2) &&
+            (nb_bytes == 0) &&
+            (arg[0] < ARRAY_SIZE(parameter_info))) {
+            struct parameter_info *pi = &parameter_info[arg[0]];
+            // FIXME: this assumes endianness allows this.
+            pi->data->uint32 = arg[1];
+            infof("%d: %s = %d\n", arg[0], pi->name, arg[1]);
+            return 0;
+        }
+        infof("unknown tag_u32 command:");
+        for (int i=0; i<nb_args; i++) { infof(" %d", arg[i]); }
+        infof("\n");
+        return -2;
+    }
+
+
+#if 0
+
+    /* Old test code */
+
     case 101: { // TEST_UPDATE
         // bp2 ! {send_u32, [101, 1000000000, 1,2,3]}.
         if (nb_args > 1 + NB_CHANNELS) return -1;
@@ -342,22 +409,7 @@ int handle_tag_u32(void *context,
         infof("gpio %x\n", shiftreg_gpio);
         return 0;
     }
-    case 102: { // TEST_INFO
-        infof("bsrr_last = %x\n", bsrr_last);
-        for (int i=0; i<NB_CHANNELS; i++) {
-            infof("%d: %x %x\n", i, channel[i].accu, channel[i].setpoint);
-        }
-        infof("osc_period: %d\n", osc_period);
-        infof("nb_pulses:  %d\n", nb_pulses);
-        infof("last_cc:    %d\n", last_cc);
-        return 0;
-    }
-    default:
-        infof("unknown tag_u32 command:");
-        for (int i=0; i<nb_args; i++) { infof(" %d", arg[i]); }
-        infof("\n");
-        return -2;
-    }
+#endif
 }
 
 /* slipstub calls this one for application tags.  We then patch
@@ -365,21 +417,8 @@ int handle_tag_u32(void *context,
 void handle_tag(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
     infof("tag %d\n", tag);
     switch(tag) {
-    case 0x0000: {
-        /* It's very convenient in Erlang to have parameters be 32 bit
-           big endian ints, as sending 123 to parameter 5 amounts to:
-           name ! {send_packet, <<5:32,123:32>>}. */
-        if (p->count < 4) { infof("short packet\n"); }
-        else {
-            uint32_t index = read_be(p->buf+2, 2);
-            set_parameter(index, p->buf+4, p->count-4);
-        }
-        break;
-    }
     case TAG_U32: {
-        /* Similarly, this has some wrapper support as well
-           name ! {send_u32, [101, 1000000000, 1,2,3]}. */
-
+        /* name ! {send_u32, [101, 1000000000, 1,2,3]}. */
         int rv = tag_u32_dispatch(handle_tag_u32, NULL, p->buf, p->count);
         if (rv) { infof("tag_u32_dispatch returned %d\n", rv); }
         break;
