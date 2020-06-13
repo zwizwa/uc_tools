@@ -139,7 +139,7 @@ volatile struct period_measurement period_measurement = {
 struct cbuf measurement_wait; uint8_t measurement_wait_buf[64]; // FIXME
 
 void period_measurement_poll(void) {
-#if 1
+
     volatile struct period_measurement *p = &period_measurement;
 
     if (p->read != p->write) {
@@ -152,18 +152,7 @@ void period_measurement_poll(void) {
 
         /* Poll the waiter queue. */
         struct cbuf *b = &measurement_wait;
-        struct cbuf *o = slipstub.slip_out;
 
-#if 0
-        uint16_t w;
-        infof("cbuf:");
-        while (CBUF_EAGAIN != (w = cbuf_get(b))) {
-            infof(" %d", w);
-        }
-        infof("\n");
-#endif
-
-#if 1
         if (cbuf_bytes(b)) {
             uint16_t len  = cbuf_get(b);
             uint32_t have = cbuf_bytes(b);
@@ -173,16 +162,14 @@ void period_measurement_poll(void) {
                 cbuf_clear(b);
             }
             else {
-                infof("sending measurement reply: avg=%d, cont=%d\n", avg, len);
+                //infof("sending measurement reply: avg=%d, cont=%d\n", avg, len);
                 uint8_t h[] = { U16_BE(TAG_REPLY) };
                 uint8_t k[len]; cbuf_read(b, k, len);
                 uint8_t a[] = { U32_BE(avg) };
-                CBUF_WRITE_3(o, h, k, a);
+                CBUF_WRITE_3(slipstub.slip_out, h, k, a);
             }
         }
-#endif
     }
-#endif
 }
 
 
@@ -352,10 +339,16 @@ int handle_tag_u32(void *context,
         return 0;
     }
     case 102: { // MEASURE
+        if (nb_args >  2) { return -3; }
+        if (nb_args == 2) {
+            period_measurement.log_max = arg[1];
+            infof("period_measurement.log_max = %d\n",
+                  period_measurement.log_max);
+        }
         if (nb_bytes) {
             // Binary payload is the continuation.  The following
             // measurement result will be forwarded.
-            infof("measurement_wait queue: %d\n", nb_bytes);
+            //infof("measurement_wait queue: %d\n", nb_bytes);
             struct cbuf *b = &measurement_wait;
             cbuf_put(b, nb_bytes);
             cbuf_write(b, bytes, nb_bytes);
@@ -415,7 +408,7 @@ int handle_tag_u32(void *context,
 /* slipstub calls this one for application tags.  We then patch
    through to command handler. */
 void handle_tag(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
-    infof("tag %d\n", tag);
+    //infof("tag %d\n", tag);
     switch(tag) {
     case TAG_U32: {
         /* name ! {send_u32, [101, 1000000000, 1,2,3]}. */
