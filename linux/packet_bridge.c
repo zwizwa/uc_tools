@@ -88,14 +88,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // https://www.kernel.org/doc/Documentation/networking/tuntap.txt
 // https://wiki.wireshark.org/Development/LibpcapFileFormat
 
-static inline void log_hex(uint8_t *buf, ssize_t n) {
-    for(ssize_t i=0; i<n; i++) {
-        LOG(" %02x", buf[i]);
-        if (i%16 == 15) LOG("\n");
-    }
-    LOG("\n");
-}
-
 static void log_addr(struct sockaddr_in *sa) {
     uint8_t *a = (void*)&sa->sin_addr;
     LOG("%d.", a[0]);
@@ -104,6 +96,31 @@ static void log_addr(struct sockaddr_in *sa) {
     LOG("%d:", a[3]);
     LOG("%d\n", ntohs(sa->sin_port));
 }
+static inline void log_hex(uint8_t *buf, ssize_t n) {
+    for(ssize_t i=0; i<n; i++) {
+        LOG(" %02x", buf[i]);
+        if (i%16 == 15) LOG("\n");
+    }
+    LOG("\n");
+}
+// FIXME: This is ad-hoc annotation for a bug hunt.
+static inline void log_str(const uint8_t *m, ssize_t len) {
+    LOG("[");
+    for (ssize_t i=0; i<len; i++) {
+        uint8_t c = m[i];
+        if ((c >= 32) && (c <= 126)) {
+            LOG("%c", c);
+        }
+        else {
+            LOG("\\x%02x", c);
+        }
+    }
+    LOG("]\n");
+}
+
+
+
+
 // FIXME: Only IPv4 For now
 static int same_addr(struct sockaddr_in *sa1, struct sockaddr_in *sa2) {
     uint8_t *a1 = (void*)&sa1->sin_addr;
@@ -358,6 +375,7 @@ static ssize_t pop_read(port_pop_fn pop,
     ssize_t rv = read(p->p.fd, &p->buf[p->count], room);
     if (rv > 0) {
         //log_hex(&p->buf[p->count], rv);
+        //log_str(&p->buf[p->count], rv);
     }
     //LOG("packetn_read done %d\n", rv);
     if (rv == -1) {
@@ -403,9 +421,13 @@ uint32_t packetn_packet_write_size(struct packetn_port *p, uint32_t size, uint8_
 }
 
 static ssize_t packetn_pop(struct packetn_port *p, uint8_t *buf, ssize_t len) {
+    uint32_t size;
+
+  again:
+
     /* Make sure there are enough bytes to get the size field. */
     if (p->p.count < p->len_bytes) return 0;
-    uint32_t size = packetn_packet_size(p);
+    size = packetn_packet_size(p);
 
     /* Packets are assumed to fit in the buffer.  An error here is
      * likely a bug or a protocol {packet,N} framing error. */
@@ -436,6 +458,10 @@ static ssize_t packetn_pop(struct packetn_port *p, uint8_t *buf, ssize_t len) {
         p->p.count = tail_count;
     }
     //LOG("pop: %d %d\n", size, p->count);
+
+    /* Drop empty packets. */
+    if (0 == size) goto again;
+
     return size;
 }
 
@@ -504,21 +530,38 @@ struct slip_port {
 /* Try to pop a frame.  If it's not complete, return 0.  p->buf
  * contains slip-encoded data.  It is allowed to use the output buffer
  * to perform partial decoding. */
+
+/* Note: empty packets occur frequently in slip streams, but
+   packet_bridge does not support those, as a zero return value in
+   this function indicates no more data.  FIXME: That should probably
+   change, but for now keep the refactoring effort minimal and drop
+   empty frames. */
 static ssize_t slip_pop(struct slip_port *p, uint8_t *buf, ssize_t len) {
 
     // 1. Go over data and stop at packet boundary, writing partial
     // data to output buffer.  Abort with 0 size when packet is
     // incomplete.
-    ssize_t in = 0, out = 0;
+    ssize_t in, out;
+
+  again:
+    in = 0;
+    out = 0;
+
     for(;;) {
         ASSERT(out < len);
-        if (in >= p->p.count) return 0;
+        if (in >= p->p.count) {
+            /* Attempt to read past buffer. */
+            return 0;
+        }
         uint8_t c = p->p.buf[in++];
         if (SLIP_END == c) {
             break;
         }
         else if (SLIP_ESC == c) {
-            if (in >= p->p.count) return 0;
+            if (in >= p->p.count) {
+                /* Attempt to read past buffer. */
+                return 0;
+            }
             uint8_t c = p->p.buf[in++];
             if (SLIP_ESC_ESC == c) {
                 buf[out++] = SLIP_ESC;
@@ -538,9 +581,13 @@ static ssize_t slip_pop(struct slip_port *p, uint8_t *buf, ssize_t len) {
     //LOG("slip_pop: "); log_hex(&p->p.buf[0], in);
 
 
-    // 2. Shift the data buffer
+    // 2. Shift the data buffer.
+    ASSERT(in > 0);
     memmove(&p->p.buf[0], &p->p.buf[in], p->p.count-in);
     p->p.count -= in;
+
+    // 3. Drop empty frames.  See comment above
+    if (0 == out) goto again;
 
     return out;
 }
@@ -769,12 +816,12 @@ void packet_loop(packet_handle_fn handle,
                 if(pfd[i].revents & POLLIN) {
                     struct port *in  = ctx->port[i];
 
-                    /* The read calls the underlying OS read method only
-                     * once, so we are guaranteed to not block. */
+                    /* The read calls the underlying OS read method
+                       only once, so we are guaranteed to not block. */
                     int rlen = in->read(in, buf, sizeof(buf));
                     if (rlen) {
-                    handle(ctx, i, buf, rlen);
-                    count++;
+                        handle(ctx, i, buf, rlen);
+                        count++;
                     }
                     else {
                         /* Port handler read data but dropped it. */
@@ -784,10 +831,13 @@ void packet_loop(packet_handle_fn handle,
                      * read method returned multiple packets, so we pop
                      * them one by one. */
                     if (in->pop) {
-                        while((rlen = in->pop((struct buf_port *)in, buf, sizeof(buf)))) {
+                        struct buf_port *b_in = (struct buf_port*)in;
+                        while((rlen = in->pop(b_in, buf, sizeof(buf)))) {
                             handle(ctx, i, buf, rlen);
                             count++;
                         }
+                        //LOG("linger:");
+                        //log_str(b_in->buf, b_in->count);
                     }
                 }
                 else if (pfd[i].revents) {
