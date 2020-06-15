@@ -22,13 +22,18 @@ KEEP void info_clear(void) {
     info_write_next = 0;
     info_read_next = 0;
 }
+KEEP uint32_t info_bytes() {
+    return info_write_next - info_read_next;
+}
+uint32_t info_overflow_errors = 0;
 KEEP int info_putchar(int c) {
+    uint32_t room = INFO_SIZE - (info_write_next - info_read_next);
+    if (room == 0) return 0;  // drop character and don't overflow the buffer
+    if (room == 1) c = '?';   // when almost full, write some kind of indicator
+    if (room <= 1) info_overflow_errors++;
     uint32_t offset = (info_write_next++) & INFO_MASK;
     info_buf[offset] = c;
     return 0;
-}
-KEEP uint32_t info_bytes() {
-    return info_write_next - info_read_next;
 }
 
 /* This is counterproductive: when overflow happens, it is usually due
@@ -36,7 +41,6 @@ KEEP uint32_t info_bytes() {
  * have a slight indicator of overrun, instead of dumping a huge
  * number of '?' characters.  So for now it is disabled.  TODO: A
  * little more elegance. */
-#define INFO_LOG_OVERFLOW 0
 
 KEEP uint32_t info_read(uint8_t *buf, uint32_t len) {
     uint32_t nb = 0;
@@ -48,12 +52,12 @@ KEEP uint32_t info_read(uint8_t *buf, uint32_t len) {
             *buf++ = info_buf[info_read_next & INFO_MASK];
             len--; nb++;
         }
-#if INFO_LOG_OVERFLOW
         else {
-            *buf++ ='?'; // be verbose about buffer overrun
+            /* Not reached: overflows are preented at the write
+             * end. */
+            *buf++ ='?';
             len--; nb++;
         }
-#endif
         info_read_next++;
     }
 }
