@@ -31,6 +31,12 @@ void to_hex_u32(char *buf, uint32_t val) {
 }
 #include "xorshift.h"
 
+/* TODO: Generate a display menu on the fly from a pointer into a data
+   structure, instead of drawing it first to a frame buffer.  Why does
+   this matter?  It will render only when needed.
+*/
+
+
 void animation_poll(void) {
     char buf[10] = {};
     if (video_sync()) {

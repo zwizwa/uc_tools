@@ -30,6 +30,7 @@
 #define FEYNMAN_ONE (1 << FEYNMAN_SHIFT)
 #define FEYNMAN_TWO (1 << (FEYNMAN_SHIFT + 1))
 
+
 static inline uint32_t feynman_log_1_2(uint32_t *table, uint32_t precision, uint32_t arg_2_30) {
     const int32_t one = FEYNMAN_ONE;
     uint32_t acc = 0;
@@ -62,6 +63,7 @@ static inline uint32_t feynman_nlog_5_27(
     if (arg <= 2) return (31 * one);
 
     /* Scale argument to max out mantissa. */
+    // FIXME: use CLZ count leading zero
     uint32_t coarse = 0;
     while (arg < 0x80000000) { coarse += one; arg <<= 1; }
 

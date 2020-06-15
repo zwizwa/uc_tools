@@ -5,6 +5,7 @@
 
 // Xorshift RNG
 // https://www.jstatsoft.org/article/view/v008i14
+// https://en.wikipedia.org/wiki/Xorshift
 static inline uint32_t srandom_u32(uint32_t *x) {
     *x ^= (*x << 13);
     *x ^= (*x >> 17);

@@ -114,14 +114,19 @@ static inline void init_subosc(void) {
     hw_gpio_config(SUBOSC_GPIO, HW_GPIO_CONFIG_OUTPUT);
 }
 
-struct period_measurement {
+struct pmeas {
+    uint32_t avg;  // (32-log_max) fractional bits
+    uint32_t num;  // number of periods that were averaged
+};
+
+struct pmeas_state {
     /* Config */
     uint32_t log_max; // max = 1<<log_max
 
     /* User state */
-    uint32_t write;   // low bit points to current measurement
-    uint32_t read;    // ..
-    uint32_t avg[2];  // last masurement with (32-log_max) fractional bits
+    uint32_t write;       // low bit points to current measurement
+    uint32_t read;        // ..
+    struct pmeas meas[2]; // last masurement with (32-log_max) fractional bits
 
     /* For ISR only. */
     uint32_t num;   // number of measurements
@@ -129,7 +134,7 @@ struct period_measurement {
 };
 
 
-volatile struct period_measurement period_measurement = {
+volatile struct pmeas_state pmeas_state = {
     .log_max = 26, /* One second is about 1<26 cycles. */
 };
 
@@ -138,15 +143,16 @@ volatile struct period_measurement period_measurement = {
    the size.  So this can fit two pids. */
 struct cbuf measurement_wait; uint8_t measurement_wait_buf[64]; // FIXME
 
-void period_measurement_poll(void) {
+void pmeas_state_poll(void) {
 
-    volatile struct period_measurement *p = &period_measurement;
+    volatile struct pmeas_state *p = &pmeas_state;
 
     if (p->read != p->write) {
         // FIXME: make sure they are equal after incrementing.  The
         // buffer is only one deep so other variables are not valid.
         uint32_t read = ++p->read;
-        uint32_t avg = p->avg[read&1];
+        uint32_t avg = p->meas[read&1].avg;
+        uint32_t num = p->meas[read&1].num;
         (void)avg;
         //infof("period_avg: %d\n", avg);
 
@@ -165,7 +171,7 @@ void period_measurement_poll(void) {
                 //infof("sending measurement reply: avg=%d, cont=%d\n", avg, len);
                 uint8_t h[] = { U16_BE(TAG_REPLY) };
                 uint8_t k[len]; cbuf_read(b, k, len);
-                uint8_t a[] = { U32_BE(avg) };
+                uint8_t a[] = { U32_BE(avg), U32_BE(num) };
                 CBUF_WRITE_3(slipstub.slip_out, h, k, a);
             }
         }
@@ -206,7 +212,7 @@ void exti0_isr(void) {
     /* Update average.  The oscillator is quite unstable, so we need
        to measure for a long time if we want a good reading (e.g. for
        about a second).  */
-    volatile struct period_measurement *p = &period_measurement;
+    volatile struct pmeas_state *p = &pmeas_state;
     uint32_t accu = p->accu;
     uint32_t accu1 = accu + meas;
     uint32_t log_max = p->log_max;
@@ -220,9 +226,18 @@ void exti0_isr(void) {
            It can sync on p->write changing and pick up
            p->avg[p->write & 1]. */
         uint32_t write = p->write + 1;
-        uint32_t avg = (accu << (32-log_max)) / p->num;
-        p->avg[write & 1] = avg;
-        p->write = write;
+        if (p->num > 0) {
+            uint32_t avg = (accu << (32-log_max)) / p->num;
+            p->meas[write & 1].avg = avg;
+            p->meas[write & 1].num = p->num;
+            p->write = write;
+        }
+        else {
+            /* There was no previous measurement, so simply do not
+               send it out.  Note that when the period is very low, it
+               will take at least one period length for a
+               measurement! */
+        }
         p->num = 1;
         p->accu = meas;
     }
@@ -335,15 +350,14 @@ int handle_tag_u32(void *context,
         if (nb_args < 3) return -1;
         if (a->chan >= NB_CHANNELS) return -2;
         channel[a->chan].setpoint = safe_setpoint(a->val);
-        infof("setpoint[%d] = %x\n", a->chan, channel[a->chan].setpoint);
+        // infof("setpoint[%d] = %x\n", a->chan, channel[a->chan].setpoint);
         return 0;
     }
     case 102: { // MEASURE
         if (nb_args >  2) { return -3; }
         if (nb_args == 2) {
-            period_measurement.log_max = arg[1];
-            infof("period_measurement.log_max = %d\n",
-                  period_measurement.log_max);
+            pmeas_state.log_max = arg[1];
+            // infof("pmeas_state.log_max = %d\n", pmeas_state.log_max);
         }
         if (nb_bytes) {
             // Binary payload is the continuation.  The following
@@ -448,7 +462,7 @@ void start(void) {
 
     /* Main loop tasks. */
     _service.add(beat_poll);
-    _service.add(period_measurement_poll);
+    _service.add(pmeas_state_poll);
 
     /* Smaller values mean higher priorities.  STM32F103 strips the
        low 4 bits, so these have increments of 16.  Print the actual
