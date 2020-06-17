@@ -100,6 +100,8 @@
 /* Map hw.h (e.g. SPI1_MASTER config name to libopencm3 isr name. */
 #define HW_TIM_ISR(X) CONCAT(tim, CONCAT(X,_isr))  // 2 -> tim_2_isr
 
+#define HW_USART_ISR(X) CONCAT(usart, CONCAT(X,_isr))
+
 #define HW_DMA_ISR_TX(X)  CONCAT(HW_DMA_ISR_SPI,CONCAT(X,_TX))
 #define HW_DMA_ISR_RX(X)  CONCAT(HW_DMA_ISR_SPI,CONCAT(X,_RX))
 
