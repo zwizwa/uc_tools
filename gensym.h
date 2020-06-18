@@ -8,3 +8,4 @@
 #ifndef GENSYM
 #define GENSYM(sym)   CONCAT(sym,__COUNTER__)
 #endif
+

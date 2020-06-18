@@ -105,6 +105,14 @@
 #define HW_DMA_ISR_TX(X)  CONCAT(HW_DMA_ISR_SPI,CONCAT(X,_TX))
 #define HW_DMA_ISR_RX(X)  CONCAT(HW_DMA_ISR_SPI,CONCAT(X,_RX))
 
+/* Why CONCAT?
+   The macro-expansion below is usartPORT_isr
+#define ISR(n) usart##n##_isr
+#define PORT 3
+ISR(PORT)
+*/
+
+
 #define HW_DMA_ISR_SPI1_RX  dma1_channel2_isr
 #define HW_DMA_ISR_SPI1_TX  dma1_channel3_isr
 #define HW_DMA_ISR_SPI2_RX  dma1_channel4_isr
