@@ -19,7 +19,7 @@
 struct cbuf {
     volatile uint32_t write;
     volatile uint32_t read;
-    uint32_t sizem1;
+    uint32_t size;
 #ifdef CBUF_WATERMARK
     volatile uint32_t watermark;
 #endif
@@ -72,7 +72,7 @@ struct cbuf {
 static inline void cbuf_init(struct cbuf *b, uint8_t *buf, uint32_t size) {
     b->write  = 0;
     b->read   = 0;
-    b->sizem1 = size-1;
+    b->size   = size;
     b->buf    = buf;
 }
 
@@ -81,14 +81,14 @@ static inline void cbuf_init(struct cbuf *b, uint8_t *buf, uint32_t size) {
 
 
 static inline uint32_t cbuf_mask(struct cbuf *b) {
-    return b->sizem1;
+    return b->size - 1;
 }
 static inline uint32_t cbuf_wrap(struct cbuf *b, uint32_t index) {
 #if CBUF_ARBITRARY_SIZE
     // return index % (b->sizem1+1);
     // This is used only internally, where there is maximally one
     // iteration, so don't do division.
-    while(index > b->sizem1) index -= (b->sizem1 + 1);
+    while(index >= b->size) index -= b->size;
     return index;
 #else
     return index & cbuf_mask(b);
@@ -97,14 +97,15 @@ static inline uint32_t cbuf_wrap(struct cbuf *b, uint32_t index) {
 static inline uint32_t cbuf_bytes(struct cbuf *b) {
     return b->write - b->read;
 }
+// FIXME: is this - 1 still necessary?
 static inline uint32_t cbuf_room(struct cbuf *b) {
-    return b->sizem1 - cbuf_bytes(b);
+    return b->size - 1 - cbuf_bytes(b);
 }
 static inline int cbuf_empty(struct cbuf *b) {
     return 0 == cbuf_bytes(b);
 }
 static inline int cbuf_full(struct cbuf *b) {
-    return b->sizem1 == cbuf_bytes(b);
+    return (b->size - 1) == cbuf_bytes(b);
 }
 static inline void cbuf_update_watermark(struct cbuf *b) {
 #if CBUF_WATERMARK
@@ -135,21 +136,22 @@ static inline void cbuf_clear(struct cbuf *b) {
 #define CBUF_V2 1
 #if CBUF_V2
 
+// FIXME: These two should probably be compiled routines, not static inline.
+
 /* Write is a transaction.  Everything or nothing gets written. */
 static inline uint32_t cbuf_write(struct cbuf *b, const uint8_t *buf, uint32_t len) {
     uint32_t read  = b->read;
     uint32_t write = b->write;
     uint32_t bytes = write - read;
-    uint32_t mask  = b->sizem1;
-    uint32_t room  = mask - bytes;
+    uint32_t room  = b->size - 1 - bytes;
     if (len > room) {
 #if DEBUG_OVERFLOW
         infof("cbuf_write overflow %p %p %d %d\n", b, buf, len, room);
 #endif
         return 0;
     }
+    // FIXME: optimize to avoid computing wraparound
     for (uint32_t i=0; i<len; i++) {
-        // FIXME: do wrapping manually here
         b->buf[cbuf_wrap(b, write+i)] = buf[i];
     }
     b->write = write + len;
@@ -165,8 +167,8 @@ static inline uint32_t cbuf_read(struct cbuf *b, uint8_t *buf, uint32_t len) {
     uint32_t write = b->write;
     uint32_t bytes = write - read;
     if (len > bytes) len = bytes;
+    // FIXME: optimize to avoid computing wraparound
     for (uint32_t i=0; i<len; i++) {
-        // FIXME: do wrapping manually here
         buf[i] = b->buf[cbuf_wrap(b, read+i)];
     }
     b->read = read + len;
