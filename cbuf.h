@@ -10,8 +10,9 @@
 /* Control codes. */
 #define CBUF_EAGAIN ((uint16_t)0x100)
 
-/* Only one word, much less headache.  Maybe enable by default? */
+/* Only one word, much less headache. */
 #define CBUF_WATERMARK 1
+#define CBUF_COUNT_OVERFLOW 1
 
 /* Relax the constraint to require power of two buffer sizes. */
 #define CBUF_ARBITRARY_SIZE 1
@@ -22,6 +23,9 @@ struct cbuf {
     uint32_t size;
 #ifdef CBUF_WATERMARK
     volatile uint32_t watermark;
+#endif
+#ifdef CBUF_COUNT_OVERFLOW
+    volatile uint32_t overflow;
 #endif
     volatile uint8_t *buf;
 };
@@ -127,9 +131,9 @@ static inline void cbuf_clear(struct cbuf *b) {
 }
 
 /* For last resort unhandled overflow debugging... */
-#define DEBUG_OVERFLOW 0
+#define CBUF_INFO_OVERFLOW 0
 
-#if DEBUG_OVERFLOW
+#if CBUF_INFO_OVERFLOW
 #include "infof.h"
 #endif
 
@@ -145,7 +149,10 @@ static inline uint32_t cbuf_write(struct cbuf *b, const uint8_t *buf, uint32_t l
     uint32_t bytes = write - read;
     uint32_t room  = b->size - 1 - bytes;
     if (len > room) {
-#if DEBUG_OVERFLOW
+#if CBUF_COUNT_OVERFLOW
+        b->overflow++;
+#endif
+#if CBUF_INFO_OVERFLOW
         infof("cbuf_write overflow %p %p %d %d\n", b, buf, len, room);
 #endif
         return 0;

@@ -9,14 +9,18 @@
 #include "byteswap.h"
 
 #define PBUF_WATERMARK 1
+#define PBUF_COUNT_OVERFLOW 1
 
 /* Generic packet buffer. */
 struct pbuf {
     uint32_t count;  /* Number of valid bytes in buffer */
     uint32_t size;   /* Total allocated size of buffer */
     uint8_t *buf;
-#ifdef PBUF_WATERMARK
+#if PBUF_WATERMARK
     uint32_t watermark;
+#endif
+#if PBUF_COUNT_OVERFLOW
+    uint32_t overflow;
 #endif
 };
 #define PBUF_INIT_FROM_BUF(b) { .buf = &b[0], .size = sizeof(b), .count = sizeof(b) }
@@ -49,6 +53,11 @@ static inline void pbuf_update_watermark(struct pbuf *p) {
 static inline void pbuf_put(struct pbuf *p, uint8_t c) {
     if (p->count < p->size) {
         p->buf[p->count++] = c;
+    }
+    else {
+#if PBUF_COUNT_OVERFLOW
+        p->overflow++;
+#endif
     }
     pbuf_update_watermark(p);
 }
