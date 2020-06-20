@@ -1,4 +1,5 @@
 // killall klogd, then run this to log kernel events to console
+// fixme: listen for stdin close
 
 #include <sys/klog.h>
 #include <unistd.h>
