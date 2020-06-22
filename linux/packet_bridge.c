@@ -374,8 +374,9 @@ static ssize_t pop_read(port_pop_fn pop,
     //LOG("packetn_read %d\n", p->count);
     ssize_t rv = read(p->p.fd, &p->buf[p->count], room);
     if (rv > 0) {
+        //LOG("pop_read:\n");
         //log_hex(&p->buf[p->count], rv);
-        //log_str(&p->buf[p->count], rv);
+        // log_str(&p->buf[p->count], rv);
     }
     //LOG("packetn_read done %d\n", rv);
     if (rv == -1) {
@@ -582,12 +583,20 @@ static ssize_t slip_pop(struct slip_port *p, uint8_t *buf, ssize_t len) {
 
 
     // 2. Shift the data buffer.
+    /* We can only get here after reading at least one character.
+       This ensures we will not get stuck in the loop caused by "goto
+       again". */
     ASSERT(in > 0);
     memmove(&p->p.buf[0], &p->p.buf[in], p->p.count-in);
     p->p.count -= in;
 
     // 3. Drop empty frames.  See comment above
     if (0 == out) goto again;
+
+    /* if (p->p.count > 0) { */
+    /*     LOG("left after slip_pop: "); */
+    /*     log_hex(&p->p.buf[0], p->p.count); */
+    /* } */
 
     return out;
 }
@@ -816,9 +825,11 @@ void packet_loop(packet_handle_fn handle,
                 if(pfd[i].revents & POLLIN) {
                     struct port *in  = ctx->port[i];
 
+                    int rlen;
+
                     /* The read calls the underlying OS read method
                        only once, so we are guaranteed to not block. */
-                    int rlen = in->read(in, buf, sizeof(buf));
+                    rlen = in->read(in, buf, sizeof(buf));
                     if (rlen) {
                         handle(ctx, i, buf, rlen);
                         count++;
@@ -836,8 +847,11 @@ void packet_loop(packet_handle_fn handle,
                             handle(ctx, i, buf, rlen);
                             count++;
                         }
-                        //LOG("linger:");
-                        //log_str(b_in->buf, b_in->count);
+                        if(b_in->count) {
+                            //LOG("linger:");
+                            //log_str(b_in->buf, b_in->count);
+                            //log_hex(b_in->buf, b_in->count);
+                        }
                     }
                 }
                 else if (pfd[i].revents) {
@@ -874,12 +888,13 @@ void packet_loop(packet_handle_fn handle,
 ssize_t packet_next(struct port *p, int timeout,
                     uint8_t *buf, ssize_t buf_size) {
 
+    ssize_t rlen;
     for(;;) {
 
         /* Check buffer first. */
         if (p->pop) {
-            ssize_t rlen = p->pop((struct buf_port *)p, buf, buf_size);
-            if (rlen) return rlen;
+            rlen = p->pop((struct buf_port *)p, buf, buf_size);
+            if (rlen) goto done;
         }
 
         /* Wait for event with timeout. */
@@ -891,15 +906,25 @@ ssize_t packet_next(struct port *p, int timeout,
 
         /* No event.  Signal caller with empty packet. */
         if (rv == 0) {
-            return 0;
+            if (0) {
+                // HACK: bug hunting... try a single read anyway.
+                rlen = p->read(p, buf, buf_size);
+                if (rlen) {
+                    LOG("WARNING: read returned data after poll failed\n");
+                }
+                goto done;
+            }
+
+            rlen = 0;
+            goto done;
         }
 
         ASSERT(pfd.revents & POLLIN);
 
         /* The read calls the underlying OS read method only once, so we
          * are guaranteed to not block. */
-        ssize_t rlen = p->read(p, buf, buf_size);
-        if (rlen) return rlen;
+        rlen = p->read(p, buf, buf_size);
+        if (rlen) goto done;
 
         /* There was an OS read, but no packet was produced.  Retry
            read.  Eventually we exit this loop due to data or
@@ -909,6 +934,19 @@ ssize_t packet_next(struct port *p, int timeout,
            implementation would check the actual elapsed time and
            adjust the remaining time accordingly. */
     }
+  done:
+    if(0) {
+        if (!rlen) {
+            /* This only happens after timeout. */
+            LOG("packet_next: timeout.  buffer: ");
+            struct buf_port *bp = (void*)p;
+            log_hex(bp->buf, bp->count);
+        }
+        else {
+            LOG("packet_next:\n"); log_hex(buf, rlen);
+        }
+    }
+    return rlen;
 }
 
 
