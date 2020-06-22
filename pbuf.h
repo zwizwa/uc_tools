@@ -8,8 +8,14 @@
 #include "cbuf.h"
 #include "byteswap.h"
 
+#define PBUF_DEBUG 0
+#if PBUF_DEBUG
 #define PBUF_WATERMARK 1
 #define PBUF_COUNT_OVERFLOW 1
+#else
+#define PBUF_WATERMARK 0
+#define PBUF_COUNT_OVERFLOW 0
+#endif
 
 /* Generic packet buffer. */
 struct pbuf {
@@ -23,6 +29,16 @@ struct pbuf {
     uint32_t overflow;
 #endif
 };
+
+/* A wrapper to keep track of how many bytes there are available in
+   front of the current p.buf pointer.  This allows adjusting the pbuf
+   to accomodate a header. */
+struct pbuf_h {
+    uint32_t header_room;
+    struct pbuf p;
+};
+
+
 #define PBUF_INIT_FROM_BUF(b) { .buf = &b[0], .size = sizeof(b), .count = sizeof(b) }
 
 static inline void pbuf_init(struct pbuf *p, uint8_t *buf, uint32_t size) {

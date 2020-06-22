@@ -10,9 +10,15 @@
 /* Control codes. */
 #define CBUF_EAGAIN ((uint16_t)0x100)
 
-/* Only one word, much less headache. */
+#define CBUF_DEBUG 0
+#if CBUF_DEBUG
 #define CBUF_WATERMARK 1
 #define CBUF_COUNT_OVERFLOW 1
+#else
+#define CBUF_WATERMARK 0
+#define CBUF_COUNT_OVERFLOW 0
+#endif
+
 
 /* Relax the constraint to require power of two buffer sizes. */
 #define CBUF_ARBITRARY_SIZE 1
@@ -84,32 +90,29 @@ static inline void cbuf_init(struct cbuf *b, uint8_t *buf, uint32_t size) {
 #define CBUF_INIT(name) cbuf_init(&name, &name##_buf[0], sizeof(name##_buf))
 
 
-static inline uint32_t cbuf_mask(struct cbuf *b) {
-    return b->size - 1;
+/* Note: this was a power-of-two implementation using convenient
+   rolling pointers, but that turns out to be too wasteful.  It is now
+   implemented as read/write counters that stay within the boundaries
+   of the buffer.  Care is taken to ensure correct rollover behavior.
+   One byte in the buffer is sacrificed to distinguish between empty
+   and full. */
+static inline uint32_t cbuf_bytes3(const struct cbuf *b, uint32_t read, uint32_t write) {
+    int32_t bytes = write - read;  // signed!!!
+    if (bytes < 0) bytes += b->size;
+    return bytes;
 }
-static inline uint32_t cbuf_wrap(struct cbuf *b, uint32_t index) {
-#if CBUF_ARBITRARY_SIZE
-    // return index % (b->sizem1+1);
-    // This is used only internally, where there is maximally one
-    // iteration, so don't do division.
-    while(index >= b->size) index -= b->size;
-    return index;
-#else
-    return index & cbuf_mask(b);
-#endif
-}
-static inline uint32_t cbuf_bytes(struct cbuf *b) {
-    return b->write - b->read;
+static inline uint32_t cbuf_bytes(const struct cbuf *b) {
+    return cbuf_bytes3(b, b->read, b->write);
 }
 // FIXME: is this - 1 still necessary?
-static inline uint32_t cbuf_room(struct cbuf *b) {
+static inline uint32_t cbuf_room(const struct cbuf *b) {
     return b->size - 1 - cbuf_bytes(b);
 }
-static inline int cbuf_empty(struct cbuf *b) {
+static inline int cbuf_empty(const struct cbuf *b) {
     return 0 == cbuf_bytes(b);
 }
-static inline int cbuf_full(struct cbuf *b) {
-    return (b->size - 1) == cbuf_bytes(b);
+static inline int cbuf_full(const struct cbuf *b) {
+    return 0 == cbuf_room(b);
 }
 static inline void cbuf_update_watermark(struct cbuf *b) {
 #if CBUF_WATERMARK
@@ -117,14 +120,21 @@ static inline void cbuf_update_watermark(struct cbuf *b) {
     if (bytes > b->watermark) b->watermark = bytes;
 #endif
 }
-static inline uint16_t cbuf_peek(struct cbuf *b, uint32_t offset) {
+
+/* Precondition: offset is smaller than size. */
+static inline uint32_t cbuf_index_(const struct cbuf *b, uint32_t base, uint32_t offset) {
+    uint32_t bo = base + offset;
+    return bo >= b->size ? bo-b->size : bo;
+}
+
+static inline uint16_t cbuf_peek(const struct cbuf *b, uint32_t offset) {
     if (offset >= cbuf_bytes(b)) return CBUF_EAGAIN;
-    return b->buf[cbuf_wrap(b, b->read + offset)];
+    return b->buf[cbuf_index_(b, b->read, offset)];
 }
 static inline void cbuf_drop(struct cbuf *b, uint32_t nb_drop) {
     uint32_t bs = cbuf_bytes(b);
     if (nb_drop > bs) { nb_drop = bs; }
-    b->read += nb_drop;
+    b->read = cbuf_index_(b, b->read, nb_drop);
 }
 static inline void cbuf_clear(struct cbuf *b) {
     cbuf_drop(b, 0xFFFFFFFF);
@@ -137,8 +147,6 @@ static inline void cbuf_clear(struct cbuf *b) {
 #include "infof.h"
 #endif
 
-#define CBUF_V2 1
-#if CBUF_V2
 
 // FIXME: These two should probably be compiled routines, not static inline.
 
@@ -146,7 +154,7 @@ static inline void cbuf_clear(struct cbuf *b) {
 static inline uint32_t cbuf_write(struct cbuf *b, const uint8_t *buf, uint32_t len) {
     uint32_t read  = b->read;
     uint32_t write = b->write;
-    uint32_t bytes = write - read;
+    uint32_t bytes = cbuf_bytes3(b, read, write);
     uint32_t room  = b->size - 1 - bytes;
     if (len > room) {
 #if CBUF_COUNT_OVERFLOW
@@ -157,11 +165,10 @@ static inline uint32_t cbuf_write(struct cbuf *b, const uint8_t *buf, uint32_t l
 #endif
         return 0;
     }
-    // FIXME: optimize to avoid computing wraparound
     for (uint32_t i=0; i<len; i++) {
-        b->buf[cbuf_wrap(b, write+i)] = buf[i];
+        b->buf[cbuf_index_(b, write, i)] = buf[i];
     }
-    b->write = write + len;
+    b->write = cbuf_index_(b, write, len);
     cbuf_update_watermark(b);
     return len;
 }
@@ -172,13 +179,12 @@ static inline uint32_t cbuf_write(struct cbuf *b, const uint8_t *buf, uint32_t l
 static inline uint32_t cbuf_read(struct cbuf *b, uint8_t *buf, uint32_t len) {
     uint32_t read  = b->read;
     uint32_t write = b->write;
-    uint32_t bytes = write - read;
+    uint32_t bytes = cbuf_bytes3(b, read, write);
     if (len > bytes) len = bytes;
-    // FIXME: optimize to avoid computing wraparound
     for (uint32_t i=0; i<len; i++) {
-        buf[i] = b->buf[cbuf_wrap(b, read+i)];
+        buf[i] = b->buf[cbuf_index_(b, read, i)];
     }
-    b->read = read + len;
+    b->read = cbuf_index_(b, read, len);
     return len;
 }
 static inline uint16_t cbuf_get(struct cbuf *b) {
@@ -189,37 +195,6 @@ static inline uint16_t cbuf_get(struct cbuf *b) {
 static inline void cbuf_put(struct cbuf *b, uint8_t byte) {
     cbuf_write(b, &byte, 1);
 }
-
-#else
-/* Old ad-hoc style.  This does not atomically write. */
-static inline uint16_t cbuf_get(struct cbuf *b) {
-    if (cbuf_empty(b)) return CBUF_EAGAIN;
-    uint32_t read = b->read;
-    uint16_t rv = b->buf[cbuf_wrap(b, read)];
-    b->read = read+1;
-    return rv;
-}
-static inline void cbuf_put(struct cbuf *b, uint8_t byte) {
-    if (!cbuf_full(b)) {
-        uint32_t write = b->write;
-        b->buf[cbuf_wrap(b, write)] = byte;
-        b->write = write+1;
-    }
-    update_watermark(b);
-}
-static inline void cbuf_write(struct cbuf *b, const uint8_t *buf, uint32_t len) {
-    for (uint32_t i=0; i<len; i++) {
-        cbuf_put(b, buf[i]);
-    }
-}
-static inline uint32_t cbuf_read(struct cbuf *b, uint8_t *buf, uint32_t len) {
-    uint32_t i = 0;
-    while ((i < len) && (!cbuf_empty(b))) {
-        buf[i++] = cbuf_get(b);
-    }
-    return i;
-}
-#endif
 
 
 #define CBUF_WRITE(buf, ...) \
