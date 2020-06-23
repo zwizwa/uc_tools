@@ -3,6 +3,8 @@
 
 #include "macros.h"
 
+#include "test.h"
+
 void test_cbuf(struct cbuf *c, uint32_t n) {
     uint8_t buf[n*2];
     memset(buf, 123, sizeof(buf));
@@ -15,14 +17,18 @@ void test_cbuf(struct cbuf *c, uint32_t n) {
     ASSERT(0 == cbuf_room(c));
     ASSERT(n-1 == cbuf_read(c, buf, sizeof(buf)));
     if (n > 3) {
+        uint8_t a[] = {1,2,3};
         for(int i=0; i<1000; i++) {
-            uint8_t a[] = {1,2,3};
             ASSERT(3 == cbuf_write(c, a, sizeof(a)));
             ASSERT(n-3-1 == cbuf_room(c));
             ASSERT(3 == cbuf_read(c, buf, 3));
             ASSERT(n-1 == cbuf_room(c));
             ASSERT(0 == memcmp(a,buf,3));
         }
+        ASSERT(3 == cbuf_write(c, a, sizeof(a)));
+        ASSERT(3 == cbuf_bytes(c));
+        cbuf_drop(c, n);
+        ASSERT(0 == cbuf_bytes(c));
     }
 }
 void with_cbuf(uint32_t n, void (*test)(struct cbuf *, uint32_t)) {

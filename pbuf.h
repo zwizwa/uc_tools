@@ -8,7 +8,7 @@
 #include "cbuf.h"
 #include "byteswap.h"
 
-#define PBUF_DEBUG 0
+#define PBUF_DEBUG 1
 #if PBUF_DEBUG
 #define PBUF_WATERMARK 1
 #define PBUF_COUNT_OVERFLOW 1
@@ -39,7 +39,7 @@ struct pbuf_h {
 };
 
 
-#define PBUF_INIT_FROM_BUF(b) { .buf = &b[0], .size = sizeof(b), .count = sizeof(b) }
+#define PBUF_INIT_FROM_BUF(b) { .buf = &b[0], .size = sizeof(b), .count = 0 }
 
 static inline void pbuf_init(struct pbuf *p, uint8_t *buf, uint32_t size) {
     p->count = 0;

@@ -10,7 +10,7 @@
 /* Control codes. */
 #define CBUF_EAGAIN ((uint16_t)0x100)
 
-#define CBUF_DEBUG 0
+#define CBUF_DEBUG 1
 #if CBUF_DEBUG
 #define CBUF_WATERMARK 1
 #define CBUF_COUNT_OVERFLOW 1
