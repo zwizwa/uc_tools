@@ -39,7 +39,10 @@ struct pbuf_h {
 };
 
 
-#define PBUF_INIT_FROM_BUF(b) { .buf = &b[0], .size = sizeof(b), .count = 0 }
+/* Note: I had tried to fix this by setting .count = 0, but that
+ * appears to be a load bearing bug in some application.  Leave this
+ * here. */
+#define PBUF_INIT_FROM_BUF(b) { .buf = &b[0], .size = sizeof(b), .count = sizeof(b) }
 
 static inline void pbuf_init(struct pbuf *p, uint8_t *buf, uint32_t size) {
     p->count = 0;
