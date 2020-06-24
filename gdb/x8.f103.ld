@@ -135,9 +135,10 @@ SECTIONS {
         /* Configuration block.
            This has a default in core and might be overwritten by app. */
         .config 0x8002800 : { 
+                _flash_bin_start = .;
                 KEEP (*(.config_header))
                 KEEP (*(.config_data))
-                . = ALIGN(4);
+                . = ALIGN(0x800);
         }
 
         /* Symbolic names for register blocks. */
@@ -163,9 +164,11 @@ PROVIDE(_store = 0x08030000);
 after the .config and .mem.* sections? */
 
 SECTIONS {
-	/* Mark the first free block in Flash memory for application use. */
+	/* _eflash:         first free block in Flash memory for application use.
+	   _flash_bin_endx: end of firmware binary */
  	.flash_pad : {
-	       . = ALIGN(1024);
+		_flash_bin_endx = . ;     
+		. = ALIGN(1024);
 		_eflash = . ;     
  	} >rom
 }

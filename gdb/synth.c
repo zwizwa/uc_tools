@@ -27,7 +27,7 @@
    ids. */
 
 #define FOR_PARAMETERS(p) \
-    p(0, uint32,   osc_setpoint, "Main oscillator setpoint, in 5.27 nlog2(period_cycles)", (15 << 27)) \
+    p(0, uint32,   osc_setpoint, "Main oscillator setpoint, in 5.27 nlog2 (period_cycles)", (15 << 27)) \
 
 union types {
     uint32_t   uint32;
@@ -435,6 +435,18 @@ void handle_tag(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
     }
 }
 
+#include "crc.h"
+extern uint8_t _flash_bin_start;
+extern uint8_t _flash_bin_endx;
+uint32_t firmware_crc(void) {
+    uint32_t size = &_flash_bin_endx - &_flash_bin_start;
+    uint32_t crc = crc32b(&_flash_bin_start, size);
+    infof("_flash_bin_start: 0x%08x\n", &_flash_bin_start);
+    infof("_flash_bin_endx:  0x%08x\n", &_flash_bin_endx);
+    infof("size:             0x%08x\n", size);
+    infof("crc:              0x%08x\n", crc);
+    return crc;
+}
 
 
 
@@ -475,6 +487,7 @@ void start(void) {
     infof("pri: control %d\n", NVIC_IPR(C_CONTROL.irq));
 
     //infof("C_CONTROL.div = %d\n", C_CONTROL.div);
+    firmware_crc();
 
 }
 void stop(void) {

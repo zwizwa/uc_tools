@@ -24,9 +24,9 @@ static inline uint32_t crc32b(const uint8_t *buf, uint32_t len) {
 
 // Also plucked from stackoverflow.
 /* 0x131 x^8 + x^5 + x^4 + 1 */
-static inline unsigned crc8x_simple(unsigned crc, void const *mem, size_t len) {
+static inline unsigned crc8x_simple(unsigned crc, void const *mem, uintptr_t len) {
     unsigned char const *data = mem;
-    if (data == NULL)
+    if (!data)
         return 0xff;
     while (len--) {
         crc ^= *data++;

@@ -38,9 +38,11 @@ $(cat $MAIN_LD)
 after the .config and .mem.* sections? */
 
 SECTIONS {
-	/* Mark the first free block in Flash memory for application use. */
+	/* _eflash:         first free block in Flash memory for application use.
+	   _flash_bin_endx: end of firmware binary */
  	.flash_pad : {
-	       . = ALIGN(1024);
+		_flash_bin_endx = . ;     
+		. = ALIGN(1024);
 		_eflash = . ;     
  	} >rom
 }

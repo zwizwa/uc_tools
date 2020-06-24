@@ -112,9 +112,11 @@ SECTIONS {
         /* Configuration block.
            This has a default in core and might be overwritten by app. */
         .config 0x8002800 : { 
+                _flash_bin_start = .;
                 KEEP (*(.config_header))
                 KEEP (*(.config_data))
-                . = ALIGN(4);
+                /* Pad the rest with zeros to give predictable crc. */
+                . = ALIGN(0x800);
         }
 
         /* Symbolic names for register blocks. */
