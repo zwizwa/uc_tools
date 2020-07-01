@@ -138,6 +138,7 @@ SECTIONS {
                 _flash_bin_start = .;
                 KEEP (*(.config_header))
                 KEEP (*(.config_data))
+                /* Pad the rest with zeros to give predictable crc. */
                 . = ALIGN(0x800);
         }
 

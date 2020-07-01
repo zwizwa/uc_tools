@@ -79,6 +79,11 @@
    two PWM output, or optimized for round decimal update rate.  Not
    clear yet which is best. */
 
+#if 0
+#define PDM_DIV 128
+#define PWM_HZ (72000000 / PDM_DIV)
+#endif
+
 #if 1
 #define PDM_DIV 256
 #define PWM_HZ (72000000 / PDM_DIV)
@@ -141,8 +146,9 @@ uint32_t safe_setpoint(uint32_t setpoint) {
 
 /* This sets the number of channels.  Used for struct gen and code gen. */
 #define FOR_CHANNELS(c) \
-    c(0) c(1) c(2) c(3) \
-    c(4) c(5) c(6) c(7) \
+    c(0) c(1) 
+
+// c(2) c(3) c(4) c(5) c(6) c(7)
 
 static inline void     pdm_update(void);
 static inline uint32_t pwm_update(void);
@@ -296,13 +302,20 @@ void pdm_init(void) {
        noisy, and there is variable voltage drop depending on whether
        the chip is driving high current through other I/Os,
        e.g. driving an LED.  */
+
+    /* The output filter here is important.  The average is very
+       sensitive to the transients of the PDM signal, especially
+       noticable on breadboard with wires going all over the place.
+       With 50MHz I am able to hear half a semitone when I touch the
+       5cm long wire. */
+
     for(int i=0; i<NB_CHANNELS; i++) {
         infof("port %x pin %d\n", PDM_PORT, PDM_PIN_CHAN0 + i);
         hw_gpio_config(
             PDM_PORT,
             PDM_PIN_CHAN0 + i,
-            // HW_GPIO_CONFIG_OPEN_DRAIN_2MHZ
-            HW_GPIO_CONFIG_OUTPUT
+            // HW_GPIO_CONFIG_OUTPUT
+            HW_GPIO_CONFIG_OUTPUT_2MHZ
             );
     }
 
