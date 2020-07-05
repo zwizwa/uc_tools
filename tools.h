@@ -41,6 +41,20 @@ static inline int32_t read_hex_nibbles_check(const uint8_t *buf, int nibbles,
     return 0;
 }
 
+/* Read bits from an arbitrary length word stored as a uint32_t array
+   in little endian foramt.  This is used for reading SD registers --
+   which are big endian so need a swap operation when stored.
+
+   Prototype: same as SD spec list:
+   bitfields listed as end:start (non-exclusive end) */
+
+static inline uint32_t bitslice(uint32_t *words, uint32_t end, uint32_t start) {
+    uint32_t endx = end+1;
+    uint32_t i = start >> 5;
+    uint32_t s = start & 31;
+    uint32_t mask = (1 << (endx-start)) - 1;
+    return ((words[i] >> s) | words[i+1] << (32-s)) & mask;
+}
 
 
 #endif
