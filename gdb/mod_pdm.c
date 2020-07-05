@@ -102,6 +102,9 @@ CT_ASSERT(pwm_hz, 140625 == PWM_HZ);
 CT_ASSERT(pwm_hz, 200000 == PWM_HZ);
 #endif
 
+#include "xorshift.h"
+
+
 
 /* The circuit is designed such that:
 
@@ -248,8 +251,27 @@ INLINE void channel_update(
         : );
 }
 
-#define CHANNEL_UPDATE(c) \
-    channel_update(&channel[c], &shiftreg);
+/* Same, but add a dither signal.  This is computed in the main loop
+   from a bit-limited xorshift signal. */
+INLINE void channel_update_dither(
+    struct channel *channel,
+    uint32_t *shiftreg,
+    uint32_t dither) {
+
+    uint32_t dither_setpoint = channel->setpoint + dither;
+    __asm__ (
+        "   adds %0, %0, %2  \n"   // update accu, update carry
+      //"   adc  %1, %1, %1  \n"   // shift carry flag into LSB
+        "   rrx %1, %1       \n"   // shift carry flag into MSB
+        : "+r"(channel->accu),     // %0 read/write
+          "+r"(*shiftreg)          // %1 read/write
+        :  "r"(dither_setpoint)    // %2 read
+        : );
+}
+
+
+// #define CHANNEL_UPDATE(c) channel_update(&channel[c], &shiftreg);
+#define CHANNEL_UPDATE(c) channel_update_dither(&channel[c], &shiftreg, dither);
 
 #define ASM_DEBUG_MARK \
     __asm__ volatile ( \
@@ -260,6 +282,7 @@ INLINE void channel_update(
 
 INLINE uint32_t channels_update(void) {
     uint32_t shiftreg = 0;
+    uint32_t dither = random_u32() & 0x0FFFFFFF;
     FOR_CHANNELS(CHANNEL_UPDATE);
     return shiftreg;
 }

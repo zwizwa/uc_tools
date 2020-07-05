@@ -1,4 +1,7 @@
-. ./env.common.sh
+# If this is not defined, assume it is current working directory.
+[ -z "$UC_TOOLS" ] && UC_TOOLS=..
+
+. $UC_TOOLS/gdb/env.common.sh
 
 # See libopencm3/lib/stm32/f4/Makefile for compiler flags.
 
