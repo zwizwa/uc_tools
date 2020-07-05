@@ -80,6 +80,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <asm-generic/termbits.h>
 #include <asm-generic/ioctls.h>
 
+/* Make any library dependencies optional. */
+#define HAVE_LIBUSB
+#ifdef HAVE_LIBUSB
+#include <libusb-1.0/libusb.h>
+#endif
+
+
 
 /***** 1. PACKET INTERFACES */
 
@@ -775,6 +782,51 @@ struct port *port_open_hex_stream(int fd, int fd_out) {
 }
 
 
+/* 2.6 USB FRAMING */
+
+/* If frames do not fit the transfer size, e.g. 64 bytes for USB 2.0,
+   then it is the convention to concatenate subsequent frames if they
+   are full size, and terminate with a short packet, which can be
+   zero. */
+#ifdef HAVE_LIBUSB
+struct usb_port {
+    struct buf_port p;
+    FILE *f_out;
+};
+struct port *port_open_usb(void) {
+    static int libusb_initialized = 0;
+    if (!libusb_initialized) {
+        int err = libusb_init(NULL);
+        if (err) ERROR("libusb_init error = %d\n", err);
+        libusb_initialized = 1;
+    }
+    struct libusb_device **devs;
+    ssize_t cnt = libusb_get_device_list(NULL, &devs);
+    ASSERT(cnt > 0);
+    for(ssize_t i=0; i<cnt; i++) {
+        struct libusb_device *dev = devs[i];
+        struct libusb_device_descriptor desc;
+        ASSERT(0 == libusb_get_device_descriptor(dev, &desc));
+        struct libusb_device_handle *handle;
+        LOG("%04x:%04x", desc.idVendor, desc.idProduct);
+        int rv;
+        if (0 == (rv = libusb_open(dev, &handle))) {
+            LOG(" ok\n");
+            libusb_close(handle);
+        }
+        else {
+            LOG(" error = %d (%s)\n", rv, libusb_strerror(rv));
+        }
+    }
+    ERROR("testing\n");
+    // http://libusb.sourceforge.net/api-1.0/group__libusb__asyncio.html
+
+    struct usb_port *p;
+    ASSERT(p = malloc(sizeof(*p)));
+    memset(p,0,sizeof(*p));
+    return &p->p.p;
+}
+#endif
 
 
 /***** 3. PACKET HANDLER */
@@ -1092,6 +1144,13 @@ struct port *port_open(const char *spec_ro) {
         ASSERT(NULL == (tok = strtok(NULL, delim)));
         return port_open_hex_stream(0, 1);
     }
+
+#ifdef HAVE_LIBUSB
+    if (!strcmp(tok, "USB")) {
+        ASSERT(NULL == (tok = strtok(NULL, delim)));
+        return port_open_usb();
+    }
+#endif
 
 
     ERROR("unknown type %s\n", tok);
