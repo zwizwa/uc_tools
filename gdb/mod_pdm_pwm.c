@@ -7,6 +7,7 @@
 
 #include "xorshift.h"
 #include "pdm.h"
+#include "fixedpoint.h"
 
 
 /* All setpoints assignments go through this function in case later it
@@ -38,7 +39,7 @@ uint32_t pdm_safe_setpoint(uint32_t setpoint) {
 
 /* This sets the number of channels.  Used for struct gen and code gen. */
 #define PDM_FOR_CHANNELS(c) \
-    c(0) c(1) c(2) c(3)
+    c(0) c(1) // c(2) //c(3)
 
 
 static inline void     control_trigger(void);
@@ -76,6 +77,7 @@ uint32_t control_div_count = 0;
 
 struct channel {
     uint32_t setpoint;
+    int32_t  velocity;
     struct pdm3 pdm;
 };
 #define CHANNEL_STRUCT(c) {},
@@ -83,14 +85,19 @@ struct channel pdm_channel[] = { PDM_FOR_CHANNELS(CHANNEL_STRUCT) };
 
 #define PDM_NB_CHANNELS ARRAY_SIZE(pdm_channel)
 
+static inline void pdm_update_glide(struct channel *c) {
+    c->setpoint += c->velocity;
+}
+
 /* Defined as a macro. I could not get this to inline when abstracted
    as a function, and inlining is essential for performance. */
-#define PDM_UPDATE_CHANNEL(i)        \
-    hw_multi_pwm_duty(               \
-        C_PDM, i,                    \
-        pdm3_update(                 \
-            &pdm_channel[i].pdm,     \
-            pdm_channel[i].setpoint, \
+#define PDM_UPDATE_CHANNEL(i)          \
+    pdm_update_glide(&pdm_channel[i]); \
+    hw_multi_pwm_duty(                 \
+        C_PDM, i,                      \
+        pdm3_update(                   \
+            &pdm_channel[i].pdm,       \
+            pdm_channel[i].setpoint,   \
             32 - PDM_DIV_LOG));
 
 /* PDM TIMER INTERRUPT */
@@ -124,6 +131,7 @@ void pdm_init(void) {
        modulator. */
     for(int i=0; i<PDM_NB_CHANNELS; i++) {
         pdm_channel[i].setpoint = pdm_safe_setpoint(0x40000000ULL);
+        pdm_channel[i].velocity = 0; //0x1000;
     }
     pdm_channel[0].setpoint = 2000000000;
 

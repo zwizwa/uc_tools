@@ -26,7 +26,7 @@
 /* Some alternative time bases.  Quantizer needs a power of two
  * divisor. */
 
-#define PDM_DIV_LOG 9
+#define PDM_DIV_LOG 8
 #define PDM_DIV (1 << PDM_DIV_LOG)
 #define PWM_HZ (72000000 / PDM_DIV)
 

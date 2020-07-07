@@ -826,12 +826,11 @@ struct port *port_open_usb(void) {
             int rv;
             if (0 == (rv = libusb_open(dev, &handle))) {
                 LOG(" ok\n");
-                libusb_close(handle);
+                goto found;
             }
             else {
                 ERROR(" error = %d (%s)\n", rv, libusb_strerror(rv));
             }
-            goto found;
         }
     }
 

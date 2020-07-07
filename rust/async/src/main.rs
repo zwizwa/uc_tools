@@ -1,3 +1,3 @@
 pub fn main() {
-    println!("hello 12345")
+    println!("hello 123")
 }
