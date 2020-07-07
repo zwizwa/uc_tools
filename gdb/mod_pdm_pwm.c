@@ -83,48 +83,22 @@ struct channel pdm_channel[] = { PDM_FOR_CHANNELS(CHANNEL_STRUCT) };
 
 #define PDM_NB_CHANNELS ARRAY_SIZE(pdm_channel)
 
-static inline void pdm_update_channel(int i) {
-    struct channel *c = &pdm_channel[i];
-    uint32_t val = pdm3_update(&c->pdm, c->setpoint, 32 - PDM_DIV_LOG);
-    hw_multi_pwm_duty(C_PDM, i, val);
-}
-#define PDM_UPDATE_CHANNEL(c) pdm_update_channel(c);
+/* Defined as a macro. I could not get this to inline when abstracted
+   as a function, and inlining is essential for performance. */
+#define PDM_UPDATE_CHANNEL(i)        \
+    hw_multi_pwm_duty(               \
+        C_PDM, i,                    \
+        pdm3_update(                 \
+            &pdm_channel[i].pdm,     \
+            pdm_channel[i].setpoint, \
+            32 - PDM_DIV_LOG));
 
 /* PDM TIMER INTERRUPT */
-
-
 void HW_TIM_ISR(TIM_PDM)(void) {
     hw_multi_pwm_ack(C_PDM);
     hw_gpio_high(PDM_CPU_USAGE_MARK);
 
-#if 0
     PDM_FOR_CHANNELS(PDM_UPDATE_CHANNEL)
-
-#else
-    hw_multi_pwm_duty(
-        C_PDM, 0,
-        pdm3_update(&pdm_channel[0].pdm,
-                    pdm_channel[0].setpoint,
-                    32 - PDM_DIV_LOG));
-
-    hw_multi_pwm_duty(
-        C_PDM, 1,
-        pdm3_update(&pdm_channel[1].pdm,
-                    pdm_channel[1].setpoint,
-                    32 - PDM_DIV_LOG));
-
-    hw_multi_pwm_duty(
-        C_PDM, 2,
-        pdm3_update(&pdm_channel[2].pdm,
-                    pdm_channel[2].setpoint,
-                    32 - PDM_DIV_LOG));
-
-    hw_multi_pwm_duty(
-        C_PDM, 3,
-        pdm3_update(&pdm_channel[3].pdm,
-                    pdm_channel[3].setpoint,
-                    32 - PDM_DIV_LOG));
-#endif
 
     if (control_div_count == 0) {
         /* Swap buffers: previously computed control values are now

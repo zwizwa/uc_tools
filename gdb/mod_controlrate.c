@@ -38,9 +38,10 @@ void controlrate_beat_poll(void) {
 const struct hw_swi hw_control = HW_SWI_1;
 #define C_CONTROL hw_control
 
+// FIXME: I thought I had implemented this, but cannot find the code atm.
 static inline void control_trigger(void) {
     hw_swi_trigger(C_CONTROL);
-    control_update();
+    //control_update();
 }
 void controlrate_init(gdbstub_fn_add service_add) {
     hw_swi_init(C_CONTROL);

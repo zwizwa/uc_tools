@@ -21,7 +21,7 @@ static inline uint32_t pdm1_update(struct pdm1 *p, uint32_t input, uint32_t out_
     p->s1 += error;
 
     return out_q;
-}
+} __attribute__((always_inline))
 
 /* Similar for second and third order loop filters. */
 
@@ -37,7 +37,7 @@ static inline uint32_t pdm2_update(struct pdm2 *p, uint32_t input, uint32_t out_
     p->s2 += p->s1 - out_a;
 
     return out_q;
-}
+} __attribute__((always_inline))
 
 struct pdm3 {
     uint32_t s1;
@@ -54,7 +54,7 @@ static inline uint32_t pdm3_update(struct pdm3 *p, uint32_t input, uint32_t out_
     p->s3 += p->s2 - out_a;
 
     return out_q;
-}
+} __attribute__((always_inline))
 
 
 
