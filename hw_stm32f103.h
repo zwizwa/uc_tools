@@ -515,6 +515,76 @@ INLINE void hw_clockgen_duty(struct hw_clockgen c, uint32_t value) {
 }
 
 
+/* -------------------------------------------
+   hw_multi_pwm_* : Multi-channel PWM
+   - init:    call once before start
+   - arm:     set up, wait for trigger
+   - trigger  start clocking
+   - disable: stop signal
+*/
+struct hw_multi_pwm {
+    uint32_t rcc_tim;        // peripheral clock
+    uint32_t tim;            // timer instance
+    struct hw_gpio gpio[4];  // io pins
+    uint32_t gpio_config;    // GPIO mode (eg. HW_GPIO_CONFIG_ALTFN)
+    uint32_t div;            // timer freq = 72MHz / clockdiv
+    uint32_t duty;           // initial duty cycle (libopencm3 enum)
+    uint32_t irq;            // if non-zero this is the interrupt
+};
+
+INLINE void hw_multi_pwm_init(struct hw_multi_pwm c) {
+    rcc_periph_clock_enable(c.rcc_tim);
+    rcc_periph_reset_pulse(c.tim);
+    for(int i=0; i<4; i++) {
+        enum tim_oc_id channel[] = {TIM_OC1,TIM_OC2,TIM_OC3,TIM_OC4};
+        if (c.gpio[i].gpio) {
+            rcc_periph_clock_enable(c.gpio[i].rcc);
+            hw_gpio_config(c.gpio[i].gpio, c.gpio[i].pin, c.gpio_config);
+            /* Configure PWM, period = c.clockdiv, mid = c.clockdiv / 2. */
+            timer_set_oc_mode(c.tim, channel[i], TIM_OCM_PWM2);
+            timer_enable_oc_output(c.tim, channel[i]);
+            timer_set_oc_polarity_low(c.tim, channel[i]);
+
+            /* Note that for the advanced timers the break
+               functionality must be enabled before the signal will
+               appear at the output, even though break is not being
+               used. */
+            timer_enable_break_main_output(c.tim);
+
+            timer_set_oc_value(c.tim, channel[i], c.duty);
+        }
+    }
+    hw_tim_set_period(c.tim, c.div-1);
+    hw_tim_set_counter(c.tim, 0);
+    timer_enable_preload(c.tim); // load from ARR on UE
+    if (c.irq) {
+        nvic_enable_irq(c.irq);
+        timer_enable_irq(c.tim, TIM_DIER_UIE);
+    }
+}
+INLINE void hw_multi_pwm_start(struct hw_multi_pwm c) {
+    hw_tim_enable_counter(c.tim);
+}
+INLINE void hw_multi_pwm_stop(struct hw_multi_pwm c) {
+    hw_tim_disable_counter(c.tim);
+}
+INLINE void hw_multi_pwm_ack(struct hw_multi_pwm c) {
+    //TIM_SR(tim) &= ~TIM_SR_UIF; /* Clear interrrupt flag. */
+    *hw_bitband(&(TIM_SR(c.tim)), 0) = 0;
+}
+
+
+// CHANNEL IS NOT LIBOPENCM3 ENUM!
+INLINE void hw_multi_pwm_duty(struct hw_multi_pwm c, uint32_t channel, uint32_t value) {
+    switch (channel) {
+    case 0: TIM_CCR1(c.tim) = value; break;
+    case 1: TIM_CCR2(c.tim) = value; break;
+    case 2: TIM_CCR3(c.tim) = value; break;
+    case 3: TIM_CCR4(c.tim) = value; break;
+    }
+}
+
+
 
 
 

@@ -787,7 +787,15 @@ struct port *port_open_hex_stream(int fd, int fd_out) {
 /* If frames do not fit the transfer size, e.g. 64 bytes for USB 2.0,
    then it is the convention to concatenate subsequent frames if they
    are full size, and terminate with a short packet, which can be
-   zero. */
+   zero.
+
+   How to fit the libusb API?  It works by registering callbacks which
+   are called in the extent of libusb_handle_events(NULL).  Is it
+   possible to wait on a file descriptor?  Yes "libusb exposes a set
+   of file descriptors", but where to get them?
+
+   http://libusb.sourceforge.net/api-1.0/group__libusb__poll.html
+*/
 #ifdef HAVE_LIBUSB
 struct usb_port {
     struct buf_port p;
@@ -800,6 +808,10 @@ struct port *port_open_usb(void) {
         if (err) ERROR("libusb_init error = %d\n", err);
         libusb_initialized = 1;
     }
+    // 16c0:0442
+    // http://libusb.sourceforge.net/api-1.0/group__libusb__asyncio.html
+
+    struct usb_port *p;
     struct libusb_device **devs;
     ssize_t cnt = libusb_get_device_list(NULL, &devs);
     ASSERT(cnt > 0);
@@ -808,20 +820,26 @@ struct port *port_open_usb(void) {
         struct libusb_device_descriptor desc;
         ASSERT(0 == libusb_get_device_descriptor(dev, &desc));
         struct libusb_device_handle *handle;
-        LOG("%04x:%04x", desc.idVendor, desc.idProduct);
-        int rv;
-        if (0 == (rv = libusb_open(dev, &handle))) {
-            LOG(" ok\n");
-            libusb_close(handle);
-        }
-        else {
-            LOG(" error = %d (%s)\n", rv, libusb_strerror(rv));
+        if ((desc.idVendor == 0x16c0) &&
+            (desc.idProduct == 0x0442)) {
+            LOG("%04x:%04x", desc.idVendor, desc.idProduct);
+            int rv;
+            if (0 == (rv = libusb_open(dev, &handle))) {
+                LOG(" ok\n");
+                libusb_close(handle);
+            }
+            else {
+                ERROR(" error = %d (%s)\n", rv, libusb_strerror(rv));
+            }
+            goto found;
         }
     }
-    ERROR("testing\n");
-    // http://libusb.sourceforge.net/api-1.0/group__libusb__asyncio.html
 
-    struct usb_port *p;
+
+  found:
+
+    ERROR("testing\n");
+
     ASSERT(p = malloc(sizeof(*p)));
     memset(p,0,sizeof(*p));
     return &p->p.p;

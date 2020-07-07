@@ -1,0 +1,11 @@
+[package]
+name = "test_async"
+version = "0.1.0"
+authors = ["asdf"]
+
+[dependencies]
+futures = "0.3"
+
+[[bin]]
+name = "test_async"
+path = "src/main.rs"

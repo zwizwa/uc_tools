@@ -75,33 +75,6 @@
 */
 
 
-/* Some alternative time bases.  Either ptimized for "round" power of
-   two PWM output, or optimized for round decimal update rate.  Not
-   clear yet which is best. */
-
-#if 0
-#define PDM_DIV 128
-#define PWM_HZ (72000000 / PDM_DIV)
-#endif
-
-#if 1
-#define PDM_DIV 256
-#define PWM_HZ (72000000 / PDM_DIV)
-CT_ASSERT(pwm_hz, 281250 == PWM_HZ);
-#endif
-
-#if 0
-#define PDM_DIV 512
-#define PWM_HZ (72000000 / PDM_DIV)
-CT_ASSERT(pwm_hz, 140625 == PWM_HZ);
-#endif
-
-#if 0
-#define PDM_DIV 360
-#define PWM_HZ (72000000 / PDM_DIV)
-CT_ASSERT(pwm_hz, 200000 == PWM_HZ);
-#endif
-
 #include "xorshift.h"
 
 
@@ -123,12 +96,12 @@ CT_ASSERT(pwm_hz, 200000 == PWM_HZ);
    This introduces a non-linearity that can be conmpensated for.
 
 */
-#define SETPOINT_MIN 0x40000000ULL
-#define SETPOINT_MAX 0xC0000000ULL
-uint32_t safe_setpoint(uint32_t setpoint) {
+#define PDM_SETPOINT_MIN 0x40000000ULL
+#define PDM_SETPOINT_MAX 0xC0000000ULL
+uint32_t pdm_safe_setpoint(uint32_t setpoint) {
 #if 0
-    if (setpoint < SETPOINT_MIN) return SETPOINT_MIN;
-    if (setpoint > SETPOINT_MAX) return SETPOINT_MAX;
+    if (setpoint < PDM_SETPOINT_MIN) return PDM_SETPOINT_MIN;
+    if (setpoint > PDM_SETPOINT_MAX) return PDM_SETPOINT_MAX;
 #endif
     return setpoint;
 }
@@ -148,7 +121,7 @@ uint32_t safe_setpoint(uint32_t setpoint) {
 #define PDM_CPU_USAGE_MARK GPIOA,3
 
 /* This sets the number of channels.  Used for struct gen and code gen. */
-#define FOR_CHANNELS(c) \
+#define PDM_FOR_CHANNELS(c) \
     c(0) c(1) 
 
 // c(2) c(3) c(4) c(5) c(6) c(7)
@@ -183,6 +156,7 @@ void pdm_stop(void) {
     infof("stop: FIXME: not implemented\n");
 }
 
+#define OSC_HARD_SYNC() {pwm_phase = 0;}
 volatile uint32_t pwm_phase = 0;
 volatile uint32_t pwm_speed = 256 * 13;
 #define PHASE_MASK 0xFFFFFF
@@ -226,9 +200,9 @@ struct channel {
     uint32_t accu;
 };
 #define CHANNEL_STRUCT(c) {},
-struct channel channel[] = { FOR_CHANNELS(CHANNEL_STRUCT) };
+struct channel pdm_channel[] = { PDM_FOR_CHANNELS(CHANNEL_STRUCT) };
 
-#define NB_CHANNELS (sizeof(channel) / sizeof(struct channel))
+#define PDM_NB_CHANNELS (sizeof(pdm_channel) / sizeof(struct channel))
 
 
 
@@ -270,8 +244,10 @@ INLINE void channel_update_dither(
 }
 
 
-// #define CHANNEL_UPDATE(c) channel_update(&channel[c], &shiftreg);
-#define CHANNEL_UPDATE(c) channel_update_dither(&channel[c], &shiftreg, dither);
+// #define PDM_CHANNEL_UPDATE(c) channel_update(&channel[c], &shiftreg);
+#define PDM_CHANNEL_UPDATE(c) \
+    channel_update_dither(\
+        &pdm_channel[c], &shiftreg, dither);
 
 #define ASM_DEBUG_MARK \
     __asm__ volatile ( \
@@ -280,10 +256,10 @@ INLINE void channel_update_dither(
         "   nop             \n" \
         : )
 
-INLINE uint32_t channels_update(void) {
+INLINE uint32_t pdm_channels_update(void) {
     uint32_t shiftreg = 0;
     uint32_t dither = random_u32() & 0x0FFFFFFF;
-    FOR_CHANNELS(CHANNEL_UPDATE);
+    PDM_FOR_CHANNELS(PDM_CHANNEL_UPDATE);
     return shiftreg;
 }
 
@@ -297,8 +273,8 @@ static inline void pdm_update(void) {
 
     /* Assume GPIOs are contiguous.  We're using RRX to shift into MSB
      * to keep the pin order the same as the channel order. */
-    uint32_t set_bits = channels_update() >> (32 - NB_CHANNELS - PDM_PIN_CHAN0);
-    uint32_t mask     = ((1 << NB_CHANNELS) - 1) << PDM_PIN_CHAN0;
+    uint32_t set_bits = pdm_channels_update() >> (32 - PDM_NB_CHANNELS - PDM_PIN_CHAN0);
+    uint32_t mask     = ((1 << PDM_NB_CHANNELS) - 1) << PDM_PIN_CHAN0;
     uint32_t clr_bits = (~set_bits) & mask;
     uint32_t bsrr     = set_bits  | (clr_bits << 16);
     GPIO_BSRR(PDM_PORT) = bsrr;
@@ -332,7 +308,7 @@ void pdm_init(void) {
        With 50MHz I am able to hear half a semitone when I touch the
        5cm long wire. */
 
-    for(int i=0; i<NB_CHANNELS; i++) {
+    for(int i=0; i<PDM_NB_CHANNELS; i++) {
         infof("port %x pin %d\n", PDM_PORT, PDM_PIN_CHAN0 + i);
         hw_gpio_config(
             PDM_PORT,
@@ -344,16 +320,37 @@ void pdm_init(void) {
 
     /* Move all setpoints into a safe range before starting the
        modulator. */
-    for(int i=0; i<NB_CHANNELS; i++) {
-        channel[i].setpoint = safe_setpoint(0x40000000ULL);
+    for(int i=0; i<PDM_NB_CHANNELS; i++) {
+        pdm_channel[i].setpoint = pdm_safe_setpoint(0x40000000ULL);
     }
-    channel[0].setpoint = 2000000000;
+    pdm_channel[0].setpoint = 2000000000;
 
 
 
 
 
 }
+
+
+
+#if 0
+    /* Old test code fragments */
+
+    case 101: { // TEST_UPDATE
+        // bp2 ! {send_u32, [101, 1000000000, 1,2,3]}.
+        if (nb_args > 1 + NB_CHANNELS) return -1;
+        for (int i=0; i<nb_args-1; i++) {
+            channel[i].setpoint = safe_setpoint(arg[1+i]);
+        }
+        uint32_t shiftreg_gpio = channels_update();
+        for (int i=0; i<nb_args-1; i++) {
+            infof("%d: %x %x\n", i, channel[i].accu, channel[i].setpoint);
+        }
+        infof("gpio %x\n", shiftreg_gpio);
+        return 0;
+    }
+#endif
+
 
 
 #endif
