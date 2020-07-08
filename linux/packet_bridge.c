@@ -80,8 +80,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <asm-generic/termbits.h>
 #include <asm-generic/ioctls.h>
 
-/* Make any library dependencies optional. */
-#define HAVE_LIBUSB
+/* See the section that is guarded by this define.  Currently the
+   async libusb interface does not fit packet_bridge very well, so
+   this is future work.  See erl_tools/c_src for a specialized wrapper
+   that can be used in conjuction with packet_bridge EXEC port. */
+
 #ifdef HAVE_LIBUSB
 #include <libusb-1.0/libusb.h>
 #endif
@@ -784,19 +787,24 @@ struct port *port_open_hex_stream(int fd, int fd_out) {
 
 /* 2.6 USB FRAMING */
 
-/* If frames do not fit the transfer size, e.g. 64 bytes for USB 2.0,
-   then it is the convention to concatenate subsequent frames if they
-   are full size, and terminate with a short packet, which can be
-   zero.
+/* Objective is to implement USB multi-packet framing: if frames do
+   not fit the transfer size, e.g. 64 bytes for USB 2.0, then it is
+   the convention to concatenate subsequent frames if they are full
+   size, and terminate with a short packet, which can be zero.
 
-   How to fit the libusb API?  It works by registering callbacks which
-   are called in the extent of libusb_handle_events(NULL).  Is it
-   possible to wait on a file descriptor?  Yes "libusb exposes a set
-   of file descriptors", but where to get them?
+   libusb has an async API.  It exposes file descriptors and events
+   through libusb_get_pollfds().  When an event occurs
+   libusb_handle_events() has to be called.
+
+   The problem at this point is that it requires multiple fds, which
+   does not fit the architecture.  It might be simpler to use the
+   synchronous API in a separate binary.
 
    http://libusb.sourceforge.net/api-1.0/group__libusb__poll.html
+
 */
 #ifdef HAVE_LIBUSB
+
 struct usb_port {
     struct buf_port p;
     FILE *f_out;
@@ -826,6 +834,13 @@ struct port *port_open_usb(void) {
             int rv;
             if (0 == (rv = libusb_open(dev, &handle))) {
                 LOG(" ok\n");
+                const struct libusb_pollfd **pfd_list;
+                const struct libusb_pollfd *pfd;
+                ASSERT(pfd_list = libusb_get_pollfds(NULL));
+                for(int i=0; (pfd = pfd_list[i]); i++) {
+                    LOG("pfd: %d 0x%x\n", pfd->fd, pfd->events);
+                }
+                free(pfd_list);
                 goto found;
             }
             else {
