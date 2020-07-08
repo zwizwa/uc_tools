@@ -73,7 +73,7 @@ void pdm_stop(void) {
 }
 
 #define CONTROL_DIV 256
-uint32_t control_div_count = 0;
+volatile uint32_t control_div_count = 0;
 
 struct channel {
     uint32_t setpoint;
@@ -105,15 +105,15 @@ void HW_TIM_ISR(TIM_PDM)(void) {
     hw_multi_pwm_ack(C_PDM);
     hw_gpio_high(PDM_CPU_USAGE_MARK);
 
-    PDM_FOR_CHANNELS(PDM_UPDATE_CHANNEL)
-
     if (control_div_count == 0) {
         /* Swap buffers: previously computed control values are now
            used in main PDM/PWM interrupt, and the control interrupt
            can start a new update. */
-        // FIXME
         control_trigger();
     }
+
+    PDM_FOR_CHANNELS(PDM_UPDATE_CHANNEL)
+
     control_div_count = (control_div_count + 1) % CONTROL_DIV;
     hw_gpio_low(PDM_CPU_USAGE_MARK);
 }
