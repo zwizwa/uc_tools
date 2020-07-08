@@ -1227,7 +1227,7 @@ INLINE void hw_usart1_send_flush(void)     { hw_usart_send_flush(USART1); }
    hw_exti_* : EXTIx external interrupt
    - init:   one time initialization, call before start
    - arm:    call from anywhere, enables trigger
-   - ack:    call from exti6_isr()
+   - ack:    call from ISR
 */
 struct hw_exti {
     uint32_t rcc_gpio;
@@ -1269,9 +1269,9 @@ INLINE void hw_exti_ack(struct hw_exti c) {
 
 /* ---------------------------------------------------------------------
    hw_swi_* : EXTIx software events
-   - init:   one time initialization, call before start
-   - arm:    call from anywhere, enables trigger
-   - ack:    call from exti6_isr()
+   - init:    one time initialization
+   - trigger: raise interrupt flag
+   - ack:     call from ISR
 
    Note that pin edge events in hw_exti_* can also be triggered
    manually, but for pure software interrupts that do not have an
@@ -1292,10 +1292,10 @@ struct hw_swi {
 
 INLINE void hw_swi_init(struct hw_swi c) {
     nvic_enable_irq(c.irq);
-}
-INLINE void hw_swi_arm(struct hw_swi c) {
     uint32_t exti = 1 << c.pin;
-    exti_enable_request(exti);
+    EXTI_IMR |= exti;
+    EXTI_EMR |= exti;
+    EXTI_PR = 1 << c.pin; // wouldn't work without
 }
 INLINE void hw_swi_ack(struct hw_swi c) {
     /* FIXME: This was in the hw_exti_ code when I copied it to
@@ -1305,7 +1305,8 @@ INLINE void hw_swi_ack(struct hw_swi c) {
     EXTI_PR = 1 << c.pin; // w
 }
 INLINE void hw_swi_trigger(struct hw_swi c) {
-    *hw_bitband(&EXTI_SWIER, c.pin) = 1; // rmw
+    EXTI_SWIER = 1 << c.pin;
+    //*hw_bitband(&EXTI_SWIER, c.pin) = 1; // rmw
 }
 
 
