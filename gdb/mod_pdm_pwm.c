@@ -73,11 +73,16 @@ void pdm_stop(void) {
 }
 
 #define CONTROL_DIV 256
-volatile uint32_t control_div_count = 0;
+uint32_t control_div_count = 0;
+
+struct line {
+    uint32_t position;
+    int32_t  velocity;
+};
 
 struct channel {
     uint32_t setpoint;
-    int32_t  velocity;
+    struct line line[2];
     struct pdm3 pdm;
 };
 #define CHANNEL_STRUCT(c) {},
@@ -86,19 +91,24 @@ struct channel pdm_channel[] = { PDM_FOR_CHANNELS(CHANNEL_STRUCT) };
 #define PDM_NB_CHANNELS ARRAY_SIZE(pdm_channel)
 
 static inline void pdm_update_glide(struct channel *c) {
-    c->setpoint += c->velocity;
+    struct line *l = &c->line[0];
+    l->position += l->velocity;
 }
 
 /* Defined as a macro. I could not get this to inline when abstracted
    as a function, and inlining is essential for performance. */
-#define PDM_UPDATE_CHANNEL(i)          \
-    pdm_update_glide(&pdm_channel[i]); \
-    hw_multi_pwm_duty(                 \
-        C_PDM, i,                      \
-        pdm3_update(                   \
-            &pdm_channel[i].pdm,       \
-            pdm_channel[i].setpoint,   \
+#define PDM_UPDATE_CHANNEL(i)                   \
+    pdm_update_glide(&pdm_channel[i]);          \
+    hw_multi_pwm_duty(                          \
+        C_PDM, i,                               \
+        pdm3_update(                            \
+            &pdm_channel[i].pdm,                \
+            pdm_channel[i].line[0].position,    \
             32 - PDM_DIV_LOG));
+
+#define PDM_COPY_LINE(i)                              \
+    pdm_channel[i].line[0] = pdm_channel[i].line[1];
+
 
 /* PDM TIMER INTERRUPT */
 void HW_TIM_ISR(TIM_PDM)(void) {
@@ -106,9 +116,12 @@ void HW_TIM_ISR(TIM_PDM)(void) {
     hw_gpio_high(PDM_CPU_USAGE_MARK);
 
     if (control_div_count == 0) {
-        /* Swap buffers: previously computed control values are now
-           used in main PDM/PWM interrupt, and the control interrupt
-           can start a new update. */
+        /* It's simpler to copy the data here and to avoid computing
+           an offset in the update loop.
+           main code. */
+        PDM_FOR_CHANNELS(PDM_COPY_LINE)
+
+        /* Once copied, control rate isr can compute a new value. */
         control_trigger();
     }
 
@@ -131,7 +144,6 @@ void pdm_init(void) {
        modulator. */
     for(int i=0; i<PDM_NB_CHANNELS; i++) {
         pdm_channel[i].setpoint = pdm_safe_setpoint(0x40000000ULL);
-        pdm_channel[i].velocity = 0; //0x1000;
     }
     pdm_channel[0].setpoint = 2000000000;
 
