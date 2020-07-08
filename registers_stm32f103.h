@@ -150,6 +150,16 @@ struct map_sdio {
 };
 ASSERT_SIZE(map_sdio,0x400);
 
+struct map_exti {
+    REG imr;
+    REG emr;
+    REG rtsr;
+    REG ftsr;
+    REG swier;
+    REG pr;
+    uint8_t _res_18[0x400 - 0x18];
+};
+ASSERT_SIZE(map_exti,0x400);
 
 struct devices {
     struct map_timer tim2;
@@ -184,7 +194,7 @@ struct devices {
     struct map_reserved dac;
     struct map_reserved _res_07800[0x22];
     struct map_reserved afio;
-    struct map_reserved exti;
+    struct map_exti exti;
     struct map_gpio gpioa;
     struct map_gpio gpiob;
     struct map_gpio gpioc;
