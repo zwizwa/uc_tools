@@ -552,11 +552,14 @@ INLINE void hw_multi_pwm_init(struct hw_multi_pwm c) {
             timer_enable_break_main_output(c.tim);
 
             timer_set_oc_value(c.tim, channel[i], c.duty);
+
+            timer_enable_oc_preload(c.tim, channel[i]);
         }
     }
     hw_tim_set_period(c.tim, c.div-1);
     hw_tim_set_counter(c.tim, 0);
     timer_enable_preload(c.tim); // load from ARR on UE
+    //TIM_CCMR1_OC1PE
     if (c.irq) {
         nvic_enable_irq(c.irq);
         timer_enable_irq(c.tim, TIM_DIER_UIE);

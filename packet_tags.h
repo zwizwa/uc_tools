@@ -40,6 +40,7 @@
 #define TAG_INFO        0xFFFE  // raw info log stream
 #define TAG_REPLY       0xFFFF  // standard reply/ack format
 
+
 /* TAG_STREAM
    u16_be: byte stream ID
    rest:   byte stream data
@@ -58,7 +59,8 @@
    rest: opaque binary payload
 */
 
-/* Reserved ranges:
+/* Reserved tags and ranges:
+
    0x4xxx IPv4 standard slip
    0x6xxx IPv6 standard slip
 
@@ -70,6 +72,11 @@
    this, we also reserve the standard EtherTypes:
 
    https://en.wikipedia.org/wiki/EtherType
+
+   Other projects using this protocol:
+
+   0xC8xx, 0xC9xx, 0x2D2D // C8
+
 
 */
 

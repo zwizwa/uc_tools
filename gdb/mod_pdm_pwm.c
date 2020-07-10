@@ -72,7 +72,8 @@ void pdm_stop(void) {
     hw_multi_pwm_stop(C_PDM);
 }
 
-#define CONTROL_DIV 256
+#define CONTROL_DIV_LOG 12
+#define CONTROL_DIV (1 << CONTROL_DIV_LOG)
 uint32_t control_div_count = 0;
 
 struct line {
@@ -83,7 +84,7 @@ struct line {
 struct channel {
     uint32_t setpoint;
     struct line line[2];
-    struct pdm3 pdm;
+    struct pdm4 pdm;
 };
 #define CHANNEL_STRUCT(c) {},
 struct channel pdm_channel[] = { PDM_FOR_CHANNELS(CHANNEL_STRUCT) };
@@ -101,10 +102,11 @@ static inline void pdm_update_glide(struct channel *c) {
     pdm_update_glide(&pdm_channel[i]);          \
     hw_multi_pwm_duty(                          \
         C_PDM, i,                               \
-        pdm3_update(                            \
+        pdm4_update(                            \
             &pdm_channel[i].pdm,                \
             pdm_channel[i].line[0].position,    \
-            32 - PDM_DIV_LOG));
+            32 - PDM_DIV_LOG,                   \
+            dither));
 
 #define PDM_COPY_LINE(i)                              \
     pdm_channel[i].line[0] = pdm_channel[i].line[1];
@@ -114,6 +116,8 @@ static inline void pdm_update_glide(struct channel *c) {
 void HW_TIM_ISR(TIM_PDM)(void) {
     hw_multi_pwm_ack(C_PDM);
     hw_gpio_high(PDM_CPU_USAGE_MARK);
+
+    uint32_t dither = random_u32() & ((1 << (PDM_DIV_LOG + 2)) - 1);
 
     if (control_div_count == 0) {
         /* It's simpler to copy the data here and to avoid computing

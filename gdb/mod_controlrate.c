@@ -26,8 +26,17 @@ struct controlrate {
 volatile struct controlrate controlrate;
 
 static inline void pdm_update_line(uint32_t i) {
+#if 1
+    struct channel *c = &pdm_channel[i];
+    struct line *l = &c->line[1];
+    l->position += (l->velocity << CONTROL_DIV_LOG);
+    int32_t span = c->setpoint - l->position;
+    l->velocity = span >> CONTROL_DIV_LOG;
+#else
+    /* No interpolation. */
     pdm_channel[i].line[1].position = pdm_channel[i].setpoint;
     pdm_channel[i].line[1].velocity = 0;
+#endif
 }
 
 #define PDM_UPDATE_LINE(i) \

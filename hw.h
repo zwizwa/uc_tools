@@ -14,8 +14,11 @@
 #elif defined(STM32F4)
 #include "hw_stm32f407.h"
 
-#else
+#elif defined(EMU)
+/* Do not include any platform-specific code.  It is assumed that the
+   ad-hoc emulator build will fill in the HAL through other means. */
 
+#else
 #error Unsupported hardware
 #endif
 
