@@ -31,22 +31,25 @@ static inline void write_be(uint8_t *buf, uint64_t word, uint32_t nb) {
 // Byte order swappers
 //
 // Please do not use these two.  Use the HTONS... macros below
-#define U16_SWAP(x) ((uint16_t)((((x)>>8)&0xff) | (((x)&0xff) << 8)))
-#define U32_SWAP(x) ((uint32_t)(SWAP_U16((x)>>16) | (SWAP_U16(x)<<16)))
 
-#ifdef __BIG_ENDIAN__
+#define SWAP_U16(x) ((((x)>>8)&0xff) | (((x)&0xff) << 8))
+#define SWAP_U32(x) (SWAP_U16((x)>>16) | (SWAP_U16(x)<<16))
+
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
 #define HTONS(s) (s)
 #define NTOHS(s) (s)
 #define HTONL(l) (l)
 #define NTOHL(l) (l)
+#elif __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+#define HTONS(s) SWAP_U16(s)
+#define NTOHS(s) SWAP_U16(s)
+#define HTONL(l) SWAP_U32(l)
+#define NTOHL(l) SWAP_U32(l)
+#else
+#error "Can't determine endianness"
 #endif
 
-#ifdef __LITTLE_ENDIAN__
-#define HTONS(s) U16_SWAP(s)
-#define NTOHS(s) U16_SWAP(s)
-#define HTONL(l) U32_SWAP(l)
-#define NTOHL(l) U32_SWAP(l)
-#endif
+
 
 
 #endif
