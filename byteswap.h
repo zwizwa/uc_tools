@@ -41,12 +41,16 @@ static inline void byteswap_field(uint8_t *buf, uint32_t len) {
     }
 }
 struct byteswap_field {
-    uint8_t len;
+    /* Dare I use bitfields? */
+    int len:15;
+    int swap:1;
 } __attribute__((__packed__));
 static inline void byteswap_fields(const struct byteswap_field *fields, uint32_t nb_fields, void *vbuf) {
     uint8_t *buf = vbuf;
     for(uint32_t i=0; i<nb_fields; i++,fields++) {
-        byteswap_field(buf, fields->len);
+        if (fields->swap) {
+            byteswap_field(buf, fields->len);
+        }
         buf += fields->len;
     }
 }
