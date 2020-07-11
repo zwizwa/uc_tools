@@ -39,7 +39,7 @@ uint32_t pdm_safe_setpoint(uint32_t setpoint) {
 
 /* This sets the number of channels.  Used for struct gen and code gen. */
 #define PDM_FOR_CHANNELS(c) \
-    c(0) c(1) // c(2) //c(3)
+    c(0) c(1) c(2) //c(3)
 
 
 static inline void     control_trigger(void);
@@ -81,11 +81,17 @@ struct line {
     int32_t  velocity;
 };
 
+#define PDM_ORDER 3
+#define PDM_STRUCT struct CONCAT(pdm,PDM_ORDER)
+#define PDM_UPDATE CONCAT(CONCAT(pdm,PDM_ORDER),_update)
+
 struct channel {
     uint32_t setpoint;
     struct line line[2];
-    struct pdm4 pdm;
+    PDM_STRUCT pdm;
 };
+
+
 #define CHANNEL_STRUCT(c) {},
 struct channel pdm_channel[] = { PDM_FOR_CHANNELS(CHANNEL_STRUCT) };
 
@@ -102,7 +108,7 @@ static inline void pdm_update_glide(struct channel *c) {
     pdm_update_glide(&pdm_channel[i]);          \
     hw_multi_pwm_duty(                          \
         C_PDM, i,                               \
-        pdm4_update(                            \
+        PDM_UPDATE(                             \
             &pdm_channel[i].pdm,                \
             pdm_channel[i].line[0].position,    \
             32 - PDM_DIV_LOG,                   \

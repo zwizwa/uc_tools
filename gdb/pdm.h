@@ -29,9 +29,9 @@ struct pdm2 {
     uint32_t s1;
     uint32_t s2;
 };
-static inline uint32_t pdm2_update(struct pdm2 *p, uint32_t input, uint32_t out_shift) {
+static inline uint32_t pdm2_update(struct pdm2 *p, uint32_t input, uint32_t out_shift, uint32_t dither) {
     uint32_t out_q = p->s2 >> out_shift;
-    uint32_t out_a = out_q << out_shift;
+    uint32_t out_a = (out_q << out_shift) + dither;
 
     p->s1 += input - out_a;
     p->s2 += p->s1 - out_a;
