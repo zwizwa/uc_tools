@@ -27,8 +27,9 @@ typedef uint8_t  typ_data_t[8];
 struct typ { TYP_STRUCT_FOR(TYP_STRUCT_FIELD) } __attribute__((__packed__));
 
 static inline void typ_byteswap(struct typ *typ) {
-    const struct byteswap_field bsf[] = { TYP_STRUCT_FOR(TYP_STRUCT_FIELD_SIZE) };
-    byteswap_fields(bsf, sizeof(bsf)/sizeof(bsf[0]), (void*)typ);
+    const struct byteswap_field bsf[] =
+        { TYP_STRUCT_FOR(TYP_STRUCT_FIELD_SIZE) {} };
+    byteswap_fields(bsf, (void*)typ);
 }
 
 

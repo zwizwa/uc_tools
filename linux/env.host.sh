@@ -20,6 +20,7 @@ CFLAGS=" \
 -Wno-multichar \
 -g \
 -Os \
+-fPIC \
 "
 LDFLAGS=" \
 -lm \

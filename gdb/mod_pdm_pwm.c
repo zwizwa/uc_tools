@@ -81,7 +81,7 @@ struct line {
     int32_t  velocity;
 };
 
-#define PDM_ORDER 3
+#define PDM_ORDER 2
 #define PDM_STRUCT struct CONCAT(pdm,PDM_ORDER)
 #define PDM_UPDATE CONCAT(CONCAT(pdm,PDM_ORDER),_update)
 

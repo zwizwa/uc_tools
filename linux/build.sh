@@ -46,6 +46,17 @@ case "$TYPE" in
         fi
         $GCC $LDFLAGS -Wl,-Map=$MAP -o $ELF $O $O_SYSTEM $A $LDLIBS
         ;;
+    so)
+        assert_vars LD ARCH MAP SO A
+        [ -z "$GCC" ] && . $UC_TOOLS/linux/env.$ARCH.sh
+        # The LD name is fake. Use linker's defaults.
+        if [ $(basename "$LD") != dynamic.$ARCH.ld ]; then
+            echo "Only dynamic linking: ARCH=$ARCH LD=$LD"
+            exit 1
+        fi
+        set -x
+        $GCC $LDFLAGS -Wl,-Map=$MAP -o $SO $O $O_SYSTEM $A $LDLIBS -shared
+        ;;
     *)
         echo "TYPE=$TYPE unknown" >&2
         exit 1
