@@ -1,10 +1,11 @@
 /* {packet,4} echo server (pubsub, bus emulation) */
-#define _GNU_SOURCE
 #include "macros.h"
+#include "byteswap.h"
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <poll.h>
+
 
 #define MAX_NB_CLIENTS 10
 struct client {
@@ -18,25 +19,41 @@ void unregister_client(int i) {
     /* Move the last one to take the slot of the one moved. */
     client[i] = client[nb_clients-1];
     nb_clients--;
-    LOG("unregister %d (%d)\n", fd, nb_clients);
+    LOG("unregister fd=%d, n=%d\n", fd, nb_clients);
 }
 void register_client(int fd) {
     client[nb_clients++].fd = fd;
-    LOG("register %d (%d)\n", fd, nb_clients);
+    LOG("register fd=%d, n=%d\n", fd, nb_clients);
 }
-void read_client(int i) {
-    uint8_t buf[1024];
+uint32_t read_client_bytes(int i, uint8_t *buf, uint32_t n) {
     int rv;
     int fd = client[i].fd;
-    ASSERT((rv = read(fd, buf, sizeof(buf))) >= 0);
+    ASSERT((rv = read(fd, buf, n)) >= 0);
     if (rv == 0) {
         unregister_client(i);
+        return 0;
     }
     else {
         LOG("fd=%d, len=%d\n", fd, rv);
+        return rv;
     }
 }
-
+void read_client(int i_in) {
+    uint8_t buf[1024];
+    uint32_t n;
+    if (4 != (n = read_client_bytes(i_in, buf, 4))) return;
+    n = read_be(buf, 4);
+    if (n+4 > sizeof(buf)) {
+        ERROR("buffer overflow %d bytes\n", n+4);
+    }
+    if (n != read_client_bytes(i_in, buf+4, n)) return;
+    LOG("packet: %d\n", n);
+    for (int i=0; i<nb_clients; i++) {
+        if (i != i_in) {
+            ASSERT(n+4 == write(client[i].fd, buf, n+4));
+        }
+    }
+}
 
 int server(int port) {
     int sockfd = 0;
@@ -77,7 +94,7 @@ int main(int argc, char **argv) {
 
         /* Wait */
         int rv;
-        LOG("waiting for %d clients\n", nb_clients);
+        //LOG("waiting for %d clients\n", nb_clients);
         ASSERT_ERRNO(rv = poll(&pfd[0], nb_clients+1, -1));
         ASSERT(rv > 0);
 
