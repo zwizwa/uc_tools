@@ -304,8 +304,10 @@ static void fd_open_command(int *in_fd, int *out_fd, const char *command) {
     // This is confusing, so spell it out
     const int read_end = 0;
     const int write_end = 1;
-    int parent_to_child[2]; pipe(parent_to_child);
-    int child_to_parent[2]; pipe(child_to_parent);
+    int parent_to_child[2];
+    int child_to_parent[2];
+    ASSERT_ERRNO(pipe(parent_to_child));
+    ASSERT_ERRNO(pipe(child_to_parent));
 
     int pid = fork();
 
