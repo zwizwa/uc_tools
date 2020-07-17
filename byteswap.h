@@ -51,10 +51,20 @@ static inline void byteswap_swap_copy(uint8_t *out_buf, const uint8_t *in_buf, u
         out_buf[len-1-i] = a;
     }
 }
+/* FIXME: Not sure what to take for sizes here.  There is some code
+ * that depends on the layout of this struct, so do not change.
+ * Create additional functionality instead. */
+#if 1
+struct byteswap_field {
+    uint8_t len;
+    uint8_t swap;
+} __attribute__((__packed__));
+#else
 struct byteswap_field {
     unsigned int len:15;
     unsigned int swap:1;
 } __attribute__((__packed__));
+#endif
 
 CT_ASSERT_STRUCT_SIZE(byteswap_field, 2);
 

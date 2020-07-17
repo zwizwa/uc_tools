@@ -38,6 +38,7 @@
                 ABORT; \
             } })
 #endif
+#ifndef ASSERT_EQ
 #define ASSERT_EQ(a,b) ({ \
             __typeof__(a) _a = (a); \
             __typeof__(b) _b = (b); \
@@ -45,6 +46,8 @@
                 LOG("ASSERT FAIL: " #a "(%d) == " #b "(%d)\n", _a, _b); \
                 ABORT; \
             } })
+#endif
+#ifndef ASSERT_GT
 #define ASSERT_GT(a,b) ({ \
             __typeof__(a) _a = (a); \
             __typeof__(b) _b = (b); \
@@ -52,6 +55,7 @@
                 LOG("ASSERT FAIL: " #a "(%d) <= " #b "(%d)\n", _a, _b); \
                 ABORT; \
             } })
+#endif
 
 #define FOR_ARRAY(a,p) \
     for(typeof(&a[0]) p = &a[0]; p < &a[ARRAY_SIZE(a)]; p++)

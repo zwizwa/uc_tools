@@ -209,8 +209,6 @@ static inline void gdbstub_service_stop(const struct gdbstub_service *s) {
     s->stub->flags &= (~GDBSTUB_FLAG_STARTED);
 }
 
-
-
 /* Non-volatile configuration header and data go in a separate linker
    section to ensure they are placed at the correct Flash offset. */
 #define CONFIG_HEADER_SECTION __attribute__ ((section (".config_header")))
@@ -222,6 +220,5 @@ static inline void gdbstub_service_stop(const struct gdbstub_service *s) {
 /* End of uC program Flash is used to store data, e.g. FPGA image. */
 #define STORE_HEADER_SECTION  __attribute__ ((section (".store_header")))
 #define STORE_DATA_SECTION    __attribute__ ((section (".store_data")))
-
 
 #endif
