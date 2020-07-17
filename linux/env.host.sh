@@ -18,6 +18,7 @@ CFLAGS=" \
 -Wno-format \
 -Wno-attributes \
 -Wno-multichar \
+-Wunused-result \
 -g \
 -Os \
 -fPIC \

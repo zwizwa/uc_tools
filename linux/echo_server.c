@@ -1,9 +1,7 @@
 /* {packet,4} echo server (pubsub, bus emulation) */
+#include "tcp_tools.h"
 #include "macros.h"
 #include "byteswap.h"
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
 #include <poll.h>
 
 
@@ -34,7 +32,7 @@ uint32_t read_client_bytes(int i, uint8_t *buf, uint32_t n) {
         return 0;
     }
     else {
-        LOG("fd=%d, len=%d\n", fd, rv);
+        //LOG("fd=%d, len=%d\n", fd, rv);
         return rv;
     }
 }
@@ -47,7 +45,7 @@ void read_client(int i_in) {
         ERROR("buffer overflow %d bytes\n", n+4);
     }
     if (n != read_client_bytes(i_in, buf+4, n)) return;
-    LOG("packet: %d\n", n);
+    //LOG("packet: %d\n", n);
     for (int i=0; i<nb_clients; i++) {
         if (i != i_in) {
             ASSERT(n+4 == write(client[i].fd, buf, n+4));
@@ -55,32 +53,11 @@ void read_client(int i_in) {
     }
 }
 
-int server(int port) {
-    int sockfd = 0;
-    ASSERT(port > 0);
-    ASSERT(port < 0x10000);
-    // create socket
-    ASSERT_ERRNO(sockfd = socket(AF_INET, SOCK_STREAM, 0));
-    int intarg = -1;
-    ASSERT_ERRNO(setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &intarg, sizeof(intarg)));
-    ASSERT_ERRNO(setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &intarg, sizeof(intarg)));
-    struct sockaddr_in address_in = {
-        .sin_port = htons((uint16_t)port),
-        .sin_family = AF_INET
-    };
-    socklen_t addrlen = sizeof(address_in);
-    ASSERT_ERRNO(bind(sockfd, (struct sockaddr *) &address_in, addrlen));
-    int backlog = 5;
-    ASSERT_ERRNO(listen(sockfd, backlog));
-    LOG("listening on port %d\n", port);
-    return sockfd;
-}
-
 int main(int argc, char **argv) {
     LOG("echo_server.c\n");
     ASSERT(argc == 2);
     int port = atoi(argv[1]);
-    int server_fd = server(port);
+    int server_fd = assert_tcp_listen(port);
     struct pollfd pfd[MAX_NB_CLIENTS];
     for(;;) {
         /* Set up descriptors. */

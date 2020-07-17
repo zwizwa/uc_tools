@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <unistd.h>
+#include <string.h>
 
 ssize_t raw_read(int fd, void *buf, size_t count);
 ssize_t raw_write(int fd, const void *buf, size_t count);
