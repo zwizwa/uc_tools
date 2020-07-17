@@ -45,6 +45,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define _POSIX_C_SOURCE 1
 
 #include "packet_bridge.h"
+#include "tcp_tools.h"
 
 #include "macros.h"
 
@@ -522,6 +523,12 @@ struct port *port_open_packetn_command(uint32_t len_bytes, const char *command) 
     return port_open_packetn_stream(len_bytes, in_fd, out_fd);
 }
 
+struct port *port_open_packetn_tcp_connect(
+    uint32_t len_bytes, const char *host, uint16_t tcp_port) {
+    int fd = assert_tcp_connect(host, tcp_port);
+    return port_open_packetn_stream(len_bytes, fd, fd);
+}
+
 
 /***** 2.3. SLIP FRAMING */
 
@@ -702,6 +709,9 @@ struct port *port_open_slip_tty(const char *dev) {
     return port_open_slip_stream(fd, fd);
 }
 struct port *port_open_slip_command(const char *command) {
+    ASSERT(0); // not yet implemented
+}
+struct port *port_open_slip_tcp_connect(const char *host, uint16_t tcp_port) {
     ASSERT(0); // not yet implemented
 }
 
@@ -1074,40 +1084,22 @@ struct port *port_open(const char *spec_ro) {
         return port_open_udp(port);
     }
 
-    // UDP-LISTEN:<host>:<port>
+    // UDP:<host>:<port>
     if (!strcmp(tok, "UDP")) {
         ASSERT(tok = strtok(NULL, delim));
         const char *host = tok;
         ASSERT(tok = strtok(NULL, delim));
         uint16_t port = atoi(tok);
         ASSERT(NULL == (tok = strtok(NULL, delim)));
-        //LOG("UDP-LISTEN:%s:%d\n", host, port);
+        //LOG("UDP:%s:%d\n", host, port);
 
         struct port *p = port_open_udp(0); // don't spec port here
         struct udp_port *up = (void*)p;
 
-        struct hostent *hp;
-        ASSERT(hp = gethostbyname(host));
-        memcpy((char *)&up->peer.sin_addr,
-               (char *)hp->h_addr_list[0],
-               hp->h_length);
+        assert_gethostbyname(&up->peer, host);
         up->peer.sin_port = htons(port);
         up->peer.sin_family = AF_INET;
 
-        // FIXME: Send some meaningful ethernet packet instead
-        // FIXME: Make this optional?  Or require application to initiate?
-#if 0
-        uint8_t buf[] = {
-            0x55,0x55,0x55,0x55,0x55,0x55,
-            0x55,0x55,0x55,0x55,0x55,0x55,
-            0x55,0x55
-        };
-        LOG("udp: hello to ");
-        log_addr(&up->peer);
-        ASSERT(sizeof(buf) == p->write(p, buf, sizeof(buf)));
-#else
-        LOG("udp: not sending hello\n");
-#endif
         return p;
     }
 
@@ -1155,6 +1147,25 @@ struct port *port_open(const char *spec_ro) {
         }
     }
 
+    // TCP:<framing>:<host>:<port>
+    if (!strcmp(tok, "TCP")) {
+        ASSERT(tok = strtok(NULL, delim));
+        const char *framing = tok;
+        ASSERT(tok = strtok(NULL, delim));
+        const char *host = tok;
+        ASSERT(tok = strtok(NULL, delim));
+        uint16_t tcp_port = atoi(tok);
+        ASSERT(NULL == (tok = strtok(NULL, delim)));
+        //LOG("TCP:%s:%d\n", host, port);
+
+        if (!strcmp("slip", framing)) {
+            return port_open_slip_tcp_connect(host, tcp_port);
+        }
+        else {
+            uint16_t len_bytes = atoi(framing);
+            return port_open_packetn_tcp_connect(len_bytes, host, tcp_port);
+        }
+    }
 
     // -:<framing>
     // stdandard i/o

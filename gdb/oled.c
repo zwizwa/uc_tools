@@ -132,6 +132,13 @@ static uint32_t usb_tx(uint8_t *buf, uint32_t room) {
 
 
 
+/* ADC */
+void adc_init(void) {
+    
+}
+
+
+
 
 /* ******** GDBSTUB GLUE */
 
@@ -186,6 +193,7 @@ void start(void) {
 
     audio_init();
 
+    adc_init();
 
     scan_samples((void*)0x8008000);
     play_sample(1);
