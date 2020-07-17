@@ -1,4 +1,11 @@
-/* {packet,4} echo server (pubsub, bus emulation) */
+/* Packet echo server, complementing packet_bridge.c
+
+   This only supports the {packet,4} protocol with TCP clients.
+   Use packet_bridge to interface other packet protocols.
+*/
+
+#include "packet_bus.h"
+
 #include "tcp_tools.h"
 #include "macros.h"
 #include "byteswap.h"
@@ -11,23 +18,23 @@ struct client {
 };
 struct client client[MAX_NB_CLIENTS] = {};
 uint32_t nb_clients = 0;
+
 void unregister_client(int i) {
     int fd = client[i].fd;
     close(fd);
     /* Move the last one to take the slot of the one moved. */
     client[i] = client[nb_clients-1];
     nb_clients--;
-    LOG("unregister fd=%d, n=%d\n", fd, nb_clients);
+    LOG("- fd=%d n=%d\n", fd, nb_clients);
 }
 void register_client(int fd) {
     client[nb_clients++].fd = fd;
-    LOG("register fd=%d, n=%d\n", fd, nb_clients);
+    LOG("+ fd=%d n=%d\n", fd, nb_clients);
 }
 uint32_t read_client_bytes(int i, uint8_t *buf, uint32_t n) {
-    int rv;
     int fd = client[i].fd;
-    ASSERT((rv = read(fd, buf, n)) >= 0);
-    if (rv == 0) {
+    int rv = read(fd, buf, n);
+    if (rv <= 0) {
         unregister_client(i);
         return 0;
     }
@@ -36,30 +43,33 @@ uint32_t read_client_bytes(int i, uint8_t *buf, uint32_t n) {
         return rv;
     }
 }
-void read_client(int i_in) {
+uint32_t read_client(const struct packet_bus_config *c, int i_in) {
     uint8_t buf[1024];
     uint32_t n;
-    if (4 != (n = read_client_bytes(i_in, buf, 4))) return;
+    if (4 != (n = read_client_bytes(i_in, buf, 4))) return 0;
     n = read_be(buf, 4);
     if (n+4 > sizeof(buf)) {
         ERROR("buffer overflow %d bytes\n", n+4);
     }
-    if (n != read_client_bytes(i_in, buf+4, n)) return;
+    if (n != read_client_bytes(i_in, buf+4, n)) return 0;
     //LOG("packet: %d\n", n);
+    if (c->sniff) {
+        c->sniff(client[i_in].fd, buf, n+4);
+    }
+
     for (int i=0; i<nb_clients; i++) {
         if (i != i_in) {
             ASSERT(n+4 == write(client[i].fd, buf, n+4));
         }
     }
+    return n+4;
 }
 
-int main(int argc, char **argv) {
-    LOG("echo_server.c\n");
-    ASSERT(argc == 2);
-    int port = atoi(argv[1]);
-    int server_fd = assert_tcp_listen(port);
+void packet_bus_start(const struct packet_bus_config *config) {
+    int server_fd = assert_tcp_listen(config->tcp_port);
     struct pollfd pfd[MAX_NB_CLIENTS];
     for(;;) {
+      again:
         /* Set up descriptors. */
         for (int i=0; i<nb_clients; i++) {
             pfd[i].events = POLLIN | POLLERR;
@@ -78,7 +88,13 @@ int main(int argc, char **argv) {
         /* Handle */
         for(int i=0; i<nb_clients; i++) {
             if(pfd[i].revents & POLLIN) {
-                read_client(i);
+                uint32_t rv = read_client(config, i);
+                if (!rv) {
+                    /* Error occured and client table changed, so
+                     * indices are no longer valid.  Restart the
+                     * poll .*/
+                    goto again;
+                }
                 pfd[i].revents &= ~(POLLIN | POLLERR);
             }
             ASSERT(0 == pfd[i].revents);
@@ -97,3 +113,4 @@ int main(int argc, char **argv) {
         ASSERT(0 == pfd[i_server].revents);
     }
 }
+

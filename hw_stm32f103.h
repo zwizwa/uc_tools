@@ -1049,6 +1049,10 @@ INLINE void hw_usart_set_flow_control(uint32_t usart, uint32_t flowcontrol) {
 	reg32 = (reg32 & ~USART_FLOWCONTROL_MASK) | flowcontrol;
 	USART_CR3(usart) = reg32;
 }
+INLINE void hw_usart_set_baudrate_div(uint32_t usart, uint32_t div) {
+	USART_BRR(usart) = div;
+}
+
 INLINE void hw_usart_enable_rx_interrupt(uint32_t usart) {
 	USART_CR1(usart) |= USART_CR1_RXNEIE;
 }
