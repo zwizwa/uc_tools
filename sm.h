@@ -189,6 +189,21 @@
     name##_init(state, __VA_ARGS__);            \
     SM_WAIT_TICK(sm,name##_tick(state),0); })
 
+/* SM_SUB is like SM_CALL, with the convention that the state for a
+   sub machine is stored in a union meber "sub" in the parent's state
+   struct.  All SM_SUB calls in the same _tick() function can use the
+   same union, as they are mutually exclusive.  Since the return value
+   of _tick() is always SM_HALTED, instead a pointer to the struct is
+   returned as the value of the expression. */
+#define SM_SUB(sm, name, ...) \
+    ({ SM_CALL(sm, name, &((sm)->sub.name), __VA_ARGS__ );      \
+       &((sm)->sub.name); })
+
+/* Same, but don't abort on error, returning error value instead. */
+#define SM_SUB_CATCH(sm, name, ...) \
+    SM_CALL_CATCH(sm, name, &((sm)->sub.name), __VA_ARGS__ )
+
+
 /* Run with busy-wait (for testing) */
 #define SM_RUN_BUSYWAIT(sm, name, ...) ({               \
     name##_init(sm, __VA_ARGS__);                       \
@@ -246,12 +261,13 @@ struct sm_const_buf {
 
 
 
-// TODO: Both the wait and the data transer can be made abstract.
+// TODO: Both the wait and the data transfer can be made abstract.
 // Essentially, a write to a buffer is a write to another state
 // machine.  Conversely for reads.
 
 
 typedef uint32_t (*sm_tick_fn)(void*);
+
 
 #endif
 

@@ -18,6 +18,11 @@
 /* Do not include any platform-specific code.  It is assumed that the
    ad-hoc emulator build will fill in the HAL through other means. */
 
+#elif defined(__linux__)
+
+/* E.g. for emulator tests.
+   Assume that stubs will be provided. */
+
 #else
 #error Unsupported hardware
 #endif

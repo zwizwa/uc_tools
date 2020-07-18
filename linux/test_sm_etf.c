@@ -1,7 +1,8 @@
 /* Test harness for sm_etf that doesn't need to run on a uC */
 
-#include "base.h"
-#include "sm_etf.h"
+#include "macros.h"
+#include "gdb/sm_etf.h"
+#include "gdb/sm_etf.c"
 #include <unistd.h>
 
 
@@ -10,20 +11,22 @@ struct sm_etf sm_etf = {};
 
 void test(const uint8_t *buf, uint32_t len) {
     for (int i=0; i<len; i++) {
-        infof("%02x ", buf[i]);
+        LOG("%02x ", buf[i]);
     }
-    infof("\n");
+    LOG("\n");
 
     uint32_t status = sm_etf_write(&sm_etf, buf, len);
-    infof("status: %08x\n", status);
+    LOG("status: %08x\n", status);
 }
 #define TEST(...) { uint8_t buf[] = {__VA_ARGS__}; test(buf, sizeof(buf)); }
 
 
+void *cb = NULL;
+
 int run_test(const char *test_ignored) {
 
     // one binding
-    sm_etf_init(&sm_etf, buf, sizeof(buf));
+    sm_etf_init(&sm_etf, buf, sizeof(buf), cb);
     TEST(131,
          LIST_EXT, 0, 0, 0, 1,
          SMALL_TUPLE_EXT, 2,
@@ -32,7 +35,7 @@ int run_test(const char *test_ignored) {
          NIL_EXT);
 
     // a nested binding
-    sm_etf_init(&sm_etf, buf, sizeof(buf));
+    sm_etf_init(&sm_etf, buf, sizeof(buf), cb);
     TEST(131,
          LIST_EXT, 0, 0, 0, 1,
          SMALL_TUPLE_EXT, 2,
@@ -47,7 +50,7 @@ int run_test(const char *test_ignored) {
          NIL_EXT);
 
     // a nested binding, spit in 2 packets
-    sm_etf_init(&sm_etf, buf, sizeof(buf));
+    sm_etf_init(&sm_etf, buf, sizeof(buf), cb);
     TEST(131,
          LIST_EXT, 0, 0, 0, 1,
          SMALL_TUPLE_EXT, 2,
@@ -76,23 +79,23 @@ int main(int argc, char **argv) {
 
   again:
     // Run as erlang port.
-    sm_etf_init(&sm_etf, buf, sizeof(buf));
+    sm_etf_init(&sm_etf, buf, sizeof(buf), cb);
     uint8_t msg[16];
     for(;;) {
         ssize_t len = read(0, msg, sizeof(msg));
-        infof("read: %d\n", len);
+        LOG("read: %d\n", len);
         if (len == 0) return 0;
         if (len == -1) { perror("read"); return 1; };
         uint32_t status = sm_etf_write(&sm_etf, msg, len);
         switch(status) {
         case SM_WAITING:
-            infof("waiting\n");
+            LOG("waiting\n");
             break;
         case SM_HALTED:
-            infof("again\n");
+            LOG("again\n");
             goto again;
         default:
-            infof("other %08x\n", status);
+            LOG("other %08x\n", status);
             return (int)status;
         }
     }
