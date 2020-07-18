@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <poll.h>
+#include <unistd.h>
 #include <asm-generic/termbits.h>
 #include <asm-generic/ioctls.h>
 

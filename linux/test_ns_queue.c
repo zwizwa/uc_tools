@@ -2,6 +2,7 @@
 #include <stdint.h>
 
 #include "macros.h"
+#include "gensym.h"
 
 typedef struct {
     uint8_t val;

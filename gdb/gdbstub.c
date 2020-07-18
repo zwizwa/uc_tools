@@ -29,6 +29,7 @@
    [ts]
 */
 
+#define LOG(...)
 #include "generic.h"
 
 #define _BSD_SOURCE

@@ -17,8 +17,8 @@
 
    - Tasks are abstract.  This allows implementation of task to use
      the most convenient form, e.g. state machine dispach function,
-     computed goto, or compiled from some other form (async/await
-     style).
+     computed goto, compiled from some other form (async/await style),
+     or proper machine stack switching.
 
    - Interrupts can be supported through buffered channels, with WFI
      in the main loop to wake up the scheduler after interrupt.
@@ -41,6 +41,17 @@
    "simple lisp" to compile to async tasks isn't easy to find, and
    might not really exist.  It would be nice to have something that
    compiles down to plain C.
+
+   TODO:
+
+   - Replace the concrete copy operation by a transaction callback.
+     During a rendez-vous, data can be made visible to two tasks.
+     This would avoid message copy in case tasks run on the same
+     machine.  Note that this might already be implemented correctly,
+     by executing the receiver first.
+
+   - Enforce directionality.  Together with a transaction mechanism,
+     this allows packet transport of data payload over the network.
 
 */
 
@@ -157,12 +168,18 @@ static inline void do_send(
 
     /* If there is data, copy it over the channel, truncating if
        necessary. */
-    if (evt_recv->msg_len) {
+    int shared_memory;
+    if (evt_recv->msg_buf) {
+        shared_memory = 0;
         uint32_t n =
             (evt_recv->msg_len >= evt_send->msg_len) ?
             evt_send->msg_len : evt_recv->msg_len;
         memcpy(evt_recv->msg_buf, evt_send->msg_buf, n);
-        evt_recv->msg_len = n;
+    }
+    else {
+        shared_memory = 1;
+        evt_recv->msg_buf = evt_send->msg_buf;
+        evt_recv->msg_len = evt_send->msg_len;
     }
 
     /* In both tasks, mark which event has completed.  It is
@@ -170,12 +187,21 @@ static inline void do_send(
     recv->selected = evt_recv - &recv->evt[0];
     send->selected = evt_send - &send->evt[0];
 
-    /* Receiver is resumed first.  This makes sends look more like
-       function calls, which is useful for debugging as it makes
-       traces more readable.  Note that the tasks cannot rely on this,
-       and if they only use channel communication they don'tt even
-       know about it. */
+    /* Receiver is resumed first.
+
+       1. It allows implementation of shared memory message passing,
+          with the understanding that a reader can only access the
+          memory in the current time slot.  Whether the buffer is
+          read-only is up to the applicaiton.
+
+       2. It makes sends look more like function calls, which is
+          useful for debugging as it makes traces more readable.  Note
+          that the tasks themselves cannot rely on this knowledge.
+    */
     recv->resume(recv);
+    if (shared_memory) {
+        evt_recv->msg_buf = NULL;
+    }
     send->resume(send);
 }
 

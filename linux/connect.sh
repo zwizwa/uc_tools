@@ -1,0 +1,4 @@
+#!/bin/bash
+echo "CONNECT_HOST=$CONNECT_HOST" >&2
+echo "CONNECT_PORT=$CONNECT_PORT" >&2
+exec netcat "$CONNECT_HOST" "$CONNECT_PORT"

@@ -1,64 +1,10 @@
 #ifndef GENERIC_H
 #define GENERIC_H
 
-// Base tools shared between STM32F103 and Linux C.
+// Misc tools shared between STM32F103 and Linux C.
 
 #include <stdint.h>
 #include "macros.h"
-
-/* Note that "static inline" doesn't necessarily inline.  Adding this
-   attribute will force GCC to inline the function even if
-   optimization is off. */
-#ifndef INLINE
-#define INLINE static inline __attribute__((__always_inline__))
-#endif
-
-/* The default error propagation is to exit the program.  This works
- * well for the intended use as Erlang port.  Note that for
- * microcontroller use this should probably be overridden. */
-#ifndef ABORT
-#define ABORT exit(1)
-#endif
-
-#ifndef ERROR
-#define ERROR(...) do {LOG(__VA_ARGS__);ABORT;}while(0)
-#endif
-
-#define CT_ASSERT(name, pred) \
-    typedef char nct_assert_##name[(pred) ? 1 : -1]
-#define CT_ASSERT_STRUCT_SIZE(name, size) \
-    CT_ASSERT(struct_##name, sizeof(struct name) == size)
-#define CT_ASSERT_UNION_SIZE(name, size) \
-    CT_ASSERT(union_##name, sizeof(union name) == size)
-
-#ifndef ASSERT
-#define ASSERT(assertion) ({ \
-            if(!(assertion)) { \
-                LOG("%s: %d: ASSERT FAIL: " #assertion "\n", __FILE__, __LINE__); \
-                ABORT; \
-            } })
-#endif
-#ifndef ASSERT_EQ
-#define ASSERT_EQ(a,b) ({ \
-            __typeof__(a) _a = (a); \
-            __typeof__(b) _b = (b); \
-            if(_a != _b) { \
-                LOG("ASSERT FAIL: " #a "(%d) == " #b "(%d)\n", _a, _b); \
-                ABORT; \
-            } })
-#endif
-#ifndef ASSERT_GT
-#define ASSERT_GT(a,b) ({ \
-            __typeof__(a) _a = (a); \
-            __typeof__(b) _b = (b); \
-            if(_a <= _b) { \
-                LOG("ASSERT FAIL: " #a "(%d) <= " #b "(%d)\n", _a, _b); \
-                ABORT; \
-            } })
-#endif
-
-#define FOR_ARRAY(a,p) \
-    for(typeof(&a[0]) p = &a[0]; p < &a[ARRAY_SIZE(a)]; p++)
 
 
 #define TRY(expr) { int err = expr; if(err) return err; }
@@ -72,7 +18,6 @@ INLINE int flash_null(const void *ptr) {
 INLINE const char* flash_string(const char *str, const char *defstr) {
     return flash_null(str) ? defstr : str;
 }
-
 
 #ifndef offsetof
 #define offsetof(st,m) __builtin_offsetof(st,m)

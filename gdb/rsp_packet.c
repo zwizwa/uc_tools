@@ -1,3 +1,4 @@
+#define LOG(...)
 #include "rsp_packet.h"
 
 /* Building RSP packets */

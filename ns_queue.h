@@ -64,7 +64,7 @@ static inline void NS(_clear)(NS(_container_t) *q) {
     q->read = 0;
 }
 static inline void NS(_cycle)(NS(_container_t) *q) {
-    NS(_element_t) e;
+    NS(_element_t) e = {};
     NS(_read)(q, &e);
     NS(_write)(q, &e);
 }
