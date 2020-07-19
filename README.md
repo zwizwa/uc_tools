@@ -34,9 +34,10 @@ behind them, and probably deserve their own documentation:
   machines.  Think "tasks with static stack frames".  Backronyms:
   state machine, sub-machine.
 
-- ns_*.h: implementations of container types (list, queue, heap,
+- ns_*.h: implementations of generic types (list, queue, heap,
   key_list, serialization) as C namespaces.  Roughly based on ideas
-  behind the ML module system.  Similar to C++ templates / STL.
+  behind the ML module system (instantiation through explicit type
+  specialization).  Similar to C++ templates / STL.
 
 - mod_*.c: a code organization pattern optimized for modular
   compile-time configuration, supporting many specialzed firmware
