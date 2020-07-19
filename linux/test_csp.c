@@ -33,7 +33,7 @@
      standard C, and would require some syntactic frontend that can
      compile a program to e.g. CG form.
 
-.  The latter was my original intention, but has been postponed until
+   The latter was my original intention, but has been postponed until
    later as it is not a trivial task.  Notes regarding CG as a
    compilation target are in sm.txt
 
@@ -161,4 +161,18 @@ void with_scheduler(int nb_c2e, int nb_c, void (*f)(struct csp_scheduler *)) {
     struct csp_chan_to_evt c[nb_c];
     csp_scheduler_init(&s, c2e, nb_c2e, c, nb_c);
     f(&s);
+}
+
+int main(int argc, char **argv) {
+    /* Sizes don't matter much for tests.  Just make sure they are
+       large enough.  FIXME: create some functionality to compute
+       storage parameters from application. */
+    int nb_c2e = 20;
+    int nb_c = 20;
+    LOG("- test1\n");
+    with_scheduler(nb_c2e, nb_c, test1);
+    LOG("- test2\n");
+    with_scheduler(nb_c2e, nb_c, test2);
+    LOG("- test3\n");
+    with_scheduler(nb_c2e, nb_c, test3);
 }

@@ -166,20 +166,23 @@ static inline void do_send(
     struct csp_task *send, struct csp_evt *evt_send,
     struct csp_task *recv, struct csp_evt *evt_recv) {
 
-    /* If there is data, copy it over the channel, truncating if
-       necessary. */
-    int shared_memory;
-    if (evt_recv->msg_buf) {
-        shared_memory = 0;
-        uint32_t n =
-            (evt_recv->msg_len >= evt_send->msg_len) ?
-            evt_send->msg_len : evt_recv->msg_len;
-        memcpy(evt_recv->msg_buf, evt_send->msg_buf, n);
-    }
-    else {
-        shared_memory = 1;
-        evt_recv->msg_buf = evt_send->msg_buf;
-        evt_recv->msg_len = evt_send->msg_len;
+    /* Implement data transfer as copied or in-place shared access.
+       Note that this needs to be conditional on presence of send
+       buffer, as it is quite common to have empty events, e.g. just
+       synchronization. */
+    int shared_memory = 0;
+    if (evt_send->msg_buf) {
+        if (evt_recv->msg_buf) {
+            uint32_t n =
+                (evt_recv->msg_len >= evt_send->msg_len) ?
+                evt_send->msg_len : evt_recv->msg_len;
+            memcpy(evt_recv->msg_buf, evt_send->msg_buf, n);
+        }
+        else {
+            shared_memory = 1;
+            evt_recv->msg_buf = evt_send->msg_buf;
+            evt_recv->msg_len = evt_send->msg_len;
+        }
     }
 
     /* In both tasks, mark which event has completed.  It is
