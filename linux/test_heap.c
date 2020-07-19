@@ -85,10 +85,10 @@ void log_arr(uint32_t *arr, uint32_t nb) {
     LOG("\n");
 }
 
-uint32_t seq(int n, int mul, int mod) {
-    /* If mul is 0, use a proper pseudo RNG.  Otherwise use a "prime
-       cycle" that provides unsorted numbers while retaining some
-       predictability.  Always use mod to limit the range. */
+/* If mul is 0, use a proper pseudo RNG with range limiting via mod.
+   Otherwise use a "sawtooth" linear modulo cycle that provides
+   unsorted numbers while retaining some predictability. */
+uint32_t seq(int i, int mul, int mod) {
     return (mul ?  (i * mul) : random_u32()) % mod;
 }
 
