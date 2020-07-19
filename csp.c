@@ -525,6 +525,7 @@ int csp_async_read(struct csp_scheduler *s,
     return 1;
 }
 
+
 /* Interrupts.
 
    I can see two strategies to support interrupts.

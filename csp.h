@@ -88,22 +88,29 @@ struct csp_task {
    CSP_SELECT, the corresponding csp_evt structures will need to be
    initialized. */
 
-#define CSP_SEL_K(state,ns,nr,klabel) \
-    (state)->task.nb_send = ns;       \
-    (state)->task.nb_recv = nr;       \
-    (state)->next = &&klabel;         \
-    return;                           \
-klabel:
+#define CSP_SEL_K(state,_nb_send,_nb_recv,_klabel)      \
+    (state)->task.nb_send = _nb_send;                   \
+    (state)->task.nb_recv = _nb_recv;                   \
+    (state)->next = &&_klabel;                          \
+    return;                                             \
+_klabel:
 
 #define CSP_SEL(state,ns,nr) \
     CSP_SEL_K(state,ns,nr,GENSYM(resume_))
 
 /* Data transfer event. */
+#define CSP_EVT_BUF(state,n,ch,buf,size) \
+    csp_evt(&((state)->task.evt[n]),ch,buf,size)
 #define CSP_EVT(state,n,ch,var) \
-    csp_evt(&((state)->task.evt[n]),ch,&(var),sizeof(var))
-/* Same, but no data payload (sync only). */
+    CSP_EVT_BUF(state,n,ch,&(var),sizeof(var))
+/* Same, but no data payload (sync only).  Note that this just
+   expresses intention, as shared data will be transferred in case
+   sender is attaching a pointer. */
 #define CSP_SYN(state,n,ch) \
-    csp_evt(&((state)->task.evt[n]),ch,0,0)
+    CSP_EVT_BUF(state,n,ch,0,0)
+/* Hence this is exactly the same implementation. */
+#define CSP_EVT_SHARED(state,n,ch) \
+    CSP_EVT_BUF(state,n,ch,0,0)
 
 
 /* Single op send and receive are special cases of select */
@@ -223,6 +230,21 @@ int csp_async_read(struct csp_scheduler *s,
    that it can read from the buffer.  */
 
 void csp_async_notify(struct csp_scheduler*s, struct csp_async *b, uint16_t nb);
+
+void csp_async_start(struct csp_scheduler *s,
+                    struct csp_async *b,
+                    void (*task)(struct csp_async *),
+                    uint16_t c_int, uint16_t c_data,
+                    void *buf, uint32_t size);
+void csp_async_send_task(struct csp_async *b);
+
+
+/* Simpler implementation using shared memory. */
+int csp_async_write_shared(struct csp_scheduler *s,
+                           uint16_t channel,
+                           const void *data, uint32_t len);
+
+
 
 #endif
 

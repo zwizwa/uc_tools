@@ -1,4 +1,8 @@
-#include "csp.c"
+#include "csp.h"
+#include "csp_fd.h"
+//#include "csp.c"
+//#include "csp_fd.c"
+#include "tcp_tools.h"
 
 /* Some context
    ------------
@@ -155,6 +159,27 @@ void test3(struct csp_scheduler *s) {
     csp_async_notify(s, &b, 1);
 }
 
+
+/* Test csp_to_fd using socket output. */
+
+// FIXME: implement
+void test4_0(struct csp_scheduler *s) {
+    int port = 1234;
+    int fd = assert_tcp_connect("localhost", port);
+    (void)fd;
+    int chan = 0;
+    int ext_chan = 123; // arbitrary
+
+    /* This has a proper _init function. */
+    struct csp_to_fd csp_to_fd;
+    csp_to_fd_init(&csp_to_fd, fd, chan, ext_chan);
+    csp_start(s, &csp_to_fd.task);
+
+    uint32_t msg = 0x12345678;
+    csp_send(s, chan, &msg, sizeof(msg));
+}
+
+
 void with_scheduler(int nb_c2e, int nb_c, void (*f)(struct csp_scheduler *)) {
     struct csp_scheduler s = {};
     struct csp_evt_list c2e[nb_c2e];
@@ -169,10 +194,19 @@ int main(int argc, char **argv) {
        storage parameters from application. */
     int nb_c2e = 20;
     int nb_c = 20;
-    LOG("- test1\n");
-    with_scheduler(nb_c2e, nb_c, test1);
-    LOG("- test2\n");
-    with_scheduler(nb_c2e, nb_c, test2);
-    LOG("- test3\n");
-    with_scheduler(nb_c2e, nb_c, test3);
+    if (argc < 2) {
+        LOG("- test1\n");
+        with_scheduler(nb_c2e, nb_c, test1);
+        LOG("- test2\n");
+        with_scheduler(nb_c2e, nb_c, test2);
+        LOG("- test3\n");
+        with_scheduler(nb_c2e, nb_c, test3);
+    }
+    else {
+        /* This test split over two linux processes. */
+        LOG("- test4_0\n");
+        if (atoi(argv[1]) == 0) {
+            with_scheduler(nb_c2e, nb_c, test4_0);
+        }
+    }
 }

@@ -26,6 +26,7 @@
 
 */
 
+#define TAG_CSP         0xFFF2  // used by csp_fd.c
 #define TAG_EVENT       0xFFF3  // generic event, uint16_t subtag
 #define TAG_RESET       0xFFF4  // reset board
 #define TAG_U32         0xFFF5  // skeleton for flat u32 commands
