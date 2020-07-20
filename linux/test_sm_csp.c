@@ -35,13 +35,14 @@ struct count {
 csp_status_t count_tick(struct count *s) {
     SM_RESUME(s);
     for(;;) {
-        LOG("count: %d\n", s->count);
+        LOG("count: %d -> ", s->count);
         CSP_SND(&(s->task), s, s->chan, s->count);
         s->count++;
     }
 }
 void count_init(struct count *s, int chan) {
     memset(s,0,sizeof(*s));
+    s->task.resume = (csp_resume_f)count_tick;
     s->chan = chan;
 }
 
@@ -64,11 +65,12 @@ struct procsub {
 };
 csp_status_t procsub_tick(struct procsub *s) {
     SM_RESUME(s);
-    for(;;) {
+    while (s->loops--) {
         CSP_RCV(s->task, s, s->chan, s->count);
         LOG("procsub: %d %d\n", s->count, s->loops);
-        if (!s->loops--) return SM_HALTED;
     }
+    LOG("\n");
+    SM_HALT(s);
 }
 void procsub_init(struct procsub *s, struct csp_task *task, int loops) {
     memset(s,0,sizeof(*s));
@@ -110,9 +112,10 @@ void proc_init(struct proc *s, int chan) {
 void test1(struct csp_scheduler *s) {
     struct count c;
     struct proc p;
-    SM_CSP_START(s, count, &c, 0 /* chan */);
-    SM_CSP_START(s, proc, &p, 0 /* chan */);
+    SM_CSP_START(s, &c.task, count, &c, 0 /* chan */);
+    SM_CSP_START(s, &p.task, proc, &p, 0 /* chan */);
     csp_schedule(s);
+    LOG("\n");
 }
 int main(int argc, char **argv) {
     /* Sizes don't matter much for tests.  Just make sure they are

@@ -127,12 +127,20 @@ _klabel:
     CSP_EVT_BUF(task,n,ch,0,0)
 
 /* Single op send and receive are special cases of select */
-#define CSP_SND(task,cont,ch,var)                         \
-    do { CSP_EVT(task,0,ch,var);               \
-         CSP_SEL(task,cont,1,0); } while(0)
-#define CSP_RCV(task,cont,ch,var)             \
-    do { CSP_EVT(task,0,ch,var);               \
-         CSP_SEL(task,cont,0,1); } while(0)
+#define CSP_SND(task,cont,ch,var) {             \
+        CSP_EVT(task,0,ch,var);                 \
+        CSP_SEL(task,cont,1,0);                 \
+}
+#define CSP_RCV(task,cont,ch,var) {            \
+        CSP_EVT(task,0,ch,var);                \
+        CSP_SEL(task,cont,0,1);                \
+}
+
+/* RPC is a common pattern, so provide a macro for it. */
+#define CSP_RPC(task,cont,ch,req_var,resp_var) {        \
+        CSP_SND(task,cont,ch,req_var);                  \
+        CSP_RCV(task,cont,ch,resp_var);                 \
+    }
 
 /* To halt a task: return from the resume function, but set a NULL
    resume point such that the task will not be rescheduled.  Note that

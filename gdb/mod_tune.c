@@ -3,7 +3,7 @@
 
    I'm using this module as a driver to test the Linux emulation code,
    and to also move away from condition polling, into event-driven
-   CSP.
+   CSP.  The SM and CSP abstractions can now work together.
 
    The basic idea is to be able to develop code on Linux and then move
    it to the microcontroller while changing as little as possible.
@@ -22,7 +22,7 @@
      polling is good enough.
 */
 
-#include "sm.h"
+#include "sm_csp.h"
 
 #include <stdint.h>
 
@@ -35,24 +35,48 @@
 #define NOTE(x) ((uint32_t)(x * ONE))
 #define FREQ(x) (x)
 
+/* Sub machine uses a raw measurement RPC on a channel to perform a
+   conditioned measurement.  This is to allow emulation and network
+   transparency .*/
+
+/* Trying out a pattern: main machine and sub machine share some data.
+   Put that in an environment struct. */
+struct sm_tune_env {
+    struct csp_task task;
+    struct csp_evt evt[1];
+    uint32_t setpoint;
+    uint32_t value;
+    int chan;
+};
 struct sm_measure {
     void *next;
-    uint32_t value;
+    struct sm_tune_env *env;
 };
-void measure_init(struct sm_measure *s, int init) {
+void measure_init(struct sm_measure *s, struct sm_tune_env *env) {
+    memset(s,0,sizeof(*s));
+    s->env = env;
 }
 uint32_t measure_tick(struct sm_measure *s) {
+    struct sm_tune_env *e = s->env;
     SM_RESUME(s);
-    // set frequency
-    // initiate a dummy measurement during transition and discard
-    // initiate a (number of) good measurements
-    // return result
-    s->value = 123;
+
+    LOG("meas1\n");
+    CSP_RPC(&e->task, s, e->chan, e->setpoint, e->value);
+    LOG("drop: %d\n", e->value);
+
+    LOG("meas1\n");
+    CSP_RPC(&e->task, s, e->chan, e->setpoint, e->value);
+    LOG("keep: %d\n", e->value);
+
     SM_HALT(s);
 }
 
 
+
+/* Main machine uses performs multiple calls to measurement sub
+   machine to create a lookup table. */
 struct sm_tune {
+    struct sm_tune_env env;
     void *next;
     uint32_t xa, xb, xc, ya, yb, yc;
     uint32_t freq, nb_iter, nb_octaves, logmax, iter, octave;
@@ -62,32 +86,43 @@ struct sm_tune {
     } sub;
 };
 
-void tune_init(struct sm_tune *s) {
-    s->xa = NOTE(0.49);
-    s->xb = NOTE(0.51);
-    s->freq = FREQ(55);
-    s->nb_iter = 4;
-    s->nb_octaves = 6;
-    s->logmax = 24;
-}
-// Basic structure of machine is to perform two measurements to
-// initialize, and then perform measurements inside the inner loop
-// over octaves and root finding approx.
+/* Local macro.  This is complicated due to using the env struct. */
+#define MEASURE(_setpoint) \
+    ({ s->env.setpoint = _setpoint; \
+       SM_SUB(s, measure, &s->env); \
+       s->env.value; })
+
+/* Basic structure of machine is to perform two measurements to
+   initialize, and then perform measurements inside the inner loop
+   over octaves and root finding approx. */
 uint32_t tune_tick(struct sm_tune *s) {
     SM_RESUME(s);
     // Initial points are meausred once and reused to start each octave scan.
     // FIXME: initial measurement
-    s->ya = SM_SUB(s, measure, s->xa)->value;
-    s->yb = SM_SUB(s, measure, s->xb)->value;
+    s->ya = MEASURE(s->xa);
+    s->yb = MEASURE(s->xb);
     for (s->octave = 0; s->octave < s->nb_octaves; s->octave++) {
         for(s->iter = 0; s->iter < s->nb_iter; s->iter++) {
             uint32_t yt = 0; // FIXME: computed from freq?, see rdm.erl
             uint32_t slope = (s->xb - s->xa) / (s->yb - s->ya);
             s->xc = s->xa + (yt - s->ya) * slope;
-            s->yc = SM_SUB(s, measure, s->xc)->value;
+            s->yc = MEASURE(s->xc);
         }
         s->freq *= 2;
     }
   halt:
     SM_HALT(s);
 }
+
+void tune_init(struct sm_tune *s, int chan) {
+    memset(s,0,sizeof(*s));
+    s->xa = NOTE(0.49);
+    s->xb = NOTE(0.51);
+    s->freq = FREQ(55);
+    s->nb_iter = 4;
+    s->nb_octaves = 6;
+    s->logmax = 24;
+    s->env.chan = chan;
+}
+
+#undef MEASURE
