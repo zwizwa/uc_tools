@@ -199,11 +199,15 @@ static inline void do_send(
           useful for debugging as it makes traces more readable.  Note
           that the tasks themselves cannot rely on this knowledge.
     */
-    recv->resume(recv);
+    if (CSP_WAITING != recv->resume(recv)) {
+        recv->resume = 0;
+    }
     if (shared_memory) {
         evt_recv->msg_buf = NULL;
     }
-    send->resume(send);
+    if (CSP_WAITING != send->resume(send)) {
+        send->resume = 0;
+    }
 }
 
 
@@ -315,7 +319,7 @@ static void schedule_task(
             }
             remove_cold(s, cold);
 
-            /* Add both to hot list again. */
+            /* Add both to hot list again if still active. */
             if(hot->resume)  csp_task_push(&s->hot, hot);
             if(cold->resume) csp_task_push(&s->hot, cold);
             return;
@@ -352,6 +356,16 @@ void csp_scheduler_init(
     s->nb_chans = nb_c;
     s->hot = NULL;
 }
+
+/* Convenience routine to allocate scheduler on stack. */
+void csp_with_scheduler(int nb_c2e, int nb_c, void (*f)(struct csp_scheduler *)) {
+    struct csp_scheduler s = {};
+    struct csp_evt_list c2e[nb_c2e];
+    struct csp_chan_to_evt c[nb_c];
+    csp_scheduler_init(&s, c2e, nb_c2e, c, nb_c);
+    f(&s);
+}
+
 
 
 

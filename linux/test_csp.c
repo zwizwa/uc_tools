@@ -181,14 +181,6 @@ void test4_0(struct csp_scheduler *s) {
 }
 
 
-void with_scheduler(int nb_c2e, int nb_c, void (*f)(struct csp_scheduler *)) {
-    struct csp_scheduler s = {};
-    struct csp_evt_list c2e[nb_c2e];
-    struct csp_chan_to_evt c[nb_c];
-    csp_scheduler_init(&s, c2e, nb_c2e, c, nb_c);
-    f(&s);
-}
-
 int main(int argc, char **argv) {
     /* Sizes don't matter much for tests.  Just make sure they are
        large enough.  FIXME: create some functionality to compute
@@ -197,17 +189,17 @@ int main(int argc, char **argv) {
     int nb_c = 20;
     if (argc < 2) {
         LOG("- test1\n");
-        with_scheduler(nb_c2e, nb_c, test1);
+        csp_with_scheduler(nb_c2e, nb_c, test1);
         LOG("- test2\n");
-        with_scheduler(nb_c2e, nb_c, test2);
+        csp_with_scheduler(nb_c2e, nb_c, test2);
         LOG("- test3\n");
-        with_scheduler(nb_c2e, nb_c, test3);
+        csp_with_scheduler(nb_c2e, nb_c, test3);
     }
     else {
         /* This test split over two linux processes. */
         LOG("- test4_0\n");
         if (atoi(argv[1]) == 0) {
-            with_scheduler(nb_c2e, nb_c, test4_0);
+            csp_with_scheduler(nb_c2e, nb_c, test4_0);
         }
     }
 }

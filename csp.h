@@ -161,6 +161,10 @@ void csp_scheduler_init(
     struct csp_evt_list *c2e, int nb_c2e,
     struct csp_chan_to_evt *c, int nb_c);
 
+void csp_with_scheduler(
+    int nb_c2e, int nb_c,
+    void (*f)(struct csp_scheduler *));
+
 
 /* Run until all tasks are blocked. */
 void csp_schedule(struct csp_scheduler *s);

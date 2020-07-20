@@ -5,10 +5,10 @@
 */
 
 #include "macros.h"
-#include "sm.h"
-#include "csp.h"
+#include "sm_csp.h"
 
-struct counter {
+/* COUNT TASK */
+struct count {
     struct csp_task task;
     /* Task ends in a 0-length event array for which we provide
      * storage here. */
@@ -16,20 +16,62 @@ struct counter {
     /* It is our responsibility to represent the continuation. */
     void *next;
     int count;
+    int chan;
 };
-csp_status_t counter_tick(struct counter *s) {
+csp_status_t count_tick(struct count *s) {
     SM_RESUME(s);
     for(;;) {
-        CSP_SND(s, 0, s->count);
+        LOG("count: %d\n", s->count);
+        CSP_SND(s, s->chan, s->count);
         s->count++;
     }
 }
-void counter_init(struct counter *s) {
+void count_init(struct count *s, int chan) {
     memset(s,0,sizeof(*s));
-    s->task.resume = (csp_resume_f)counter_tick;
+    s->chan = chan;
 }
 
 
+/* PROC TASK */
+struct proc {
+    struct csp_task task;
+    /* Task ends in a 0-length event array for which we provide
+     * storage here. */
+    struct csp_evt evt[1];
+    /* It is our responsibility to represent the continuation. */
+    void *next;
+    int count;
+    int chan;
+};
+csp_status_t proc_tick(struct proc *s) {
+    SM_RESUME(s);
+    for(;;) {
+        CSP_RCV(s, s->chan, s->count);
+        LOG("proc: %d\n", s->count);
+        if (s->count > 10) return SM_HALTED;
+    }
+}
+void proc_init(struct proc *s, int chan) {
+    memset(s,0,sizeof(*s));
+    s->task.resume = (csp_resume_f)proc_tick;
+    s->chan = chan;
+}
+
+
+/* SETUP */
+void test1(struct csp_scheduler *s) {
+    struct count c;
+    struct proc p;
+    SM_CSP_START(s, count, &c, 0 /* chan */);
+    SM_CSP_START(s, proc, &p, 0 /* chan */);
+    csp_schedule(s);
+}
 int main(int argc, char **argv) {
+    /* Sizes don't matter much for tests.  Just make sure they are
+       large enough.  FIXME: create some functionality to compute
+       storage parameters from application. */
+    int nb_c2e = 20;
+    int nb_c = 20;
+    csp_with_scheduler(nb_c2e, nb_c, test1);
     return 0;
 }

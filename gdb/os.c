@@ -100,63 +100,63 @@ struct input_task {
 } input_task;
 csp_status_t input_resume(struct input_task *e) {
     if(e->next) goto *e->next;
-  again:
-    CSP_EVT(e, 0, CHAN_USB_IN,   e->msg);
-    CSP_EVT(e, 1, CHAN_HW_EVENT, e->msg);
-    CSP_SEL(e, 0/*nb_send*/, 2/*nb_recv*/);
-    switch(e->task.selected) {
 
-    case 0: {
-        /* CHAN_USB_IN: Message from USB Host. */
-        uint32_t count = e->evt[0].msg_len;
-        infof("USB_IN: %d\n", count);
-        switch(read_be(e->msg, 2)) {
-        case 0xFF00: {
-            if (count < sizeof(e->msg)) {
-                e->msg[count] = crc8x_simple(0, &e->msg[2], count-2);
-                count++;
+    for(;;) {
+
+        CSP_EVT(e, 0, CHAN_USB_IN,   e->msg);
+        CSP_EVT(e, 1, CHAN_HW_EVENT, e->msg);
+        CSP_SEL(e, 0/*nb_send*/, 2/*nb_recv*/);
+
+        if (0 == e->task.selected) {
+            /* CHAN_USB_IN: Message from USB Host. */
+            uint32_t count = e->evt[0].msg_len;
+            infof("USB_IN: %d\n", count);
+            switch(read_be(e->msg, 2)) {
+            case 0xFF00: {
+                if (count < sizeof(e->msg)) {
+                    e->msg[count] = crc8x_simple(0, &e->msg[2], count-2);
+                    count++;
+                }
+                infof("write %d bytes to uart\n", count-2);
+                log_buf(&e->msg[2], count-2);
+                cbuf_write_slip(&ser_out, &e->msg[2], count-2);
+                hw_usart_enable_send_ready_interrupt(USART1);
+                break;
             }
-            infof("write %d bytes to uart\n", count-2);
-            log_buf(&e->msg[2], count-2);
-            cbuf_write_slip(&ser_out, &e->msg[2], count-2);
-            hw_usart_enable_send_ready_interrupt(USART1);
-            break;
+            case 0xFF01:
+                infof("tx enable %d\n", e->msg[2]);
+                if (e->msg[2]) { hw_tx_en();  }
+                else           { hw_tx_dis(); }
+                break;
+            case 0xFF02: {
+                uint32_t us = read_be(e->msg+2, 4);
+                infof("timeout %d us\n", us);
+                hw_set_recv_timeout_us(us);
+                break;
+            }
+            default:
+                infof("unknown USB message %d\n", e->msg[0]);
+                break;
+            }
         }
-        case 0xFF01:
-            infof("tx enable %d\n", e->msg[2]);
-            if (e->msg[2]) { hw_tx_en();  }
-            else           { hw_tx_dis(); }
-            break;
-        case 0xFF02: {
-            uint32_t us = read_be(e->msg+2, 4);
-            infof("timeout %d us\n", us);
-            hw_set_recv_timeout_us(us);
-            break;
+        else {
+            /* CHAN_HW_EVENT: Hardware event. */
+            switch(e->msg[0]) {
+            case HW_EVENT_RX_PBUF0:
+            case HW_EVENT_RX_PBUF1: {
+                uint32_t buf = e->msg[0] - HW_EVENT_RX_PBUF0;
+                /* A complete message has been received on serial I/O */
+                infof("HW_EVENT_RX_PBUF: %d %d\n", e->msg[0], ser_in[buf].count);
+                uint8_t crc = crc8x_simple(0, ser_in[buf].buf, ser_in[buf].count-1);
+                infof("crc %02x %02x\n", crc, ser_in[buf].buf[ser_in[buf].count-1]);
+                log_buf(ser_in[buf].buf, ser_in[buf].count);
+                break;
+            }
+            default:
+                infof("unknown HW_EVENT %d\n", e->msg[0]);
+                break;
+            }
         }
-        }
-
-        goto again;
-    }
-
-    case 1: {
-        /* CHAN_HW_EVENT: Hardware event. */
-        switch(e->msg[0]) {
-        case HW_EVENT_RX_PBUF0:
-        case HW_EVENT_RX_PBUF1: {
-            uint32_t buf = e->msg[0] - HW_EVENT_RX_PBUF0;
-            /* A complete message has been received on serial I/O */
-            infof("HW_EVENT_RX_PBUF: %d %d\n", e->msg[0], ser_in[buf].count);
-            uint8_t crc = crc8x_simple(0, ser_in[buf].buf, ser_in[buf].count-1);
-            infof("crc %02x %02x\n", crc, ser_in[buf].buf[ser_in[buf].count-1]);
-            log_buf(ser_in[buf].buf, ser_in[buf].count);
-            break;
-        }
-        default:
-            infof("unknown HW_EVENT %d\n", e->msg[0]);
-            break;
-        }
-        goto again;
-    }
     }
 }
 
