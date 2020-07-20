@@ -75,16 +75,16 @@ static inline void log_dbg_state(struct csp_scheduler *s) { }
 static inline void log_evt_list_tasks(struct csp_evt_list *l) {
     while(l) {
         /* Only print task for now. */
-        LOG(" %p", l->key);
+        LOG_DBG(" %p", l->key);
         l=l->next;
     }
-    LOG("\n");
+    LOG_DBG("\n");
 }
 static void log_dbg_state(struct csp_scheduler *s) {
     /* Current test case has only one channel. */
-    LOG("channel 0, cold tasks:\n");
-    LOG(".send=0:"); log_evt_list_tasks(s->chan_to_evt[0].evts[0]);
-    LOG(".recv=1:"); log_evt_list_tasks(s->chan_to_evt[0].evts[1]);
+    LOG_DBG("channel 0, cold tasks:\n");
+    LOG_DBG(".send=0:"); log_evt_list_tasks(s->chan_to_evt[0].evts[0]);
+    LOG_DBG(".recv=1:"); log_evt_list_tasks(s->chan_to_evt[0].evts[1]);
 }
 #endif
 
@@ -216,9 +216,8 @@ static inline void do_send(
     /* Receiver is resumed first.
 
        1. It allows implementation of shared memory message passing,
-          with the understanding that a reader can only access the
-          memory in the current time slot.  Whether the buffer is
-          read-only is up to the applicaiton.
+          with the understanding that a receiver can only access the
+          memory in the current time slot.
 
        2. It makes sends look more like function calls, which is
           useful for debugging as it makes traces more readable.  Note
@@ -351,7 +350,6 @@ static void schedule_task(
     LOG_DBG("schedule_task %p\n", hot_task);
     log_dbg_state(s);
     FOR_EVT_INDEX(e, hot_task) {
-        LOG_DBG(" e = %d\n", e);
         int cold_dir = !task_evt_dir(hot_task, e);
         int ch = hot_task->evt[e].chan;
         struct csp_evt_list *el = s->chan_to_evt[ch].evts[cold_dir];
@@ -360,19 +358,13 @@ static void schedule_task(
             struct csp_evt  *cold_evt  = el->evt;
             struct csp_evt  *hot_evt   = &hot_task->evt[e];
 
-            /* FIXME: why is this happening?  Is this memory
-               corruption?  Why does it not trigger in the main
-               task? */
-            //if (cold_task == hot_task) {
-            //    LOG_DBG("WARNING: cold_task == hot_task == %p\n", cold_task);
-            //    continue;
-            //}
             ASSERT(cold_task != hot_task);
 
-            /* Remove the cold task from the cold list _before_
-               running the resume methods, because that will change
-               the event structure, and remove_cold() uses the event
-               structure to pick the correct wait list. */
+            /* Note that resume() will update the event structure to
+               the next blocking point.  Anything that needs the
+               current event structure will need to execute before
+               that.  This includes remove_cold(), which needs the
+               direction of the event to pick the correct cold list. */
             remove_cold(s, cold_task);
 
             if (cold_dir == 1) {
