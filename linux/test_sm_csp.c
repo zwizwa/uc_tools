@@ -22,7 +22,7 @@ csp_status_t count_tick(struct count *s) {
     SM_RESUME(s);
     for(;;) {
         LOG("count: %d\n", s->count);
-        CSP_SND(s, s->chan, s->count);
+        CSP_SND(&(s->task), s, s->chan, s->count);
         s->count++;
     }
 }
@@ -51,7 +51,7 @@ struct procsub {
 csp_status_t procsub_tick(struct procsub *s) {
     SM_RESUME(s);
     for(;;) {
-        CSP_RCV(s->task, s->chan, s->count);
+        CSP_RCV(s->task, s, s->chan, s->count);
         LOG("procsub: %d %d\n", s->count, s->loops);
         if (!s->loops--) return SM_HALTED;
     }

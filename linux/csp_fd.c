@@ -23,7 +23,7 @@ csp_status_t csp_to_fd_resume(struct csp_to_fd *s) {
     if (s->next) goto *s->next;
   again:
     CSP_EVT_SHARED(s, 0 /* s->evt[0] */, s->in_chan);
-    CSP_SEL(s, 0 /*nb_send*/, 1 /*nb_recv*/);
+    CSP_SEL(&(s->task), s, 0 /*nb_send*/, 1 /*nb_recv*/);
     /* Shared data is valid up to the next suspension.  Cache it in
        local variables so C compiler can aid with lifetime
        warnings. */

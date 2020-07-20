@@ -103,9 +103,9 @@ csp_status_t input_resume(struct input_task *e) {
 
     for(;;) {
 
-        CSP_EVT(e, 0, CHAN_USB_IN,   e->msg);
-        CSP_EVT(e, 1, CHAN_HW_EVENT, e->msg);
-        CSP_SEL(e, 0/*nb_send*/, 2/*nb_recv*/);
+        CSP_EVT(&(e->task), 0, CHAN_USB_IN,   e->msg);
+        CSP_EVT(&(e->task), 1, CHAN_HW_EVENT, e->msg);
+        CSP_SEL(&(e->task), e, 0/*nb_send*/, 2/*nb_recv*/);
 
         if (0 == e->task.selected) {
             /* CHAN_USB_IN: Message from USB Host. */

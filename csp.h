@@ -95,44 +95,47 @@ struct csp_task {
 #define CSP_HALTED  ((csp_status_t)0)
 #define CSP_WAITING ((csp_status_t)0xFFFFFFFFUL)
 
-#define CSP_SEL_K(state,_nb_send,_nb_recv,_klabel)      \
-    (state)->task.nb_send = _nb_send;                   \
-    (state)->task.nb_recv = _nb_recv;                   \
-    (state)->next = &&_klabel;                          \
+/* Note: continuation and task need to be distiguished.  E.g. sm.h has
+ * composite continuations (e.g. a stack built out of nested structs),
+ * but has a single task struct to interface with csp scheduler. */
+
+#define CSP_SEL_K(task,cont,_nb_send,_nb_recv,_klabel)  \
+    (task)->nb_send = _nb_send;                         \
+    (task)->nb_recv = _nb_recv;                         \
+    (cont)->next = &&_klabel;                           \
     return CSP_WAITING;                                 \
 _klabel:
 
-#define CSP_SEL(state,ns,nr) \
-    CSP_SEL_K(state,ns,nr,GENSYM(resume_))
+#define CSP_SEL(task,cont,ns,nr) \
+    CSP_SEL_K(task,cont,ns,nr,GENSYM(resume_))
 
 /* Data transfer event. */
-#define CSP_EVT_BUF(state,n,ch,buf,size) \
-    csp_evt(&((state)->task.evt[n]),ch,buf,size)
-#define CSP_EVT(state,n,ch,var) \
-    CSP_EVT_BUF(state,n,ch,&(var),sizeof(var))
+#define CSP_EVT_BUF(task,n,ch,buf,size) \
+    csp_evt(&((task)->evt[n]),ch,buf,size)
+#define CSP_EVT(task,n,ch,var) \
+    CSP_EVT_BUF(task,n,ch,&(var),sizeof(var))
 /* Same, but no data payload (sync only).  Note that this just
    expresses intention, as shared data will be transferred in case
    sender is attaching a pointer. */
-#define CSP_SYN(state,n,ch) \
-    CSP_EVT_BUF(state,n,ch,0,0)
+#define CSP_SYN(task,n,ch) \
+    CSP_EVT_BUF(task,n,ch,0,0)
 /* Hence this is exactly the same implementation. */
-#define CSP_EVT_SHARED(state,n,ch) \
-    CSP_EVT_BUF(state,n,ch,0,0)
-
+#define CSP_EVT_SHARED(task,n,ch) \
+    CSP_EVT_BUF(task,n,ch,0,0)
 
 /* Single op send and receive are special cases of select */
-#define CSP_SND(state,ch,var)                   \
-    do { CSP_EVT(state,0,ch,var);               \
-         CSP_SEL(state,1,0); } while(0)
-#define CSP_RCV(state,ch,var)                   \
-    do { CSP_EVT(state,0,ch,var);               \
-         CSP_SEL(state,0,1); } while(0)
+#define CSP_SND(task,cont,ch,var)                         \
+    do { CSP_EVT(task,0,ch,var);               \
+         CSP_SEL(task,cont,1,0); } while(0)
+#define CSP_RCV(task,cont,ch,var)             \
+    do { CSP_EVT(task,0,ch,var);               \
+         CSP_SEL(task,cont,0,1); } while(0)
 
 /* To halt a task: return from the resume function, but set a NULL
    resume point such that the task will not be rescheduled.  Note that
    the scheduler does not reclaim any resources. */
-#define CSP_HALT(state) \
-    {(state)->resume = 0; return;}
+#define CSP_HALT(task) \
+    {(task)->resume = 0; return;}
 
 
 /* Scheduler data struct.  The hot list is the list of tasks to be
@@ -188,8 +191,8 @@ csp_cg_example_resume(struct csp_cg_example *t /* task state */) {
     if (t->next) goto *t->next;
     t->a = 123;
     for(;;) {
-        CSP_SND(t, 1, t->a);
-        CSP_SND(t, 2, t->a);
+        CSP_SND(&(t->task), t, 1, t->a);
+        CSP_SND(&(t->task), t, 2, t->a);
     }
 }
 static inline void csp_cg_example_start(struct csp_scheduler *s, struct csp_cg_example *t) {

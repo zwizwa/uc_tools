@@ -64,7 +64,7 @@ csp_status_t resume0(struct state0 *e) {
     e->x = 0;
   again:
     LOG("0: CSP_SND %d\n", e->x);
-    CSP_SND(e, 1, e->x);
+    CSP_SND(&(e->task), e, 1, e->x);
     e->x += 1;
     goto again;
 }
@@ -80,16 +80,16 @@ struct state1 {
 csp_status_t resume1(struct state1 *e) {
     if (e->next) goto *e->next;
   again:
-    CSP_RCV(e, 1, e->a);
+    CSP_RCV(&(e->task), e, 1, e->a);
     LOG("1: CSP_RCV %d\n", e->a);
 
     e->b = e->a*2;
     LOG("1: CSP_SND %d\n", e->b);
-    CSP_SND(e, 2, e->b);
+    CSP_SND(&(e->task), e, 2, e->b);
 
     e->b = e->a*2+1;
     LOG("1: CSP_SND %d\n", e->b);
-    CSP_SND(e, 2, e->b);
+    CSP_SND(&(e->task), e, 2, e->b);
     goto again;
 }
 
@@ -105,7 +105,7 @@ struct state2 {
 csp_status_t resume2(struct state2 *e) {
     if (e->next) goto *e->next;
     for(e->n = 0; e->n < 10; e->n++) {
-        CSP_RCV(e, 2, e->x);
+        CSP_RCV(&(e->task), e, 2, e->x);
         LOG("2: CSP_RCV %d\n", e->x);
     }
     e->task.resume = 0;

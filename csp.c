@@ -469,15 +469,15 @@ csp_status_t csp_async_send_task(struct csp_async *b) {
     for(;;) {
         /* No data, only wait for interrupt to wake us up. */
         if (cbuf_empty(&b->cbuf)) {
-            CSP_SYN(b, 0, b->c_int);                /* RCV */
-            CSP_SEL(b, 0/*nb_send*/, 1/*nb_recv*/);
+            CSP_SYN(&(b->task), 0, b->c_int);                /* RCV */
+            CSP_SEL(&(b->task), b, 0/*nb_send*/, 1/*nb_recv*/);
         }
         /* Data, wait for send to complete or interrupt to wake us up. */
         else {
             b->token = cbuf_peek(&b->cbuf, 0);
-            CSP_EVT(b, 0, b->c_data, b->token);     /* SND */
-            CSP_SYN(b, 1, b->c_int);                /* RCV */
-            CSP_SEL(b, 1/*nb_send*/, 1/*nb_recv*/);
+            CSP_EVT(&(b->task), 0, b->c_data, b->token);     /* SND */
+            CSP_SYN(&(b->task), 1, b->c_int);                /* RCV */
+            CSP_SEL(&(b->task), b, 1/*nb_send*/, 1/*nb_recv*/);
             if (0 == b->task.selected) {
                 cbuf_drop(&b->cbuf, 1);
             }
@@ -494,14 +494,14 @@ csp_status_t csp_async_recv_task(struct csp_async *b) {
         /* Too much data, only wait for interrupt to wake us up so we can
            retry token receive. */
         if (cbuf_full(&b->cbuf)) {
-            CSP_SYN(b, 0, b->c_int);                /* RCV */
-            CSP_SEL(b, 0/*nb_send*/, 1/*nb_recv*/);
+            CSP_SYN(&(b->task), 0, b->c_int);                /* RCV */
+            CSP_SEL(&(b->task), b, 0/*nb_send*/, 1/*nb_recv*/);
         }
         /* Data, wait for send to complete or interrupt to wake us up. */
         else {
-            CSP_EVT(b, 0, b->c_data, b->token);     /* RCV */
-            CSP_SYN(b, 1, b->c_int);                /* RCV */
-            CSP_SEL(b, 0/*nb_send*/, 2/*nb_recv*/);
+            CSP_EVT(&(b->task), 0, b->c_data, b->token);     /* RCV */
+            CSP_SYN(&(b->task), 1, b->c_int);                /* RCV */
+            CSP_SEL(&(b->task), b, 0/*nb_send*/, 2/*nb_recv*/);
             if (0 == b->task.selected) {
                 /* receive finished */
                 ASSERT(b->token < 256);
