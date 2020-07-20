@@ -31,8 +31,37 @@ void count_init(struct count *s, int chan) {
     s->chan = chan;
 }
 
+/* PROC TASK + SUB*/
+struct procsub {
+    // struct csp_task task;
+    /* Task ends in a 0-length event array for which we provide
+     * storage here. */
+    // struct csp_evt evt[1];
+    /* It is our responsibility to represent the continuation. */
+    void *next;
+    int chan;
+    int loops;
+    int count;
 
-/* PROC TASK */
+    /* If the subtask wants to wait on events, it needs a reference to
+       the task structure.  Use a wrapper to keep the shape of the
+       macros.  FIXME: chean up that interface. */
+    struct csp_task *task;
+};
+csp_status_t procsub_tick(struct procsub *s) {
+    SM_RESUME(s);
+    for(;;) {
+        CSP_RCV(s->task, s->chan, s->count);
+        LOG("procsub: %d %d\n", s->count, s->loops);
+        if (!s->loops--) return SM_HALTED;
+    }
+}
+void procsub_init(struct proc *s, struct csp_task *task) {
+    memset(s,0,sizeof(*s));
+    s->loops = loops;
+    s->task = task;
+}
+
 struct proc {
     struct csp_task task;
     /* Task ends in a 0-length event array for which we provide
@@ -40,15 +69,16 @@ struct proc {
     struct csp_evt evt[1];
     /* It is our responsibility to represent the continuation. */
     void *next;
-    int count;
+    int loops;
     int chan;
 };
 csp_status_t proc_tick(struct proc *s) {
     SM_RESUME(s);
     for(;;) {
-        CSP_RCV(s, s->chan, s->count);
-        LOG("proc: %d\n", s->count);
-        if (s->count > 10) return SM_HALTED;
+        SM_SUB(s, procsub, &s->task);
+        SM_SUB(s, procsub, &s->task);
+        /* Make test finite. */
+        if (s->loops++ >= 3) return SM_HALTED;
     }
 }
 void proc_init(struct proc *s, int chan) {
