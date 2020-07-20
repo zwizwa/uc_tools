@@ -17,5 +17,6 @@ run test_ns_queue.dynamic.host.elf
 run test_pdm.dynamic.host.elf
 run test_heap.dynamic.host.elf
 run test_csp.dynamic.host.elf
+run test_sm_csp.dynamic.host.elf 
 ) >$OUT
 git diff test.log

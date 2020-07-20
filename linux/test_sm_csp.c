@@ -1,7 +1,21 @@
 /* Test the interaction of sm.h based state machines and the csp
-   scheduler.  This is done using two tasks: a counter, and a
-   processor that does at least one SM_SUB call.  Both are written in
-   sm.h style.
+   scheduler.  This is done using two tasks:
+
+   a counter, implemented as a single loop
+
+   a processor, implemented as a loop making two calls to a
+   submachine, with the submachie performing the csp blocking read.
+
+   A change was made to separate the idea of CSP task and
+   continuation.  The csp scheduler does not care about continuations
+   of the individual tasks, but the select macro does rely on computed
+   goto to set the next pointer.  This has been separated by providing
+   two arguments: abstract continuation (the thing that has the next
+   pointer) and concrete task struct.
+
+   To allow sub-tasks to perform CSP functions, they need a pointer to
+   the task struct.
+
 */
 
 #include "macros.h"
@@ -56,9 +70,9 @@ csp_status_t procsub_tick(struct procsub *s) {
         if (!s->loops--) return SM_HALTED;
     }
 }
-void procsub_init(struct procsub *s, struct csp_task *task) {
+void procsub_init(struct procsub *s, struct csp_task *task, int loops) {
     memset(s,0,sizeof(*s));
-    s->loops = 3;
+    s->loops = loops;
     s->task = task;
 }
 
@@ -77,11 +91,9 @@ struct proc {
 };
 csp_status_t proc_tick(struct proc *s) {
     SM_RESUME(s);
-    for(;;) {
-        SM_SUB(s, procsub, &s->task);
-        SM_SUB(s, procsub, &s->task);
-        /* Make test finite. */
-        if (s->loops++ >= 3) return SM_HALTED;
+    while(s->loops--) {
+        SM_SUB(s, procsub, &s->task, 3);
+        SM_SUB(s, procsub, &s->task, 2);
     }
   halt:
     SM_HALT(s);
@@ -90,6 +102,7 @@ void proc_init(struct proc *s, int chan) {
     memset(s,0,sizeof(*s));
     s->task.resume = (csp_resume_f)proc_tick;
     s->chan = chan;
+    s->loops = 4;
 }
 
 

@@ -335,3 +335,61 @@ test_pdm.c
 2: CSP_RCV 1
 2: CSP_RCV 2
 2: CSP_RCV 3
+==== test_sm_csp.dynamic.host.elf
+count: 0
+procsub: 0 3
+count: 1
+procsub: 1 2
+count: 2
+procsub: 2 1
+count: 3
+procsub: 3 0
+count: 4
+procsub: 4 2
+count: 5
+procsub: 5 1
+count: 6
+procsub: 6 0
+count: 7
+procsub: 7 3
+count: 8
+procsub: 8 2
+count: 9
+procsub: 9 1
+count: 10
+procsub: 10 0
+count: 11
+procsub: 11 2
+count: 12
+procsub: 12 1
+count: 13
+procsub: 13 0
+count: 14
+procsub: 14 3
+count: 15
+procsub: 15 2
+count: 16
+procsub: 16 1
+count: 17
+procsub: 17 0
+count: 18
+procsub: 18 2
+count: 19
+procsub: 19 1
+count: 20
+procsub: 20 0
+count: 21
+procsub: 21 3
+count: 22
+procsub: 22 2
+count: 23
+procsub: 23 1
+count: 24
+procsub: 24 0
+count: 25
+procsub: 25 2
+count: 26
+procsub: 26 1
+count: 27
+procsub: 27 0
+count: 28
