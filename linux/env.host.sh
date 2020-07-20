@@ -20,7 +20,7 @@ CFLAGS=" \
 -Wno-multichar \
 -Wunused-result \
 -g \
--Os \
+-O0 \
 -fPIC \
 "
 LDFLAGS=" \

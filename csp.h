@@ -29,10 +29,16 @@
    is taylored to the application, and pass buffer references around
    instead.
 */
+union csp_data_ptr {
+    void    *v;
+    uint8_t *u8;
+    uint8_t *u16;
+    uint8_t *u32;
+};
 struct csp_evt {
     uint16_t chan;
     uint16_t msg_len;
-    void    *msg_buf;
+    union csp_data_ptr msg_buf;
 };
 
 
@@ -41,7 +47,7 @@ static inline void csp_evt(struct csp_evt *o,
                            uint16_t chan,
                            void *msg_buf, uint32_t msg_len) {
     o->chan = chan;
-    o->msg_buf = msg_buf;
+    o->msg_buf.v = msg_buf;
     o->msg_len = msg_len;
 }
 

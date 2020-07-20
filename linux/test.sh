@@ -19,4 +19,5 @@ run test_heap.dynamic.host.elf
 run test_csp.dynamic.host.elf
 run test_sm_csp.dynamic.host.elf 
 ) >$OUT
+set -x
 git diff test.log

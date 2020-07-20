@@ -7,16 +7,22 @@
 
 /*  Only LOG is custom atm.  The rest is defined in macros.h */
 #ifdef __linux__
+#include <sys/types.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <unistd.h>
 #ifndef LOG
 #define LOG(...) fprintf(stderr, __VA_ARGS__)
 #endif
 /* The default error propagation is to exit the program.  This works
  * well for the intended use as Erlang port. */
 #ifndef ABORT
-#define ABORT exit(1)
+//#define TRAP
+int kill(pid_t pid, int sig);
+#define TRAP kill(getpid(), SIGTRAP);
+#define ABORT TRAP exit(1)
 #endif
 
 #else

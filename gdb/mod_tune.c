@@ -60,11 +60,11 @@ uint32_t measure_tick(struct sm_measure *s) {
     struct sm_tune_env *e = s->env;
     SM_RESUME(s);
 
-    LOG("meas1\n");
+    //LOG("meas1\n");
     CSP_RPC(&e->task, s, e->chan, e->setpoint, e->value);
     LOG("drop: %d\n", e->value);
 
-    LOG("meas1\n");
+    //LOG("meas1\n");
     CSP_RPC(&e->task, s, e->chan, e->setpoint, e->value);
     LOG("keep: %d\n", e->value);
 
@@ -116,8 +116,8 @@ uint32_t tune_tick(struct sm_tune *s) {
 
 void tune_init(struct sm_tune *s, int chan) {
     memset(s,0,sizeof(*s));
-    s->xa = NOTE(0.49);
-    s->xb = NOTE(0.51);
+    s->xa = 'A'; //NOTE(0.49);
+    s->xb = 'X'; //NOTE(0.51);
     s->freq = FREQ(55);
     s->nb_iter = 4;
     s->nb_octaves = 6;

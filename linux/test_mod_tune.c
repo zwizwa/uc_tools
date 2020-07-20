@@ -18,11 +18,11 @@ csp_status_t measure_emu_tick(struct measure_emu *s) {
     for(;;) { /* RPC maps frequency to frequency measurement .*/
 
         CSP_RCV(&s->task, s, s->chan, s->freq);
-        LOG("measure_emu: req\n");
+        //LOG("measure_emu: req\n");
 
         s->freq += 123; // FIXME: measurement emulation
         CSP_SND(&s->task, s, s->chan, s->freq);
-        LOG("measure_emu: resp\n");
+        //LOG("measure_emu: resp\n");
     }
 }
 void measure_emu_init(struct measure_emu *s, int chan) {
@@ -32,7 +32,7 @@ void measure_emu_init(struct measure_emu *s, int chan) {
 void test1(struct csp_scheduler *s) {
     struct measure_emu m;
     struct sm_tune t;
-    int chan = 1;
+    int chan = 0;
     SM_CSP_START(s, &m.task,     measure_emu, &m, chan);
     SM_CSP_START(s, &t.env.task, tune, &t, chan);
     csp_schedule(s);
@@ -42,8 +42,8 @@ int main(int argc, char **argv) {
    /* Sizes don't matter much for tests.  Just make sure they are
        large enough.  FIXME: create some functionality to compute
        storage parameters from application. */
-    int nb_c2e = 20;
-    int nb_c = 20;
+    int nb_c2e = 3;
+    int nb_c = 3;
     csp_with_scheduler(nb_c2e, nb_c, test1);
     return 0;
 }

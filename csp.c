@@ -171,10 +171,10 @@ static inline void do_send(
        buffer, as it is quite common to have empty events, e.g. just
        synchronization. */
     int shared_memory = 0;
-    if (evt_send->msg_buf) {
-        if (evt_recv->msg_buf) {
+    if (evt_send->msg_buf.v) {
+        if (evt_recv->msg_buf.v) {
             uint32_t n = MIN(evt_send->msg_len, evt_recv->msg_len);
-            memcpy(evt_recv->msg_buf, evt_send->msg_buf, n);
+            memcpy(evt_recv->msg_buf.v, evt_send->msg_buf.v, n);
         }
         else {
             shared_memory = 1;
@@ -203,7 +203,7 @@ static inline void do_send(
         recv->resume = 0;
     }
     if (shared_memory) {
-        evt_recv->msg_buf = NULL;
+        evt_recv->msg_buf.v = NULL;
     }
     if (CSP_WAITING != send->resume(send)) {
         send->resume = 0;
@@ -212,21 +212,6 @@ static inline void do_send(
 
 
 
-
-
-void csp_start(struct csp_scheduler *s, struct csp_task *t) {
-    t->resume(t);
-    /* Task went through its initialization code and is now halted, or
-       blocked on select.  If it halts immediately no communication
-       has happened, which means it cannot affect the CSP network, so
-       we're done. */
-    if (!t->resume) return;
-
-    /* Otherwise one of the select events can have an effect on the
-       network.  Propagate until everything is blocked again. */
-    csp_task_push(&s->hot, t);
-    csp_schedule(s);
-}
 
 
 
@@ -272,7 +257,9 @@ static void remove_task(struct csp_scheduler *s,
 static inline void remove_cold(
     struct csp_scheduler *s,
     struct csp_task *cold) {
+    LOG("remove_cold %p\n",cold);
     FOR_EVT_INDEX(e, cold) {
+        LOG("  - from %d\n",e);
         int cold_dir = task_evt_dir(cold, e);
         int ch = cold->evt[e].chan;
         remove_task(
@@ -284,6 +271,7 @@ static inline void add_cold(
     struct csp_scheduler *s,
     struct csp_task *cold) {
     cold->selected = -1;
+    LOG("add_cold %p\n",cold);
     FOR_EVT_INDEX(e, cold) {
         int dir = task_evt_dir(cold, e);
         int ch = cold->evt[e].chan;
@@ -293,48 +281,86 @@ static inline void add_cold(
             cold, &cold->evt[e]);
     }
 }
+static inline void add_hot(struct csp_scheduler *s,
+                           struct csp_task *hot_task) {
+    LOG("add_hot %p\n", hot_task);
+    csp_task_push(&s->hot, hot_task);
+}
+static inline struct csp_task *pop_hot(struct csp_scheduler *s) {
+    struct csp_task *task = csp_task_pop(&s->hot);
+    LOG("pop_hot %p\n", task);
+    return task;
+}
+
+
+
+
+void csp_start(struct csp_scheduler *s, struct csp_task *t) {
+    t->resume(t);
+    /* Task went through its initialization code and is now halted, or
+       blocked on select.  If it halts immediately no communication
+       has happened, which means it cannot affect the CSP network, so
+       we're done. */
+    if (!t->resume) return;
+
+    /* Otherwise one of the select events can have an effect on the
+       network.  Propagate until everything is blocked again. */
+    add_hot(s, t);
+    csp_schedule(s);
+}
+
+
+
 /* Given a hot task, find a (any) cold task that can rendez-vous with
    one of the hot task's events and perform the rendez-vous.  If none,
    return NULL. */
 static void schedule_task(
     struct csp_scheduler *s,
-    struct csp_task *hot) {
-    FOR_EVT_INDEX(e, hot) {
-        int cold_dir = !task_evt_dir(hot, e);
-        int ch = hot->evt[e].chan;
+    struct csp_task *hot_task) {
+    FOR_EVT_INDEX(e, hot_task) {
+        int cold_dir = !task_evt_dir(hot_task, e);
+        int ch = hot_task->evt[e].chan;
         struct csp_evt_list *el = s->chan_to_evt[ch].evts[cold_dir];
         if (el) {
-            struct csp_task *cold     = el->key;
-            struct csp_evt  *cold_evt = el->evt;
-            struct csp_evt  *hot_evt  = &hot->evt[e];
+            struct csp_task *cold_task = el->key;
+            struct csp_evt  *cold_evt  = el->evt;
+            struct csp_evt  *hot_evt   = &hot_task->evt[e];
+
+            /* FIXME: why is this happening?  Is this memory
+               corruption?  Why does it not trigger in the main
+               task? */
+            //if (cold_task == hot_task) {
+            //    LOG("WARNING: cold_task == hot_task == %p\n", cold_task);
+            //    continue;
+            //}
+            ASSERT(cold_task != hot_task);
+
             if (cold_dir == 1) {
                 // hot is send
-                do_send(hot,  hot_evt,
-                        cold, cold_evt);
+                do_send(hot_task,  hot_evt,
+                        cold_task, cold_evt);
             }
             else {
                 // cold is send
-                do_send(cold, cold_evt,
-                        hot,  hot_evt);
+                do_send(cold_task, cold_evt,
+                        hot_task,  hot_evt);
             }
-            remove_cold(s, cold);
+            remove_cold(s, cold_task);
 
             /* Add both to hot list again if still active. */
-            if(hot->resume)  csp_task_push(&s->hot, hot);
-            if(cold->resume) csp_task_push(&s->hot, cold);
+            if(hot_task->resume)  add_hot(s, hot_task);
+            if(cold_task->resume) add_hot(s, cold_task);
             return;
         }
     }
     /* None of the events have a corresponding cold task, so this
      * becomes a cold task. */
-    add_cold(s, hot);
+    add_cold(s, hot_task);
 }
-
-
 
 void csp_schedule(struct csp_scheduler *s) {
     struct csp_task *hot;
-    while((hot = csp_task_pop(&s->hot))) {
+    while((hot = pop_hot(s))) {
         schedule_task(s, hot);
     }
 }
@@ -403,7 +429,7 @@ static int trans(struct csp_scheduler *s,
                   .nb_recv = !!dir },
         .evt  = { .chan    = chan,
                   .msg_len = msg_len,
-                  .msg_buf = msg_buf }
+                  .msg_buf = { .v = msg_buf } }
     };
     csp_task_push(&s->hot, &t.task);
     csp_schedule(s);
