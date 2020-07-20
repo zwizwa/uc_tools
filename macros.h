@@ -45,8 +45,15 @@
 #endif
 
 #define FOR_ARRAY(a,p) \
-    for(typeof(&a[0]) p = &a[0]; p < &a[ARRAY_SIZE(a)]; p++)
+    for(__typeof__(&a[0]) p = &a[0]; p < &a[ARRAY_SIZE(a)]; p++)
 
+#ifndef MAX
+#define MAX(a,b) ({ __typeof__(a) _a = (a); __typeof__(b) _b = (b); _a >= _b ? _a : _b;})
+#endif
+
+#ifndef MIN
+#define MIN(a,b) ({ __typeof__(a) _a = (a); __typeof__(b) _b = (b); _a <= _b ? _a : _b;})
+#endif
 
 
 #define CT_ASSERT(name, pred) \

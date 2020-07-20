@@ -173,9 +173,7 @@ static inline void do_send(
     int shared_memory = 0;
     if (evt_send->msg_buf) {
         if (evt_recv->msg_buf) {
-            uint32_t n =
-                (evt_recv->msg_len >= evt_send->msg_len) ?
-                evt_send->msg_len : evt_recv->msg_len;
+            uint32_t n = MIN(evt_send->msg_len, evt_recv->msg_len);
             memcpy(evt_recv->msg_buf, evt_send->msg_buf, n);
         }
         else {
@@ -369,8 +367,11 @@ void csp_scheduler_init(
    the return value.  See csp_cbuf_send() for a buffered send
    operation that does not have this drawback. */
 
-static void resume_halt(struct csp_task *t) {
+static csp_status_t resume_halt(struct csp_task *t) {
+    /* FIXME: Currently halt is implemented as a side effect,
+       Maybe just make it explicit? */
     t->resume = 0;
+    return CSP_HALTED;
 }
 static int trans(struct csp_scheduler *s,
                  int chan,
@@ -434,70 +435,68 @@ int csp_recv(struct csp_scheduler *s,
 /* Start and object structure can be shared between send and receive
  * mode. */
 void csp_async_start(struct csp_scheduler *s,
-                    struct csp_async *b,
-                    void (*task)(struct csp_async *),
-                    uint16_t c_int, uint16_t c_data,
-                    void *buf, uint32_t size) {
+                     struct csp_async *b,
+                     csp_status_t (*task_resume)(struct csp_async *),
+                     uint16_t c_int, uint16_t c_data,
+                     void *buf, uint32_t size) {
     memset(b,0,sizeof(*b));
     cbuf_init(&b->cbuf, buf, size);
     b->c_int = c_int;
     b->c_data = c_data;
-    b->task.resume = (csp_resume_f)task;
+    b->task.resume = (csp_resume_f)task_resume;
     csp_start(s, &b->task);
     csp_schedule(s);
 }
 
 /* csp_async_start takes a task argument, which defines the flavour of
  * the object: send or receive.   These have directions switched. */
-void csp_async_send_task(struct csp_async *b) {
+csp_status_t csp_async_send_task(struct csp_async *b) {
     if (b->next) goto *b->next;
-  again:
-    /* No data, only wait for interrupt to wake us up. */
-    if (cbuf_empty(&b->cbuf)) {
-        CSP_SYN(b, 0, b->c_int);                /* RCV */
-        CSP_SEL(b, 0/*nb_send*/, 1/*nb_recv*/);
-        goto again;
-    }
-    /* Data, wait for send to complete or interrupt to wake us up. */
-    else {
-        b->token = cbuf_peek(&b->cbuf, 0);
-        CSP_EVT(b, 0, b->c_data, b->token);     /* SND */
-        CSP_SYN(b, 1, b->c_int);                /* RCV */
-        CSP_SEL(b, 1/*nb_send*/, 1/*nb_recv*/);
-        switch(b->task.selected) {
-        case 0: /* send finished */
-            cbuf_drop(&b->cbuf, 1);
-            goto again;
-        case 1: /* interrupt */
-            goto again;
+    for(;;) {
+        /* No data, only wait for interrupt to wake us up. */
+        if (cbuf_empty(&b->cbuf)) {
+            CSP_SYN(b, 0, b->c_int);                /* RCV */
+            CSP_SEL(b, 0/*nb_send*/, 1/*nb_recv*/);
+        }
+        /* Data, wait for send to complete or interrupt to wake us up. */
+        else {
+            b->token = cbuf_peek(&b->cbuf, 0);
+            CSP_EVT(b, 0, b->c_data, b->token);     /* SND */
+            CSP_SYN(b, 1, b->c_int);                /* RCV */
+            CSP_SEL(b, 1/*nb_send*/, 1/*nb_recv*/);
+            if (0 == b->task.selected) {
+                cbuf_drop(&b->cbuf, 1);
+            }
+            else {
+                /* interrupt */
+            }
         }
     }
 }
 /* Dual */
-void csp_async_recv_task(struct csp_async *b) {
+csp_status_t csp_async_recv_task(struct csp_async *b) {
     if (b->next) goto *b->next;
-  again:
-    /* Too much data, only wait for interrupt to wake us up so we can
-       retry token receive. */
-    if (cbuf_full(&b->cbuf)) {
-        CSP_SYN(b, 0, b->c_int);                /* RCV */
-        CSP_SEL(b, 0/*nb_send*/, 1/*nb_recv*/);
-        goto again;
-    }
-    /* Data, wait for send to complete or interrupt to wake us up. */
-    else {
-        CSP_EVT(b, 0, b->c_data, b->token);     /* RCV */
-        CSP_SYN(b, 1, b->c_int);                /* RCV */
-        CSP_SEL(b, 0/*nb_send*/, 2/*nb_recv*/);
-        switch(b->task.selected) {
-        case 0: { /* receive finished */
-            ASSERT(b->token < 256);
-            uint8_t byte = b->token;
-            cbuf_write(&b->cbuf, &byte, 1);
-            goto again;
+    for(;;) {
+        /* Too much data, only wait for interrupt to wake us up so we can
+           retry token receive. */
+        if (cbuf_full(&b->cbuf)) {
+            CSP_SYN(b, 0, b->c_int);                /* RCV */
+            CSP_SEL(b, 0/*nb_send*/, 1/*nb_recv*/);
         }
-        case 1: /* interrupt */
-            goto again;
+        /* Data, wait for send to complete or interrupt to wake us up. */
+        else {
+            CSP_EVT(b, 0, b->c_data, b->token);     /* RCV */
+            CSP_SYN(b, 1, b->c_int);                /* RCV */
+            CSP_SEL(b, 0/*nb_send*/, 2/*nb_recv*/);
+            if (0 == b->task.selected) {
+                /* receive finished */
+                ASSERT(b->token < 256);
+                uint8_t byte = b->token;
+                cbuf_write(&b->cbuf, &byte, 1);
+            }
+            else {
+                /* interrupt */
+            }
         }
     }
 }

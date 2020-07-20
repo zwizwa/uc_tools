@@ -98,7 +98,7 @@ struct input_task {
     void *next;
     uint8_t msg[16];
 } input_task;
-void input_resume(struct input_task *e) {
+csp_status_t input_resume(struct input_task *e) {
     if(e->next) goto *e->next;
   again:
     CSP_EVT(e, 0, CHAN_USB_IN,   e->msg);

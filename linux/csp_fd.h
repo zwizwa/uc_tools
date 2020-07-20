@@ -17,6 +17,6 @@ struct csp_to_fd {
 };
 
 void csp_to_fd_init(struct csp_to_fd *s, int fd, uint16_t in_chan, uint16_t ext_chan);
-void csp_to_fd_resume(struct csp_to_fd *s);
+csp_status_t csp_to_fd_resume(struct csp_to_fd *s);
 
 #endif

@@ -47,7 +47,8 @@ static inline void csp_evt(struct csp_evt *o,
 
 
 struct csp_task;
-typedef void (*csp_resume_f)(struct csp_task *k);
+typedef uint32_t csp_status_t;
+typedef csp_status_t (*csp_resume_f)(struct csp_task *k);
 
 struct csp_task {
     /* A task will be part of exactly one task list, so it's simplest
@@ -88,11 +89,17 @@ struct csp_task {
    CSP_SELECT, the corresponding csp_evt structures will need to be
    initialized. */
 
+/* Note that the csp scheduler does not need a return value for the
+   resume functions.  However, in order to be compatible with sm.h we
+   do need to return a status code. */
+#define CSP_HALTED  ((csp_status_t)0)
+#define CSP_WAITING ((csp_status_t)0xFFFFFFFFUL)
+
 #define CSP_SEL_K(state,_nb_send,_nb_recv,_klabel)      \
     (state)->task.nb_send = _nb_send;                   \
     (state)->task.nb_recv = _nb_recv;                   \
     (state)->next = &&_klabel;                          \
-    return;                                             \
+    return CSP_WAITING;                                 \
 _klabel:
 
 #define CSP_SEL(state,ns,nr) \
@@ -120,6 +127,13 @@ _klabel:
 #define CSP_RCV(state,ch,var)                   \
     do { CSP_EVT(state,0,ch,var);               \
          CSP_SEL(state,0,1); } while(0)
+
+/* To halt a task: return from the resume function, but set a NULL
+   resume point such that the task will not be rescheduled.  Note that
+   the scheduler does not reclaim any resources. */
+#define CSP_HALT(state) \
+    {(state)->resume = 0; return;}
+
 
 /* Scheduler data struct.  The hot list is the list of tasks to be
    checked against the cold list.  The cold list is the set of tasks
@@ -165,7 +179,8 @@ struct csp_cg_example {
     void *next;
     uint32_t a;
 };
-static inline void csp_cg_example_resume(struct csp_cg_example *t /* task state */) {
+static inline csp_status_t
+csp_cg_example_resume(struct csp_cg_example *t /* task state */) {
     if (t->next) goto *t->next;
     t->a = 123;
     for(;;) {
@@ -233,10 +248,11 @@ void csp_async_notify(struct csp_scheduler*s, struct csp_async *b, uint16_t nb);
 
 void csp_async_start(struct csp_scheduler *s,
                     struct csp_async *b,
-                    void (*task)(struct csp_async *),
+                    csp_status_t (*task)(struct csp_async *),
                     uint16_t c_int, uint16_t c_data,
                     void *buf, uint32_t size);
-void csp_async_send_task(struct csp_async *b);
+
+csp_status_t csp_async_send_task(struct csp_async *b);
 
 
 /* Simpler implementation using shared memory. */

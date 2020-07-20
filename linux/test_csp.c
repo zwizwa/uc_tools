@@ -59,7 +59,7 @@ struct state0 {
     void *next;
     uint32_t x;
 };
-void resume0(struct state0 *e) {
+csp_status_t resume0(struct state0 *e) {
     if (e->next) goto *e->next;
     e->x = 0;
   again:
@@ -77,7 +77,7 @@ struct state1 {
     uint32_t a;
     uint32_t b;
 };
-void resume1(struct state1 *e) {
+csp_status_t resume1(struct state1 *e) {
     if (e->next) goto *e->next;
   again:
     CSP_RCV(e, 1, e->a);
@@ -102,13 +102,14 @@ struct state2 {
     uint32_t n;
     uint32_t x;
 };
-void resume2(struct state2 *e) {
+csp_status_t resume2(struct state2 *e) {
     if (e->next) goto *e->next;
     for(e->n = 0; e->n < 10; e->n++) {
         CSP_RCV(e, 2, e->x);
         LOG("2: CSP_RCV %d\n", e->x);
     }
-    e->task.resume = 0; // HALT
+    e->task.resume = 0;
+    return CSP_HALTED;
 }
 
 

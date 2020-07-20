@@ -1,6 +1,26 @@
-// FIXME: just a stub
 
-/* Tuning machine. */
+/* Tuning machine.
+
+   I'm using this module as a driver to test the Linux emulation code,
+   and to also move away from condition polling, into event-driven
+   CSP.
+
+   The basic idea is to be able to develop code on Linux and then move
+   it to the microcontroller while changing as little as possible.
+
+   Regarding CSP and Linux emulation, there are some things to note:
+
+   - Splitting a CSP network across TCP links introduces asynchronous
+     channels. This took a while to appreciate, but seems to be an
+     significant change of semantics.
+
+   - Asynchronous channels do not support "sync on send", but can
+     still host a 2-step RPC mechanism.
+
+   - This is only an issue for CSP, not for the sm.h mechanism.  It is
+     not clear if I really want to push CSP forward, or if condition
+     polling is good enough.
+*/
 
 #include "sm.h"
 

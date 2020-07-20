@@ -103,9 +103,10 @@
 
 
 /* Return codes.  Other values are used to signal errors. */
-#define SM_HALTED     0
-#define SM_READY      0xFFFFFFFEUL  // yield point; caller can fetch output.
-#define SM_WAITING    0xFFFFFFFFUL
+typedef uint32_t sm_status_t;
+#define SM_HALTED     ((sm_status_t)0)
+#define SM_READY      ((sm_status_t)0xFFFFFFFEUL)  // yield point; caller can fetch output.
+#define SM_WAITING    ((sm_status_t)0xFFFFFFFFUL)  // machine is still active, poll again
 
 /* sm->next contains the address of the C code resume point. */
 #define SM_RESUME(sm) do {                      \

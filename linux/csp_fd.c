@@ -4,9 +4,13 @@
 #include "packet_tags.h"
 #include <unistd.h>
 
-/* Implement the async buffer mechanism in csp.[ch] but for file
-   descriptors, without the need to go through intermediate
-   buffers. */
+/* Asynchronous message send to external file descriptor.  This is NOT
+   rendez-vous.  See remarks below.  Note that the dual (receive) will
+   typically be implemented in an event loop as a callback, so it is
+   not implemented with direct access to a file descriptor.  Also note
+   that this implies the file descriptor does not block.  This is ok
+   for the purpose it was designed for, but is not ok in general!  See
+   remarks in packet_loop.c */
 
 void csp_to_fd_init(struct csp_to_fd *s, int fd, uint16_t in_chan, uint16_t ext_chan) {
     memset(s, 0, sizeof(*s));
@@ -15,8 +19,7 @@ void csp_to_fd_init(struct csp_to_fd *s, int fd, uint16_t in_chan, uint16_t ext_
     s->ext_chan = ext_chan;
     s->task.resume = (csp_resume_f)csp_to_fd_resume;
 }
-
-void csp_to_fd_resume(struct csp_to_fd *s) {
+csp_status_t csp_to_fd_resume(struct csp_to_fd *s) {
     if (s->next) goto *s->next;
   again:
     CSP_EVT_SHARED(s, 0 /* s->evt[0] */, s->in_chan);
@@ -40,12 +43,14 @@ void csp_to_fd_resume(struct csp_to_fd *s) {
     goto again;
 }
 
-/* For the receiver, we are going to assume that the application is
-   built into an "async wrapper" that will take care of buffer
-   allocation, and invokes a callback.  This means that csp_send() can
-   be used. */
 
+/* There is a fundamental issue that prevents implementing network
+   communication as rendez-vous: simultaneity does not exist across a
+   network link due to time delays.  Send and receive across a network
+   link are not the same event.
 
-
-
-
+   In practice this is not a big issue.  It is possible to create
+   other synchronization mechanisms such as RPC (two-step send
+   request, recieve response) that work for synchronous as wel as
+   asynchronous channels, but the symmetry of rendez-vous is lost.
+*/
