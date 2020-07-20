@@ -65,6 +65,31 @@
 #define LOG(...)
 #endif
 
+#if 1
+#define LOG_DBG(...)
+static inline void log_dbg_state(struct csp_scheduler *s) { }
+#else
+#define LOG_DBG LOG
+/* Some static logging for debugging.  The datastructures are too low
+   level to make sense of in the debugger. */
+static inline void log_evt_list_tasks(struct csp_evt_list *l) {
+    while(l) {
+        /* Only print task for now. */
+        LOG(" %p", l->key);
+        l=l->next;
+    }
+    LOG("\n");
+}
+static void log_dbg_state(struct csp_scheduler *s) {
+    /* Current test case has only one channel. */
+    LOG("channel 0, cold tasks:\n");
+    LOG(".send=0:"); log_evt_list_tasks(s->chan_to_evt[0].evts[0]);
+    LOG(".recv=1:"); log_evt_list_tasks(s->chan_to_evt[0].evts[1]);
+}
+#endif
+
+
+
 #include <stdint.h>
 #include <string.h>
 
@@ -257,21 +282,26 @@ static void remove_task(struct csp_scheduler *s,
 static inline void remove_cold(
     struct csp_scheduler *s,
     struct csp_task *cold) {
-    LOG("remove_cold %p\n",cold);
+    LOG_DBG("==== BEGIN\n");
+    LOG_DBG("remove_cold %p\n",cold);
+    log_dbg_state(s);
     FOR_EVT_INDEX(e, cold) {
-        LOG("  - from %d\n",e);
         int cold_dir = task_evt_dir(cold, e);
         int ch = cold->evt[e].chan;
+        LOG_DBG("  - from evt_index=%d, dir=%d\n",e,cold_dir);
         remove_task(
             s, &(s->chan_to_evt[ch].evts[cold_dir]),
             cold);
     }
+    LOG_DBG("==== POST\n");
+    log_dbg_state(s);
+    LOG_DBG("==== END\n");
 }
 static inline void add_cold(
     struct csp_scheduler *s,
     struct csp_task *cold) {
     cold->selected = -1;
-    LOG("add_cold %p\n",cold);
+    LOG_DBG("add_cold %p\n",cold);
     FOR_EVT_INDEX(e, cold) {
         int dir = task_evt_dir(cold, e);
         int ch = cold->evt[e].chan;
@@ -283,12 +313,12 @@ static inline void add_cold(
 }
 static inline void add_hot(struct csp_scheduler *s,
                            struct csp_task *hot_task) {
-    LOG("add_hot %p\n", hot_task);
+    LOG_DBG("add_hot %p\n", hot_task);
     csp_task_push(&s->hot, hot_task);
 }
 static inline struct csp_task *pop_hot(struct csp_scheduler *s) {
     struct csp_task *task = csp_task_pop(&s->hot);
-    LOG("pop_hot %p\n", task);
+    LOG_DBG("pop_hot %p\n", task);
     return task;
 }
 
@@ -313,11 +343,22 @@ void csp_start(struct csp_scheduler *s, struct csp_task *t) {
 
 /* Given a hot task, find a (any) cold task that can rendez-vous with
    one of the hot task's events and perform the rendez-vous.  If none,
-   return NULL. */
+   return NULL.
+
+   This is a good place to reiterate the data structures.
+
+   - Each task has an event list
+   - Each event is associated to a channel
+   - Each channel has a channel to events list for 2 directions (the cold list)
+
+*/
 static void schedule_task(
     struct csp_scheduler *s,
     struct csp_task *hot_task) {
+    LOG_DBG("schedule_task %p\n", hot_task);
+    log_dbg_state(s);
     FOR_EVT_INDEX(e, hot_task) {
+        LOG_DBG(" e = %d\n", e);
         int cold_dir = !task_evt_dir(hot_task, e);
         int ch = hot_task->evt[e].chan;
         struct csp_evt_list *el = s->chan_to_evt[ch].evts[cold_dir];
@@ -330,10 +371,16 @@ static void schedule_task(
                corruption?  Why does it not trigger in the main
                task? */
             //if (cold_task == hot_task) {
-            //    LOG("WARNING: cold_task == hot_task == %p\n", cold_task);
+            //    LOG_DBG("WARNING: cold_task == hot_task == %p\n", cold_task);
             //    continue;
             //}
             ASSERT(cold_task != hot_task);
+
+            /* Remove the cold task from the cold list _before_
+               running the resume methods, because that will change
+               the event structure, and remove_cold() uses the event
+               structure to pick the correct wait list. */
+            remove_cold(s, cold_task);
 
             if (cold_dir == 1) {
                 // hot is send
@@ -345,7 +392,6 @@ static void schedule_task(
                 do_send(cold_task, cold_evt,
                         hot_task,  hot_evt);
             }
-            remove_cold(s, cold_task);
 
             /* Add both to hot list again if still active. */
             if(hot_task->resume)  add_hot(s, hot_task);
