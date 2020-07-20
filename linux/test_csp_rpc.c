@@ -1,6 +1,7 @@
+/* RPC example. */
+
 #include "sm_csp.h"
 #include <stdint.h>
-
 
 struct sm_client {
     struct csp_task task;
@@ -12,8 +13,20 @@ struct sm_client {
 };
 uint32_t client_tick(struct sm_client *s) {
     SM_RESUME(s);
+
+    /* CSP_RPC consists of CSP_SND followed by CSP_RCV.  See csp.h
+       This also works for asynchronous channels, e.g. TCP send. */
+
+    LOG("client: req1 %d\n", s->req);
     CSP_RPC(&s->task, s, s->chan, s->req, s->resp);
+    LOG("client: resp1 %d\n", s->resp);
+
+    s->req += 100;
+
+    LOG("client: req2 %d\n", s->req);
     CSP_RPC(&s->task, s, s->chan, s->req, s->resp);
+    LOG("client: resp2 %d\n", s->resp);
+
     SM_HALT(s);
 }
 
@@ -37,6 +50,7 @@ csp_status_t server_tick(struct server *s) {
     for(;;) {
         CSP_RCV(&s->task, s, s->chan, s->req);
         s->resp = s->req+1;
+        LOG("server: %d -> %d\n", s->req, s->resp);
         CSP_SND(&s->task, s, s->chan, s->resp);
     }
 }
@@ -54,7 +68,6 @@ void test1(struct csp_scheduler *s) {
     SM_CSP_START(s, &m.task,  server, &m, chan);
     SM_CSP_START(s, &t.task,  client, &t, chan);
     csp_schedule(s);
-    LOG("\n");
 }
 int main(int argc, char **argv) {
     int nb_c2e = 30;

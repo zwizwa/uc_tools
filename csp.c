@@ -282,20 +282,13 @@ static void remove_task(struct csp_scheduler *s,
 static inline void remove_cold(
     struct csp_scheduler *s,
     struct csp_task *cold) {
-    LOG_DBG("==== BEGIN\n");
-    LOG_DBG("remove_cold %p\n",cold);
-    log_dbg_state(s);
     FOR_EVT_INDEX(e, cold) {
         int cold_dir = task_evt_dir(cold, e);
         int ch = cold->evt[e].chan;
-        LOG_DBG("  - from evt_index=%d, dir=%d\n",e,cold_dir);
         remove_task(
             s, &(s->chan_to_evt[ch].evts[cold_dir]),
             cold);
     }
-    LOG_DBG("==== POST\n");
-    log_dbg_state(s);
-    LOG_DBG("==== END\n");
 }
 static inline void add_cold(
     struct csp_scheduler *s,

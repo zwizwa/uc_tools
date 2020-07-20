@@ -335,6 +335,13 @@ test_pdm.c
 2: CSP_RCV 1
 2: CSP_RCV 2
 2: CSP_RCV 3
+==== test_csp_rpc.dynamic.host.elf
+client: req1 0
+server: 0 -> 1
+client: resp1 1
+client: req2 100
+server: 100 -> 101
+client: resp2 101
 ==== test_sm_csp.dynamic.host.elf
 count: 0 -> procsub: 0 2
 count: 1 -> procsub: 1 1
