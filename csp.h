@@ -96,8 +96,10 @@ struct csp_task {
 #define CSP_WAITING ((csp_status_t)0xFFFFFFFFUL)
 
 /* Note: continuation and task need to be distiguished.  E.g. sm.h has
- * composite continuations (e.g. a stack built out of nested structs),
- * but has a single task struct to interface with csp scheduler. */
+   composite continuations (e.g. a stack built out of nested structs),
+   but has a single task struct to interface with csp scheduler.  The
+   only thing we assume about a continuation is that it has a next
+   field where the computed goto address goes. */
 
 #define CSP_SEL_K(task,cont,_nb_send,_nb_recv,_klabel)  \
     (task)->nb_send = _nb_send;                         \

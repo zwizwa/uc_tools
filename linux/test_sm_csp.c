@@ -56,9 +56,9 @@ csp_status_t procsub_tick(struct procsub *s) {
         if (!s->loops--) return SM_HALTED;
     }
 }
-void procsub_init(struct proc *s, struct csp_task *task) {
+void procsub_init(struct procsub *s, struct csp_task *task) {
     memset(s,0,sizeof(*s));
-    s->loops = loops;
+    s->loops = 3;
     s->task = task;
 }
 
@@ -71,6 +71,9 @@ struct proc {
     void *next;
     int loops;
     int chan;
+    union {
+        struct procsub procsub;
+    } sub;
 };
 csp_status_t proc_tick(struct proc *s) {
     SM_RESUME(s);
@@ -80,6 +83,8 @@ csp_status_t proc_tick(struct proc *s) {
         /* Make test finite. */
         if (s->loops++ >= 3) return SM_HALTED;
     }
+  halt:
+    SM_HALT(s);
 }
 void proc_init(struct proc *s, int chan) {
     memset(s,0,sizeof(*s));
