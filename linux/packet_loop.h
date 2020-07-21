@@ -4,6 +4,7 @@
 #include "macros.h"
 #include <stdint.h>
 #include <unistd.h>
+#include <string.h>
 
 struct packet_loop_state {
     int *fds; // pointer to active file descriptors
@@ -32,7 +33,24 @@ static inline void packet_loop_echo_push(
     for (int i=0; i<s->nfds; i++) {
         int out_fd = s->fds[i];
         if (in_fd != out_fd) {
-            ASSERT(len == write(out_fd, buf, len));
+            int left = len;
+            while (left) {
+                int rv = write(out_fd, buf + (len-left), left);
+                if (-1 == rv) {
+                    if (ECONNRESET == errno) {
+                        /* Disconnect is not an error. */
+                        break;
+                    }
+                    else {
+                        /* Log other conditions but don't treat them as errors. */
+                        const char *e = strerror(errno);
+                        LOG("WARNING: packet_loop_echo_push: out_fd=%d, errno=%d, %s\n", out_fd, errno, e);
+                        break;
+                    }
+                }
+                ASSERT(rv > 0);
+                left -= rv;
+            }
         }
     }
 }
