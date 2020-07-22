@@ -31,7 +31,7 @@ static inline int assert_tcp_listen(int port) {
     ASSERT_ERRNO(bind(sockfd, (struct sockaddr *) &address_in, addrlen));
     int backlog = 5;
     ASSERT_ERRNO(listen(sockfd, backlog));
-    LOG("listening on 0.0.0.0:%d\n", port);
+    //LOG("listening on 0.0.0.0:%d\n", port);
     return sockfd;
 }
 
@@ -50,7 +50,7 @@ static inline int assert_tcp_connect(const char *host, int port) {
     ASSERT_ERRNO(setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &intarg, sizeof(intarg)));
     socklen_t addrlen = sizeof(address_in);
     ASSERT_ERRNO(connect(sockfd, (struct sockaddr *) &address_in, addrlen));
-    LOG("connected to %s:%d\n", host, port);
+    //LOG("connected to %s:%d\n", host, port);
     return sockfd;
 }
 
