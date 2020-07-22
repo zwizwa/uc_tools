@@ -15,7 +15,9 @@ assert_vars TYPE
 
 case "$TYPE" in
     o)
-        assert_vars ARCH
+        assert_vars ARCH O
+        rm -rf "$O"
+
         [ -z "$GCC" ] && . $UC_TOOLS/linux/env.$ARCH.sh
 
         $GCC \
@@ -31,6 +33,7 @@ case "$TYPE" in
         ;;
     a)
         assert_vars A OBJECTS
+        rm -f "$A"
         ar -r $A $OBJECTS #2>/dev/null
         ;;
     ld)
@@ -38,6 +41,8 @@ case "$TYPE" in
         ;;
     elf)
         assert_vars LD ARCH MAP ELF A
+        rm -f "$ELF"
+
         [ -z "$GCC" ] && . $UC_TOOLS/linux/env.$ARCH.sh
         # The LD name is fake. Use linker's defaults.
         if [ $(basename "$LD") != dynamic.$ARCH.ld ]; then
@@ -48,6 +53,8 @@ case "$TYPE" in
         ;;
     so)
         assert_vars LD ARCH MAP SO A
+        rm -f "$SO"
+
         [ -z "$GCC" ] && . $UC_TOOLS/linux/env.$ARCH.sh
         # The LD name is fake. Use linker's defaults.
         if [ $(basename "$LD") != dynamic.$ARCH.ld ]; then
