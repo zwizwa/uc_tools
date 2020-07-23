@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <unistd.h>
+#include <string.h>
 #ifndef LOG
 #define LOG(...) fprintf(stderr, __VA_ARGS__)
 #endif
@@ -113,5 +114,6 @@ int kill(pid_t pid, int sig);
                 ERROR("ASSERT FAIL: " #a ", errno = %d, %s\n", errno, strerror(errno)); \
             } })
 #endif
+
 
 #endif
