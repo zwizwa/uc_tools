@@ -21,28 +21,24 @@
 #include "byteswap.h"
 #include <poll.h>
 
-
-#define MAX_NB_CLIENTS 10
-static int client_fd[MAX_NB_CLIENTS];
-static struct packet_loop_state state = {.fds = &client_fd[0] };
-
-void unregister_client(const struct packet_loop_config *config, int i) {
-    int fd = client_fd[i];
+void unregister_client(struct packet_loop_state *s, int i) {
+    int fd = s->fds[i];
     close(fd);
     /* Move the last one to take the slot of the one moved. */
-    client_fd[i] = client_fd[state.nfds-1];
-    state.nfds--;
-    if (config->notify) config->notify(&state, fd, 0);
+    s->fds[i] = s->fds[s->nfds-1];
+    s->nfds--;
+    if (s->config->notify) s->config->notify(s, fd, 0);
     //LOG("- fd=%d n=%d\n", fd, state.nfds);
 }
-void register_client(const struct packet_loop_config *config, int fd) {
-    client_fd[state.nfds++] = fd;
-    if (config->notify) config->notify(&state, fd, 1);
+void register_client(struct packet_loop_state *s, int fd) {
+    ASSERT(s->nfds < s->max_nfds);
+    s->fds[s->nfds++] = fd;
+    if (s->config->notify) s->config->notify(s, fd, 1);
     //LOG("+ fd=%d n=%d\n", fd, state.nfds);
 }
-uint32_t read_client_bytes(const struct packet_loop_config *config, int i, uint8_t *buf, uint32_t n) {
+uint32_t read_client_bytes(struct packet_loop_state *s, int i, uint8_t *buf, uint32_t n) {
     int have = 0;
-    int fd = client_fd[i];
+    int fd = s->fds[i];
     while (have < n) {
         int rv = read(fd, buf+have, n-have);
         if (rv <= 0) {
@@ -53,50 +49,52 @@ uint32_t read_client_bytes(const struct packet_loop_config *config, int i, uint8
                 const char *e = strerror(rv);
                 LOG("WARNING: read_client_bytes: n=%d, rv=%d, %s: unregistering\n", n, rv, e);
             }
-            unregister_client(config, i);
+            unregister_client(s, i);
             return 0;
         }
         have += rv;
     }
     return n;
 }
-uint32_t read_client(const struct packet_loop_config *c, int i_in) {
+uint32_t read_client(struct packet_loop_state *s, int i_in) {
+    const struct packet_loop_config *c = s->config;
     uint8_t buf0[c->packet_size];
     // Reserve some space for zero-copy downstream header wrapping.
     uint8_t *buf = &buf0[c->header_size];
     uint32_t n;
-    if (4 != (n = read_client_bytes(c, i_in, buf, 4))) return 0;
+    if (4 != (n = read_client_bytes(s, i_in, buf, 4))) return 0;
     n = read_be(buf, 4);
     // LOG("n = 0x%x\n", n);
     if (n+4 > (c->packet_size - c->header_size)) {
         ERROR("buffer overflow 0x%x bytes\n", n+4);
     }
-    if (n != read_client_bytes(c, i_in, buf+4, n)) return 0;
+    if (n != read_client_bytes(s, i_in, buf+4, n)) return 0;
     //LOG("packet: %d\n", n);
     if (c->push) {
-        c->push(&state, client_fd[i_in], buf, n+4);
+        c->push(s, s->fds[i_in], buf, n+4);
     }
     return n+4;
 }
 
-void packet_loop_start(const struct packet_loop_config *config) {
-    int server_fd = assert_tcp_listen(config->tcp_port);
-    struct pollfd pfd[MAX_NB_CLIENTS];
+void packet_loop_start(struct packet_loop_state *s) {
+
+    int server_fd = assert_tcp_listen(s->config->tcp_port);
+    struct pollfd pfd[s->max_nfds];
     for(;;) {
       again:
         /* Set up descriptors. */
-        for (int i=0; i<state.nfds; i++) {
+        for (int i=0; i<s->nfds; i++) {
             pfd[i].events = POLLIN | POLLERR;
-            pfd[i].fd = client_fd[i];
+            pfd[i].fd = s->fds[i];
         }
-        int i_server = state.nfds;
+        int i_server = s->nfds;
         pfd[i_server].events = POLLIN | POLLERR;
         pfd[i_server].fd = server_fd;
 
         /* Wait */
         int rv;
-        //LOG("waiting for %d clients\n", state.nfds);
-        ASSERT_ERRNO(rv = poll(&pfd[0], state.nfds+1, -1));
+        //LOG("waiting for %d clients\n", s->nfds);
+        ASSERT_ERRNO(rv = poll(&pfd[0], s->nfds+1, -1));
         ASSERT(rv > 0);
 
         /* Handle */
@@ -105,13 +103,13 @@ void packet_loop_start(const struct packet_loop_config *config) {
          * client table indices in the loop are no longer valid, so
          * restart the poll .*/
 
-        for(int i=0; i<state.nfds; i++) {
+        for(int i=0; i<s->nfds; i++) {
             if(pfd[i].revents & POLLERR) {
-                unregister_client(config, i);
+                unregister_client(s, i);
                 goto again;
             }
             if(pfd[i].revents & POLLIN) {
-                uint32_t rv = read_client(config, i);
+                uint32_t rv = read_client(s, i);
                 if (!rv) {
                     goto again;
                 }
@@ -126,7 +124,7 @@ void packet_loop_start(const struct packet_loop_config *config) {
                 (fd = accept(server_fd,
                              (struct sockaddr *)&address_in,
                              &addrlen)));
-            register_client(config, fd);
+            register_client(s, fd);
             pfd[i_server].revents &= ~POLLIN;
         }
         ASSERT(0 == pfd[i_server].revents);

@@ -21,5 +21,12 @@ int main(int argc, char **argv) {
         .header_size = 0,
         .packet_size = 2048,
     };
-    packet_loop_start(&config);
+    const int max_nfds = 40;
+    int fds[max_nfds];
+    struct packet_loop_state state = {
+        .config = &config,
+        .fds = fds,
+        .max_nfds = max_nfds
+    };
+    packet_loop_start(&state);
 }

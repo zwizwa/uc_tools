@@ -6,11 +6,7 @@
 #include <unistd.h>
 #include <string.h>
 
-struct packet_loop_state {
-    int *fds; // pointer to active file descriptors
-    uint32_t nfds;
-};
-
+struct packet_loop_state;
 struct packet_loop_config {
     void (*notify)(struct packet_loop_state *s, int from_fd, int state);
 
@@ -22,8 +18,14 @@ struct packet_loop_config {
     uint16_t tcp_port;
 };
 
-void packet_loop_start(const struct packet_loop_config *config);
+struct packet_loop_state {
+    const struct packet_loop_config *config;
+    int *fds; // pointer to active file descriptors
+    uint32_t nfds; // currently registered
+    uint32_t max_nfds; // max registered
+};
 
+void packet_loop_start(struct packet_loop_state *s);
 
 
 static inline void packet_loop_forward(int out_fd, const uint8_t *buf, uint32_t len) {
