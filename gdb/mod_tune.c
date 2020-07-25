@@ -32,8 +32,10 @@
 // All in fixed point
 #define ONE ((double)0x100000000)
 // NOTE is log FREQ
-#define NOTE(x) ((uint32_t)(x * ONE))
+#define FIXED(x) ((uint32_t)(x * ONE))
 #define FREQ(x) (x)
+
+#define DOUBLE(x) (((double)(x))/ONE)
 
 /* Sub machine uses a raw measurement RPC on a channel to perform a
    conditioned measurement.  This is to allow emulation and network
@@ -62,14 +64,33 @@ uint32_t measure_tick(struct sm_measure *s) {
 
     //LOG("meas1\n");
     CSP_RPC(&e->task, s, e->chan, e->setpoint, e->value);
-    LOG("drop: %d\n", e->value);
+    // LOG("drop: %d\n", e->value);
 
     //LOG("meas1\n");
     CSP_RPC(&e->task, s, e->chan, e->setpoint, e->value);
-    LOG("keep: %d\n", e->value);
+    // LOG("keep: %d\n", e->value);
 
     SM_HALT(s);
 }
+
+
+/* Given two points and a y value, compute the corresponding x value. */
+/* Floating point reference implementation to validate fixedpoint version. */
+struct double_point { double x,y; };
+struct double_points { struct double_point a,b,c; };
+static inline void double_solve_linear(struct double_points *s) {
+    double slope = (s->b.x - s->a.x) / (s->b.y - s->a.y);
+    s->c.x = s->a.x + (s->c.y - s->a.y) * slope;
+}
+
+/* Signed or unsigned math?  TBD. */
+struct fxp_point { uint32_t x,y; };
+struct fxp_points { struct fxp_point a,b,c; };
+static inline void fxp_solve_linear(struct fxp_points *s) {
+    uint32_t slope = (s->b.x - s->a.x) / (s->b.y - s->a.y);
+    s->c.x = s->a.x + (s->c.y - s->a.y) * slope;
+}
+
 
 
 
@@ -78,7 +99,7 @@ uint32_t measure_tick(struct sm_measure *s) {
 struct sm_tune {
     struct sm_tune_env env;
     void *next;
-    uint32_t xa, xb, xc, ya, yb, yc;
+    struct fxp_points points;
     uint32_t freq, nb_iter, nb_octaves, logmax, iter, octave;
     union {
         /* One entry for each SM_SUB call. */
@@ -92,6 +113,7 @@ struct sm_tune {
        SM_SUB(s, measure, &s->env); \
        s->env.value; })
 
+
 /* Basic structure of machine is to perform two measurements to
    initialize, and then perform measurements inside the inner loop
    over octaves and root finding approx. */
@@ -99,14 +121,13 @@ uint32_t tune_tick(struct sm_tune *s) {
     SM_RESUME(s);
     // Initial points are meausred once and reused to start each octave scan.
     // FIXME: initial measurement
-    s->ya = MEASURE(s->xa);
-    s->yb = MEASURE(s->xb);
+    s->points.a.y = MEASURE(s->points.a.x);
+    s->points.b.y = MEASURE(s->points.a.y);
     for (s->octave = 0; s->octave < s->nb_octaves; s->octave++) {
         for(s->iter = 0; s->iter < s->nb_iter; s->iter++) {
-            uint32_t yt = 0; // FIXME: computed from freq?, see rdm.erl
-            uint32_t slope = (s->xb - s->xa) / (s->yb - s->ya);
-            s->xc = s->xa + (yt - s->ya) * slope;
-            s->yc = MEASURE(s->xc);
+            s->points.c.y = 0; // FIXME: computed from freq?, see rdm.erl
+            fxp_solve_linear(&s->points);
+            s->points.c.y = MEASURE(s->points.c.x);
         }
         s->freq *= 2;
     }
@@ -116,8 +137,8 @@ uint32_t tune_tick(struct sm_tune *s) {
 
 void tune_init(struct sm_tune *s, int chan) {
     memset(s,0,sizeof(*s));
-    s->xa = 'A'; //NOTE(0.49);
-    s->xb = 'X'; //NOTE(0.51);
+    s->points.a.x = 'A'; //FIXED((0.49);
+    s->points.b.x = 'X'; //FIXED((0.51);
     s->freq = FREQ(55);
     s->nb_iter = 4;
     s->nb_octaves = 6;
