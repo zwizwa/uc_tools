@@ -30,9 +30,9 @@
 // see pdm.erl
 
 // All in fixed point
-#define ONE ((double)0x100000000)
+#define ONE ((double)0x80000000)
 // NOTE is log FREQ
-#define FIXED(x) ((uint32_t)(x * ONE))
+#define FIXED(x) ((int32_t)((x) * ONE))
 #define FREQ(x) (x)
 
 #define DOUBLE(x) (((double)(x))/ONE)
@@ -83,11 +83,15 @@ static inline void double_solve_linear(struct double_points *s) {
     s->c.x = s->a.x + (s->c.y - s->a.y) * slope;
 }
 
-/* Signed or unsigned math?  TBD. */
-struct fxp_point { uint32_t x,y; };
+/* Signed fixed point.
+   TODO: How to properly implement division?
+   TODO: Don't go this route.  Only do updates.
+*/
+struct fxp_point { int32_t x,y; };
 struct fxp_points { struct fxp_point a,b,c; };
 static inline void fxp_solve_linear(struct fxp_points *s) {
-    uint32_t slope = (s->b.x - s->a.x) / (s->b.y - s->a.y);
+    int32_t slope = (s->b.x - s->a.x) / (s->b.y - s->a.y);  // needs scaling
+    LOG("slope = %d\n", slope);
     s->c.x = s->a.x + (s->c.y - s->a.y) * slope;
 }
 

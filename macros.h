@@ -19,10 +19,14 @@
 #endif
 /* The default error propagation is to exit the program.  This works
  * well for the intended use as Erlang port. */
-#ifndef ABORT
-//#define TRAP
+
+#define TRAP // It seems to be a bad idea to enable this by default
+#ifndef TRAP
 int kill(pid_t pid, int sig);
 #define TRAP kill(getpid(), SIGTRAP);
+#endif
+
+#ifndef ABORT
 #define ABORT TRAP exit(1)
 #endif
 
