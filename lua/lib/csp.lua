@@ -12,6 +12,11 @@
 -- . The main data structure is:
 --   cold_tasks[channel][direction][cold_task] -> cold_event
 
+-- Note that task and scheduler are orthogonal and communicate only
+-- through a small interface.  E.g. the scheduler does not know that
+-- the tasks are coroutines, and other mechanisms could be added.
+
+
 local prompt = require('prompt')
 local function log(str) io.stderr:write(str) end
 local function log_desc(thing) log(prompt.describe(thing)) end
@@ -21,9 +26,8 @@ local csp = {
    task = {}
 }
 
-local function other_direction(dir)
-   if dir == "send" then return "recv" else return "send" end
-end
+-- SCHEDULER
+
 
 function csp.scheduler.new()
    local s = {
@@ -32,49 +36,35 @@ function csp.scheduler.new()
       -- This is indexed hierarchically by channel, direction and
       -- task, eventually mapping to event.  The structure reflects
       -- the most convenient access method.  See use of
-      -- scheduler:cold_tasks
+      -- scheduler:waiting
       cold_task_index = {}
    }
    setmetatable(s, { __index = csp.scheduler })
    return s
 end
 
--- This is just an illustration... It's probably simpler to define the
--- event structure in-place, as part of select().  As opposed to csp.c
--- it is probably possible to give a decent api here.
--- function event.new()
---    local event = { direction = "send", channel = "channel0" }
---    return event
--- end
-
-
-
 -- Channels are just names that are used to index cold tasks.  They
 -- are created on-demand.  Note that channels are not garbage
--- collected.
-function csp.scheduler:channel_cold_tasks(ch,dir)
+-- collected yet.
+function csp.scheduler:waiting(ch,dir)
    if not self.cold_task_index[ch] then
       self.cold_task_index[ch] = { send = {}, recv = {} }
    end
    return self.cold_task_index[ch][dir]
 end
 
-function csp.scheduler:add_hot(hot_task)
-   table.insert(self.hot_task_list, hot_task)
-end
-
 function csp.scheduler:add_cold(cold_task)
    -- log("add_cold: " .. cold_task.name .. "\n")
    cold_task.selected = nil
    for i,evt in ipairs(cold_task.events) do
-      local waiting = self:channel_cold_tasks(evt.channel, evt.direction)
+      local waiting = self:waiting(evt.channel, evt.direction)
       waiting[cold_task] = evt
    end
 end
 
 function csp.scheduler:remove_cold(cold_task)
    for i,evt in ipairs(cold_task.events) do
-      local waiting = self:channel_cold_tasks(evt.channel, evt.direction)
+      local waiting = self:waiting(evt.channel, evt.direction)
       waiting[cold_task] = nil
       -- FIXME: Where to garbage-collect channels?  This seems to be a
       -- possible place, but not optimal.  E.g. if both hot and cold
@@ -85,16 +75,28 @@ function csp.scheduler:remove_cold(cold_task)
    end
 end
 
-function csp.scheduler:do_send(send_task, send_evt, recv_task, recv_evt)
-   -- log("do_send send=" .. send_task.name .. ", recv=" .. recv_task.name .. ", data=" .. send_evt.data .. "\n")
+function csp.scheduler:add_hot(hot_task)
+   table.insert(self.hot_task_list, hot_task)
+end
 
+function csp.scheduler:rendezvous(send_task, send_evt, recv_task, recv_evt)
+   -- log("rendezvous send=" .. send_task.name .. ", recv=" .. recv_task.name .. ", data=" .. send_evt.data .. "\n")
+
+   -- Mark the active event and transfer data
    recv_task.selected = recv_evt
    send_task.selected = send_evt
    recv_evt.data = send_evt.data
 
-   -- Add both to hot list again if still active
+   -- Run recv task first.  This makes traces easier to read because
+   -- send/recv pairs will look like function calls, but beware that
+   -- tasks cannot rely on this property.  Tasks are added to the hot
+   -- list again if they are still active.
    if recv_task:resume() then self:add_hot(recv_task) end
    if send_task:resume() then self:add_hot(send_task) end
+end
+
+local function other_direction(dir)
+   if dir == "send" then return "recv" else return "send" end
 end
 
 function csp.scheduler:schedule_task(hot_task)
@@ -104,18 +106,22 @@ function csp.scheduler:schedule_task(hot_task)
    for i, hot_evt in ipairs(hot_task.events) do
       -- log("hot_evt " .. i .. "\n")
 
-      local waiting = self:channel_cold_tasks(
+      local waiting = self:waiting(
          hot_evt.channel, other_direction(hot_evt.direction))
-      -- ch_dir is a task -> event table
-      -- we need to pick a random key,value pair from this list
+      -- From all te tasks that are waiting on this channel in this
+      -- direction, we just need to pick a random one.
       for cold_task, cold_evt in pairs(waiting) do
+         -- Remove from cold list before resuming, as resume will
+         -- change the event structure, and remove_cold iterates over
+         -- the current events.
          self:remove_cold(cold_task)
          if cold_dir == "recv" then
-            self:do_send(hot_task, hot_evt, cold_task, cold_evt)
+            self:rendezvous(hot_task, hot_evt, cold_task, cold_evt)
          else
-            self:do_send(cold_task, cold_evt, hot_task, hot_evt)
+            self:rendezvous(cold_task, cold_evt, hot_task, hot_evt)
          end
-         -- We're done
+         -- We're done.  Tasks have been added to the hot list again
+         -- if they were still active after resume.
          return
       end
    end
@@ -132,34 +138,31 @@ function csp.scheduler:schedule()
    end
 end
 
-
--- Implement single send/receive first.  Then find a good api for
--- select later.
-function csp.task:send(channel, data)
-   return
-      self:select({
-            data = data,
-            direction = "send",
-            channel = channel})
+-- Start a task.
+function csp.scheduler:spawn(body, name)
+   local t = csp.task.spawn(body, name, self)
+   self:add_hot(t)
+   self:schedule()
+   return t
 end
 
-function csp.task:recv(channel)
-   return
-      self:select({
-            direction = "recv",
-            channel = channel})
+
+
+-- TASK
+
+-- Tasks implemented as Lua coroutines.
+
+-- Name is optional.  It is only used for debug prints.
+function csp.task.spawn(body, scheduler, name)
+   local t = { events = {}, scheduler = scheduler, name = name }
+   setmetatable(t, { __index = csp.task })
+   t.coroutine = coroutine.create(function() body(t) end)
+   t:resume()
+   return t
 end
 
-function csp.task:select(evt)
-   self.selected = nil
-   self.events = { evt }
-   -- log("yield: dir=" .. evt.direction .. ",ch=" .. evt.channel .. "\n")
-   coroutine.yield()
-   -- log("resume: data=" .. self.selected.data .. "\n")  -- note this is also still there for send
-   return self.selected.data
-end
-
-local function coroutine_resume(co)
+function csp.task:resume()
+   local co = self.coroutine
    -- FIXME: distinguish between end and crash
    local status, rv = coroutine.resume(co)
    if not status then
@@ -173,22 +176,44 @@ local function coroutine_resume(co)
    return status
 end
 
-function csp.task:resume()
-   return coroutine_resume(self.coroutine)
+
+-- Implement single event send/receive first.  Then find a good api
+-- for select later.
+function csp.task:send(channel, data)
+   self:select({
+         data = data,
+         direction = "send",
+         channel = channel})
 end
 
-function csp.scheduler:spawn(body, name)
-   local t = { events = {}, scheduler = self, name = name }
-   setmetatable(t, { __index = csp.task })
-   -- The coroutine body executes up to the first blocking point,
-   -- e.g. the first self:select() call.
-   t.coroutine = coroutine.create(function() body(t) end)
-   coroutine_resume(t.coroutine)
-   -- Call scheduler to propagate events.
-   self:add_hot(t)
-   self:schedule()
-   return t
+function csp.task:recv(channel)
+   return
+      self:select({
+            direction = "recv",
+            channel = channel}).data
 end
+
+-- This is the main (only) blocking call that a task can issue.  The
+-- argument list is a list of events that can wake up the task.
+-- Exactly one event will eventually wake up the task, and that event
+-- is returned to the caller.  Currently only two types of events are
+-- supported: channel send and recv.  It is probably best to keep it
+-- that way.  External events can be simulated using channels.  See
+-- csp.c for inspiration.
+
+-- Select already supports multiple blocking events.
+function csp.task:select(...)
+   self.selected = nil
+   self.events = { ... }
+   -- log("yield: dir=" .. evt.direction .. ",ch=" .. evt.channel .. "\n")
+   coroutine.yield()
+   -- log("resume: data=" .. self.selected.data .. "\n")  -- note this is also still there for send
+   return self.selected
+end
+
+
+
+
 
 
 
