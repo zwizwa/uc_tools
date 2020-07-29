@@ -10,13 +10,14 @@ local csp = require('lib.csp')
 
 function test_send_recv()
    local sched = csp.scheduler.new()
-   local ch = "ch0"
+   local ch = sched:new_channel()
 
    local function sender_body(self)
       for i=1,10 do
          self:send(ch, "hello")
       end
    end
+
    local function receiver_body(self)
       while true do
          local data1 = self:recv(ch)
@@ -35,7 +36,7 @@ end
 
 function test_rpc()
    local sched = csp.scheduler.new()
-   local ch = "ch0"
+   local ch = sched:new_channel()
 
    local function client_body(self)
       for i=1,10 do

@@ -7,15 +7,12 @@
 -- chedule_task() csp.c with some more general data structures:
 --
 -- . Use "send" and "recv" to tag directions
--- . Use symbolic channel names
--- . Create channel index on-demand
--- . The main data structure is:
---   cold_tasks[channel][direction][cold_task] -> cold_event
+-- . Use channel objects
+-- . Cold lists are stored in the channel objects
 
 -- Note that task and scheduler are orthogonal and communicate only
 -- through a small interface.  E.g. the scheduler does not know that
 -- the tasks are coroutines, and other mechanisms could be added.
-
 
 local prompt = require('prompt')
 local function log(str) io.stderr:write(str) end
@@ -23,57 +20,55 @@ local function log_desc(thing) log(prompt.describe(thing)) end
 
 local csp = {
    scheduler = {},
-   task = {}
+   task = {},
+   channel = {}
 }
+
+-- CHANNEL
+
+-- Channel structures just store the cold list.  Each of send, recv
+-- contain a set of waiting tasks, represented as a table mapping task
+-- to event.
+function csp.channel.new()
+   local ch = { send = {}, recv = {} }
+   return ch
+end
+
 
 -- SCHEDULER
 
-
+-- The scheduler is just a hot task list.  The cold task list is
+-- stored outside of the scheduler, in the channel data structures.
 function csp.scheduler.new()
-   local s = {
-      -- Just a list of tasks
-      hot_task_list = {},
-      -- This is indexed hierarchically by channel, direction and
-      -- task, eventually mapping to event.  The structure reflects
-      -- the most convenient access method.  See use of
-      -- scheduler:waiting
-      cold_task_index = {}
-   }
+   local s = { hot_task_list = {} }
    setmetatable(s, { __index = csp.scheduler })
    return s
 end
 
--- Channels are just names that are used to index cold tasks.  They
--- are created on-demand.  Note that channels are not garbage
--- collected yet.
-function csp.scheduler:waiting(ch,dir)
-   if not self.cold_task_index[ch] then
-      self.cold_task_index[ch] = { send = {}, recv = {} }
-   end
-   return self.cold_task_index[ch][dir]
+-- Make this a scheduler method, in case we need to track channels
+-- later.  Currently that is not necessary.
+function csp.scheduler:new_channel()
+   return csp.channel.new()
 end
 
+-- These two do not actually refer to the scheduler object.  They
+-- operate only on the channel data structure obtained from the task
+-- event list.
 function csp.scheduler:add_cold(cold_task)
    -- log("add_cold: " .. cold_task.name .. "\n")
    cold_task.selected = nil
    for i,evt in ipairs(cold_task.events) do
-      local waiting = self:waiting(evt.channel, evt.direction)
+      local waiting = evt.channel[evt.direction]
       waiting[cold_task] = evt
    end
 end
-
 function csp.scheduler:remove_cold(cold_task)
    for i,evt in ipairs(cold_task.events) do
-      local waiting = self:waiting(evt.channel, evt.direction)
+      local waiting = evt.channel[evt.direction]
       waiting[cold_task] = nil
-      -- FIXME: Where to garbage-collect channels?  This seems to be a
-      -- possible place, but not optimal.  E.g. if both hot and cold
-      -- list are empty, the channel can be removed entirely, but this
-      -- will perform a lot of on-demand creation of the chan-to_evt
-      -- table.  Maybe once per scheduler run is better.  Or once
-      -- every n runs.
    end
 end
+
 
 function csp.scheduler:add_hot(hot_task)
    table.insert(self.hot_task_list, hot_task)
@@ -106,8 +101,7 @@ function csp.scheduler:schedule_task(hot_task)
    for i, hot_evt in ipairs(hot_task.events) do
       -- log("hot_evt " .. i .. "\n")
 
-      local waiting = self:waiting(
-         hot_evt.channel, other_direction(hot_evt.direction))
+      local waiting = hot_evt.channel[other_direction(hot_evt.direction)]
       -- From all te tasks that are waiting on this channel in this
       -- direction, we just need to pick a random one.
       for cold_task, cold_evt in pairs(waiting) do
@@ -211,10 +205,6 @@ function csp.task:select(...)
    -- log("resume: data=" .. self.selected.data .. "\n")  -- note this is also still there for send
    return self.selected
 end
-
-
-
-
 
 
 
