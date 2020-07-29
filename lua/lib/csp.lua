@@ -115,9 +115,10 @@ function csp.scheduler:schedule_task(hot_task)
          -- change the event structure, and remove_cold iterates over
          -- the current events.
          self:remove_cold(cold_task)
-         if cold_dir == "recv" then
+         if cold_evt.direction == "recv" then
             self:rendezvous(hot_task, hot_evt, cold_task, cold_evt)
          else
+            assert(cold_evt.direction == "send")
             self:rendezvous(cold_task, cold_evt, hot_task, hot_evt)
          end
          -- We're done.  Tasks have been added to the hot list again
