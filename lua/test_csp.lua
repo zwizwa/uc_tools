@@ -8,32 +8,30 @@ local function log_desc(thing) log(prompt.describe(thing)) end
 local csp = require('lib.csp')
 
 
-
 function test_send_recv()
-   -- log_desc(getmetatable(sched))
    local sched = csp.scheduler.new()
    local ch = "ch0"
 
-   local function task1_body(self)
+   local function sender_body(self)
       for i=1,10 do
          self:send(ch, "hello")
       end
    end
-   local function task2_body(self)
+   local function receiver_body(self)
       while true do
          local data1 = self:recv(ch)
-         log("task2 recv data1: " .. data1 .. "\n")
+         log("receiver data1: " .. data1 .. "\n")
          local data2 = self:recv(ch)
-         log("task2 recv data2: " .. data2 .. "\n")
+         log("receiver data2: " .. data2 .. "\n")
       end
    end
 
-   sched:spawn(task1_body, "task1")
-   sched:spawn(task2_body, "task2")
+   sched:spawn(sender_body, "sender")
+   sched:spawn(receiver_body, "receiver")
 
 end
 
--- FIXME: doesn't work yet
+
 
 function test_rcp()
    local sched = csp.scheduler.new()
