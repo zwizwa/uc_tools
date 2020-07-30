@@ -4,11 +4,12 @@
 -- of the implementation really is in the data structures, and if Lua
 -- is available, it makes a lot more sense to just use Lua
 -- datastructures for everything, and rely on garbage collection.  So
--- this is a re-implementation of the schedule_task() from csp.c with
--- some more general data structures:
+-- this is a re-implementation of schedule_task() from csp.c with some
+-- more general data structures:
 --
--- . Move cold lists to channel objects
+-- . Use channel objects and have them contain the cold lists
 -- . Use "send" and "recv" symbols to tag directions
+-- . Implement tasks using coroutines
 
 -- Note that task and scheduler are orthogonal and communicate only
 -- through a small interface.  E.g. the scheduler does not know that
@@ -79,6 +80,17 @@ function csp.scheduler:add_hot(hot_task)
    table.insert(self.hot_task_list, hot_task)
 end
 
+function csp.scheduler:resume(task)
+   local resume = task.resume
+   local rv = resume(task)
+   if rv then
+      -- Tasks can signal halt via return value of resume.  If not
+      -- halted, we need to add it to the hot list to reschedule,
+      -- as another rendez-vous might be possible.
+      self:add_hot(task)
+   end
+end
+
 function csp.scheduler:rendezvous(send_task, send_evt, recv_task, recv_evt)
    -- log("rendezvous send=" .. send_task.name .. ", recv=" .. recv_task.name .. ", data=" .. send_evt.data .. "\n")
 
@@ -89,14 +101,21 @@ function csp.scheduler:rendezvous(send_task, send_evt, recv_task, recv_evt)
 
    -- Run recv task first.  This makes traces easier to read because
    -- send/recv pairs will look like function calls, but beware that
-   -- tasks cannot rely on this property.  Tasks are added to the hot
-   -- list again if they are still active.
-   if recv_task:resume() then self:add_hot(recv_task) end
-   if send_task:resume() then self:add_hot(send_task) end
+   -- tasks cannot rely on this property.
+   self:resume(recv_task)
+   self:resume(send_task)
 end
 
+local send = "send"
+local recv = "recv"
+
 local function other_direction(dir)
-   if dir == "send" then return "recv" else return "send" end
+   if dir == send then
+      return recv
+   else
+      assert(dir == recv)
+      return send
+   end
 end
 
 function csp.scheduler:schedule_task(hot_task)
@@ -107,18 +126,20 @@ function csp.scheduler:schedule_task(hot_task)
       -- log("hot_evt " .. i .. "\n")
       -- log_desc(hot_evt)
       assert(hot_evt.channel)
-      local waiting = hot_evt.channel[other_direction(hot_evt.direction)]
+      local cold_dir = other_direction(hot_evt.direction)
+      local waiting = hot_evt.channel[cold_dir]
       -- From all te tasks that are waiting on this channel in this
-      -- direction, we just need to pick a random one.
+      -- direction, we pick an arbitrary one: the first one that shows
+      -- up in the iterator.
       for cold_task, cold_evt in pairs(waiting) do
          -- Remove from cold list before resuming, as resume will
          -- change the event structure, and remove_cold iterates over
          -- the current events.
          self:remove_cold(cold_task)
-         if cold_evt.direction == "recv" then
+         if cold_evt.direction == recv then
             self:rendezvous(hot_task, hot_evt, cold_task, cold_evt)
          else
-            assert(cold_evt.direction == "send")
+            assert(cold_evt.direction == send)
             self:rendezvous(cold_task, cold_evt, hot_task, hot_evt)
          end
          -- We're done.  Tasks have been added to the hot list again
@@ -193,17 +214,39 @@ function csp.task:select(events)
    return self.selected
 end
 
--- Single event send/receive and RCP are common.
+-- For selecting from multiple events, it is not clear what a good API
+-- would be.  Trying out some shorthand.  This abstraction is
+-- stateful, which makes it easier to conditionally build up an event
+-- list.  See use in new_send_queue.
+function csp.event_list:add_send(channel, data)
+   table.insert(self.evts, { channel = channel, direction = send, n = #self.evts + 1, data = data })
+end
+function csp.event_list:add_recv(channel)
+   table.insert(self.evts, { channel = channel, direction = recv, n = #self.evts + 1 })
+end
+function csp.event_list:select()
+   return self.task:select(self.evts)
+end
+function csp.task:new_event_list()
+   local l = { evts = {}, task = self }
+   setmetatable(l, { __index = csp.event_list })
+   return l
+end
+
+
+-- Single event send/receive and RPC are common, so provide
+-- abstractions.  This illustrates how to use the event datastructures
+-- directly.
 function csp.task:send(channel, data)
    self:select({{
          data = data,
-         direction = "send",
+         direction = send,
          channel = channel}})
 end
 function csp.task:recv(channel)
    return
       self:select({{
-            direction = "recv",
+            direction = recv,
             channel = channel}}).data
 end
 function csp.task:call(channel, request)
@@ -229,7 +272,7 @@ end
 function csp.scheduler:push(channel, data)
    local event = {
       channel = channel,
-      direction = "send",
+      direction = send,
       data = data,
    }
    local task = {
@@ -242,30 +285,15 @@ function csp.scheduler:push(channel, data)
    self:schedule()
 end
 
--- Trying out some shorthand.  It's not much, but this will likely
--- turn out to be quite common.  I'm not sure if conditionally adding
--- events will be common, but that is why it is written as a stateful
--- operation.
-function csp.event_list:add_send(channel, data)
-   table.insert(self.evts, { channel = channel, direction = "send", n = #self.evts + 1, data = data })
-end
-function csp.event_list:add_recv(channel)
-   table.insert(self.evts, { channel = channel, direction = "recv", n = #self.evts + 1 })
-end
-function csp.event_list:select()
-   return self.task:select(self.evts)
-end
-function csp.task:new_event_list()
-   local l = { evts = {}, task = self }
-   setmetatable(l, { __index = csp.event_list })
-   return l
-end
 
 
 -- Async message queue / mailbox with ordered delivery.  The user
--- calls p:push(data), which transfers data to a queue and notifies
+-- calls q:push(data), which transfers data to a queue and notifies
 -- the manager, which will send out data to the output channel when
 -- possible, and rescan the queue when it gets a notifcation.
+
+-- FIXME: How to efficiently implement a queue in Lua?
+
 function csp.scheduler:new_send_queue(out_channel, p)
    local queue = {}
    local notify_channel = self:new_channel()
@@ -279,7 +307,7 @@ function csp.scheduler:new_send_queue(out_channel, p)
             end
             local evt = e:select()
             if evt.channel == out_channel then
-               table.remove(queue)
+               table.remove(queue, 1)
             end
          end
       end)
