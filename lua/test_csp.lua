@@ -92,9 +92,9 @@ function test_external_input_queued()
    end
 
    sched:spawn(receiver_body, {name = "receiver" })
-   local pusher = sched:new_pusher(ch, {name = "pusher"})
+   local queue = sched:new_send_queue(ch, {name = "send_queue"})
    for i=1,5 do
-      pusher:push("data" .. i + 100)
+      queue:push("data" .. i + 200)
    end
 end
 

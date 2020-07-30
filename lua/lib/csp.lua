@@ -24,7 +24,7 @@ local csp = {
    scheduler = {},
    task = {},
    channel = {},
-   pusher = {}
+   event_list = {},
 }
 
 -- CHANNEL
@@ -242,56 +242,53 @@ function csp.scheduler:push(channel, data)
    self:schedule()
 end
 
--- To implement delivery such that a single reader will always receive
--- messages in the order they were pushed, we can use a queue and a
--- queue manager task that listens for notification and send at the
--- same time.
-
-function csp.pusher:push(data)
-   table.insert(self.queue, data)
-   self.scheduler:push(self.notify_channel, "notify")
+-- Trying out some shorthand.  It's not much, but this will likely
+-- turn out to be quite common.  I'm not sure if conditionally adding
+-- events will be common, but that is why it is written as a stateful
+-- operation.
+function csp.event_list:add_send(channel, data)
+   table.insert(self.evts, { channel = channel, direction = "send", n = #self.evts + 1, data = data })
 end
-local function pusher_body(task, p)
-   while true do
-      -- It's simplest to put the handler in the event struct.  If
-      -- the notify_evt wakes us up, we don't need to do anything
-      -- else than going through the loop again.  If it was the
-      -- send, then we can remove the element we sent out.
-      local evts = {}
-      table.insert(
-         evts, {
-            handle = function()
-               log("recv notify\n")
-            end,
-            direction = "recv",
-            channel = p.notify_channel
-      })
-      if #(p.queue) > 0 then
-         table.insert(
-            evts, {
-               handle = function()
-                  log("sent data\n")
-                  table.remove(p.queue)
-               end,
-               direction = "send",
-               channel = p.out_channel,
-               data = p.queue[1]
-         })
-      end
-      local evt = task:select(evts)
-      evt.handle()
+function csp.event_list:add_recv(channel)
+   table.insert(self.evts, { channel = channel, direction = "recv", n = #self.evts + 1 })
+end
+function csp.event_list:select()
+   return self.task:select(self.evts)
+end
+function csp.task:new_event_list()
+   local l = { evts = {}, task = self }
+   setmetatable(l, { __index = csp.event_list })
+   return l
+end
+
+
+-- Async message queue / mailbox with ordered delivery.  The user
+-- calls p:push(data), which transfers data to a queue and notifies
+-- the manager, which will send out data to the output channel when
+-- possible, and rescan the queue when it gets a notifcation.
+function csp.scheduler:new_send_queue(out_channel, p)
+   local queue = {}
+   local notify_channel = self:new_channel()
+   self:spawn(
+      function(task)
+         while true do
+            local e = task:new_event_list()
+            e:add_recv(notify_channel)
+            if #queue > 0 then
+               e:add_send(out_channel, queue[1])
+            end
+            local evt = e:select()
+            if evt.channel == out_channel then
+               table.remove(queue)
+            end
+         end
+      end)
+   local q = {}
+   function q.push(_, data)
+      table.insert(queue, data)
+      self:push(notify_channel, "notify")
    end
-end
-
-function csp.scheduler:new_pusher(out_channel, p)
-   if p == nil then p = {} end
-   p.scheduler = self
-   p.queue = {}
-   p.out_channel = out_channel
-   p.notify_channel = self:new_channel()
-   setmetatable(p, { __index = csp.pusher })
-   p.task = self:spawn(function(task) pusher_body(task, p) end)
-   return p
+   return q
 end
 
 
