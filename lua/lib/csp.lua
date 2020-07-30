@@ -3,16 +3,18 @@
 -- Initially the idea was to expose csp.c to Lua.  However, the meat
 -- of the implementation really is in the data structures, and if Lua
 -- is available, it makes a lot more sense to just use Lua
--- datastructures for everything.  So this is a re-implementation of
--- chedule_task() csp.c with some more general data structures:
+-- datastructures for everything, and rely on garbage collection.  So
+-- this is a re-implementation of the schedule_task() from csp.c with
+-- some more general data structures:
 --
--- . Use "send" and "recv" to tag directions
--- . Use channel objects
--- . Cold lists are stored in the channel objects
+-- . Move cold lists to channel objects
+-- . Use "send" and "recv" symbols to tag directions
 
 -- Note that task and scheduler are orthogonal and communicate only
 -- through a small interface.  E.g. the scheduler does not know that
--- the tasks are coroutines, and other mechanisms could be added.
+-- the tasks are coroutines, and other mechanisms could be added.  In
+-- fact, external event input interfacing uses a task that is not a
+-- coroutine.
 
 local prompt = require('prompt')
 local function log(str) io.stderr:write(str) end
@@ -174,31 +176,9 @@ function csp.task:resume()
 end
 
 
--- Implement single event send/receive first.  Then find a good api
--- for select later.
-function csp.task:send(channel, data)
-   self:select({
-         data = data,
-         direction = "send",
-         channel = channel})
-end
-
-function csp.task:recv(channel)
-   return
-      self:select({
-            direction = "recv",
-            channel = channel}).data
-end
-
--- This is the main (only) blocking call that a task can issue.  The
--- argument list is a list of events that can wake up the task.
--- Exactly one event will eventually wake up the task, and that event
--- is returned to the caller.  Currently only two types of events are
--- supported: channel send and recv.  It is probably best to keep it
--- that way.  External events can be simulated using channels.  See
--- csp.c for inspiration.
-
--- Select already supports multiple blocking events.
+-- This is the primitive task-blocking call.  The argument list is a
+-- list of events that can wake up the task.  Exactly one event will
+-- wake up the task, and that event is returned to the caller.
 function csp.task:select(...)
    self.selected = nil
    self.events = { ... }
@@ -208,14 +188,34 @@ function csp.task:select(...)
    return self.selected
 end
 
+-- Single event send/receive and RCP are common.
+function csp.task:send(channel, data)
+   self:select({
+         data = data,
+         direction = "send",
+         channel = channel})
+end
+function csp.task:recv(channel)
+   return
+      self:select({
+            direction = "recv",
+            channel = channel}).data
+end
+function csp.task:call(channel, request)
+   self:send(channel, request)
+   return self:recv(channel)
+end
+
 
 
 
 -- I/O
 
--- Sending an event into the network requires a task structure and an
--- event to wrap a blocking send.  It doesn't need to be a coroutine.
--- Just needs to implement the interface (resume and events members).
+-- Sending an event into the CSP network requires a task structure and
+-- an event to represent a blocking send operation.  Think of that
+-- task as a buffer.  The task doesn't need to be a coroutine, it just
+-- needs to implement the interface expected by the scheduler (resume
+-- and events members).
 function csp.scheduler:push(channel, data)
    local event = {
       channel = channel,
@@ -232,8 +232,11 @@ function csp.scheduler:push(channel, data)
    self:schedule()
 end
 
+-- Blocking output can be implemented in a similar way on top of
+-- evented output if necessary.
 
--- 
+-- I/O chunking is probably best implemented as a coroutine.
+
 
 
 return csp

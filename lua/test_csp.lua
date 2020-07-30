@@ -40,8 +40,7 @@ function test_rpc()
 
    local function client_body(self)
       for i=1,10 do
-         self:send(ch, "request" .. i)
-         local reply = self:recv(ch)
+         local reply = self:call(ch, "request" .. i)
          assert(reply)
          log("reply: " ..  reply .. "\n")
       end
