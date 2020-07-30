@@ -81,6 +81,11 @@ int kill(pid_t pid, int sig);
 #define INLINE static inline __attribute__((__always_inline__))
 #endif
 
+#ifndef PACKED
+#define PACKED __attribute__((__packed__))
+#endif
+
+
 #ifndef ERROR
 #define ERROR(...) do {LOG(__VA_ARGS__);ABORT;}while(0)
 #endif
@@ -117,6 +122,11 @@ int kill(pid_t pid, int sig);
             if(-1 == (_a)) { \
                 ERROR("ASSERT FAIL: " #a ", errno = %d, %s\n", errno, strerror(errno)); \
             } })
+#endif
+
+
+#ifndef OFFSETOF
+#define OFFSETOF(typ,fld) ((uintptr_t)(&(((typ*)(0))->fld)))
 #endif
 
 

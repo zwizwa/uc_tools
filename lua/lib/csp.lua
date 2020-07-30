@@ -265,9 +265,16 @@ end
 -- needs to implement the interface expected by the scheduler (resume
 -- and events members).
 
--- Note that sending multiple events to the same channel this way does
--- not guarantee order.  We're effectively spawning a task for each
--- message.
+-- Notes:
+--
+-- . Delivery is guaranteed to be ordered as long as the task on the
+--   other side is always listening on this channel.
+--
+-- . If the other side is not listening (e.g. blocked on some other
+--   event) and a new message is pushed, now two temporary tasks are
+--   active, and it is not defined in which will be able to write
+--   first.  To deal with this scenario, see the send_queue
+--   abstraction below.
 
 function csp.scheduler:push(channel, data)
    local event = {
@@ -287,34 +294,33 @@ end
 
 
 
--- Async message queue / mailbox with ordered delivery.  The user
--- calls q:push(data), which transfers data to a queue and notifies
--- the manager, which will send out data to the output channel when
--- possible, and rescan the queue when it gets a notifcation.
+-- Async message queue / mailbox. scheduler:push is guaranteed to not
+-- block. I.e. the task at the other end of the in_channel is always
+-- listening, and will put messagaes in an internal queue to await
+-- transfer to out_channel.
 
--- FIXME: How to efficiently implement a queue in Lua?
-
-function csp.scheduler:new_send_queue(out_channel, p)
-   local queue = {}
-   local notify_channel = self:new_channel()
+function csp.scheduler:new_send_queue(out_channel)
+   local in_channel = self:new_channel()
    self:spawn(
       function(task)
+         local queue = {}
          while true do
-            local e = task:new_event_list()
-            e:add_recv(notify_channel)
+            local l = task:new_event_list()
+            l:add_recv(in_channel)
             if #queue > 0 then
-               e:add_send(out_channel, queue[1])
+               l:add_send(out_channel, queue[1])
             end
-            local evt = e:select()
+            local evt = l:select()
             if evt.channel == out_channel then
                table.remove(queue, 1)
+            else
+               table.insert(queue, evt.data)
             end
          end
       end)
    local q = {}
    function q.push(_, data)
-      table.insert(queue, data)
-      self:push(notify_channel, "notify")
+      self:push(in_channel, data)
    end
    return q
 end
