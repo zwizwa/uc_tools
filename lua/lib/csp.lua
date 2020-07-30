@@ -23,7 +23,8 @@ local function log_desc(thing) log(prompt.describe(thing)) end
 local csp = {
    scheduler = {},
    task = {},
-   channel = {}
+   channel = {},
+   pusher = {}
 }
 
 -- CHANNEL
@@ -104,7 +105,8 @@ function csp.scheduler:schedule_task(hot_task)
    assert(hot_task.events)
    for i, hot_evt in ipairs(hot_task.events) do
       -- log("hot_evt " .. i .. "\n")
-
+      -- log_desc(hot_evt)
+      assert(hot_evt.channel)
       local waiting = hot_evt.channel[other_direction(hot_evt.direction)]
       -- From all te tasks that are waiting on this channel in this
       -- direction, we just need to pick a random one.
@@ -138,8 +140,8 @@ function csp.scheduler:schedule()
 end
 
 -- Start a task.
-function csp.scheduler:spawn(body, name)
-   local t = csp.task.spawn(body, name, self)
+function csp.scheduler:spawn(body, init)
+   local t = csp.task.spawn(body, init, self)
    self:add_hot(t)
    self:schedule()
    return t
@@ -152,8 +154,10 @@ end
 -- Tasks implemented as Lua coroutines.
 
 -- Name is optional.  It is only used for debug prints.
-function csp.task.spawn(body, scheduler, name)
-   local t = { events = {}, scheduler = scheduler, name = name }
+function csp.task.spawn(body, t, scheduler)
+   if t == nil then t = {} end
+   t.events = {}
+   t.scheduler = scheduler
    setmetatable(t, { __index = csp.task })
    t.coroutine = coroutine.create(function() body(t) end)
    t:resume()
@@ -179,27 +183,28 @@ end
 -- This is the primitive task-blocking call.  The argument list is a
 -- list of events that can wake up the task.  Exactly one event will
 -- wake up the task, and that event is returned to the caller.
-function csp.task:select(...)
+function csp.task:select(events)
    self.selected = nil
-   self.events = { ... }
+   self.events = events
    -- log("yield: dir=" .. evt.direction .. ",ch=" .. evt.channel .. "\n")
    coroutine.yield()
    -- log("resume: data=" .. self.selected.data .. "\n")  -- note this is also still there for send
+   assert(self.selected)
    return self.selected
 end
 
 -- Single event send/receive and RCP are common.
 function csp.task:send(channel, data)
-   self:select({
+   self:select({{
          data = data,
          direction = "send",
-         channel = channel})
+         channel = channel}})
 end
 function csp.task:recv(channel)
    return
-      self:select({
+      self:select({{
             direction = "recv",
-            channel = channel}).data
+            channel = channel}}).data
 end
 function csp.task:call(channel, request)
    self:send(channel, request)
@@ -216,6 +221,11 @@ end
 -- task as a buffer.  The task doesn't need to be a coroutine, it just
 -- needs to implement the interface expected by the scheduler (resume
 -- and events members).
+
+-- Note that sending multiple events to the same channel this way does
+-- not guarantee order.  We're effectively spawning a task for each
+-- message.
+
 function csp.scheduler:push(channel, data)
    local event = {
       channel = channel,
@@ -231,6 +241,61 @@ function csp.scheduler:push(channel, data)
    self:add_hot(task)
    self:schedule()
 end
+
+-- To implement delivery such that a single reader will always receive
+-- messages in the order they were pushed, we can use a queue and a
+-- queue manager task that listens for notification and send at the
+-- same time.
+
+function csp.pusher:push(data)
+   table.insert(self.queue, data)
+   self.scheduler:push(self.notify_channel, "notify")
+end
+local function pusher_body(task, p)
+   while true do
+      -- It's simplest to put the handler in the event struct.  If
+      -- the notify_evt wakes us up, we don't need to do anything
+      -- else than going through the loop again.  If it was the
+      -- send, then we can remove the element we sent out.
+      local evts = {}
+      table.insert(
+         evts, {
+            handle = function()
+               log("recv notify\n")
+            end,
+            direction = "recv",
+            channel = p.notify_channel
+      })
+      if #(p.queue) > 0 then
+         table.insert(
+            evts, {
+               handle = function()
+                  log("sent data\n")
+                  table.remove(p.queue)
+               end,
+               direction = "send",
+               channel = p.out_channel,
+               data = p.queue[1]
+         })
+      end
+      local evt = task:select(evts)
+      evt.handle()
+   end
+end
+
+function csp.scheduler:new_pusher(out_channel, p)
+   if p == nil then p = {} end
+   p.scheduler = self
+   p.queue = {}
+   p.out_channel = out_channel
+   p.notify_channel = self:new_channel()
+   setmetatable(p, { __index = csp.pusher })
+   p.task = self:spawn(function(task) pusher_body(task, p) end)
+   return p
+end
+
+
+
 
 -- Blocking output can be implemented in a similar way on top of
 -- evented output if necessary.

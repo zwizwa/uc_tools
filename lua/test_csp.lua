@@ -27,8 +27,8 @@ function test_send_recv()
       end
    end
 
-   sched:spawn(sender_body, "sender")
-   sched:spawn(receiver_body, "receiver")
+   sched:spawn(sender_body, {name = "sender"})
+   sched:spawn(receiver_body, {name = "receiver"})
 
 end
 
@@ -55,12 +55,13 @@ function test_rpc()
       end
    end
 
-   sched:spawn(client_body, "client")
-   sched:spawn(server_body, "server")
+   sched:spawn(client_body, {name = "client"})
+   sched:spawn(server_body, {name = "server"})
 
 end
 
 
+-- Note that this does not guarantee order of delivery in all cases.
 function test_external_input()
    local sched = csp.scheduler.new()
    local ch = sched:new_channel()
@@ -72,12 +73,32 @@ function test_external_input()
       end
    end
 
-   sched:spawn(receiver_body, "receiver")
+   sched:spawn(receiver_body, {name = "receiver" })
    for i=1,5 do
       sched:push(ch, "data" .. i + 100)
    end
-
 end
+
+function test_external_input_queued()
+
+   local sched = csp.scheduler.new()
+   local ch = sched:new_channel()
+
+   local function receiver_body(self)
+      while true do
+         local data = self:recv(ch)
+         log("receiver data: " .. data .. "\n")
+      end
+   end
+
+   sched:spawn(receiver_body, {name = "receiver" })
+   local pusher = sched:new_pusher(ch, {name = "pusher"})
+   for i=1,5 do
+      pusher:push("data" .. i + 100)
+   end
+end
+
+
 
 
 -- FIXME: implement a leak test that creates lots of tasks and
@@ -86,6 +107,7 @@ end
 test_send_recv()
 test_rpc()
 test_external_input()
+test_external_input_queued()
 
 
 
