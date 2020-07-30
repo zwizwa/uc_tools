@@ -33,6 +33,8 @@ function csp.channel.new()
    local ch = { send = {}, recv = {} }
    return ch
 end
+function csp.channel:add_cold(dir)
+end
 
 
 -- SCHEDULER
@@ -206,6 +208,32 @@ function csp.task:select(...)
    return self.selected
 end
 
+
+
+
+-- I/O
+
+-- Sending an event into the network requires a task structure and an
+-- event to wrap a blocking send.  It doesn't need to be a coroutine.
+-- Just needs to implement the interface (resume and events members).
+function csp.scheduler:push(channel, data)
+   local event = {
+      channel = channel,
+      direction = "send",
+      data = data,
+   }
+   local task = {
+      -- The only function of resume is to return false, which will
+      -- ensure the wrapper task will not be rescheduled.
+      resume = function() return false end,
+      events = { event }
+   }
+   self:add_hot(task)
+   self:schedule()
+end
+
+
+-- 
 
 
 return csp
