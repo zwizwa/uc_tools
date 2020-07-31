@@ -8,7 +8,6 @@
 -- more general data structures:
 --
 -- . Use channel objects and have them contain the cold lists
--- . Use "send" and "recv" symbols to tag directions
 -- . Implement tasks using coroutines
 
 -- Note that task and scheduler are orthogonal and communicate only
@@ -21,10 +20,18 @@ local prompt = require('prompt')
 local function log(str) io.stderr:write(str) end
 local function log_desc(thing) log(prompt.describe(thing)) end
 
+local send = 1
+local recv = 2
+local function flip(dir) return 3 - dir end
+
 local csp = {
    scheduler = {},
    task = {},
-   channel = {},
+   channel = {
+      send = send,
+      recv = recv,
+      flip = flip
+   },
    event_list = {},
 }
 
@@ -34,7 +41,9 @@ local csp = {
 -- contain a set of waiting tasks, represented as a table mapping task
 -- to event.
 function csp.channel.new()
-   local ch = { send = {}, recv = {} }
+   local ch = {}
+   ch[send] = {}
+   ch[recv] = {}
    return ch
 end
 function csp.channel:add_cold(dir)
@@ -106,18 +115,6 @@ function csp.scheduler:rendezvous(send_task, send_evt, recv_task, recv_evt)
    self:resume(send_task)
 end
 
-local send = "send"
-local recv = "recv"
-
-local function other_direction(dir)
-   if dir == send then
-      return recv
-   else
-      assert(dir == recv)
-      return send
-   end
-end
-
 function csp.scheduler:schedule_task(hot_task)
    -- log("schedule_task: " .. hot_task.name .. "\n")
 
@@ -126,7 +123,7 @@ function csp.scheduler:schedule_task(hot_task)
       -- log("hot_evt " .. i .. "\n")
       -- log_desc(hot_evt)
       assert(hot_evt.channel)
-      local cold_dir = other_direction(hot_evt.direction)
+      local cold_dir = flip(hot_evt.direction)
       local waiting = hot_evt.channel[cold_dir]
       -- From all te tasks that are waiting on this channel in this
       -- direction, we pick an arbitrary one: the first one that shows

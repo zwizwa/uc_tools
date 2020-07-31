@@ -42,15 +42,16 @@ local function test_match()
    match(pair(1,2), example_pattern)
 
    -- This is what a typical use would look like.
+   local var = empty()
    match(
-      empty(), {
+      var, {
          empty = function()
             return 0
          end,
          pair = function(a,b)
             return a + b
          end
-   })
+      })
 
 end
 
