@@ -100,8 +100,8 @@ INLINE void NS(_replace_top)(NS(_heap_t) *h, NS(_element_t) e) {
 INLINE NS(_element_t) NS(_peek)(NS(_heap_t) *h) {
     return h->arr[0];
 }
-INLINE uint32_t NS(_pop)(NS(_heap_t) *h) {
-    uint32_t top = NS(_peek)(h);
+INLINE NS(_element_t) NS(_pop)(NS(_heap_t) *h) {
+    NS(_element_t) top = NS(_peek)(h);
     h->nb--;
     if (h->nb > 0) { NS(_replace_top)(h, h->arr[h->nb]); }
     return top;

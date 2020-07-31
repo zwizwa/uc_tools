@@ -276,6 +276,14 @@ test_pdm.c
  0 |
  0 7 1 8 2 9 3 10 4 11 5 12 6 0 7 1 8 2 9 3
  0 0 1 1 2 2 3 3 4 5 6 7 7 8 8 9 9 10 11 12
+expire 1000
+expire 5000
+expire d000
+expire d000
+expire d001
+expire e000
+expire 1000
+expire cfff
 ==== test_csp.dynamic.host.elf
 - test1
 0: CSP_SND 0

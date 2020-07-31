@@ -1,6 +1,6 @@
 /* Heap data structure to implement a priority queue / software timer.
 
-   See comments in ns_heap.hs
+   See comments in ns_heap.h
 
    The algorithms uses the flat array representation of a binary tree
    as explained in [1].
@@ -25,10 +25,8 @@
    [4] https://www.pjsip.org/pjlib/docs/html/group__PJ__TIMER.htm
 
    The main driver behind this abstraction is a software timer.
+   See swtimer.h
 
-   TODO: For a timer, "less than" should probably be defined
-   circularly relative to the current time + some guard, such that
-   rolling counters can be used.
 */
 
 #include "macros.h"
@@ -129,6 +127,33 @@ void test2(int max_nb, int mul, int mod, int log) {
     }
 }
 
+/* Software timer. */
+#include "swtimer.h"
+void test3(void) {
+    swtimer_element_t arr[10];
+    struct swtimer t = {
+        .nb = 0, .arr = arr
+    };
+    /* Add 3 timeouts in random order. */
+    swtimer_schedule(&t, 0x1000,0);
+    swtimer_schedule(&t, 0xD000,0);
+    swtimer_schedule(&t, 0x5000,0);
+    /* Sequence expiration times. */
+    swtimer_element_t next;
+    while(swtimer_next(&t, &next)) {
+        LOG("expire %x\n", next.time);
+    }
+    /* We're at D now, so D,E come before 1 and C */
+    swtimer_schedule(&t, 0xCFFF,0);
+    swtimer_schedule(&t, 0xD001,0);
+    swtimer_schedule(&t, 0x1000,0);
+    swtimer_schedule(&t, 0xE000,0);
+    swtimer_schedule(&t, 0xD000,0);
+    while(swtimer_next(&t, &next)) {
+        LOG("expire %x\n", next.time);
+    }
+}
+
 int main(int argc, char **argv) {
     //    nb_el mul      mod  log
     //---------------------------
@@ -143,6 +168,7 @@ int main(int argc, char **argv) {
     test1(1000,  0,   232323, 0);
     test1(10000, 0, 23232323, 0);
 
+    test3();
     return 0;
 }
 
