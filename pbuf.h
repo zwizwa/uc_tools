@@ -5,27 +5,17 @@
 #include <string.h>
 #include "infof.h"
 
+#include "uc_tools_config.h"
 #include "cbuf.h"
 #include "byteswap.h"
-
-#define PBUF_DEBUG 1
-#if PBUF_DEBUG
-#define PBUF_WATERMARK 1
-#define PBUF_COUNT_OVERFLOW 1
-#else
-#define PBUF_WATERMARK 0
-#define PBUF_COUNT_OVERFLOW 0
-#endif
 
 /* Generic packet buffer. */
 struct pbuf {
     uint32_t count;  /* Number of valid bytes in buffer */
     uint32_t size;   /* Total allocated size of buffer */
     uint8_t *buf;
-#if PBUF_WATERMARK
+#if PBUF_DEBUG
     uint32_t watermark;
-#endif
-#if PBUF_COUNT_OVERFLOW
     uint32_t overflow;
 #endif
 };
@@ -61,7 +51,7 @@ static inline void pbuf_clear(struct pbuf *p) {
 }
 
 static inline void pbuf_update_watermark(struct pbuf *p) {
-#if PBUF_WATERMARK
+#if PBUF_DEBUG
     if (p->count > p->watermark) p->watermark = p->count;
 #endif
 }
@@ -74,7 +64,7 @@ static inline void pbuf_put(struct pbuf *p, uint8_t c) {
         p->buf[p->count++] = c;
     }
     else {
-#if PBUF_COUNT_OVERFLOW
+#if PBUF_DEBUG
         p->overflow++;
 #endif
     }

@@ -42,16 +42,14 @@ typedef struct {
     volatile uint32_t read;
     uint32_t size;
     volatile uint32_t *buf;
-#ifdef CBUF_WATERMARK
+#ifdef CBUF_DEBUG
     volatile uint32_t watermark;
-#endif
-#ifdef CBUF_COUNT_OVERFLOW
     volatile uint32_t overflow;
 #endif
 } cbuf32_queue_t;
 typedef uint32_t cbuf32_element_t;
-typedef uint32_t cbuf32_fat_element_t;
-#define cbuf32_none (0xFFFFFFFF)
+typedef uint32_t cbuf32_oob_element_t;
+static inline cbuf32_oob_element_t cbuf32_oob_element_none(void) { return 0; }
 #define NS(name) CONCAT(cbuf32,name)
 #include "ns_cbuf.h"
 #undef NS

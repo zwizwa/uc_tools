@@ -3,6 +3,12 @@
 #ifndef UC_TOOLS_MACROS_H
 #define UC_TOOLS_MACROS_H
 
+/* Put this here, as macros.h seems to have become the de-facto
+   uc_tools interface, and we want to limit surprises that are caused
+   by variable struct lengths caused by debug macros. */
+#include "uc_tools_config.h"
+
+/* GENSYM, CONCAT */
 #include "gensym.h"
 
 /*  Only LOG is custom atm.  The rest is defined in macros.h */

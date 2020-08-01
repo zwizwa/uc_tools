@@ -38,8 +38,14 @@
 
 */
 
-/*  NS(_fat_element_t) is NS(_element_t) union NS(_none) */
+/*  NS(_oob_element_t) is NS(_element_t) union NS(_oob_element_none)
 
+    The out-of-band character is due to cbuf.h legacy.  For most types
+    though it seems possible to define this in practice, i.e. the NULL
+    pointer.  If not, don't use _get and _peek but use _elements and
+    conditional _read instead. */
+
+#include "uc_tools_config.h"
 
 static inline void NS(_init)(NS(_queue_t) *b, NS(_element_t) *buf, uint32_t size) {
     b->write  = 0;
@@ -77,8 +83,8 @@ static inline uint32_t NS(_index_)(const NS(_queue_t) *b, uint32_t base, uint32_
     uint32_t bo = base + offset;
     return bo >= b->size ? bo-b->size : bo;
 }
-static inline NS(_fat_element_t) NS(_peek)(const NS(_queue_t) *b, uint32_t offset) {
-    if (offset >= NS(_elements)(b)) return NS(_none);
+static inline NS(_oob_element_t) NS(_peek)(const NS(_queue_t) *b, uint32_t offset) {
+    if (offset >= NS(_elements)(b)) return NS(_oob_element_none)();
     return b->buf[NS(_index_)(b, b->read, offset)];
 }
 static inline void NS(_drop)(NS(_queue_t) *b, uint32_t nb_drop) {
@@ -90,13 +96,13 @@ static inline void NS(_clear)(NS(_queue_t) *b) {
     NS(_drop)(b, 0xFFFFFFFF);
 }
 static inline void NS(_update_watermark)(NS(_queue_t) *b) {
-#if CBUF_WATERMARK
+#if CBUF_DEBUG
     uint32_t elements = NS(_elements)(b);
     if (elements > b->watermark) b->watermark = elements;
 #endif
 }
 
-#if CBUF_INFO_OVERFLOW
+#if CBUF_DEBUG_INFO_OVERFLOW
 #include "infof.h"
 #endif
 
@@ -108,10 +114,10 @@ static inline uint32_t NS(_write)(NS(_queue_t) *b, const NS(_element_t) *buf, ui
     uint32_t elements = NS(_elements3)(b, read, write);
     uint32_t room  = b->size - 1 - elements;
     if (len > room) {
-#if CBUF_COUNT_OVERFLOW
+#if CBUF_DEBUG
         b->overflow++;
 #endif
-#if CBUF_INFO_OVERFLOW
+#if CBUF_DEBUG_INFO_OVERFLOW
         infof("ns_cbuf_write overflow %p %p %d %d\n", b, buf, len, room);
 #endif
         return 0;
@@ -138,10 +144,10 @@ static inline uint32_t NS(_read)(NS(_queue_t) *b, NS(_element_t) *buf, uint32_t 
     b->read = NS(_index_)(b, read, len);
     return len;
 }
-static inline NS(_fat_element_t) NS(_get)(struct cbuf *b) {
-    uint8_t element = 0;
-    if (1 == cbuf_read(b, &element, 1)) { return element; }
-    else return NS(_none);
+static inline NS(_oob_element_t) NS(_get)(NS(_queue_t) *b) {
+    NS(_element_t) element;
+    if (1 == NS(_read)(b, &element, 1)) { return element; }
+    else return NS(_oob_element_none)();
 }
 static inline void NS(_put)(NS(_queue_t) *b, NS(_element_t) element) {
     NS(_write)(b, &element, 1);

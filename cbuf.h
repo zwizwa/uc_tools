@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include "slip.h"
 #include "macros.h"
+#include "uc_tools_config.h"
 
 /* Circular byte buffer implemented as inline functions.  Rolling
    pointers, power-of-2 size, wrap on access. */
@@ -11,18 +12,7 @@
 /* Control codes. */
 #define CBUF_EAGAIN ((uint16_t)0x100)
 
-/* Debug config. */
-#define CBUF_DEBUG 1
-#if CBUF_DEBUG
-#define CBUF_WATERMARK 1
-#define CBUF_COUNT_OVERFLOW 1
-#else
-#define CBUF_WATERMARK 0
-#define CBUF_COUNT_OVERFLOW 0
-#endif
-
 /* For last resort unhandled overflow debugging... */
-#define CBUF_INFO_OVERFLOW 0
 
 /* Relax the constraint to require power of two buffer sizes.  This is
    now the default, but left here for backward compatibility. */
@@ -33,10 +23,8 @@ struct cbuf {
     volatile uint32_t read;
     uint32_t size;
     volatile uint8_t *buf;
-#ifdef CBUF_WATERMARK
+#ifdef CBUF_DEBUG
     volatile uint32_t watermark;
-#endif
-#ifdef CBUF_COUNT_OVERFLOW
     volatile uint32_t overflow;
 #endif
 };
@@ -44,17 +32,12 @@ struct cbuf {
 /* Typedefs and macros for ns_queue.h using the cbuf namespace prefix. */
 typedef struct cbuf cbuf_queue_t;
 typedef uint8_t cbuf_element_t;
-typedef uint16_t cbuf_fat_element_t;
-
-#define cbuf_none CBUF_EAGAIN
+typedef uint16_t cbuf_oob_element_t;
+static inline cbuf_oob_element_t cbuf_oob_element_none(void) { return CBUF_EAGAIN; }
 
 /* Most of the functionality is inherited from the generic circular
-   bufer in ns_cbuf.h
-
-   Note that the namespace prefix needs to be generated using CONCAT
-   and not just ##, becuase we're concatenating macro names in
-   ns_cbuf.h for NS(_none) */
-#define NS(name) CONCAT(cbuf,name)
+   bufer in ns_cbuf.h */
+#define NS(name) cbuf##name
 #include "ns_cbuf.h"
 #undef NS
 
