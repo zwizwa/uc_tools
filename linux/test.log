@@ -380,3 +380,23 @@ count: 18 -> procsub: 18 1
 count: 19 -> procsub: 19 0
 
 count: 20 -> 
+==== test_actor.dynamic.host.elf
+test_actor.c begin
+with_scheduler 4
+schedule 0x7ffef2bef400
+task1 resume
+schedule 0x7ffef2bef3c0
+task2 resume
+task2 send = 123
+schedule 0x7ffef2bef400
+task1 resume
+task1 receive = 123
+cold:
+dlist 0x7ffef2bef4d0
+hot:
+dlist 0x7ffef2bef4c0
+dead:
+dlist 0x7ffef2bef4e0
+    - 0x7ffef2bef400
+    - 0x7ffef2bef3c0
+test_actor.c end

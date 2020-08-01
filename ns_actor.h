@@ -81,8 +81,10 @@ static inline NS(_task_t) *NS(_dlist_top)(struct dlist *l) {
     return (void*)(l->next);
 }
 
-/* A scheduler is a list of tasks.  Since we want to remove tasks, a
-   head pointer in a separate struct is needed. */
+/* A scheduler is a list of 3 kinds of tasks:
+   - hot have work to do (just started, or message arrived)
+   - cold are waiting for message
+   - dead have halted */
 struct NS(_scheduler) {
     struct dlist hot, cold, dead;
 };
@@ -148,3 +150,11 @@ static inline NS(_task_t)* NS(_spawn)(NS(_scheduler_t) *s, NS(_task_t) *t) {
     NS(_schedule)(s);
     return t;
 }
+
+/* This is untyped */
+#define NS_ACTOR_TASK_INIT(field, resume_, mbuf, mbuf_size) { \
+        .dlist = DLIST_INIT(field.dlist),                     \
+        .resume = resume_,                                    \
+        .mbox = { .buf = mbuf, .size = mbuf_size } }
+
+

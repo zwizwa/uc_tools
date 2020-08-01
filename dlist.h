@@ -54,11 +54,5 @@ static inline void dlist_move(struct dlist *element, struct dlist *head) {
 }
 
 
-static inline void log_dlist(struct dlist *head) {
-    LOG("dlist %p\n", head);
-    for (struct dlist *l = head->next; l != head; l=l->next) {
-        LOG("    - %p\n", l);
-    }
-}
 
 #endif

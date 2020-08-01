@@ -2,19 +2,17 @@
 #include "macros.h"
 #include <stdint.h>
 
+/* Single message send between two tasks to illustrate the idea behind
+ * the actor abstraction. */
 
-
+/* Both tasks use the same state struct, but in essence this is
+   private and can be different for each task. */
 struct test_task {
     actor_task_t task;
     actor_task_t *other;
 };
 
-struct test_ctx {
-    actor_task_t *other;
-};
-
-/* Bootstrapping order is important.  We start the reader task1 first,
-   so that is the one that has to sit and wait. */
+/* The first task prints the first message it receives and halts.. */
 void task1_resume(actor_scheduler_t *s, actor_task_t *t0) {
     struct test_task *t = (void*)t0;
     LOG("task1 resume\n");
@@ -22,44 +20,47 @@ void task1_resume(actor_scheduler_t *s, actor_task_t *t0) {
         if (!actor_elements(&t->task.mbox)) return;
         actor_element_t msg = actor_get(&t->task.mbox);
         LOG("task1 receive = %d\n", msg.up);
+        actor_halt(s, &t->task);
     }
 }
 
-
-/* Sender task. */
+/* The second task sends a message and halts. */
 void task2_resume(actor_scheduler_t *s, actor_task_t *t0) {
     struct test_task *t = (void*)t0;
     LOG("task2 resume\n");
     actor_element_t msg = { .up = 123 };
     LOG("task2 send = %d\n", msg.up);
     actor_send(s, t->other, msg);
+    actor_halt(s, &t->task);
 }
 
+static inline void log_dlist(struct dlist *head) {
+    LOG("dlist %p\n", head);
+    for (struct dlist *l = head->next; l != head; l=l->next) {
+        LOG("    - %p\n", l);
+    }
+}
+
+
+/* All allocation is done at the caller side to allow for maximum
+   allocation flexibility, and simplicity of implementation in
+   ns_actor.h */
 void test1(actor_scheduler_t *s) {
     int nb_msg = 10;
     actor_element_t mbuf1[nb_msg], mbuf2[nb_msg];
     struct test_task task1 = {
-        .task = {
-            .dlist  = DLIST_INIT(task1.task.dlist),
-            .resume = task1_resume,
-            .mbox   = { .buf = mbuf1, .size = nb_msg },
-        },
+        .task = NS_ACTOR_TASK_INIT(task1.task, task1_resume, mbuf1, nb_msg)
     };
     struct test_task task2 = {
-        .task = {
-            .dlist = DLIST_INIT(task2.task.dlist),
-            .resume = task2_resume,
-            .mbox = { .buf = mbuf2, .size = nb_msg },
-        }
+        .task = NS_ACTOR_TASK_INIT(task2.task, task2_resume, mbuf2, nb_msg),
+        .other = &task1.task
     };
-    task2.other = &task1.task;
-    task1.other = &task2.task;
-
     actor_spawn(s, &task1.task);
     actor_spawn(s, &task2.task);
 
     LOG("cold:\n"); log_dlist(&s->cold);
     LOG("hot:\n");  log_dlist(&s->hot);
+    LOG("dead:\n"); log_dlist(&s->dead);
 
 }
 
