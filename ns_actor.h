@@ -69,8 +69,7 @@ typedef void (*NS(_resume_f))(struct NS(_scheduler)*, struct NS(_task)*);
 struct NS(_task) {
     struct dlist dlist;
     NS(_resume_f) resume;
-    NS(_queue_t) *mbox;
-    void *ctx;
+    NS(_queue_t) mbox;
 };
 typedef struct NS(_task) NS(_task_t);
 
@@ -100,7 +99,7 @@ static inline void NS(_move)(NS(_task_t) *t, struct dlist *l) {
 static inline void NS(_send)(
     NS(_scheduler_t) *s, NS(_task_t) *t, NS(_element_t) msg) {
     NS(_move)(t, &s->hot);
-    return NS(_put)(t->mbox, msg);
+    return NS(_put)(&t->mbox, msg);
 }
 
 /* Halt is explicit. */
@@ -134,28 +133,18 @@ static inline void NS(_schedule)(NS(_scheduler_t) *s) {
 }
 
 /* Initialize scheduler dead list from task array. */
-static inline void NS(_scheduler_init)(
-    NS(_scheduler_t) *s, NS(_task_t) *t, uint32_t nb_tasks) {
-    dlist_singleton_init(&s->hot);
-    dlist_singleton_init(&s->cold);
-    dlist_singleton_init(&s->dead);
-    for (uint32_t i=0; i<nb_tasks; i++) {
-        LOG("scheduler init %d %p\n", i, &t[i].dlist);
-        dlist_singleton_init(&t[i].dlist);
-        NS(_move)(&t[i], &s->dead);
-    }
+static inline void NS(_scheduler_init)(NS(_scheduler_t) *s) {
+    dlist_init(&s->hot);
+    dlist_init(&s->cold);
+    dlist_init(&s->dead);
 }
 
-/* Spawn recycles a dead task. */
-static inline NS(_task_t)* NS(_spawn)(
-    NS(_scheduler_t) *s, NS(_queue_t) *mbox, NS(_resume_f) resume, void *ctx) {
-    /* Move it to the hot list as it needs to resume at least once at startup. */
-    NS(_task_t *t) = NS(_dlist_top)(&s->dead);
+/* Spawn recycles a dead task.  This might not be the right
+   abstraction.  In a scenario where static allocation is a must, it
+   is probably best to let the caller provide the task struct. */
+static inline NS(_task_t)* NS(_spawn)(NS(_scheduler_t) *s, NS(_task_t) *t) {
     ASSERT(t);
     NS(_move)(t, &s->hot);
-    t->mbox = mbox;
-    t->resume = resume;
-    t->ctx = ctx;
     NS(_schedule)(s);
     return t;
 }

@@ -16,7 +16,8 @@ struct dlist {
     struct dlist *prev;
 };
 /* The base state is a singleton. */
-static inline void dlist_singleton_init(struct dlist *entry) {
+#define DLIST_INIT(d) {&(d),&(d)}
+static inline void dlist_init(struct dlist *entry) {
     entry->prev = entry;
     entry->next = entry;
 }
