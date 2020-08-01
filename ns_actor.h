@@ -1,57 +1,31 @@
-/* As a counterweight to synchronous csp.c, also implement the actor
-   model of asynchronous concurrency.
-
-   In the uc_tools library, there are two abstractions for buffers:
-
-   - cbuf is a circular character token buffer, i.e. a byte stream
-
-   - pbuf is a flat packet buffer
-
-   Both are useful in practice, mostly bridging the token stream and
-   packet levels of abstraction.  The main property of pbuf is the
-   flat memory layout.  The main property of cbuf is that it can be
-   used as a queue between interrupt and main loop on cortex M.
-
+/* A minimal asynchronous actor implementation as an alternative to
+   synchronous csp.c
 
    To implement actors, the following abstractions are needed:
 
    - mailbox: a message queue
 
-   - process: a state machine handling messages in a mailbox
+   - task: a state machine handling messages in a mailbox when they
+     come available + send new messages and spawn tasks.
 
-   - scheduler: a program sequencing processes when they have messages
+   - scheduler: a program sequencing tasks whenever they have messages
      in their mailboxes.
 
 
-   The scheduler can be very simple: go over all processes in
-   round-robin fashion and run them if they have data available.  My
-   current (implicit) application just polls the queue explicitly,
-   which is simple but wasteful.
+   This makes some simplifications:
 
-   The main abstraction appears to be the message queue.  Starting
-   from Erlang as my actor model example, the main question to ask is
-   should out-of-order handling be supported?  In my current
-   application I don't need it, so let's skip it for now.
+   - Mailboxes are ns_cbuf, parameterized by message type.
 
-   To make things a bit more concrete: a process is a struct that
-   contains two members: a cbuf token stream and a resume function.
-   And on top of that, tasks can be linked in a list to implement the
-   scheduler's data structures (hot, cold and dead list).
+   - No out-of-order message handling (e.g. like Erlang's
+     pattern-matching filtered receive).
+
+   - Flat task struct with baked-in mailbox, memory externally managed
+
+   - No handling of mailbox full condition at send: will drop
+     messages instead.
 
 */
 
-/* FIXME: Some issues with the current implementation:
-
-   - How to allocate mailbox sizes?
-
-   - Tasks should block when they try to write to a mailbox that is
-     full, instead of dropping.
-
-*/
-
-
-
-#include "uc_tools_config.h" // for CBUF_DEBUG
 #include "macros.h"
 #include "dlist.h"
 #include <stdint.h>
@@ -61,34 +35,27 @@
 #include "ns_cbuf.h"
 
 /* A task is a mailbox and a resume function, plus a doubly linked
-   list used by the scheduler. */
+   list used by the scheduler to classify hot/cold/dead tasks. */
 struct NS(_task);
 struct NS(_scheduler);
-
 typedef void (*NS(_resume_f))(struct NS(_scheduler)*, struct NS(_task)*);
 struct NS(_task) {
     struct dlist dlist;
     NS(_resume_f) resume;
     NS(_queue_t) mbox;
 };
-typedef struct NS(_task) NS(_task_t);
-
-/* Get a task at the top of one of the lists. */
-static inline NS(_task_t) *NS(_dlist_top)(struct dlist *l) {
-    /* Singleton means there is only the list sentinel. */
-    if (dlist_singleton(l)) return NULL;
-    /* Here we assume that dlist is the first member. */
-    return (void*)(l->next);
-}
-
-/* A scheduler is a list of 3 kinds of tasks:
-   - hot have work to do (just started, or message arrived)
-   - cold are waiting for message
-   - dead have halted */
 struct NS(_scheduler) {
     struct dlist hot, cold, dead;
+    int max_ticks;
 };
+typedef struct NS(_task) NS(_task_t);
 typedef struct NS(_scheduler) NS(_scheduler_t);
+
+/* Get a task at the top of one of the task lists. */
+static inline NS(_task_t) *NS(_task_top)(struct dlist *l) {
+    if (dlist_singleton(l)) return NULL;
+    return (void*)(l->next);
+}
 
 /* Move task to list. */
 static inline void NS(_move)(NS(_task_t) *t, struct dlist *l) {
@@ -112,26 +79,28 @@ static inline void NS(_halt)(
 
 /* Perform a single tick on the first task in the hotlist. */
 static inline NS(_task_t)* NS(_schedule_tick)(NS(_scheduler_t) *s) {
-    /* The list head in the task struct is a sentinel. */
-    NS(_task_t *t) = NS(_dlist_top)(&s->hot);
+    NS(_task_t *t) = NS(_task_top)(&s->hot);
     if (!t) return NULL;
-    LOG("schedule %p\n", t);
+    LOG("-- task %p begin\n", t);
     /* Task is moved to cold list before resuming.  This means it will
        not be rescheduled until a new message arrives, so it better
        empty its mailbox on resume. */
     NS(_move)(t, &s->cold);
     t->resume(s, t);
+    LOG("-- task %p end\n", t);
     return t;
 }
 
 /* Run until no more hot tasks. */
 static inline void NS(_schedule)(NS(_scheduler_t) *s) {
-    int count = 10;
+    LOG("- schedule begin\n");
+    int count = s->max_ticks;
     while(NS(_schedule_tick(s))) {
-        if (!(count--)) {
+        if (!(--count)) {
             ERROR("schedule loop\n");
         }
     }
+    LOG("- schedule end\n");
 }
 
 /* Initialize scheduler dead list from task array. */
@@ -147,14 +116,17 @@ static inline void NS(_scheduler_init)(NS(_scheduler_t) *s) {
 static inline NS(_task_t)* NS(_spawn)(NS(_scheduler_t) *s, NS(_task_t) *t) {
     ASSERT(t);
     NS(_move)(t, &s->hot);
-    NS(_schedule)(s);
     return t;
 }
 
+#ifndef NS_ACTOR_H
+#define NS_ACTOR_H
+
 /* This is untyped */
-#define NS_ACTOR_TASK_INIT(field, resume_, mbuf, mbuf_size) { \
+#define NS_ACTOR_TASK_INIT(field, resume_, mbuf) {            \
         .dlist = DLIST_INIT(field.dlist),                     \
         .resume = resume_,                                    \
-        .mbox = { .buf = mbuf, .size = mbuf_size } }
+        .mbox = { .buf = mbuf, .size = ARRAY_SIZE(mbuf) } }
 
+#endif
 
