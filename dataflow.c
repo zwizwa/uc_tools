@@ -6,7 +6,7 @@
 typedef struct dataflow_node node_t;
 typedef union dataflow_value value_t;
 
-void propagate(node_t *n);
+void changed(node_t *n);
 
 /* Returns 1 if propagation is necessary. */
 static inline int set_val(node_t *n, value_t v) {
@@ -33,13 +33,19 @@ void eval(node_t *n) {
        stop propagation if value didn't change. */
     value_t v = n->meta->update(n);
     if (!set_val(n, v)) return;
-    propagate(n);
+    changed(n);
 
 }
 
 /* Caller already has set the value. */
-void propagate(node_t *n) {
-    /* Propagate.  Invalidate all first, then evaluate. */
+void changed(node_t *n) {
+
+    /* External notification is registered explicitly, and should not
+       be done as a side effect of the pure update routine. */
+    if (n->meta->notify) { n->meta->notify(n); }
+
+    /* It is essential that this is 2-pass: invalidate _all_ before
+       evaluating them one by one. */
     DATAFLOW_FOR_DEPS(n->meta->rev_deps, rev_dep) {
         (*rev_dep)->valid = 0;
     }
@@ -50,7 +56,7 @@ void propagate(node_t *n) {
 
 void dataflow_push(node_t *n, value_t v) {
     if (!set_val(n, v)) return;
-    propagate(n);
+    changed(n);
 }
 
 
