@@ -65,10 +65,9 @@ for name, func in pairs(f) do
    end
 end
 
--- C code gen assumes a context object.  This might be useful later
--- and also avoids issues with comma generation here.
-function dfl.print(syntax, arity, fun_name)
-   local dag = dfl.compile(syntax, arity)
+-- C code gen assumes a context object.  This will likely be necessary
+-- later, and avoids issues with comma generation here.
+function dfl.print(dag, fun_name)
    local out = {}
    local t = "int"
    local tab = "    "
