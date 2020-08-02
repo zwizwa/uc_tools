@@ -46,8 +46,8 @@ receiver data: data204
 receiver data: data205
 ==== test_actor.sh
 Entering directory: /i/exo/uc_tools/lua
-receiver start
 sender start
+receiver start
 receiver data1: hello
 receiver data2: hello
 receiver data1: hello
@@ -67,11 +67,48 @@ out1 = 3
 - push in3 3
 out2 = 6
 - push in1 4
-out2 = 9
 out1 = 6
+out2 = 9
 - push in2 5
-out2 = 12
 out1 = 9
+out2 = 12
 - push in3 6
 out2 = 15
+- push in3 6
 test_dataflow.lua end
+==== test_dfl.sh
+Entering directory: /i/exo/uc_tools/lua
+test_dfl.lua begin
+- eval:
+5
+- dag:
+{ 
+  arity = 2,
+  next_node = 6,
+  nodes = { 
+            {  }, 
+            {  }, 
+            { 
+              opcode = "mul",
+              operands = { 1, 1,  },
+            }, 
+            { 
+              opcode = "mul",
+              operands = { 2, 2,  },
+            }, 
+            { 
+              opcode = "add",
+              operands = { 3, 4,  },
+            }, 
+  },
+  output = { 5,  },
+  inputs = { 1, 2,  },
+}
+- code:
+test_dfl.lua end
+int testfun(void*_ctx, int r1, int r2) {
+    int r3 = mul(_ctx, r1, r1)
+    int r4 = mul(_ctx, r2, r2)
+    int r5 = add(_ctx, r3, r4)
+    return r5;
+}

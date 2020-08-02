@@ -13,6 +13,7 @@ run() {
 run test_csp.sh
 run test_actor.sh
 run test_dataflow.sh
+run test_dfl.sh
 ) >$OUT
 set -x
 git diff test.log

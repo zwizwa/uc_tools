@@ -35,19 +35,15 @@
    - Go for a static implementation first.  Something that can be
      generated from a higher level description and can go into Flash.
 
+
+   See dataflow.lua for an implementation using a doubly linked graph.
+   If the datastructure can be easily translated, the code translation
+   should be straightforward.
+
+   Now because the functions are pure, it might even be possible to
+   use a compiler.  E.g. use a finally tagless approach.
 */
 
-/*
-  Traversal consists of two parts:
-
-  - If we have the value of a node (and thus also its entire
-    dependency tree), compute the value of all the nodes that depend
-    on it.
-
-  - To compute the value of a node, compute the value of all its
-    dependencies and then execute the node's function.
-
-*/
 
 
 #endif

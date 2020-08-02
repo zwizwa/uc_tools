@@ -40,6 +40,9 @@ function test()
    push("in2", 5)
    push("in3", 6)
 
+   -- Test the absence of propagation if value did not change.
+   push("in3", 6)
+
 end
 
 test()

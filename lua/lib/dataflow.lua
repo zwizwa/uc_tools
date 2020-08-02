@@ -9,6 +9,8 @@
 -- pull-style network, see the Erlang redo implementation in
 -- erl_tools.
 --
+-- This implementation assumes node update is pure, allowing for
+-- propagation to stop if a node's value did not change.
 
 local prompt = require('prompt')
 local function log(str) io.stderr:write(str) end
@@ -44,59 +46,50 @@ function dataflow.node.new(scheduler, fwd_deps, init)
    -- We don't know who depends on this node.  That will be filled in
    -- once dependent nodes are created...
    n.rev_deps = {}
-   -- ... so do that for this node's dependencies.
+   -- ... so register this node as a reverse dependency in all the
+   -- forward dependencies.
    for i,dep in ipairs(fwd_deps) do
-      dep:add_rev_dep(n)
+      dep.rev_deps[n] = true
    end
    setmetatable(n, { __index = dataflow.node })
    return n
 end
 
-function dataflow.node:add_rev_dep(node)
-   self.rev_deps[node] = true
-end
-
--- Push carries the connotation that a value has been changed and all
--- dependencies need to be recomputed.  Implementation recurses from a
--- leaf node up the dependency graph using reverse dependencies at
--- each node.
+-- Push a new value into the node.  If it actually changed, all
+-- reverse dependencies need to be recomputed and any external
+-- entities need to be notified of the change.
 function dataflow.node:push(value)
-   -- if self.name then log("push " .. self.name .. "\n") end
-   self:set_value(value)
+   self.valid = true
+   if self.value == value then return end
+   self.value = value
+   if self.notify then self.notify(self.value) end
    self:propagate()
 end
 
+-- After a node's value is changed, the effect needs to be propagated
+-- through the reverse dependency graph.  Note that invalidation needs
+-- to complete before evaluation.  If they would be interleaved, we
+-- might use a node that would be invalidated later.  Invalidation is
+-- shallow, and evaluation will result in a push and so propagate
+-- recursively.
 function dataflow.node:propagate()
-
-   -- Propagation goes in two phases.  First invalidate all
-   -- dependencies without recursing.
-   for node, _true in pairs(self.rev_deps) do
-      node:invalidate()
+   for node in pairs(self.rev_deps) do
+      node.valid = nil
    end
-
-   -- Then sequence memoized evaluation for all dependencies and
-   -- recursively propagate the change.
-   for node, _true in pairs(self.rev_deps) do
+   for node in pairs(self.rev_deps) do
       node:eval()
-      node:propagate()
    end
-
 end
 
-
--- Eval recurses from a result node down the dependency graph using
--- forward dependencies at each node.  The result is memoized,
--- i.e. only computed once per push cycle.  The aborts are caused by
--- incomplete networks, e.g. not all inputs are present.
+-- Eval recurses through the forward dependency graph, i.e. the other
+-- direction of push.  The result is memoized, i.e. only computed once
+-- per push cycle.
 function dataflow.node:eval()
 
-   -- If already valid, return cached value.
-   if self.value then
-      -- if self.name then log("keep " .. self.name .. "\n")  end
-      return self.value
-   end
+   -- Cache
+   if self.valid then return self.value end
 
-   -- Abort: input node without input
+   -- Abort: this is an input node
    if not self.update then return nil end
 
    -- Gather dep values
@@ -109,22 +102,17 @@ function dataflow.node:eval()
    end
 
    -- Evaluate
-   -- if self.name then log("update " .. self.name .. "\n")  end
-   self:set_value(self.update(unpack(args)))
+   self:push(self.update(unpack(args)))
    return self.value
 end
 
--- Update current node's value and potentially send external
--- notification.  Note that internal propagation is handled
--- separately.
-function dataflow.node:set_value(value)
-   self.value = value
-   if self.notify then self.notify(self.value) end
-end
 
--- Invalidate causes subsequent eval to re-evaluate.
-function dataflow.node:invalidate()
-   self.value = nil
+-- Remove a node from the network.  Note that this is only valid if
+-- this is an output node, i.e. no nodes depend on this node.
+function dataflow.node:remove()
+   for i, node in ipairs(self.fwd_deps) do
+      node.rev_devps[self] = nil
+   end
 end
 
 return dataflow
