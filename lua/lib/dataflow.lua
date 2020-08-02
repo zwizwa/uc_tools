@@ -4,38 +4,11 @@
 -- . pull-style (incremental build, e.g. make, redo)
 -- . push-style (event propagator)
 --
--- I'm currently not yet clear on what would be most useful.  The one
--- I use must is a pull-style redo clone which is actually used as a
--- push-style, but implemented as push(ignored_input) =
--- pull(all_targets).  The redo clone's main feature is a dynamic
--- dependency graph, which is not really what I'm looking for here.
+-- I'm currently most interested in a push-style network, as it fits
+-- better in an event-driven architecture.  For an example of a
+-- pull-style network, see the Erlang redo implementation in
+-- erl_tools.
 --
--- Push-style requires an inverted dependency graph in addition to a
--- normal dependency graph, which is something you don't want to
--- create manually.
---
--- This is what I want:
---
--- . A static push-style system, implemented as simple as possible for
---   use on a micrcontroler, with datastructures generated at compile
---   time, and the only user C code consisting of pure functions.
---
--- . If possible, a way to invert the dependency graph dynamically,
---   still keeping it simple in C.
-
-
-
--- The realization is that in a push type system, both push and pull
--- are necessary.
---
--- Traversal consists of two parts:
---
--- . If we have the value of a node (and thus also its entire
---   dependency tree), compute the value of all the nodes that depend
---   on it.
---
--- . To compute the value of a node, compute the value of all its
---   dependencies and then execute the node's function.
 
 local prompt = require('prompt')
 local function log(str) io.stderr:write(str) end
@@ -87,40 +60,35 @@ end
 -- dependencies need to be recomputed.  Implementation recurses from a
 -- leaf node up the dependency graph using reverse dependencies at
 -- each node.
-
 function dataflow.node:push(value)
-
    -- if self.name then log("push " .. self.name .. "\n") end
+   self:set_value(value)
+   self:propagate()
+end
 
-   self.value = value
+function dataflow.node:propagate()
 
    -- Propagation goes in two phases.  First invalidate all
-   -- dependencies.
+   -- dependencies without recursing.
    for node, _true in pairs(self.rev_deps) do
       node:invalidate()
    end
 
-   -- Then sequence a pull for all dependencies.
+   -- Then sequence memoized evaluation for all dependencies and
+   -- recursively propagate the change.
    for node, _true in pairs(self.rev_deps) do
-      node:pull()
-      node:push(node.value)
+      node:eval()
+      node:propagate()
    end
 
-   -- This implements the "reactive output" of a network.
-   if self.value and self.notify then
-      self.notify(self.value)
-   end
 end
 
--- Invalidate causes subsequent pull to re-evaluate.
-function dataflow.node:invalidate()
-   self.value = nil
-end
 
--- Pull recurses from a result node down the dependency graph using
--- forward dependencies at each node.  The aborts are caused by
+-- Eval recurses from a result node down the dependency graph using
+-- forward dependencies at each node.  The result is memoized,
+-- i.e. only computed once per push cycle.  The aborts are caused by
 -- incomplete networks, e.g. not all inputs are present.
-function dataflow.node:pull()
+function dataflow.node:eval()
 
    -- If already valid, return cached value.
    if self.value then
@@ -134,7 +102,7 @@ function dataflow.node:pull()
    -- Gather dep values
    local args = {}
    for i,dep in ipairs(self.fwd_deps) do
-      local val = dep:pull()
+      local val = dep:eval()
       -- Abort: input not valid.
       if not val then return nil end
       table.insert(args, val)
@@ -142,10 +110,21 @@ function dataflow.node:pull()
 
    -- Evaluate
    -- if self.name then log("update " .. self.name .. "\n")  end
-   self.value = self.update(unpack(args))
+   self:set_value(self.update(unpack(args)))
    return self.value
 end
 
+-- Update current node's value and potentially send external
+-- notification.  Note that internal propagation is handled
+-- separately.
+function dataflow.node:set_value(value)
+   self.value = value
+   if self.notify then self.notify(self.value) end
+end
 
+-- Invalidate causes subsequent eval to re-evaluate.
+function dataflow.node:invalidate()
+   self.value = nil
+end
 
 return dataflow
