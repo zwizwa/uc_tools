@@ -36,6 +36,8 @@ function dfl.compile(syntax, arity)
 end
 
 function dfl.comp:node(opcode, operands)
+   if not opcode then opcode = "input" end
+   if not operands then operands = {} end
    local node = { opcode = opcode, operands = operands }
    local ref = self.next_node
    self.nodes[ref] = node
@@ -70,21 +72,22 @@ function dfl.print(syntax, arity, fun_name)
    local out = {}
    local t = "int"
    local tab = "    "
-   local ctx = "_ctx"
+   local ctx = "_"
    local function w(str) table.insert(out, str) end
    w(t); w(" "); w(fun_name); w("(void*"); w(ctx)
    for i,input in ipairs(dag.inputs) do
       w(", "); w(t); w(" "); w("r"); w(input);
    end
    w(") {\n")
-   for i=1+dag.arity,#dag.nodes do
-      local n = dag.nodes[i]
-      w(tab); w(t); w(" r"); w(i); w(" = "); w(n.opcode);
-      w("("); w(ctx);
-      for j,operand in ipairs(n.operands) do
-         w(", r"); w(operand);
+   for i, n in ipairs(dag.nodes) do
+      if n.opcode ~= "input" then
+         w(tab); w(t); w(" r"); w(i); w(" = "); w(n.opcode);
+         w("("); w(ctx);
+         for j,operand in ipairs(n.operands) do
+            w(", r"); w(operand);
+         end
+         w(")\n")
       end
-      w(")\n")
    end
    w(tab); w("return r"); w(dag.output[1]); w(";\n")
    w("}\n")
