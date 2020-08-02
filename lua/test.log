@@ -1,0 +1,77 @@
+==== test_csp.sh
+Entering directory: /i/exo/uc_tools/lua
+receiver data1: hello
+receiver data2: hello
+receiver data1: hello
+receiver data2: hello
+receiver data1: hello
+receiver data2: hello
+receiver data1: hello
+receiver data2: hello
+receiver data1: hello
+receiver data2: hello
+receiver data1: hello
+coroutine_resume: status=dead
+cannot resume dead coroutine
+stack traceback:
+request: request1
+reply: request1_reply
+request: request2
+reply: request2_reply
+request: request3
+reply: request3_reply
+request: request4
+reply: request4_reply
+request: request5
+reply: request5_reply
+request: request6
+reply: request6_reply
+request: request7
+reply: request7_reply
+request: request8
+reply: request8_reply
+request: request9
+reply: request9_reply
+request: request10
+reply: request10_reply
+receiver data: data101
+receiver data: data102
+receiver data: data103
+receiver data: data104
+receiver data: data105
+receiver data: data201
+receiver data: data202
+receiver data: data203
+receiver data: data204
+receiver data: data205
+==== test_actor.sh
+Entering directory: /i/exo/uc_tools/lua
+receiver start
+sender start
+receiver data1: hello
+receiver data2: hello
+receiver data1: hello
+receiver data2: hello
+receiver data1: hello
+receiver data2: hello
+receiver data1: hello
+receiver data2: hello
+receiver data1: hello
+receiver data2: hello
+==== test_dataflow.sh
+Entering directory: /i/exo/uc_tools/lua
+test_dataflow.lua begin
+- push in1 1
+- push in2 2
+out1 = 3
+- push in3 3
+out2 = 6
+- push in1 4
+out2 = 9
+out1 = 6
+- push in2 5
+out2 = 12
+out1 = 9
+- push in3 6
+out2 = 15
+test_dataflow.lua end

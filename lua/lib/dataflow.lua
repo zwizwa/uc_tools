@@ -83,39 +83,66 @@ function dataflow.node:add_rev_dep(node)
    self.rev_deps[node] = true
 end
 
--- Push recurses from a leaf node up the dependency graph using
--- reverse dependencies at each node.
+-- Push carries the connotation that a value has been changed and all
+-- dependencies need to be recomputed.  Implementation recurses from a
+-- leaf node up the dependency graph using reverse dependencies at
+-- each node.
+
 function dataflow.node:push(value)
-   if not value then
-      self:pull()
-   else
-      self.value = value
-   end
+
+   -- if self.name then log("push " .. self.name .. "\n") end
+
+   self.value = value
+
+   -- Propagation goes in two phases.  First invalidate all
+   -- dependencies.
    for node, _true in pairs(self.rev_deps) do
-      node:push()
+      node:invalidate()
    end
+
+   -- Then sequence a pull for all dependencies.
+   for node, _true in pairs(self.rev_deps) do
+      node:pull()
+      node:push(node.value)
+   end
+
    -- This implements the "reactive output" of a network.
    if self.value and self.notify then
       self.notify(self.value)
    end
 end
 
+-- Invalidate causes subsequent pull to re-evaluate.
+function dataflow.node:invalidate()
+   self.value = nil
+end
+
 -- Pull recurses from a result node down the dependency graph using
--- forward dependencies at each node.
+-- forward dependencies at each node.  The aborts are caused by
+-- incomplete networks, e.g. not all inputs are present.
 function dataflow.node:pull()
+
+   -- If already valid, return cached value.
+   if self.value then
+      -- if self.name then log("keep " .. self.name .. "\n")  end
+      return self.value
+   end
+
+   -- Abort: input node without input
+   if not self.update then return nil end
+
+   -- Gather dep values
    local args = {}
    for i,dep in ipairs(self.fwd_deps) do
       local val = dep:pull()
-      -- Value is not filled in yet.
+      -- Abort: input not valid.
       if not val then return nil end
       table.insert(args, val)
    end
-   -- log_desc({args = args})
-   if self.update then
-      self.value = self.update(unpack(args))
-   else
-      -- Input node
-   end
+
+   -- Evaluate
+   -- if self.name then log("update " .. self.name .. "\n")  end
+   self.value = self.update(unpack(args))
    return self.value
 end
 
