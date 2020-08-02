@@ -2,48 +2,55 @@
 
 #include "dataflow.h"
 
-typedef struct dataflow_state state_t;
-typedef struct dataflow_node node_t;
 
-/* The "return d" is an ARM trick to keep the value in r0 to use less
-   stack space. */
+typedef struct dataflow_node node_t;
+typedef union dataflow_value value_t;
+
+void propagate(node_t *n);
+
+/* Returns 1 if propagation is necessary. */
+static inline int set_val(node_t *n, value_t v) {
+    n->valid = 1;
+    if (n->initialized && (v.u == n->value.u)) return 0;
+    n->initialized = 1;
+    n->value = v;
+    return 1;
+}
 
 /* Differences with lua implementation is that eval does not return
    any values.  Everything is contained in the node structures. */
-static state_t *eval(state_t *d, node_t *n) {
+void eval(node_t *n) {
     /* Cache */
-    if (n->valid) return d;
+    if (n->valid) return;
     /* Abort if it is an input node. */
-    if (!n->meta) return d;
+    if (!n->meta) return;
     /* Evaluate dependencies. */
     DATAFLOW_FOR_DEPS(n->meta->fwd_deps, fwd_dep) {
-        d = eval(d, *fwd_dep);
-        if (!(*fwd_dep)->valid) return d;
+        eval(*fwd_dep);
+        if (!(*fwd_dep)->valid) return;
     }
-    /* Update routine will set n->value. */
-    n->meta->update(d, n);
-    /* Marking is left to us. */
-    n->valid = 1;
-    return d;
+    /* Update does not set the node value.  That is left up to us to
+       stop propagation if value didn't change. */
+    value_t v = n->meta->update(n);
+    if (!set_val(n, v)) return;
+    propagate(n);
+
 }
 
 /* Caller already has set the value. */
-static state_t *propagate(state_t *d, node_t *n) {
+void propagate(node_t *n) {
     /* Propagate.  Invalidate all first, then evaluate. */
     DATAFLOW_FOR_DEPS(n->meta->rev_deps, rev_dep) {
         (*rev_dep)->valid = 0;
     }
     DATAFLOW_FOR_DEPS(n->meta->rev_deps, rev_dep) {
-        d = eval(d, *rev_dep);
-        d = propagate(d, *rev_dep);
+        eval(*rev_dep);
     }
-    return d;
 }
 
-void dataflow_push(state_t *d, node_t *n, union dataflow_value v) {
-    n->valid = 1;
-    n->value = v;
-    propagate(d,n);
+void dataflow_push(node_t *n, value_t v) {
+    if (!set_val(n, v)) return;
+    propagate(n);
 }
 
 

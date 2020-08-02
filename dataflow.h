@@ -65,12 +65,11 @@ union dataflow_value {
     // Type tag?  Maybe not necessary since nodes will likely be typed
     // in the description, and our main purpose is to write an
     // evaluator for a generated network.
-    uintptr_t up;
+    uintptr_t u;
     void *v;
 };
-struct dataflow_state;
 struct dataflow_node;
-typedef void (*dataflow_update_f)(struct dataflow_state *, struct dataflow_node *);
+typedef union dataflow_value (*dataflow_update_f)(struct dataflow_node *);
 struct dataflow_meta {
     dataflow_update_f update;
     uint32_t nb_args;
@@ -85,11 +84,7 @@ struct dataflow_node {
     unsigned int valid:1;
     unsigned int initialized:1;
 };
-struct dataflow_state {
-    struct dataflow_node *node;
-};
 void dataflow_push(
-    struct dataflow_state *d,
     struct dataflow_node *n,
     union dataflow_value v);
 
