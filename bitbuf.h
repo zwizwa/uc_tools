@@ -1,8 +1,10 @@
 #ifndef BITBUF_H
 #define BITBUF_H
 
-/* Big endian bit buffer.  This can be used for generating packets to
-   send out using SPI DMA. */
+/* Big endian bit buffer.
+
+   Originally written for creating PWM signalling (e.g. 1-bit uart),
+   but also useful for packing index arrays. */
 struct bitbuf {
     uint32_t shiftreg;
     uint32_t count;
@@ -36,5 +38,16 @@ static inline uint32_t bitbuf_read(struct bitbuf *b) {
     b->count++;
     return bitval;
 }
+
+#if 0
+// FIXME: change rep to have a read and write pointer
+static inline uint32_t bitbuf_read_word(struct bitbuf *b, uint32_t nb_bits) {
+    uint32_t accu;
+    while(nb_bits--) {
+        accu =<< bitbuf_read(b);
+    }
+    return accu;
+}
+#endif
 
 #endif

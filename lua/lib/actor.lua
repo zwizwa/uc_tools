@@ -20,7 +20,9 @@ function actor.scheduler:schedule_one()
    for task,_true in pairs(self.hot) do
       -- move from hot to cold before resuming
       self:make_cold(task)
-      task:resume()
+      if not task:resume() then
+         self:make_dead(task)
+      end
       return true
    end
    return false
