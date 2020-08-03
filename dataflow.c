@@ -3,14 +3,14 @@
 #include "dataflow.h"
 
 typedef struct dataflow_meta meta_t;
-typedef struct dataflow_node node_t;
+typedef struct dataflow_node data_t;
 typedef union dataflow_value value_t;
 
 void changed(const meta_t *n);
 
 /* Returns 1 if propagation is necessary. */
 static inline int set_val(const meta_t *m, value_t v) {
-    node_t *n = m->node;
+    data_t *n = m->node;
     n->valid = 1;
     if (n->initialized && (v.u == n->value.u)) return 0;
     n->initialized = 1;
@@ -21,13 +21,11 @@ static inline int set_val(const meta_t *m, value_t v) {
 /* Differences with lua implementation is that eval does not return
    any values.  Everything is contained in the node structures. */
 void eval(const meta_t *m) {
-    {
-        node_t *n = m->node;
-        /* Cache */
-        if (n->valid) return;
-        /* Abort if it is an input node. */
-        if (!m->update) return;
-    }
+    /* Cache */
+    if (m->node->valid) return;
+    /* Abort if it is an input node. */
+    if (!m->update) return;
+
     /* Evaluate dependencies. */
     DATAFLOW_FOR_DEPS(m->fwd_deps, fwd_dep) {
         eval(*fwd_dep);
