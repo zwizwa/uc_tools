@@ -61,28 +61,33 @@ union dataflow_value {
     void *v;
 };
 
-struct dataflow_node;
-typedef union dataflow_value (*dataflow_update_f)(struct dataflow_node *);
-typedef void (*dataflow_notify_f)(struct dataflow_node *);
+struct dataflow_meta;
+typedef union dataflow_value (*dataflow_update_f)(const struct dataflow_meta *);
+typedef void (*dataflow_notify_f)(const struct dataflow_meta *);
 
-struct dataflow_meta {
-    dataflow_update_f update;
-    dataflow_notify_f notify;
-    struct dataflow_node **fwd_deps, **rev_deps;
-};
-
-#define DATAFLOW_FOR_DEPS(deplist,ppnode) \
-    for(struct dataflow_node **ppnode = deplist; *ppnode; ppnode++)
-
+/* RAM data */
 struct dataflow_node {
-    const struct dataflow_meta *meta;
     union dataflow_value value;
     unsigned int valid:1;
     unsigned int initialized:1;
 };
 
+/* ROM metadata */
+struct dataflow_meta {
+    struct dataflow_node *node;
+    dataflow_update_f update;
+    dataflow_notify_f notify;
+    const struct dataflow_meta * const * const fwd_deps;
+    const struct dataflow_meta * const * const rev_deps;
+};
+
+#define DATAFLOW_FOR_DEPS(deplist,ppnode) \
+    for(const struct dataflow_meta * const * ppnode = deplist; \
+        *ppnode; \
+        ppnode++)
+
 void dataflow_push(
-    struct dataflow_node *n,
+    const struct dataflow_meta *m,
     union dataflow_value v);
 
 #endif
