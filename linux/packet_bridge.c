@@ -301,8 +301,8 @@ static void handle_signal(int sig) {
     LOG("SIGNAL %d\n", sig);
     exit(1);
 }
-static void fd_open_command(int *in_fd, int *out_fd, const char *command) {
-    // This is confusing, so spell it out
+static void fd_open_command(int *in_fd, int *out_fd, const char **argv) {
+    // This is confusing, so using long names.
     const int read_end = 0;
     const int write_end = 1;
     int parent_to_child[2];
@@ -326,7 +326,6 @@ static void fd_open_command(int *in_fd, int *out_fd, const char *command) {
 
         /* execvp requires NULL-terminated array
            FIXME: only supporting single command, no args */
-        char const* argv[] = {command, NULL};
         ASSERT_ERRNO(execvp(argv[0], (char **)&argv[0]));
         /* not reached (exec success or assert error exit) */
     }
@@ -374,7 +373,7 @@ static void fd_open_sock_dgram(int *pfd, const char *path) {
 struct buf_port {
     struct port p;
     uint32_t count;
-    uint8_t buf[2*PACKET_MAX_SIZE];
+    uint8_t buf[2*PACKET_BRIDGE_MAX_PACKET_SIZE];
 };
 static ssize_t pop_read(port_pop_fn pop,
                         struct buf_port *p, uint8_t *buf, ssize_t len) {
@@ -517,9 +516,9 @@ struct port *port_open_packetn_tty(uint32_t len_bytes, const char *dev) {
 }
 
 
-struct port *port_open_packetn_command(uint32_t len_bytes, const char *command) {
+struct port *port_open_packetn_command(uint32_t len_bytes, const char **argv) {
     int in_fd, out_fd;
-    fd_open_command(&in_fd, &out_fd, command);
+    fd_open_command(&in_fd, &out_fd, argv);
     return port_open_packetn_stream(len_bytes, in_fd, out_fd);
 }
 
@@ -708,7 +707,7 @@ struct port *port_open_slip_tty(const char *dev) {
     fd_open_tty(&fd, dev);
     return port_open_slip_stream(fd, fd);
 }
-struct port *port_open_slip_command(const char *command) {
+struct port *port_open_slip_command(const char **argv) {
     ASSERT(0); // not yet implemented
 }
 struct port *port_open_slip_tcp_connect(const char *host, uint16_t tcp_port) {
@@ -905,7 +904,7 @@ void packet_loop(packet_handle_fn handle,
         pfd[i].revents = 0;
     }
     for(;;) {
-        uint8_t buf[PACKET_MAX_SIZE]; // FIXME: Make this configurable
+        uint8_t buf[PACKET_BRIDGE_MAX_PACKET_SIZE]; // FIXME: Make this configurable
         int rv;
         // LOG("timeout %d\n", ctx->timeout);
         ASSERT_ERRNO(rv = poll(&pfd[0], ctx->nb_ports, ctx->timeout));
@@ -1048,6 +1047,16 @@ ssize_t packet_next(struct port *p, int timeout,
 
 /***** 6. CONSTRUCTORS */
 
+static void strtok_argv(char *tok, const char *delim,
+                        char const **argv, int room) {
+    for (int i=0;;i++) {
+        ASSERT(i<room);
+        if (!(argv[i] = strtok(NULL, delim))) break;
+        //LOG("strtok_argv %d %s\n", i, argv[i]);
+    }
+}
+
+
 struct port *port_open(const char *spec_ro) {
     char spec[strlen(spec_ro)+1];
     strcpy(spec, spec_ro);
@@ -1128,22 +1137,23 @@ struct port *port_open(const char *spec_ro) {
         }
     }
 
+
+
+
     // EXEC:<framing>:<command>
     if (!strcmp(tok, "EXEC")) {
+        char const* argv[PACKET_BRIDGE_MAX_EXEC_ARGC] = {};
         ASSERT(tok = strtok(NULL, delim));
         if (!strcmp("slip", tok)) {
-            ASSERT(tok = strtok(NULL, delim));
-            const char *command = tok;
-            ASSERT(NULL == (tok = strtok(NULL, delim)));
-            //LOG("port_open_slip_command(%s)\n", command);
-            return port_open_slip_command(command);
+            strtok_argv(tok, delim, argv, ARRAY_SIZE(argv));
+            ASSERT(argv[0]);
+            return port_open_slip_command(argv);
         }
         else {
             uint16_t len_bytes = atoi(tok);
-            ASSERT(tok = strtok(NULL, delim));
-            const char *command = tok;
-            ASSERT(NULL == (tok = strtok(NULL, delim)));
-            return port_open_packetn_command(len_bytes, command);
+            strtok_argv(tok, delim, argv, ARRAY_SIZE(argv));
+            ASSERT(argv[0]);
+            return port_open_packetn_command(len_bytes, argv);
         }
     }
 

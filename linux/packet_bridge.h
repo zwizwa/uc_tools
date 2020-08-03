@@ -78,8 +78,9 @@ int packet_forward_main(int argc, char **argv);
 ssize_t packet_next(struct port *p, int timeout,
                     uint8_t *buf, ssize_t buf_size);
 
-// FIXME: Don't make buffers static size.
-#define PACKET_MAX_SIZE 4096
+// FIXME: remove static limits here
+#define PACKET_BRIDGE_MAX_PACKET_SIZE 4096
+#define PACKET_BRIDGE_MAX_EXEC_ARGC 10
 
 
 #endif
