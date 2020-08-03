@@ -82,19 +82,25 @@ void packet_loop_start(struct packet_loop_state *s) {
     struct pollfd pfd[s->max_nfds];
     for(;;) {
       again:
-        /* Set up descriptors. */
+        /* Set up client descriptors. */
         for (int i=0; i<s->nfds; i++) {
             pfd[i].events = POLLIN | POLLERR;
             pfd[i].fd = s->fds[i];
         }
+        /* Set up server descriptor. */
         int i_server = s->nfds;
         pfd[i_server].events = POLLIN | POLLERR;
         pfd[i_server].fd = server_fd;
 
+        /* Also monitor stdin for EOF. */
+        int i_stdin = s->nfds+1;
+        pfd[i_stdin].events = POLLIN | POLLERR;
+        pfd[i_stdin].fd = 0;
+
         /* Wait */
         int rv;
         //LOG("waiting for %d clients\n", s->nfds);
-        ASSERT_ERRNO(rv = poll(&pfd[0], s->nfds+1, -1));
+        ASSERT_ERRNO(rv = poll(&pfd[0], s->nfds+2, -1));
         ASSERT(rv > 0);
 
         /* Handle */
@@ -127,7 +133,19 @@ void packet_loop_start(struct packet_loop_state *s) {
             register_client(s, fd);
             pfd[i_server].revents &= ~POLLIN;
         }
+        if(pfd[i_stdin].revents & POLLIN) {
+            /* stdin data is ignored.  this is here just to exit the
+             * application if stdin closes. */
+            uint8_t buf[1024];
+            int rv;
+            ASSERT((rv = read(0, buf, sizeof(buf))) > 0);
+            LOG("ignoring %d bytes from stdin\n", rv);
+            for (int i=0; i<rv; i++) LOG(" %02x",buf[i]); LOG("\n");
+            pfd[i_stdin].revents &= ~POLLIN;
+        }
+
         ASSERT(0 == pfd[i_server].revents);
+        ASSERT(0 == pfd[i_stdin].revents);
     }
 }
 
