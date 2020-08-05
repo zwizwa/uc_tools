@@ -31,6 +31,7 @@ case "$TYPE" in
         ;;
     a)
         assert_vars A OBJECTS
+        rm -f $A
         ar -r $A $OBJECTS #2>/dev/null
         ;;
     ld)
