@@ -2,7 +2,7 @@
 
 # TL,DR: Build system is split into two parts:
 # 1. Build tool wrappers (this file)
-# 2. Build rules (either apenwarr redo, or exo redo)
+# 2. Build rules (either apenwarr redo, or exo redo, or Makefile)
 
 
 # The build system is a little complex as it is constructed to support
