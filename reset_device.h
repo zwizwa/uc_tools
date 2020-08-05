@@ -5,7 +5,7 @@
 #include "libopencm3/stm32/f1/iwdg.h"
 
 static inline void reset_device(void) {
-    // Disengage the USB pull speed pullup on A12 (D+) to signal
+    // Disengage the USB speed pullup connected to A12 (D+) to signal
     // host that we're no longer there.
     hw_gpio_config(GPIOB,5,HW_GPIO_CONFIG_INPUT);
 
