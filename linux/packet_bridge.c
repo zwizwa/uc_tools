@@ -81,6 +81,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <asm-generic/termbits.h>
 #include <asm-generic/ioctls.h>
 
+#include "assert_write.h"
+
 
 /* A note on USB bulk transfers:
    The async libusb interface does not fit packet_bridge very well.
@@ -143,23 +145,6 @@ static int same_addr(struct sockaddr_in *sa1, struct sockaddr_in *sa2) {
         && (a1[3] == a2[3]);
     return same;
 }
-
-static void assert_write(int fd, uint8_t *buf, uint32_t len) {
-    uint32_t written = 0;
-    while(written < len) {
-        int rv;
-        while ((rv = write(fd, buf, len)) <= 0) {
-            /* FIXME: i/o is still non-blocking.  I don't remember why
-               this was, because in theory the poll() should ensure we
-               never end up in a blocking read. */
-            ERROR("write(%d,%p,%d) == %d, errno=%d, strerror=\"%s\"\n",
-                         fd,buf,len,  rv, errno,    strerror(errno));
-        }
-        written += rv;
-    }
-}
-
-
 
 
 
