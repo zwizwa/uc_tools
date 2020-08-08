@@ -81,14 +81,14 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <asm-generic/termbits.h>
 #include <asm-generic/ioctls.h>
 
-/* See the section that is guarded by this define.  Currently the
-   async libusb interface does not fit packet_bridge very well, so
-   this is future work.  See erl_tools/c_src for a specialized wrapper
-   that can be used in conjuction with packet_bridge EXEC port. */
 
-#ifdef HAVE_LIBUSB
-#include <libusb-1.0/libusb.h>
-#endif
+/* A note on USB bulk transfers:
+   The async libusb interface does not fit packet_bridge very well.
+
+   For lack of better wording, the "short packet termination" protocol
+   associated with USB bulk transfers has been implemented in a
+   separate process (erl_tools/c_src/axo_connect.c) that can be used
+   in conjuction with packet_bridge EXEC port. */
 
 
 
@@ -229,6 +229,7 @@ static ssize_t udp_write(struct udp_port *p, uint8_t *buf, ssize_t len) {
     }
     ssize_t wlen;
     int flags = 0;
+    LOG("udp_write: %d\n", len);
     ASSERT_ERRNO(
         wlen = sendto(p->p.fd, buf, len, flags,
                       (struct sockaddr*)&p->peer,
@@ -796,80 +797,69 @@ struct port *port_open_hex_stream(int fd, int fd_out) {
 }
 
 
-/* 2.6 USB FRAMING */
+/***** 2.6. LINE FRAMING */
 
-/* Objective is to implement USB multi-packet framing: if frames do
-   not fit the transfer size, e.g. 64 bytes for USB 2.0, then it is
-   the convention to concatenate subsequent frames if they are full
-   size, and terminate with a short packet, which can be zero.
+/* Convert lines to packets.  Note that this does not support any
+   escape characters, so cannot transport 8-bit clean payloads. */
 
-   libusb has an async API.  It exposes file descriptors and events
-   through libusb_get_pollfds().  When an event occurs
-   libusb_handle_events() has to be called.
-
-   The problem at this point is that it requires multiple fds, which
-   does not fit the architecture.  It might be simpler to use the
-   synchronous API in a separate binary.
-
-   http://libusb.sourceforge.net/api-1.0/group__libusb__poll.html
-
-*/
-#ifdef HAVE_LIBUSB
-
-struct usb_port {
+struct line_port {
     struct buf_port p;
     FILE *f_out;
 };
-struct port *port_open_usb(void) {
-    static int libusb_initialized = 0;
-    if (!libusb_initialized) {
-        int err = libusb_init(NULL);
-        if (err) ERROR("libusb_init error = %d\n", err);
-        libusb_initialized = 1;
-    }
-    // 16c0:0442
-    // http://libusb.sourceforge.net/api-1.0/group__libusb__asyncio.html
 
-    struct usb_port *p;
-    struct libusb_device **devs;
-    ssize_t cnt = libusb_get_device_list(NULL, &devs);
-    ASSERT(cnt > 0);
-    for(ssize_t i=0; i<cnt; i++) {
-        struct libusb_device *dev = devs[i];
-        struct libusb_device_descriptor desc;
-        ASSERT(0 == libusb_get_device_descriptor(dev, &desc));
-        struct libusb_device_handle *handle;
-        if ((desc.idVendor == 0x16c0) &&
-            (desc.idProduct == 0x0442)) {
-            LOG("%04x:%04x", desc.idVendor, desc.idProduct);
-            int rv;
-            if (0 == (rv = libusb_open(dev, &handle))) {
-                LOG(" ok\n");
-                const struct libusb_pollfd **pfd_list;
-                const struct libusb_pollfd *pfd;
-                ASSERT(pfd_list = libusb_get_pollfds(NULL));
-                for(int i=0; (pfd = pfd_list[i]); i++) {
-                    LOG("pfd: %d 0x%x\n", pfd->fd, pfd->events);
-                }
-                free(pfd_list);
-                goto found;
-            }
-            else {
-                ERROR(" error = %d (%s)\n", rv, libusb_strerror(rv));
-            }
-        }
+static ssize_t line_pop(struct line_port *p, uint8_t *buf, ssize_t len) {
+
+    // 1. Go over data and stop at packet boundary, writing partial
+    // data to output buffer.  Abort with 0 size when packet is
+    // incomplete.
+    ssize_t in = 0, out = 0;
+    for(;;) {
+        ASSERT(out < len);
+
+        if (in >= p->p.count) return 0;
+        uint8_t c1 = p->p.buf[in++];
+
+        /* Copy verbatim.  End-of-line character is part of the data payload. */
+        buf[out++] = c1;
+
+        /* Control character determines stop condition. */
+        if (c1 == '\n') {
+            /* Newline terminates. */
+            // LOG("line: %d chars\n", in);
+            break;
+        };
     }
 
+    // 2. Shift the data buffer
+    memmove(&p->p.buf[0], &p->p.buf[in], p->p.count-in);
+    p->p.count -= in;
 
-  found:
+    return out;
+}
 
-    ERROR("testing\n");
 
+static ssize_t line_read(struct line_port *p, uint8_t *buf, ssize_t len) {
+    return pop_read((port_pop_fn)line_pop, &p->p, buf, len);
+}
+static ssize_t line_write(struct line_port *p, uint8_t *buf, ssize_t len) {
+    ssize_t out = 0;
+    for (ssize_t i=0; i<len; i++) { out += fprintf(p->f_out, " %02x", buf[i]); }
+    out += fprintf(p->f_out, "\n");
+    fflush(p->f_out);
+    return out;
+}
+struct port *port_open_line_stream(int fd, int fd_out) {
+    struct line_port *p;
     ASSERT(p = malloc(sizeof(*p)));
     memset(p,0,sizeof(*p));
+    p->p.p.fd = fd;
+    p->p.p.fd_out = fd_out;
+    p->p.p.read  = (port_read_fn)line_read;
+    p->p.p.write = (port_write_fn)line_write;
+    p->p.p.pop   = (port_pop_fn)line_pop;
+    p->f_out = fdopen(fd_out, "w");
     return &p->p.p;
 }
-#endif
 
 
 /***** 3. PACKET HANDLER */
@@ -1198,6 +1188,11 @@ struct port *port_open(const char *spec_ro) {
     if (!strcmp(tok, "HEX")) {
         ASSERT(NULL == (tok = strtok(NULL, delim)));
         return port_open_hex_stream(0, 1);
+    }
+
+    if (!strcmp(tok, "LINE")) {
+        ASSERT(NULL == (tok = strtok(NULL, delim)));
+        return port_open_line_stream(0, 1);
     }
 
 #ifdef HAVE_LIBUSB
