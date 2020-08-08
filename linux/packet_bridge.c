@@ -842,7 +842,7 @@ static ssize_t line_read(struct line_port *p, uint8_t *buf, ssize_t len) {
     return pop_read((port_pop_fn)line_pop, &p->p, buf, len);
 }
 static ssize_t line_write(struct line_port *p, uint8_t *buf, ssize_t len) {
-    assert_write(p->p.p.fd, buf, len);
+    assert_write(p->p.p.fd_out, buf, len);
     return len;
 }
 struct port *port_open_line_stream(int fd, int fd_out) {
