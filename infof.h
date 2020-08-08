@@ -7,6 +7,7 @@
 #define INFOF_H
 
 #include <stdint.h>
+#include <stdarg.h>
 
 /* infof() is a simplistic version of printf, only depends on
    info_putchar().  The itch this scratches is to enable printf-style
@@ -24,6 +25,7 @@ uint32_t info_bytes();
 
 /* Entry points */
 int infof(const char *fmt, ...);
+int vinfof(const char *fmt, va_list ap);
 void info_decimal(int d);
 void info_hex(unsigned int d, int digits);
 void info_hex_u8(const uint8_t *buf, int n);

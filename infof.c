@@ -40,9 +40,8 @@ void info_str_n(const char *c, int n) {
 static inline int is_digit(int d) {
     return d >= '0' && d <= '9';
 }
-int infof(const char *fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
+
+int vinfof(const char *fmt, va_list ap) {
     while (*fmt) {
         switch(*fmt) {
         case '%': {
@@ -71,6 +70,13 @@ int infof(const char *fmt, ...) {
             break;
         }
     }
-    va_end(ap);
     return 0;  // whatever..
+}
+
+int infof(const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    int rv = vinfof(fmt, ap);
+    va_end(ap);
+    return rv;
 }
