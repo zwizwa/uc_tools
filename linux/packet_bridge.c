@@ -229,7 +229,7 @@ static ssize_t udp_write(struct udp_port *p, uint8_t *buf, ssize_t len) {
     }
     ssize_t wlen;
     int flags = 0;
-    LOG("udp_write: %d\n", len);
+    // LOG("udp_write: %d\n", len);
     ASSERT_ERRNO(
         wlen = sendto(p->p.fd, buf, len, flags,
                       (struct sockaddr*)&p->peer,
@@ -842,11 +842,8 @@ static ssize_t line_read(struct line_port *p, uint8_t *buf, ssize_t len) {
     return pop_read((port_pop_fn)line_pop, &p->p, buf, len);
 }
 static ssize_t line_write(struct line_port *p, uint8_t *buf, ssize_t len) {
-    ssize_t out = 0;
-    for (ssize_t i=0; i<len; i++) { out += fprintf(p->f_out, " %02x", buf[i]); }
-    out += fprintf(p->f_out, "\n");
-    fflush(p->f_out);
-    return out;
+    assert_write(p->p.p.fd, buf, len);
+    return len;
 }
 struct port *port_open_line_stream(int fd, int fd_out) {
     struct line_port *p;
