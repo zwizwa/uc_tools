@@ -9,7 +9,7 @@
 # - Bash's "read" function buffering more than a single line behind the scenes.
 # - A session, e.g. what happens between writer opening and closing the pipe.
 
-# For better defined semantics, see packet_bridge.
+# For better defined semantics, see packet_bridge LINE framing.
 
 CMD=$1
 PIPE=$2
@@ -28,7 +28,6 @@ case $CMD in
         ;;
     write_if_exists)
         [ ! -p "$PIPE" ] && exit 0
-        shift ; shift
         echo "$@" >"$PIPE"
         ;;
     *)

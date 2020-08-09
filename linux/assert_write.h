@@ -6,7 +6,7 @@
 static inline void assert_write(int fd, const uint8_t *buf, size_t len) {
     size_t written = 0;
     while(written < len) {
-        int rv;
+        ssize_t rv;
         while ((rv = write(fd, buf, len)) <= 0) {
             /* FIXME: i/o is still non-blocking.  I don't remember why
                this was, because in theory the poll() should ensure we
