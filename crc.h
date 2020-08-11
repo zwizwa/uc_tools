@@ -10,8 +10,9 @@
    reg right instead of left and by using a reversed 32-bit word to
    represent the polynomial. */
 
-static inline uint32_t crc32b(const uint8_t *buf, uint32_t len) {
-    uint32_t crc = 0xFFFFFFFF;
+static inline uint32_t crc32b_inc(const uint8_t *buf, uint32_t len, uint32_t crc_init) {
+    /* Operate on inverted bits. */
+    uint32_t crc = ~crc_init;
     for (int i=0; i<len; i++) {
         crc = crc ^ buf[i];
         for (int j = 7; j >= 0; j--) {
@@ -20,6 +21,9 @@ static inline uint32_t crc32b(const uint8_t *buf, uint32_t len) {
         }
     }
     return ~crc;
+}
+static inline uint32_t crc32b(const uint8_t *buf, uint32_t len) {
+    return crc32b_inc(buf, len, 0);
 }
 
 // Also plucked from stackoverflow.
