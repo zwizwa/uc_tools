@@ -89,10 +89,19 @@ static inline int sm_push_end(struct sm_channel *c) {
 }
 
 /* Task side.  Use this e.g. in a SM_WAIT(s, (evt=sm_accept(s, &s->evt))) construct. */
-static inline void *sm_accept(struct sm_channel *c) {
+static inline void *sm_read(struct sm_channel *c) {
     void *data = c->data;
     c->data = 0;
     return data;
 }
+
+/* Channel access inside a sm.  Note that it is also possible to
+   implement CSP style select to wait on multiple transaction, but for
+   now this seems to be enough. */
+#define SM_READ(s, var, chan) \
+    SM_WAIT(s, (var = sm_read(chan)))
+
+#define SM_WRITE(s, var, chan) \
+    ({ sm_push_begin(s, var); SM_WAIT(s, !((chan)->data)); })
 
 #endif
