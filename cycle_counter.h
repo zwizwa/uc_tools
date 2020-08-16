@@ -21,7 +21,34 @@ static inline uint32_t cycle_counter(void) {
     return DWT_CYCCNT;
 }
 
+static inline int32_t cycle_counter_remaining(uint32_t expiration_time) {
+    uint32_t cc_cur = cycle_counter();
 
+    /* Mixing unsigned and signed ints is tricky.  To make it more
+       explicit, split the two operations that are used: */
+
+    /* 1. Unsigned overflow is defined behavior in C.  It does what
+       one would expect: wrap around.  */
+    uint32_t udiff = expiration_time - cc_cur;
+
+    /* 2. Converting unsigned to signed is defined as well. */
+    int32_t idiff = udiff;
+
+    /* So this number is negative if cc_cur has passed expiration time
+       as long as it doesn't overflow.  For a 72MHz counter that is
+       about half a minute. */
+    return idiff;
+}
+static inline int32_t cycle_counter_expired(uint32_t expiration_time) {
+    return cycle_counter_remaining(expiration_time) < 0;
+}
+static inline uint32_t cycle_counter_future_time(uint32_t udiff) {
+    return cycle_counter() + udiff;
+}
+
+#define CYCLE_COUNTER_EXPIRED(state) \
+    ({uint32_t _cc_cur = cycle_counter() ; (_cc_cur - (state)) > (time);   \
+        (state) = _cc_cur)
 
 /* Run once every <time> cycles.  Needs a uint32_t state var.  time==0
    means disable. */
