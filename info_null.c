@@ -26,7 +26,7 @@ KEEP uint32_t info_bytes() {
     return info_write_next - info_read_next;
 }
 uint32_t info_overflow_errors = 0;
-KEEP int info_putchar(int c) {
+KEEP int info_putchar_inner(int c) {
     uint32_t room = INFO_SIZE - (info_write_next - info_read_next);
     if (room == 0) return 0;  // drop character and don't overflow the buffer
     if (room == 1) c = '?';   // when almost full, write some kind of indicator
@@ -34,6 +34,20 @@ KEEP int info_putchar(int c) {
     uint32_t offset = (info_write_next++) & INFO_MASK;
     info_buf[offset] = c;
     return 0;
+}
+
+/* Wrap info_putchar() with a hook called before printing the first
+   character on a line. */
+uint32_t info_last_was_newline = 1;
+void (*info_newline_hook)(int (*putchar)(int c));
+int info_putchar(int c) {
+    if (info_last_was_newline) {
+        if (info_newline_hook) {
+            info_newline_hook(info_putchar_inner);
+        }
+    }
+    info_last_was_newline = (c == '\n');
+    return info_putchar_inner(c);
 }
 
 /* This is counterproductive: when overflow happens, it is usually due
