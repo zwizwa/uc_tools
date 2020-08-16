@@ -26,7 +26,7 @@
 /* The default error propagation is to exit the program.  This works
  * well for the intended use as Erlang port. */
 
-#define TRAP // It seems to be a bad idea to enable this by default
+//#define TRAP // It seems to be a bad idea to enable this by default
 #ifndef TRAP
 int kill(pid_t pid, int sig);
 #define TRAP kill(getpid(), SIGTRAP);
