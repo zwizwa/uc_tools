@@ -86,11 +86,10 @@
 w *ip;
 
 /* Special interpreter opcodes */
-#define IOPC(x) ((uint32_t)(2 | ((x)<<2)))
+#define IOPC(x) ((uintptr_t)(2 | ((x)<<2)))
 #define YIELD IOPC(0)
 #define TODO  IOPC(1)
 // TODO: blocking read
-
 
 void interpreter(void) {
     for(;;) {
@@ -98,7 +97,9 @@ void interpreter(void) {
         // infof("ip:%08x xt:%08x\n", ip, xt);
         ip++;
 
-        switch (xt.u32 & 3) {
+        /* This only works on ARM thumb.  Is there a simple way to
+           make this portable enough for running in an emulator? */
+        switch (word_tag(xt)) {
         case 0: {
             (xt.pw)->code(xt.pw+1);
             break;
@@ -108,8 +109,8 @@ void interpreter(void) {
             xt.code(0);
             break;
         case 2: // Interpreter control.
-            if (YIELD == xt.u32) return;
-            if (TODO  == xt.u32) {
+            if (YIELD == xt.u) return;
+            if (TODO  == xt.u) {
                 infof("undefined opcode\n");
                 return;
             }
@@ -157,8 +158,8 @@ struct cbuf forth_in;
 #define RS_SIZE (1 << RS_LOGSIZE)
 #define RS_MASK (RS_SIZE-1)
 
-w ds[DS_SIZE]; uint32_t di;
-w rs[DS_SIZE]; uint32_t ri;
+w ds[DS_SIZE]; uintptr_t di;
+w rs[DS_SIZE]; uintptr_t ri;
 
 /* Stacks are circular to avoid the most obvious crashes. */
 #define DI (di&DS_MASK)
@@ -175,21 +176,21 @@ static w pop(void) { w rv = TOP; di--; return rv; }
 static void pushr(w a) { ri++; TOPR= a; }
 static w popr(void) { w rv = TOPR; ri--; return rv; }
 
-// static w index(uint32_t i) { return ds[(di + i) & DS_MASK]; }
+// static w index(uintptr_t i) { return ds[(di + i) & DS_MASK]; }
 
 static void w_dup(w* _) { di++; TOP = SND; }
-static void add(w* _) { SND.u32 += TOP.u32; pop(); }
+static void add(w* _) { SND.u += TOP.u; pop(); }
 
 
 // ?RX ( -- c T | F )
 // Return input character and true, or a false if no input.
 static void rx(w* _) {
     if (cbuf_empty(&forth_in)) {
-        push((w)(uint32_t)0);
+        push((w)(uintptr_t)0);
     }
     else {
-        push((w)(uint32_t)cbuf_get(&forth_in));
-        push((w)(uint32_t)-1);
+        push((w)(uintptr_t)cbuf_get(&forth_in));
+        push((w)(uintptr_t)-1);
     }
 }
 
@@ -206,14 +207,14 @@ void forth_puts(char *s) {
 
 // TX! ( c -- )
 static void tx(w* _) {
-    forth_putchar(pop().u32);
+    forth_putchar(pop().u);
 }
-static void print_hex(uint32_t val, uint32_t nb_digits) {
+static void print_hex(uintptr_t val, uintptr_t nb_digits) {
     const uint8_t c[] = "0123456789ABCDEF";
     // leading zeros are annoying
-    uint32_t dontskip = 0;
+    uintptr_t dontskip = 0;
     for(int digit=nb_digits-1; digit>=0; digit--) {
-        uint32_t d = 0xF&(val>>(4*digit));
+        uintptr_t d = 0xF&(val>>(4*digit));
         dontskip += d;
         if (dontskip || (digit==0)) {
             push((w)c[d]);
@@ -224,7 +225,7 @@ static void print_hex(uint32_t val, uint32_t nb_digits) {
     tx(0);
 }
 static void p(w* _) {
-    print_hex(pop().u32, 8);
+    print_hex(pop().u, 8);
 }
 
 static void fetch(w* _) {
@@ -355,14 +356,17 @@ void words(void) {
 
 w forth_find(const char *word) {
     for(const struct record *r = &dict[0]; r->name; r++) {
-        if(!strcmp(word, r->name)) return r->xt;
+        if(!strcmp(word, r->name)) {
+            //LOG("%s %p\n", word, r->xt.code);
+            return r->xt;
+        }
     }
     return (w)0;
 }
 
-uint32_t forth_accept(uint8_t *buf, uint32_t len) {
+uintptr_t forth_accept(uint8_t *buf, uintptr_t len) {
     /* Written char count. */
-    uint32_t i = 0;
+    uintptr_t i = 0;
     for(;;) {
         uint16_t c = cbuf_peek(&forth_in, i);
         // infof("peek: %d\n", c);
@@ -414,7 +418,7 @@ void forth_write(const uint8_t *buf, uint32_t len) {
     cbuf_write(&forth_in, buf, len);
     uint8_t word[16];
     for(;;) {
-        uint32_t len = forth_accept(word, sizeof(word)-1);
+        uintptr_t len = forth_accept(word, sizeof(word)-1);
         if (!len) return;
         if (len>sizeof(word)-1) len = sizeof(word)-1;
 
@@ -426,8 +430,8 @@ void forth_write(const uint8_t *buf, uint32_t len) {
         }
         else {
             /* Words that are not defined are interpreted as hex. */
-            uint32_t lit;
-            if (0 == read_hex_nibbles_check(&word[0], len, &lit)) {
+            uintptr_t lit;
+            if (0 == read_hex_nibbles_check_uptr(&word[0], len, &lit)) {
                 //infof("lit: %08x %s\n", lit, word);
                 push((w)lit);
             }
@@ -442,7 +446,7 @@ void forth_write(const uint8_t *buf, uint32_t len) {
 
 // FIXME: This is hardcoded to info_putchar.
 // Wrap forth_write (command to interpeter) with echo to info log.
-void forth_write_echo(const uint8_t *buf, uint32_t len) {
+void forth_write_echo(const uint8_t *buf, uintptr_t len) {
     while(len) {
         uint8_t c = *buf++; len--;
         forth_putchar(c);

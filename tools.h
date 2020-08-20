@@ -41,6 +41,21 @@ static inline int32_t read_hex_nibbles_check(const uint8_t *buf, int nibbles,
     return 0;
 }
 
+static inline int32_t read_hex_nibbles_check_uptr(const uint8_t *buf, int nibbles,
+                                                  uintptr_t *pword) {
+    uintptr_t word = 0;
+    for(int i=0; i<nibbles; i++) {
+        word <<= 4;
+        int rv = hex_char2int_check(buf[i]);
+        if (rv < 0) return rv;
+        word |= 0xF & rv;
+    }
+    *pword = word;
+    return 0;
+}
+
+
+
 /* Read bits from an arbitrary length word stored as a uint32_t array
    in little endian foramt.  This is used for reading SD registers --
    which are big endian so need a swap operation when stored.

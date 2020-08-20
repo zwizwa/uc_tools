@@ -52,6 +52,7 @@ int vinfof(const char *fmt, va_list ap) {
             while (is_digit(*fmt)) {nb_digits = *fmt-'0'; fmt++;}
             switch(*fmt) {
             case 0: break;
+            case 'p':
             case 'X':
             case 'x': fmt++; info_hex(va_arg(ap,int),nb_digits); break;
             case 'd': fmt++; info_decimal(va_arg(ap, int));      break;
