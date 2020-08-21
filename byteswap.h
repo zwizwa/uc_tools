@@ -71,7 +71,8 @@ CT_ASSERT_STRUCT_SIZE(byteswap_field, 2);
 /* Fields is null-terminated (len==0 and swap is ingored).  That is
    more memory effcient and much more convenient for code generators.
    If buffer is NULL then this is run for side effect only, which is
-   to compute the total size of the structs. */
+   to compute the total size of the structs.  An explicit function is
+   used for that case to make code more readable. */
 static inline uint32_t byteswap_fields(const struct byteswap_field *fields, void *buf0) {
     uint8_t *buf = buf0;
     for(uint32_t i=0; fields->len; i++,fields++) {
@@ -81,6 +82,9 @@ static inline uint32_t byteswap_fields(const struct byteswap_field *fields, void
         buf += fields->len;
     }
     return buf - ((uint8_t*)buf0);
+}
+static inline uint32_t byteswap_fields_total_size(const struct byteswap_field *fields) {
+    return byteswap_fields(fields, 0);
 }
 
 /* Same but out-of-place. */

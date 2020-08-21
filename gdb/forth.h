@@ -7,21 +7,6 @@ union word;
 typedef void (*code_fn)(union word *);
 typedef void (*void_fn)(void);
 
-#ifndef FORTH_THUMB
-#define FORTH_THUMB
-#endif
-
-#ifdef FORTH_THUMB
-struct word_tag {
-    uintptr_t u;
-};
-#else
-struct word_tag {
-    uintptr_t u;
-    uintptr_t tag;
-};
-#endif
-
 union word {
     int i;
     /* Changed to uintptr to make it run on 64 bit. */
@@ -33,25 +18,14 @@ union word {
     void_fn vcode;
     union word *pw;
     const union word *cpw;
-    struct word_tag tag;
 };
 typedef union word w;
 
 
-/* ARM: */
-#ifdef FORTH_THUMB
 static inline uintptr_t word_tag(w w) {
+    /* ARM: */
     return w.u & 3;
 }
-#else
-/* Any other abstract architecture where there are no extra bits that
-   can be used in a machine pointer.  Just an idea. */
-static inline uintptr_t word_tag(w w) {
-    return w.tag.tag;
-}
-#endif
-
-
 
 
 void forth_start(void);

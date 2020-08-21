@@ -50,7 +50,7 @@ static inline void hw_flash_program_half_word(uint32_t address, uint16_t data) {
     hw_flash_wait_for_last_operation();
     FLASH_CR &= ~FLASH_CR_PG;
 }
-#else
+#else // if 1
 // For testing only: delegate to to libopencm3 calls.
 static inline void hw_flash_erase_page(uint32_t addr) {
     return flash_erase_page(addr);
@@ -68,7 +68,7 @@ static inline void hw_flash_program_half_word(uint32_t address, uint16_t data) {
     flash_program_half_word(address, data);
 }
 
-#endif
+#endif // if 1
 
 
 
@@ -106,7 +106,35 @@ static inline int32_t hw_flash_write(uint32_t addr, const uint8_t *b_buf,
     hw_flash_lock();
     return rv;
 }
-#else
+/* Write + erase automatically on page boundary.  */
+static inline int32_t hw_flash_write_and_erase(
+    uint32_t flash_page_size_log,
+    uint32_t addr, const uint8_t *b_buf,
+    uint32_t len) {
+
+    uint32_t page_mask = (1 << flash_page_size_log) - 1;
+    int32_t rv = 0;
+    uint16_t *hw_buf = (uint16_t *)b_buf; // FIXME: unaligned access allowed?
+    uint32_t nb_half_words = len / 2;
+    hw_flash_unlock();
+    while (nb_half_words--) {
+
+        if (!(addr & page_mask)) {
+            hw_flash_erase_page(addr);
+            if ((rv = hw_flash_check_eop())) break;
+        }
+
+        hw_flash_program_half_word(addr, *hw_buf);
+        if ((rv = hw_flash_check_eop())) break;
+        addr += 2;
+        hw_buf += 1;
+    }
+    hw_flash_lock();
+    return rv;
+}
+
+
+#else // defined (STM32F1)
 
 //#warning NO_FLASH_SUPPORT
 
@@ -118,7 +146,14 @@ static inline int32_t hw_flash_write(uint32_t addr, const uint8_t *b_buf,
                                      uint32_t len) {
     return 0;
 }
+static inline int32_t hw_flash_write_and_erase(
+    uint32_t flash_page_size_log,
+    uint32_t addr, const uint8_t *b_buf,
+    uint32_t len) {
 
-#endif
+    return 0;
 
-#endif
+#endif // defined (STM32F1)
+
+#endif // MEMORY_H
+

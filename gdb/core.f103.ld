@@ -20,6 +20,7 @@ ENTRY (reset_handler)
 
 /* Include the common ld script. */
 
+
 /* Locally modified version of
    libopencm3/lib/libopencm3_stm32f1.ld */
 
@@ -153,7 +154,7 @@ PROVIDE(_stack = ORIGIN(ram) + LENGTH(ram));
 PROVIDE(_service = 0x08000150);
 
 /* Boot loader config block. */
-PROVIDE(_config = 0x08002800);
+PROVIDE(_config = 0x8002800);
 
 /* Data store. */
 PROVIDE(_store = 0x08030000);
