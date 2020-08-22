@@ -196,10 +196,27 @@ struct gdbstub_config {
      * plain log messages or formatted text going back to host. */
     const char *protocol2;
 
-    /* 15: Reserved */
-    void *reserved_15[1+16];
+    /* 15, 16: Firmware address range in Flash.  This is not needed by
+       the gdbstub loader, but makes a the raw binary image
+       self-contained in case of secondary loaders.  E.g. see
+       trampoline.c */
+    const uint8_t *flash_start;
+    const uint8_t *flash_endx;
+
+    /* 17: Reserved */
+    void *reserved_17[32-17];
 };
 extern struct gdbstub_config _config; // FLASH
+
+
+/* Control block, appended to the firmware image after compilation.
+   Currently only contains CRC, but later could contain information
+   that influences the boot process.  Note that this is not used by
+   the gdbstub loader, but it is useful to standardize it here.  See
+   e.g. trampoline.c */
+struct gdbstub_control {
+    uint32_t crc;
+};
 
 
 /* To stop an application, disable all interrupts and call this function. */

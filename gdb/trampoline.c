@@ -6,34 +6,79 @@
    it is obviously correct.
 */
 
+
+/* About partition images.
+
+   - Memory layout.
+
+     The layout is specialized for the 128k Flash STM32F103, which has
+     Flash mapped from 0800 0000 to 0802 0000.
+
+                 | config    | firmware
+     ------------+-----------+----------
+     gdbstub     |           | 0800 0000
+     trampoline  | 0800 2800 | 0800 3000  (this file)
+     partition a | 0800 4000 | 0800 4800
+     partition b | 0801 2000 | 0801 2800
+
+   - This is a secondary loader.  While we re-use the datastructures
+     used by the gdbstub loader for convenience, the first stage
+     loader does not know about partition a,b or CRC checks.  It will
+     merely load this trampoline, which then dispatches to the a,b
+     slots.
+
+   - The C API for defining the gdbstub_config block header is the
+     same for a main application slot, or for the a,b partitions.
+     Location is determined purely by the linker script.
+
+   - The trampoline expects a control block to be appended to the end
+     of the firmware.  At this point, it only contains the CRC, but at
+     a later point it would be possible to add extra boot
+     configuration data that is not included in the firmware binary.
+     E.g. to temporarily disable an image.  This control block is at a
+     Flash erase boundary so can be updated separately.
+*/
+
 #include "base.h"
 #include "gdbstub_api.h"
 #include <string.h>
 #include "crc.h"
 #include "tools.h"
 
+/* Environment used in the functions below. */
 struct pconfig {
     const struct gdbstub_config *config;
     uint32_t max_size;
+    uint32_t page_size;
 };
 
+/* We are specialized to the partitions provided in the linker files,
+   so these are hardcoded. */
+static const struct pconfig part[] = {
+    { .max_size = 0xE000, .page_size = 1<<10, .config = (void*)0x08004000 },
+    { .max_size = 0xE000, .page_size = 1<<10, .config = (void*)0x08012000 },
+};
+
+
 static int is_valid_partition(const struct pconfig *p) {
-    /* The config struct can be dereferenced as we guarantee it points
-       into mapped Flash memory, but it might contain garbage. */
-    uint32_t start_addr = (uint32_t)p->config;
-    uint32_t endx_addr = p->config->bottom;
+    /* The config struct can be dereferenced as we know it points into
+       mapped Flash memory, but it might still contain garbage. */
+    const uint8_t *start = p->config->flash_start;
+    const uint8_t *endx  = p->config->flash_endx;
 
-    /* Do some consistency checks. */
-    if (!endx_addr) return 0;
-    if (endx_addr <= start_addr) return 0;
-    if (endx_addr > (start_addr + (p->max_size - 4))) return 0;
+    /* Make sure it is loaded into flash at the correct address. */
+    if ((void*)start != (void*)p->config) return 0;
 
-    /* We now know that the range points into the region we expect.
-       Retreive the stored 32-bit CRC appended at the end of the
-       image. */
-    uint32_t expected_crc = *(uint32_t*)endx_addr;
-    uint32_t computed_crc = crc32b((uint8_t*)start_addr, endx_addr - start_addr);
-    if (expected_crc != computed_crc) return 0;
+    /* Make sure the image is inside the partition boundaries.  One
+       page is reserved for the control block. */
+    if (endx <= start) return 0;
+    if (endx > (start + (p->max_size - p->page_size))) return 0;
+
+    /* We now know that the firmware and the control block are in
+       meaningful locations.  Compute and check CRC. */
+    const struct gdbstub_control *control = (void*)endx;
+    uint32_t computed_crc = crc32b(start, endx-start);
+    if (control->crc != computed_crc) return 0;
 
     /* We're good. */
     return 1;
@@ -57,17 +102,16 @@ const struct pconfig *pick_most_recent(
     return 0;
 }
 
-/* We are specialized to the partitions provided in the linker files,
-   so these are hardcoded. */
 
 /* Provide wrappers for switch_protocol() and start(). */
 
-static const struct pconfig part[] = {
-    { .max_size = 0xD000, .config = (void*)0x08004000 },
-    { .max_size = 0xD000, .config = (void*)0x08012000 },
-};
-
 void switch_protocol(const uint8_t *buf, uint32_t len) {
+    /* Implementation quirk: this function is called after the static
+       global variables have been initialized for the application's
+       start() function. We are not allowed to use any static memory
+       in this function.  I.e. it is essential that part is static
+       const, so it is guaranteed to be located in our Flash
+       segment. */
     const struct pconfig *p = pick_most_recent(&part[0], &part[1]);
     if (p && p->config->switch_protocol) {
         p->config->switch_protocol(buf, len);
@@ -76,7 +120,9 @@ void switch_protocol(const uint8_t *buf, uint32_t len) {
 }
 void start(void) {
     /* Low level application init.  This needs to be called manually
-       after loading to initialize memory. */
+       after loading to initialize memory.  Note that this will be
+       immediately undone by the application's start() function, if
+       there is one. */
     hw_app_init();
 
     /* The rest is generic and later can go into the library. */
@@ -108,6 +154,7 @@ struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .start           = start,
     .switch_protocol = switch_protocol,
 };
+
 
 
 
