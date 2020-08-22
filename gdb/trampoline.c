@@ -10,6 +10,7 @@
 #include "gdbstub_api.h"
 #include <string.h>
 #include "crc.h"
+#include "tools.h"
 
 struct pconfig {
     const struct gdbstub_config *config;
@@ -38,6 +39,7 @@ static int is_valid_partition(const struct pconfig *p) {
     return 1;
 
 }
+
 const struct pconfig *pick_most_recent(
     const struct pconfig *a, const struct pconfig *b) {
 
@@ -45,8 +47,8 @@ const struct pconfig *pick_most_recent(
     int b_valid = is_valid_partition(b);
     /* Choice, pick the most recent one based on the version string. */
     if (a_valid && b_valid) {
-        return (strcmp(a->config->version,
-                       b->config->version) >= 0) ? a : b;
+        return (mini_strcmp(a->config->version,
+                            b->config->version) >= 0) ? a : b;
     }
     /* No choice. */
     if (a_valid) { return a; }

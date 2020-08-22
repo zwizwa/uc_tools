@@ -72,4 +72,15 @@ static inline uint32_t bitslice(uint32_t *words, uint32_t end, uint32_t start) {
 }
 
 
+
+/* Replacement strcmp, as the one from libc is large. */
+static inline int mini_strcmp(const char *s1, const char *s2) {
+    const uint8_t *p1 = (const uint8_t *)s1;
+    const uint8_t *p2 = (const uint8_t *)s2;
+    while (*p1 && *p1 == *p2) { ++p1; ++p2; }
+    return (*p1 > *p2) - (*p2 > *p1);
+}
+
+
+
 #endif
