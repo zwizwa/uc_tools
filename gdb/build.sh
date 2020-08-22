@@ -106,10 +106,19 @@ case "$TYPE" in
             $O $O_SYSTEM $A $LDLIBS
         ;;
     bin)
+        # Convert .elf to .bin in the most straighforward way.
         assert_vars ARCH ELF BIN
         . $UC_TOOLS/gdb/env.$ARCH.sh
         # $OBJDUMP -d $ELF
         $OBJCOPY -O binary $ELF $BIN
+        ;;
+
+    fw)
+        # Take a .bin produced by previous rule, and append the
+        # control block.
+        assert_vars ARCH BIN FW BIN2FW
+        . $UC_TOOLS/gdb/env.$ARCH.sh
+        $BIN2FW $BIN $FW
         ;;
 
     *)

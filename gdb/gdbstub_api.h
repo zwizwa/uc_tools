@@ -206,6 +206,12 @@ struct gdbstub_config {
     /* 17: Reserved */
     void *reserved_17[32-17];
 };
+
+/* Indices for uint32_t array overlayed on top of config block.  For
+   use in preparing binary firmware images.  See bin2fw.c */
+#define GDBSTUB_CONFIG_INDEX_FLASH_START 15
+#define GDBSTUB_CONFIG_INDEX_FLASH_ENDX  16
+
 extern struct gdbstub_config _config; // FLASH
 
 
@@ -215,8 +221,14 @@ extern struct gdbstub_config _config; // FLASH
    the gdbstub loader, but it is useful to standardize it here.  See
    e.g. trampoline.c */
 struct gdbstub_control {
-    uint32_t crc;
+    uint32_t version;   /* Control block version.  Currently 0, not used. */
+    uint32_t crc;       /* CRC of firmware image. */
+    uint32_t size;      /* Size of control block in bytes. */
 };
+
+#define GDBSTUB_CONTROL_INDEX_VERSION 0
+#define GDBSTUB_CONTROL_INDEX_CRC     1
+#define GDBSTUB_CONTROL_INDEX_SIZE    2
 
 
 /* To stop an application, disable all interrupts and call this function. */

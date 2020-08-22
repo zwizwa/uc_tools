@@ -1,6 +1,3 @@
-/* Tool to create the gdbstub_control block that is appended to a
-   binary firmware image. */
-
 #include "crc.h"
 #include "macros.h"
 #include "gdb/gdbstub_api.h"
