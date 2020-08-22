@@ -112,7 +112,6 @@ case "$TYPE" in
         # $OBJDUMP -d $ELF
         $OBJCOPY -O binary $ELF $BIN
         ;;
-
     fw)
         # Take a .bin produced by previous rule, and append the
         # control block.
@@ -120,7 +119,14 @@ case "$TYPE" in
         . $UC_TOOLS/gdb/env.$ARCH.sh
         $BIN2FW $BIN $FW
         ;;
-
+    data)
+        # Convert binary to elf to be loaded at address.
+        assert_vars ARCH BIN DATA ADDR
+        . $UC_TOOLS/gdb/env.$ARCH.sh
+        assert_vars ELFTYPE
+        # $OBJDUMP -d $ELF
+        $OBJCOPY -I binary -O $ELFTYPE --change-section-address .data=$ADDR $BIN $DATA
+        ;;
     *)
         echo "unknown TYPE=$TYPE"
         exit 1
