@@ -11,7 +11,6 @@
 # Tool Prefix
 [ -z "$TPF" ] && TPF=$UC_TOOLS/../gcc-arm-none-eabi-4_8-2014q2/bin/arm-none-eabi-
 LIBOPENCM3=$UC_TOOLS/../libopencm3
-VERSION=$(cd $UC_TOOLS ; git rev-parse HEAD)
 
 # ---- Implementation
 
