@@ -1,21 +1,18 @@
 #ifndef SM_EVENT_H
 #define SM_EVENT_H
 
-/* An interface to pass data to "poll-style" state machines, and an
-   interpretation of the operation in a CSP setting (synchronous,
-   non-buffered channels).
+/* An implementation of transactional channels for "poll-style" state
+   machines.
 
-   Avoiding extra buffering is the core idea here.  That is why the
-   Actor model (mailboxes, or buffered channels) is not useful.  We
-   don't want to pay the memory overhead of dropping the data into a
-   buffer.  We want to handle it when it is available and reclaim the
-   storage immediately.
-
+   This abstraction resembles CSP-style synchronous non-buffered
+   channels (as opposed to say Actor-style mailboxes).  Avoiding
+   buffering is an essential requirement in the use case this was
+   constructed for.
 
 
    But first: why use poll-style machines in the first place?  Why not
-   build an entire application in CSP and have the correct semantics
-   by design?
+   build an entire application on top of a CSP style scheduler, and
+   have the correct semantics by design?
 
    The reason is implementation simplicity.  If power consumption is
    not an issue, a busy poll loop avoids the need of a scheduler and
@@ -31,10 +28,10 @@
    be turned into callbacks or ready queues.  This can save a
    substantial amount of code and bookkeeping data.
 
-   Note that semantically, there is no real difference: events also
-   represent conditions.  It is just that representation in C becomes
-   very straightforward.  I.e. the line above would be equivalent to a
-   blocking call:
+   Note that semantically, there is no essential difference: events
+   also represent conditions.  It is just that representation in C
+   becomes very straightforward.  I.e. the line above would be
+   equivalent to a blocking call:
 
        receive_event();
 
@@ -72,6 +69,17 @@
    where the writer can wait for the condition that a transaction is
    completed, essentially implementing CSP.
 
+   Note however that this abstraction is not entirely the same as a
+   CSP channel.  Here is a counterexample: task A writes to task B,
+   task B reads and re-uses the same channel to write to task A, and
+   task A reads again.  This is valid in CSP, but cannot be
+   represented in the model in this file without extra annotation,
+   e.g. a transaction counter.  We stick to the simple implementation
+   and add the additional constraint that a channel is unidirectional,
+   which allows changes betwen NULL and non-NULL to be used to
+   indicate transactions.  If two-way traffic is needed, e.g. to
+   implement rpc, use two channels.  This makes the interface to async
+   communication simpler as well.
 */
 
 struct sm_channel {
