@@ -55,14 +55,14 @@ int main(int argc, char **argv) {
     ASSERT(endx  == start + len_padded);
 
     /* Fill the control block. */
-    uint32_t crc = crc32b((uint8_t*)fw, len_padded);
-    LOG("crc    = 0x%08x\n", crc);
-    uint32_t *control = fw + len_padded/4;
+    uint32_t fw_crc = crc32b((uint8_t*)fw, len_padded);
+    LOG("crc    = 0x%08x\n", fw_crc);
+    struct gdbstub_control *control = (void*)(fw + len_padded/4);
 
-    control[GDBSTUB_CONTROL_INDEX_VERSION] = 0; // not yet uesd
-    control[GDBSTUB_CONTROL_INDEX_SIZE]    = block_size;
-    control[GDBSTUB_CONTROL_INDEX_CRC]     = crc;
-
+    control->version = 0;
+    control->fw_crc = fw_crc;
+    control->size = sizeof(*control);
+    control->ctrl_crc = crc32b((uint8_t*)control, control->size - 4);
 
     /* Write out the .fw image = padded .bin + control block appended. */
     ASSERT(f_fw = fopen(argv[2], "w"));

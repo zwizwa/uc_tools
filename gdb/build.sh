@@ -56,7 +56,10 @@ assert_vars() {
 
 
 assert_vars UC_TOOLS
-[ -z "$VERSION" ] && VERSION=current
+if [ -z "$VERSION" ] ; then
+    VERSION=current
+    #echo "WARNING: VERSION=current"
+fi
 
 case "$TYPE" in
     o)

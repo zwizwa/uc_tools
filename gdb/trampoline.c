@@ -60,7 +60,7 @@ static const struct pconfig part[] = {
 };
 
 
-static int is_valid_partition(const struct pconfig *p) {
+static const struct gdbstub_control *valid_partition(const struct pconfig *p) {
     /* The config struct can be dereferenced as we know it points into
        mapped Flash memory, but it might still contain garbage. */
     const uint8_t *start = p->config->flash_start;
@@ -75,23 +75,49 @@ static int is_valid_partition(const struct pconfig *p) {
     if (endx > (start + (p->max_size - p->page_size))) return 0;
 
     /* We now know that the firmware and the control block are in
-       meaningful locations.  Compute and check CRC. */
+       meaningful locations. */
     const struct gdbstub_control *control = (void*)endx;
-    uint32_t computed_crc = crc32b(start, endx-start);
-    if (control->crc != computed_crc) return 0;
 
-    /* We're good. */
-    return 1;
+    /* The next value we need to trust is the size of the control
+       block.  The CRC for the control block is stored after the
+       control block.  Check that location of CRC slot is within the
+       page reserved for the control block... */
+    if (control->size > p->page_size) return 0;
+    /* ... and that the entire struct is accounted for. */
+    if (control->size < sizeof(*control)) return 0;
+
+    /* Validate control block. */
+    uint32_t computed_ctrl_crc = crc32b((void*)control, control->size - 4);
+    if (control->ctrl_crc != computed_ctrl_crc) return 0;
+
+    /* We can now trust what is inside the control block. */
+
+    /* The version tag is for future extensions after the format
+       stabilizes and should be 0 for now. */
+    if (control->version != 0) return 0;
+
+    /* Compute and check firmware CRC. */
+    uint32_t computed_fw_crc = crc32b(start, endx-start);
+    if (control->fw_crc != computed_fw_crc) return 0;
+
+    /* We're good.  Caller can trust contents of control block to make
+       boot decisions other than version compare. */
+    return control;
 
 }
 
-const struct pconfig *pick_most_recent(
+const struct pconfig *choose_partition(
     const struct pconfig *a, const struct pconfig *b) {
 
-    int a_valid = is_valid_partition(a);
-    int b_valid = is_valid_partition(b);
-    /* Choice, pick the most recent one based on the version string. */
+    const struct gdbstub_control *a_valid = valid_partition(a);
+    const struct gdbstub_control *b_valid = valid_partition(b);
+
+    /* Choice:
+       1. If priority is decisive, use that.
+       2. Use version string. */
     if (a_valid && b_valid) {
+        if (a_valid->priority > b_valid->priority) return a;
+        if (b_valid->priority > a_valid->priority) return b;
         return (mini_strcmp(a->config->version,
                             b->config->version) >= 0) ? a : b;
     }
@@ -112,7 +138,7 @@ void switch_protocol(const uint8_t *buf, uint32_t len) {
        in this function.  I.e. it is essential that part is static
        const, so it is guaranteed to be located in our Flash
        segment. */
-    const struct pconfig *p = pick_most_recent(&part[0], &part[1]);
+    const struct pconfig *p = choose_partition(&part[0], &part[1]);
     if (p && p->config->switch_protocol) {
         p->config->switch_protocol(buf, len);
         return;
@@ -126,7 +152,7 @@ void start(void) {
     hw_app_init();
 
     /* The rest is generic and later can go into the library. */
-    const struct pconfig *p = pick_most_recent(&part[0], &part[1]);
+    const struct pconfig *p = choose_partition(&part[0], &part[1]);
     if (p) p->config->start();
 }
 
@@ -145,6 +171,8 @@ const char config_manufacturer[] CONFIG_DATA_SECTION = MANUFACTURER;
 const char config_product[]      CONFIG_DATA_SECTION = PRODUCT;
 const char config_firmware[]     CONFIG_DATA_SECTION = FIRMWARE;
 const char config_version[]      CONFIG_DATA_SECTION = BUILD;
+
+
 
 struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .manufacturer    = config_manufacturer,
