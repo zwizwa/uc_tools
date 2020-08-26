@@ -43,6 +43,9 @@
 # - All used variables should be checked with the need() function to
 #   show proper error messages on misconfiguration.
 
+set -e
+# set -x
+
 assert_vars() {
     for var in $@; do
         # echo "checking $var=\"$(eval "echo \$$var")\"" >&2
@@ -90,6 +93,7 @@ case "$TYPE" in
         # Objects is allowed to be empty for empty stub libs
         assert_vars A
         ar -r $A $OBJECTS 2>/dev/null
+        #|| echo "ERROR: ar" >&2
         ;;
     ld)
         assert_vars LD_GEN LD

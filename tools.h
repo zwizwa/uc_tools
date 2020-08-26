@@ -80,7 +80,18 @@ static inline int mini_strcmp(const char *s1, const char *s2) {
     while (*p1 && *p1 == *p2) { ++p1; ++p2; }
     return (*p1 > *p2) - (*p2 > *p1);
 }
+static inline char *mini_strcpy(char *dst, const char *src) {
+    while(*src) { *dst++ = *src++; }
+    return dst;
+}
 
+/* Round to the next power of two. */
+static inline uint32_t aligned_block(uint32_t log2, uint32_t val) {
+    return ((val-1)>>log2)+1;
+}
+static inline uint32_t aligned_bytes(uint32_t val, uint32_t log2) {
+    return aligned_block(log2, val) << log2;
+}
 
 
 #endif
