@@ -42,7 +42,8 @@ static inline uintptr_t log_entry_for(
     void *ctx) {
     for(;;) {
         const uint8_t *next = log_entry_next(buf, len);
-        uintptr_t status = f(ctx, buf, len);
+        uintptr_t msg_len = next ? (next-buf) : len;
+        uintptr_t status = f(ctx, buf, msg_len);
         /* Allow early stop. */
         if (status) return status;
         if (!next) return 0;
@@ -76,8 +77,10 @@ static inline const uint8_t *log_entry_for_line(
             i++;
         }
         /* By guarding for the empty line condition, it is guaranteed
-           that i > 0 so progress occurs. */
+           that the loop body was executed once, and thus i > 0, so
+           progress occurs. */
         f(ctx, buf, i);
+        i++;
         buf += i;
         len -= i;
     }

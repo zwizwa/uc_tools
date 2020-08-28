@@ -35,8 +35,8 @@
 
    This should be written as core iterators aimed to be integrated
    into another framework.  I have two things in mind atm: SQLite3
-   plugins (Carray?), and integration into Lua for use in an existing
-   test system.
+   virtual tables and integration into Lua for use in an existing test
+   system.
 
    Integration into existing Erlang / exo infrastructure can probably
    be done via SQLite.
@@ -45,7 +45,11 @@
 
    - create iterators for memory-mapped files
 
-   - expose this as a sqlite3 plugin
+   - expose this as a sqlite3 virtual table plugin
+
+   - integrate with logan
+
+   - make a Rust version / wrapper?
 
 */
 
@@ -54,14 +58,19 @@
 #include "assert_mmap.h"
 #include <stdint.h>
 
+
+// https://sqlite.org/src/file/ext/misc/csv.c
+// https://sqlite.org/c3ref/create_module.html
+// https://sqlite.org/vtab.html
+
 void log_header_line(void *ctx, const uint8_t *msg, uintptr_t len) {
-    LOG("  l: %p %d\n", msg, len);
+    LOG("%p\t  l: %d\n", msg, len);
 }
 
 uintptr_t log_entry(void *ctx, const uint8_t *msg, uintptr_t len) {
-    LOG(" e: %p %d\n", msg, len);
+    LOG("%p\t e: %d\n", msg, len);
     const uint8_t *body = log_entry_for_line(msg, len, log_header_line, 0);
-    LOG("  b: %p %d\n", body, len - (body - msg));
+    LOG("%p\t  b: %d\n", body, len - (body - msg));
     return 0; // continue
 }
 
@@ -72,9 +81,9 @@ int main(int argc, char **argv) {
         ASSERT(argc == 3);
         off_t size = 0;
         const uint8_t *mem = assert_mmap_rdonly(argv[2], 0, &size);
-        LOG("f: %p %d\n", mem, size);
+        LOG("%p\t f: %d\n", mem, size);
         uintptr_t hdr_len = log_entry_header(mem, size);
-        LOG(" h: %p %d\n", mem, hdr_len);
+        LOG("%p\t 0: %d\n", mem, hdr_len);
         log_entry_for(mem+hdr_len, size-hdr_len, log_entry, 0);
     }
     return 0;
