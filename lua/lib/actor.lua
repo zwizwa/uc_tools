@@ -7,7 +7,11 @@ local function log_desc(thing) log(prompt.describe(thing)) end
 local actor = { scheduler = {}, task = {} }
 
 function actor.scheduler.new()
-   local s = { hot = {}, cold = {} }
+   local s = {
+      hot = {},
+      -- Cold list is not necessary
+      -- cold = {},
+   }
    setmetatable(s, { __index = actor.scheduler })
    return s
 end
@@ -30,15 +34,15 @@ end
 
 function actor.scheduler:make_hot(task)
    self.hot[task] = true
-   self.cold[task] = nil
+   --self.cold[task] = nil
 end
 function actor.scheduler:make_cold(task)
    self.hot[task] = nil
-   self.cold[task] = true
+   --self.cold[task] = true
 end
 function actor.scheduler:make_dead(task)
    self.hot[task] = nil
-   self.cold[task] = nil
+   --self.cold[task] = nil
 end
 
 function actor.scheduler:spawn(body, init)
@@ -48,8 +52,12 @@ function actor.scheduler:spawn(body, init)
 end
 
 function actor.scheduler:send(task, msg)
-   table.insert(task.mbox, msg)
-   self:make_hot(task)
+   if task.mbox then
+      table.insert(task.mbox, msg)
+      self:make_hot(task)
+   else
+      -- A task without a mbox is a dead task.
+   end
 end
 
 function actor.task.new(scheduler, body, t)
@@ -77,7 +85,10 @@ function actor.task:resume()
 end
 
 function actor.task:halt()
+   -- Remove from hot list.  Any scheduled messages are lost.
    self.scheduler:make_dead(self)
+   -- To ensure that nothing will reschedule us, remove the mailbox.
+   self.mbox = nil
    return
 end
 
