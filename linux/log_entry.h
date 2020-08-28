@@ -51,4 +51,34 @@ static inline uintptr_t log_entry_for(
     }
 }
 
+/* Assuming buf points to an entry. */
+static inline const uint8_t *log_entry_for_line(
+    const uint8_t *buf, uintptr_t len,
+    void (*f)(void *ctx, const uint8_t *msg, uintptr_t len),
+    void *ctx) {
 
+    /* Iterate over lines until stop condition is reached, then return
+       the offset of the entry, or 0 if there was an unexpected end of
+       file, which returns NULL. */
+    for(;;) {
+        if (!len) return 0;
+        /* At least one char at this point.  Check for the normal end
+           condition, which is an empty line. */
+        if (buf[0] == '\n') return &buf[1];
+        /* There is a new line.  Scan for end of line and pass it to
+           callback. */
+        uintptr_t i = 0;
+        for(;;) {
+            /* Check for unexpected end of file.  We don't pass it to
+               the callback in this case. */
+            if (i >= len) return 0;
+            if (buf[i] == '\n') break;
+            i++;
+        }
+        /* By guarding for the empty line condition, it is guaranteed
+           that i > 0 so progress occurs. */
+        f(ctx, buf, i);
+        buf += i;
+        len -= i;
+    }
+}
