@@ -23,7 +23,7 @@ function test_send_recv()
       end
    end
 
-   local receiver = sched:spawn(receiver_body, {name = "receiver"})
+   local receiver = sched:spawn(receiver_body)
 
    local function sender_body(self)
       log("sender start\n")
@@ -32,7 +32,7 @@ function test_send_recv()
       end
    end
 
-   sched:spawn(sender_body, {name = "sender"})
+   sched:spawn(sender_body)
 
    sched:schedule()
 end

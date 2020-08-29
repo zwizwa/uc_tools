@@ -55,7 +55,9 @@ function webserver.start(port)
       -- then get pushed into the mailbox of a task.
       local asocket = lsocket:accept()
       local buf = linebuf:new()
-      local task = scheduler:spawn(serve, { socket = asocket })
+      local task = scheduler:task()
+      task.socket = asocket
+      scheduler:spawn(serve, task)
       buf.push_line = function(self, line)
          task:send(line) -- deliver
          scheduler:schedule() -- propagate
