@@ -1,4 +1,9 @@
 -- I/O functionality for actor.lua based on libuv.
+--
+-- These are small wrappers that all have the same style: for a libuv
+-- event, set up a callback that will send a message and then run the
+-- actor scheduler.
+
 local actor = require('lib.actor')
 local uv = require('lluv')
 
@@ -11,8 +16,10 @@ end
 local actor_uv = {}
 
 -- Deliver a message in the future.
-function actor_uv.send_after(task, msg, ms)
-   local t = uv.timer()
+function actor_uv.send_after(task, msg, ms, t)
+   if not t then
+      t = uv.timer()
+   end
    t:start(
       ms, 0,
       function(timer)
@@ -20,10 +27,17 @@ function actor_uv.send_after(task, msg, ms)
          task:send(msg) -- deliver
          task.scheduler:schedule() -- propagate
       end)
-   -- For future extensions, e.g. to allow cancellable sends.
    return t
 end
 
+function actor_uv.sleep(task, ms)
+   local t = uv.timer()
+   -- A token is needed for use in the recv filter.  If we create our
+   -- own private timer we can use that as a guaranteed unique token.
+   local msg0 = t
+   actor_uv.send_after(task, msg0, ms, t)
+   task:recv(function(msg) return msg0 == msg end)
+end
 
 -- A TCP server
 function actor_uv.spawn_tcp_server(scheduler, config, serve)
@@ -42,7 +56,9 @@ function actor_uv.spawn_tcp_server(scheduler, config, serve)
          end,
          task)
 
-      -- Configure how data will be pushed into the actor network.
+      -- Configure how data will be pushed into the actor network.  It
+      -- seems simpler to do this at the write end as opposed to the
+      -- read end.
       local push
       if config.mode == 'line' then
          -- Line buffer is presented with chunks from the socket,
@@ -76,7 +92,6 @@ function actor_uv.spawn_tcp_server(scheduler, config, serve)
                push(data)
             end
          end)
-
 
    end
    local lsocket = uv.tcp()
