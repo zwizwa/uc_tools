@@ -1,5 +1,9 @@
 #!/usr/bin/lua
 
+-- This tests the actor library in isolation.  It does not have any
+-- bindings to i/o events, which is what you always want in a
+-- practical setting.  For that see test_actor_uv.lua
+
 local prompt = require('prompt')
 local function log(str) io.stderr:write(str) end
 local function log_desc(thing) log(prompt.describe(thing)) end
@@ -24,7 +28,7 @@ function test_send_recv()
    local function sender_body(self)
       log("sender start\n")
       for i=1,10 do
-         self:send(receiver, "hello")
+         receiver:send("hello")
       end
    end
 
@@ -32,6 +36,5 @@ function test_send_recv()
 
    sched:schedule()
 end
-
 
 test_send_recv()

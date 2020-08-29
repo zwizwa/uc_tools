@@ -38,8 +38,44 @@ end
 function actor.scheduler:make_hot(task)  self.hot[task] = true end
 function actor.scheduler:make_cold(task) self.hot[task] = nil  end
 
-function actor.scheduler:spawn(body, init)
-   local task = actor.task.new(self, body, init)
+
+-- Spawning is optionally a two-step process to be able to create
+-- circular task references.  task.new() creates the task structure
+-- such that it is ready to receive messages but doesn't yet have
+-- behavior attached, while scheduler.spawn will attach code to it and
+-- optionally create a new task structure if it wasn't passed in.
+
+
+-- The code below is to make sure that tasks get garbage-collected
+-- properly.  These are just to give an indication during development
+-- and are left here commented-out for reference.  Measurement on x64
+-- gave 500 bytes for coroutine_size.
+--
+-- -- It appears that __gc method on Lua tables doesn't work, so use a
+-- -- dummy ffi cdata object to attach a finalizer.
+-- local ffi = require('ffi')
+-- ffi.cdef('struct test_gc { uint32_t dummy; }')
+-- local ctype = ffi.typeof('struct test_gc')
+-- function test_gc()
+--    local cdata = ffi.new(ctype)
+--    ffi.gc(cdata, function() io.stderr:write("gc\n") end)
+--    return cdata
+-- end
+
+function actor.scheduler:task()
+   return actor.task.new(self)
+end
+
+function actor.scheduler:spawn(body, task)
+   if not task then task = self:task() end
+   -- task.test_gc = test_gc()
+   -- local m1 = collectgarbage('count')
+   task.coroutine = coroutine.create(function() body(task) ; task:exit() end)
+   -- local m2 = collectgarbage('count')
+   -- log("coroutine_size(kb): " .. 1024*(m2-m1) .."\n")
+   -- Note that we only create the coroutine and do not resume.
+   -- Spawning is an asynchronous operation just like sending a
+   -- message.
    self:make_hot(task)
    return task
 end
@@ -55,33 +91,13 @@ function actor.scheduler:send(task, msg)
    end
 end
 
--- Test to make sure that tasks get garbage-collected properly.  These
--- are just to give an indication during development and are left here
--- commented-out for reference.  Measurement on x64 gave 500 bytes for
--- coroutine_size.
---
--- -- It appears that __gc method on Lua tables doesn't work, so use a
--- -- dummy ffi cdata object to attach a finalizer.
--- local ffi = require('ffi')
--- ffi.cdef('struct test_gc { uint32_t dummy; }')
--- local ctype = ffi.typeof('struct test_gc')
--- function test_gc()
---    local cdata = ffi.new(ctype)
---    ffi.gc(cdata, function() io.stderr:write("gc\n") end)
---    return cdata
--- end
 
-function actor.task.new(scheduler, body, t)
-   if not t then t = {} end
-   t.mbox = {}
-   t.scheduler = scheduler
-   -- t.test_gc = test_gc()
-   setmetatable(t, { __index = actor.task })
-   --local m1 = collectgarbage('count')
-   t.coroutine = coroutine.create(function() body(t) ; t:exit() end)
-   --local m2 = collectgarbage('count')
-   --log("coroutine_size(kb): " .. 1024*(m2-m1) .."\n")
-   return t
+-- Create a task that is ready to accept messages.  It needs a
+-- mailbox, a scheduler reference, and the metatable.
+function actor.task.new(scheduler)
+   task = { mbox = {}, scheduler = scheduler }
+   setmetatable(task, { __index = actor.task })
+   return task
 end
 
 function actor.task:resume()
