@@ -4,11 +4,6 @@
 -- For a usage example, see webserver.lua
 -- For a C version, see ns_actor.h actor.h test_actor.c
 --
--- Note that many of Erlang's features are not implemented: links,
--- monitors, distribution, smp.  Most notable missing feature is an
--- ability to filter the message queue, which is essential to
--- implement some patterns.  That will probably need to be added
--- before this is practically useful.
 
 local prompt = require('prompt')
 local function log(str) io.stderr:write(str) end
@@ -110,7 +105,7 @@ end
 -- mailbox, a scheduler reference, and the metatable.  It is not yet
 -- associated to a coroutine.
 function actor.task.new(scheduler)
-   task = { mbox = {}, scheduler = scheduler }
+   task = { mbox = {}, scheduler = scheduler, monitor = {} }
    setmetatable(task, { __index = actor.task })
    return task
 end
@@ -138,9 +133,15 @@ function actor.task:resume()
    return status
 end
 
-function actor.task:exit()
+function actor.task:exit(reason)
+   -- Send a message to all tasks monitoring this one.  FIXME: API
+   -- will need to be tuned still.  E.g. use arrays or type= maps?
+   for ref, tsk in pairs(self.monitor) do
+      tsk:send({'down', ref, task, reason})
+   end
    -- Remove from hot list to make sure scheduler will not try to
-   -- resume this task.
+   -- resume this task.  Do this after sending monitor message to
+   -- handle degenerate self-monitor.
    self.scheduler:remove(self)
    -- To ensure that nothing will reschedule us through send, remove
    -- the mailbox as an indication that task is dead.  Any un-handled
