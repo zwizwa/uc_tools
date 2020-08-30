@@ -31,7 +31,8 @@ local function serve(self)
          "<h1>Hello1</h1>")
    else
       log("->404\n")
-      self.socket:write("HTTP/1.1 404 Not Found\r\n\r\n404\r\n")
+      self.socket:write(
+         "HTTP/1.1 404 Not Found\r\n\r\n404\r\n")
    end
 end
 

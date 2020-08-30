@@ -101,7 +101,7 @@ function actor.scheduler:send(task, msg)
    else
       -- A task without a mbox is a dead task.  Messages sent to dead
       -- tasks will be dropped.
-      log("sending to dead task\n")
+      -- log("sending to dead task\n")
    end
 end
 
@@ -119,7 +119,7 @@ function actor.task:resume()
    local co = self.coroutine
    local ok, rv = coroutine.resume(co)
    if not ok then
-      log("resume->false\n")
+      -- log("resume->false\n")
       self:exit()
       local statusmsg = coroutine.status(co)
       local traceback = debug.traceback(co)
@@ -149,13 +149,18 @@ function actor.task:exit()
    return
 end
 
--- Receive blocks, send doesn't
+-- Send never blocks.  It appends the message to the task's mailbox
+-- and marks the task 'hot', to be scheduled at the next occasion.
 function actor.task:send(msg)
    self.scheduler:send(self, msg)
 end
+
+-- Receive blocks if there are no available messages.  Note that a
+-- filtering mechanism is necessary for implementing message priority
+-- schemes.  See e.g. the implementation of actor_uv.sleep.
 function actor.task:recv(filter)
    if not filter then
-      -- This picks the first available message.
+      -- Pick the first available message if no filter is specified.
       filter = function() return true end
    end
    while true do
