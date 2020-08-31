@@ -42,7 +42,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
    access to whatever the tap interface is bridged to.
 */
 
-#define _POSIX_C_SOURCE 1
+/* FIXME: Document this properly. Other parts of uc_tools have this
+   configured incorrectly. */
+#define _POSIX_C_SOURCE 199309L
+#include <sys/timerfd.h>
 
 #include "packet_bridge.h"
 #include "tcp_tools.h"
@@ -249,6 +252,45 @@ struct port *port_open_udp(uint16_t port) {
 
     return &p->p;
 }
+
+/***** 1.3 TIMERFD */
+
+/* See man 2 timerfd_create.  The packet consists of a uint64_t.  One
+   is returned per expiration. */
+struct timerfd_port {
+    struct port p;
+};
+static ssize_t timerfd_read(struct timerfd_port *p, uint8_t *buf, ssize_t len) {
+    return read(p->p.fd, buf, sizeof(uint64_t));
+}
+static ssize_t timerfd_write(struct timerfd_port *p, uint8_t *buf, ssize_t len) {
+    LOG("WARNING: timerfd is read-only\n");
+    return len;
+}
+struct port *port_open_timerfd_stream(long ms) {
+    struct timerfd_port *p;
+    ASSERT(p = malloc(sizeof(*p)));
+    memset(p,0,sizeof(*p));
+    int clockid = CLOCK_MONOTONIC;
+    int create_flags = 0;
+    int fd;
+    ASSERT_ERRNO(fd = timerfd_create(clockid, create_flags));
+    p->p.fd = fd;
+    p->p.fd_out = fd; // not used
+    p->p.read  = (port_read_fn)timerfd_read;
+    p->p.write = (port_write_fn)timerfd_write;
+    int settime_flags = 0;
+    time_t s  =  ms / 1000;
+    long   ns = (ms % 1000) * 1000000;
+    //LOG("s=%d ns=%d\n", s, ns);
+    struct itimerspec itimerspec = {
+        .it_interval = { .tv_sec = s, .tv_nsec = ns },
+        .it_value    = { .tv_sec = s, .tv_nsec = ns },
+    };
+    timerfd_settime(fd, settime_flags, &itimerspec, NULL);
+    return &p->p;
+}
+
 
 
 /***** 2. STREAM INTERFACES */
@@ -1147,6 +1189,16 @@ struct port *port_open(const char *spec_ro) {
             uint16_t len_bytes = atoi(framing);
             return port_open_packetn_tcp_connect(len_bytes, host, tcp_port);
         }
+    }
+
+    if (!strcmp(tok, "TIMERFD")) {
+        // FIXME: Rethink API.  For now I just need milliseconds, periodic.
+        ASSERT(tok = strtok(NULL, delim));
+        const char *ms_str = tok;
+        long ms = atol(ms_str);
+        ASSERT(ms > 0);
+        ASSERT(NULL == (tok = strtok(NULL, delim)));
+        return port_open_timerfd_stream(ms);
     }
 
     // -:<framing>
