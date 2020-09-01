@@ -4,6 +4,7 @@
 -- For a usage example, see webserver.lua
 -- For a C version, see ns_actor.h actor.h test_actor.c
 --
+-- See bottom of this file for more notes.
 
 local prompt = require('prompt')
 local function log(str) io.stderr:write(str) end
@@ -175,3 +176,26 @@ function actor.task:recv(filter)
 end
 
 return actor
+
+
+-- Unresolved questions
+--
+-- 1. Direct vs. indirect references.
+--
+--    Currently, direct references are used.  This allows tasks to be
+--    garbage-collected.  Why would indirect references be preferable?
+--    One thing I can think of is naming tasks in a different object
+--    space, e.g. a different Lua process or a different physical
+--    machine, as Erlang can do.  That is outside of the scope of this
+--    implementation.  Any other reasons?
+--
+-- 2. Efficiency of mailbox implementation.  Minor.  The properties
+--    I'm looking for are simplicty, convenience, and memory
+--    efficiency, not so much run time efficiency.  Event systems
+--    mostly do nothing.
+--
+--
+
+
+
+

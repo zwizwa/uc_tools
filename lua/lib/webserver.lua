@@ -8,6 +8,9 @@ local actor     = require('lib.actor')
 local actor_uv  = require('lib.actor_uv')
 local scheduler = actor.scheduler.new()
 
+local lxml      = require('lib.lxml')
+local xml       = lxml.elements_to_string
+
 local function log(str)
    io.stderr:write(str)
 end
@@ -28,7 +31,9 @@ local function serve(self)
       log("->200\n")
       self.socket:write(
          "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n" ..
-         "<h1>Hello1</h1>")
+          xml({{'h1',{},{'Hello1'}}})
+          -- "<h1>Hello1</h1>"
+      )
    else
       log("->404\n")
       self.socket:write(
