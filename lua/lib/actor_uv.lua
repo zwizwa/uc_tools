@@ -48,20 +48,22 @@ function actor_uv.task(scheduler, obj)
 end
 
 -- A TCP server
-function actor_uv.spawn_tcp_server(scheduler, obj)
-   assert(obj.ip)
-   assert(obj.port)
+function actor_uv.spawn_tcp_server(scheduler, serv_obj)
+   assert(serv_obj.ip)
+   assert(serv_obj.port)
 
    local function connect(lsocket, err)
 
-      local asocket = lsocket:accept()
-      local task = actor_uv.task(scheduler, obj)
+      -- This produces a mixin object that implements :handle()
+      local task = serv_obj:connection()
+      -- We then add task behavior mixin.
+      actor_uv.task(scheduler, task)
+      task.socket = lsocket:accept()
 
-      task.socket = asocket
       scheduler:spawn(
          function(task)
-            task:handle()
-            asocket:close()
+            task:connect()
+            task.socket:close()
          end,
          task)
 
@@ -69,7 +71,7 @@ function actor_uv.spawn_tcp_server(scheduler, obj)
       -- seems simpler to do this at the write end as opposed to the
       -- read end.
       local push
-      if obj.mode == 'line' then
+      if serv_obj.mode == 'line' then
          -- Line buffer is presented with chunks from the socket,
          -- which then get pushed into the mailbox of a task.
          local buf = linebuf:new()
@@ -80,7 +82,7 @@ function actor_uv.spawn_tcp_server(scheduler, obj)
          push = function(data)
             buf:push(data)
          end
-      elseif obj.mode == 'raw' then
+      elseif serv_obj.mode == 'raw' then
          push = function(data)
             task:send(data)
             scheduler:schedule() -- propagate
@@ -89,7 +91,7 @@ function actor_uv.spawn_tcp_server(scheduler, obj)
          error('bad .mode')
       end
 
-      asocket:start_read(
+      task.socket:start_read(
          function(_, err, data)
             if err then
                -- Task will close socket after delivering response, so
@@ -104,7 +106,7 @@ function actor_uv.spawn_tcp_server(scheduler, obj)
 
    end
    local lsocket = uv.tcp()
-   lsocket:bind(obj.ip, obj.port)
+   lsocket:bind(serv_obj.ip, serv_obj.port)
    lsocket:listen(connect)
    return lsocket
 end

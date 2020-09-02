@@ -7,11 +7,14 @@
 local actor_uv  = require('lib.actor_uv')
 local lxml      = require('lib.lxml')
 local mixin     = require('lib.mixin')
-local webserver = {}
 
 local function log(str)
    io.stderr:write(str)
 end
+
+
+-- Behavior associated to a single connection.
+local webserver = {}
 
 function webserver:response_html(lxml_element)
    log("->200\n")
@@ -30,7 +33,10 @@ function webserver:response_404()
    self.socket:write("HTTP/1.1 404 Not Found\r\n\r\n404\r\n")
 end
 
-function webserver:handle()
+-- Called as the body of a new task actor_uv, to handle the tcp
+-- connection.  recv() produces lines, as we are configured in line
+-- mode.
+function webserver:connect()
    -- First line is request
    local req = self:recv()
    -- Rest is headers up to empty line.  Collect those in an array.
@@ -44,15 +50,13 @@ function webserver:handle()
    log("req: " .. req)
    local uri = string.match(req, "GET (.*) HTTP/1.1\r\n")
    log("uri: " .. uri .. "\n")
+   -- Pass it to delegate
    self:serve(uri, hdrs)
 end
 
--- This adds webserver, actor_uv, actor.task behaviors to obj.
--- User needs to add method or mixin that implements :serve(uri,hdr)
-function webserver.start(scheduler, obj)
-   mixin.add(obj, webserver)
-   obj.mode = 'line' -- needed by webserver:handle()
-   actor_uv.spawn_tcp_server(scheduler, obj)
+function webserver.start(scheduler, serv_obj)
+   serv_obj.mode = 'line' -- needed by webserver:handle()
+   actor_uv.spawn_tcp_server(scheduler, serv_obj)
 end
 
 return webserver

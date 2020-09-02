@@ -1,4 +1,10 @@
 #!/usr/bin/lua
+
+-- Test for the logsvg module, which converts a list of time-stamped
+-- logs to an SVG with proportional time display.  For now this is
+-- exposed as a web service to allow simpler incremental development.
+
+
 local uv        = require('lluv')
 local webserver = require('lib.webserver')
 local mixin     = require('lib.mixin')
@@ -36,12 +42,10 @@ end
 
 
 -- behaviors
-local testconn = {}
-function testconn:serve(uri)
+local conn = {}
+function conn:serve(uri)
    io.stderr:write("serve: " .. uri .. "\n")
    if uri == "/" then
-      self:response_html({'h1',{},{'Hello1'}})
-   elseif uri == "/img" then
       self:response_svg(svg())
    else
       self:response_404()
@@ -51,12 +55,12 @@ end
 local testserv = {}
 function testserv:connection()
    local c = {}
-   mixin.add(c, testconn)
+   mixin.add(c, conn)
    mixin.add(c, webserver)
    return c
 end
 
--- instance
+-- server instance
 local s = {ip = '0.0.0.0', port = 8000 }
 mixin.add(s, testserv)
 
