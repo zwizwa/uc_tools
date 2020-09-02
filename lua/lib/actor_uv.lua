@@ -4,12 +4,10 @@
 -- event, set up a callback that will send a message and then run the
 -- actor scheduler.
 
-local actor = require('lib.actor')
-local uv = require('lluv')
-
+local uv      = require('lluv')
+local actor   = require('lib.actor')
 local linebuf = require('lib.linebuf')
-
-local mixins = require('lib.mixins')
+local mixin   = require('lib.mixin')
 
 local function log(str)
    io.stderr:write(str)
@@ -18,7 +16,7 @@ end
 local actor_uv = {}
 
 -- Deliver a message in the future.
-function actor_uv:send_after(msg, ms, t)
+function actor_uv.send_after(task, msg, ms, t)
    if not t then
       t = uv.timer()
    end
@@ -26,8 +24,8 @@ function actor_uv:send_after(msg, ms, t)
       ms, 0,
       function(timer)
          timer:close()
-         send:send(msg) -- deliver
-         send.scheduler:schedule() -- propagate
+         task:send(msg) -- deliver
+         task.scheduler:schedule() -- propagate
       end)
    return t
 end
@@ -37,13 +35,15 @@ function actor_uv:sleep(ms)
    -- A token is needed for use in the recv filter.  If we create our
    -- own private timer we can use that as a guaranteed unique token.
    local msg0 = t
-   self:send_after(msg0, ms, t)
-   task:recv(function(msg) return msg0 == msg end)
+   actor_uv.send_after(self, msg0, ms, t)
+   self:recv(function(msg) return msg0 == msg end)
 end
 
 -- Create a task with actor_uv behavior mixed in.
 function actor_uv.task(scheduler, obj)
-   mixins.add(obj, actor_uv)
+   assert(scheduler)
+   assert(obj)
+   mixin.add(obj, actor_uv)
    return scheduler:task(obj)
 end
 

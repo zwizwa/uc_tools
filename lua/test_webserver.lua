@@ -1,7 +1,8 @@
 #!/usr/bin/lua
 local uv        = require('lluv')
 local webserver = require('lib.webserver')
-local mixins    = require('lib.mixins')
+local mixin     = require('lib.mixin')
+local actor     = require('lib.actor')
 
 local function svg()
    return
@@ -36,7 +37,7 @@ end
 
 -- behavior
 local testserv = {}
-function testserv:serve(uri, hdr)
+function testserv:serve(uri)
    io.stderr:write("serve: " .. uri .. "\n")
    if uri == "/" then
       self:response_html({'h1',{},{'Hello1'}})
@@ -48,9 +49,10 @@ function testserv:serve(uri, hdr)
 end
 
 -- instance
-local s = {ip = '0.0.0.0', port = 8000, mode = 'line'}
-mixins.add(s, testserv)
+local s = {ip = '0.0.0.0', port = 8000 }
+mixin.add(s, testserv)
 
-webserver.start(s)
+local scheduler = actor.scheduler.new()
+webserver.start(scheduler, s)
 uv.signal():start(uv.SIGINT, function() uv.stop() end)
 uv.run()

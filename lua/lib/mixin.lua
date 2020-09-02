@@ -6,21 +6,22 @@
 -- seems just very cumbersome, so just embrace the big soup of methods
 -- paradigm.
 
-local mixins = {}
+local mixin = {}
 
 -- Add mixin support to an object.
-function mixins:add(mixin)
+function mixin:add(m)
    assert(self)
+   assert(m)
    if not self.mixins then
-      mixins.init(self)
+      mixin.init_(self)
    end
    assert(self.mixins)
    -- FIXME: Probably best to always let the new mixin override the
    -- old ones.
-   table.insert(self.mixins, 1, mixin)
+   table.insert(self.mixins, 1, m)
 end
 
-function mixins:init()
+function mixin:init_()
    assert(self)
    self.mixins = {}
    setmetatable(
@@ -39,4 +40,4 @@ function mixins:init()
           end})
 end
 
-return mixins
+return mixin

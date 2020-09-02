@@ -11,8 +11,7 @@
 -- core send/recv functionality from this file, the i/o abstractions
 -- from actor_uv.lua, and the user behavior.
 
-local mixins = require('lib.mixins')
-
+local mixin  = require('lib.mixin')
 local prompt = require('prompt')
 local function log(str) io.stderr:write(str) end
 local function log_desc(thing) log(prompt.describe(thing)) end
@@ -121,7 +120,7 @@ function actor.task.init(scheduler, task)
    task.mbox = {}
    task.scheduler = scheduler
    task.monitor = {}
-   mixins.add(task, actor.task)
+   mixin.add(task, actor.task)
    return task
 end
 
