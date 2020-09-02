@@ -7,16 +7,22 @@ function lxml.w_element(w, element)
    assert(w)
    assert(element)
    if type(element) == 'string' then
-      -- FIXME: Do proper string quoting.
+      -- FIXME: Do proper string quoting. For now these are not needed.
+      -- (") &quot;
+      -- (&) &amp;
+      -- (') &apos;
+      -- (<) &lt;
+      -- (>) &gt;
       w(element)
       return
    end
    local tag, attrs, elements = unpack(element)
    assert(tag)
-   assert(attrs)
-   assert(elements)
+   if not attrs then attrs = {} end
+   if not elements then elements = {} end
    w('<') ; w(tag)
    for attr, val in pairs(attrs) do
+      -- FIXME: Do proper string quoting.
       w(' ') ; w(attr) ; w('="') ; w(val) ; w('"')
    end
    w('>')
@@ -35,7 +41,7 @@ end
 function lxml.elements_to_string(elements)
    local strs = {}
    local function w(str)
-      assert(type(str) == 'string')
+      -- assert(type(str) == 'string') -- number is ok.
       table.insert(strs, str)
    end
    lxml.w_elements(w, elements)
