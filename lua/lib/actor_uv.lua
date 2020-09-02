@@ -18,7 +18,7 @@ end
 local actor_uv = {}
 
 -- Deliver a message in the future.
-function actor_uv.send_after(task, msg, ms, t)
+function actor_uv:send_after(msg, ms, t)
    if not t then
       t = uv.timer()
    end
@@ -26,18 +26,18 @@ function actor_uv.send_after(task, msg, ms, t)
       ms, 0,
       function(timer)
          timer:close()
-         task:send(msg) -- deliver
-         task.scheduler:schedule() -- propagate
+         send:send(msg) -- deliver
+         send.scheduler:schedule() -- propagate
       end)
    return t
 end
 
-function actor_uv.sleep(task, ms)
+function actor_uv:sleep(ms)
    local t = uv.timer()
    -- A token is needed for use in the recv filter.  If we create our
    -- own private timer we can use that as a guaranteed unique token.
    local msg0 = t
-   actor_uv.send_after(task, msg0, ms, t)
+   self:send_after(msg0, ms, t)
    task:recv(function(msg) return msg0 == msg end)
 end
 
@@ -48,19 +48,19 @@ function actor_uv.task(scheduler, obj)
 end
 
 -- A TCP server
-function actor_uv.spawn_tcp_server(scheduler, config, obj)
-   assert(config.ip)
-   assert(config.port)
+function actor_uv.spawn_tcp_server(scheduler, obj)
+   assert(obj.ip)
+   assert(obj.port)
 
    local function connect(lsocket, err)
 
       local asocket = lsocket:accept()
-      local task = actor_uv:task(scheduler, obj)
+      local task = actor_uv.task(scheduler, obj)
 
       task.socket = asocket
       scheduler:spawn(
          function(task)
-            task:serve()
+            task:handle()
             asocket:close()
          end,
          task)
@@ -69,7 +69,7 @@ function actor_uv.spawn_tcp_server(scheduler, config, obj)
       -- seems simpler to do this at the write end as opposed to the
       -- read end.
       local push
-      if config.mode == 'line' then
+      if obj.mode == 'line' then
          -- Line buffer is presented with chunks from the socket,
          -- which then get pushed into the mailbox of a task.
          local buf = linebuf:new()
@@ -80,13 +80,13 @@ function actor_uv.spawn_tcp_server(scheduler, config, obj)
          push = function(data)
             buf:push(data)
          end
-      elseif config.mode == 'raw' then
+      elseif obj.mode == 'raw' then
          push = function(data)
             task:send(data)
             scheduler:schedule() -- propagate
          end
       else
-         error('bad config.mode')
+         error('bad .mode')
       end
 
       asocket:start_read(
@@ -104,7 +104,7 @@ function actor_uv.spawn_tcp_server(scheduler, config, obj)
 
    end
    local lsocket = uv.tcp()
-   lsocket:bind(config.ip, config.port)
+   lsocket:bind(obj.ip, obj.port)
    lsocket:listen(connect)
    return lsocket
 end
