@@ -3,8 +3,7 @@ local uv = require('lluv')
 local webserver = require('lib.webserver')
 
 local testserv = {}
-
-function testserve:serve(uri, hdr)
+function testserv:serve(uri, hdr)
    if uri == "/" then
       self:response_html({'h1',{},{'Hello1'}})
    elseif uri == "/img" then
@@ -14,6 +13,6 @@ function testserve:serve(uri, hdr)
    end
 end
 
-webserver.start(8000, testserve)
+webserver.start(8000, testserv)
 uv.signal():start(uv.SIGINT, function() uv.stop() end)
 uv.run()

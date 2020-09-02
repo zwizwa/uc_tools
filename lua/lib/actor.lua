@@ -73,12 +73,13 @@ function actor.scheduler:remove(task) self.hot[task] = nil  end
 --    return cdata
 -- end
 
-function actor.scheduler:task(inits)
-   return actor.task.new(self, inits)
+function actor.scheduler:task(obj)
+   return actor.task.init(self, obj)
 end
 
 function actor.scheduler:spawn(body, task)
-   if not task then task = self:task() end
+   assert(task)
+   assert(not task.coroutine)
    -- task.test_gc = test_gc()
    -- local m1 = collectgarbage('count')
    task.coroutine = coroutine.create(
@@ -112,10 +113,11 @@ end
 -- Create a task that is ready to accept messages.  It needs a
 -- mailbox, a scheduler reference, and the metatable.  It is not yet
 -- associated to a coroutine.
-function actor.task.new(scheduler, task_init)
+function actor.task.init(scheduler, task)
+   -- Instead of auto-creating, it seems simpler to require user to
+   -- specify the object to which we will add behavior.
+   assert(task)
    -- Object can be set up with initial content.
-   local task = task_init
-   if not task then task = {} end
    task.mbox = {}
    task.scheduler = scheduler
    task.monitor = {}

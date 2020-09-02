@@ -9,6 +9,8 @@ local uv = require('lluv')
 
 local linebuf = require('lib.linebuf')
 
+local mixins = require('lib.mixins')
+
 local function log(str)
    io.stderr:write(str)
 end
@@ -39,19 +41,26 @@ function actor_uv.sleep(task, ms)
    task:recv(function(msg) return msg0 == msg end)
 end
 
+-- Create a task with actor_uv behavior mixed in.
+function actor_uv.task(scheduler, obj)
+   mixins.add(obj, actor_uv)
+   return scheduler:task(obj)
+end
+
 -- A TCP server
-function actor_uv.spawn_tcp_server(scheduler, config, task_inits)
+function actor_uv.spawn_tcp_server(scheduler, config, obj)
    assert(config.ip)
    assert(config.port)
 
    local function connect(lsocket, err)
 
       local asocket = lsocket:accept()
-      local task = scheduler:task(task_inits)
+      local task = actor_uv:task(scheduler, obj)
+
       task.socket = asocket
       scheduler:spawn(
          function(task)
-            serve(task)
+            task:serve()
             asocket:close()
          end,
          task)

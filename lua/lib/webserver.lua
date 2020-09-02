@@ -11,6 +11,7 @@ local scheduler = actor.scheduler.new()
 local lxml      = require('lib.lxml')
 local xml       = lxml.elements_to_string
 
+local mixins    = require('lib.mixins')
 
 local webserver = {}
 
@@ -83,23 +84,15 @@ function webserver:handle()
    self:serve(uri, hdr)
 end
 
--- FIXME: This should be overridden in task_inits
-function webserver:serve(uri, hdr)
-   if uri == "/" then
-      self:response_html({'h1',{},{'Hello1'}})
-   elseif uri == "/img" then
-      self:response_svg(svg())
-   else
-      self:response_404()
-   end
-end
-
-function webserver.start(port, task_inits)
+-- This adds webserver, actor_uv, actor.task behaviors to obj.
+-- User needs to add method or mixin that implements :serve(uri,hdr)
+function webserver.start(port, obj)
+   mixins.add(obj, webserver)
    return
       actor_uv.spawn_tcp_server(
          scheduler,
          {ip = '0.0.0.0', port = port, mode = 'line'},
-         task_inits)
+         obj)
 end
 
 return webserver
