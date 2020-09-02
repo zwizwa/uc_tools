@@ -11,6 +11,9 @@ local scheduler = actor.scheduler.new()
 local lxml      = require('lib.lxml')
 local xml       = lxml.elements_to_string
 
+
+local webserver = {}
+
 local function log(str)
    io.stderr:write(str)
 end
@@ -35,8 +38,8 @@ local function svg()
             stroke='white',
             fill='blue'}},
           {'text',
-           {width='50',
-            height='50',
+           {width=50,
+            height=50,
             transform='translate(0,20)',
             class='small',
             stroke='black'},
@@ -45,7 +48,25 @@ local function svg()
       }
 end
 
-local function serve(self)
+function webserver:response_html(lxml_element)
+   log("->200\n")
+   self.socket:write("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n")
+   self.socket:write(xml({lxml_element}))
+end
+
+function webserver:response_svg(lxml_element)
+   log("->200\n")
+   self.socket:write("HTTP/1.1 200 OK\r\nContent-Type: image/svg+xml\r\n\r\n")
+   self.socket:write(svg({lxml_element}))
+end
+
+function webserver:response_404()
+   log("->404\n")
+   self.socket:write(
+      "HTTP/1.1 404 Not Found\r\n\r\n404\r\n")
+end
+
+function webserver:handle()
    -- First line is request
    local req = self:recv()
    -- Rest is headers up to empty line.  Collect those in an array.
@@ -56,34 +77,29 @@ local function serve(self)
       table.insert(hdr, line)
    end
    -- Handle request
-   log("req: " .. req)
-   if req == "GET / HTTP/1.1\r\n" then
-      log("->200\n")
-      self.socket:write(
-         "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n" ..
-          xml({{'h1',{},{'Hello1'}}})
-          -- "<h1>Hello1</h1>"
-      )
-   elseif req == "GET /img HTTP/1.1\r\n" then
-      log("->200\n")
-      self.socket:write(
-         "HTTP/1.1 200 OK\r\nContent-Type: image/svg+xml\r\n\r\n" ..
-          xml({svg()})
-          -- "<h1>Hello1</h1>"
-      )
+   -- log("req: " .. req)
+   local uri = string.match(req, "GET (.*) HTTP/1.1\r\n")
+   log("uri: " .. uri .. "\n")
+   self:serve(uri, hdr)
+end
+
+-- FIXME: This should be overridden in task_inits
+function webserver:serve(uri, hdr)
+   if uri == "/" then
+      self:response_html({'h1',{},{'Hello1'}})
+   elseif uri == "/img" then
+      self:response_svg(svg())
    else
-      log("->404\n")
-      self.socket:write(
-         "HTTP/1.1 404 Not Found\r\n\r\n404\r\n")
+      self:response_404()
    end
 end
 
-local webserver = {}
-function webserver.start(port)
-   actor_uv.spawn_tcp_server(
-      scheduler,
-      {ip = '0.0.0.0', port = port, mode = 'line'},
-      serve)
+function webserver.start(port, task_inits)
+   return
+      actor_uv.spawn_tcp_server(
+         scheduler,
+         {ip = '0.0.0.0', port = port, mode = 'line'},
+         task_inits)
 end
 
 return webserver

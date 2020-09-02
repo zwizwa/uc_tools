@@ -6,6 +6,13 @@
 --
 -- See bottom of this file for more notes.
 
+
+-- Mixins seem appropriate to layer the different abstractions: the
+-- core send/recv functionality from this file, the i/o abstractions
+-- from actor_uv.lua, and the user behavior.
+
+local mixins = require('lib.mixins')
+
 local prompt = require('prompt')
 local function log(str) io.stderr:write(str) end
 local function log_desc(thing) log(prompt.describe(thing)) end
@@ -66,8 +73,8 @@ function actor.scheduler:remove(task) self.hot[task] = nil  end
 --    return cdata
 -- end
 
-function actor.scheduler:task()
-   return actor.task.new(self)
+function actor.scheduler:task(inits)
+   return actor.task.new(self, inits)
 end
 
 function actor.scheduler:spawn(body, task)
@@ -105,9 +112,14 @@ end
 -- Create a task that is ready to accept messages.  It needs a
 -- mailbox, a scheduler reference, and the metatable.  It is not yet
 -- associated to a coroutine.
-function actor.task.new(scheduler)
-   task = { mbox = {}, scheduler = scheduler, monitor = {} }
-   setmetatable(task, { __index = actor.task })
+function actor.task.new(scheduler, task_init)
+   -- Object can be set up with initial content.
+   local task = task_init
+   if not task then task = {} end
+   task.mbox = {}
+   task.scheduler = scheduler
+   task.monitor = {}
+   mixins.add(task, actor.task)
    return task
 end
 

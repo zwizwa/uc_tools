@@ -2,42 +2,45 @@
 -- An element is represented as a 3-element array: tag, attributes, child elements.
 -- {'a',{href = 'http://127.0.0.1'},{'Link'}}
 
+-- 1. XML TO STRING SEQUENCE / STRING
+
+-- Expose a single function (elements) instead of having both element
+-- and elements (element sequence).  This reduces notational overhead.
+-- Two variants are provided: a writer to allow a more efficinet
+-- implementation later, and a _to_string renderer for convenience.
+--
+-- FIXME: Do proper string quoting. Implement once needed.
+--  (") &quot;
+--  (&) &amp;
+--  (') &apos;
+--  (<) &lt;
+--  (>) &gt;
+
 local lxml = {}
-function lxml.w_element(w, element)
-   assert(w)
-   assert(element)
-   if type(element) == 'string' then
-      -- FIXME: Do proper string quoting. For now these are not needed.
-      -- (") &quot;
-      -- (&) &amp;
-      -- (') &apos;
-      -- (<) &lt;
-      -- (>) &gt;
-      w(element)
-      return
-   end
-   local tag, attrs, elements = unpack(element)
-   assert(tag)
-   if not attrs then attrs = {} end
-   if not elements then elements = {} end
-   w('<') ; w(tag)
-   for attr, val in pairs(attrs) do
-      -- FIXME: Do proper string quoting.
-      w(' ') ; w(attr) ; w('="') ; w(val) ; w('"')
-   end
-   w('>')
-   lxml.w_elements(w, elements)
-   w('</') ; w(tag) ; w('>')
-end
 function lxml.w_elements(w, elements)
-   assert(elements)
-   for i, element in ipairs(elements) do
-      lxml.w_element(w, element)
+   for i,element in ipairs(elements) do
+      assert(w)
+      assert(element)
+      if type(element) == 'string' then
+         -- FIXME: Do proper string quoting.
+         w(element)
+         return
+      end
+      local tag, attrs, elements = unpack(element)
+      assert(tag)
+      if not attrs then attrs = {} end
+      if not elements then elements = {} end
+      w('<') ; w(tag)
+      for attr, val in pairs(attrs) do
+         -- FIXME: Do proper string quoting.
+         w(' ') ; w(attr) ; w('="') ; w(val) ; w('"')
+      end
+      w('>')
+      lxml.w_elements(w, elements)
+      w('</') ; w(tag) ; w('>')
    end
 end
 
--- Only expose a single function, which prints multiple elements.
--- Just call it with a singleton to print one element.
 function lxml.elements_to_string(elements)
    local strs = {}
    local function w(str)
@@ -47,5 +50,25 @@ function lxml.elements_to_string(elements)
    lxml.w_elements(w, elements)
    return table.concat(strs)
 end
+
+
+
+-- 2. XML CONSTRUCTORS
+
+-- Some design decisions:
+--
+-- - Something I almost always do wrong initially when writing
+--   printers / renderers, but not this time!  Printing (rendering) is
+--   parametized using single config (environment) table that is
+--   passed down the call chain.  It is typical to want to
+--   parameterize leaf nodes, which is awkward to do in another way.
+--
+-- - Dynamic types are a pain in this setting, so add as many asserts
+--   as possible to catch errors early.
+--
+
+
+
+
 
 return lxml

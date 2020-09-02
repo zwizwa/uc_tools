@@ -40,14 +40,14 @@ function actor_uv.sleep(task, ms)
 end
 
 -- A TCP server
-function actor_uv.spawn_tcp_server(scheduler, config, serve)
+function actor_uv.spawn_tcp_server(scheduler, config, task_inits)
    assert(config.ip)
    assert(config.port)
 
    local function connect(lsocket, err)
 
       local asocket = lsocket:accept()
-      local task = scheduler:task()
+      local task = scheduler:task(task_inits)
       task.socket = asocket
       scheduler:spawn(
          function(task)

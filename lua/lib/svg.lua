@@ -1,0 +1,2 @@
+local svg = {}
+return svg
