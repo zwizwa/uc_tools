@@ -7,6 +7,8 @@
 -- commands.
 local logsvg = {}
 
+local function log(str) io.stderr:write(str) end
+
 function logsvg.svg(e, g)
    assert(e)
    assert(e.width)
@@ -22,7 +24,7 @@ function logsvg.svg(e, g)
           {'g',{},g(e)}}}
 end
 
-function logsvg.translate(e, x, y)
+function logsvg.translate(x, y)
    return 'translate(' .. x .. ',' .. y .. ')'
 end
 
@@ -32,26 +34,51 @@ function logsvg.logentry(e, time, text)
       {'text',
        {width=e.width,
         height='auto',
-        transform=logsvg.translate(e,0,y),
+        transform=logsvg.translate(0,y),
         class='small',
         stroke='black'},
        {text}}
 end
 
-function logsvg.render(entries)
-   local e = {}
-   e.time_to_y = function(time) return 10*time end
-   e.width = 500
-   e.height = 500
+function logsvg.render(e, logs)
    local function g(e)
-      local ts = {}
-      for i, entry in ipairs(entries) do
-         local time, text = unpack(entry)
-         table.insert(ts, logsvg.logentry(e, time, text))
+      local column_groups = {}
+      for j, entries in ipairs(logs) do
+         local x = e.column_to_x(j)
+         local text_elements = {}
+         for i, entry in ipairs(entries) do
+            local time, text = unpack(entry)
+            table.insert(text_elements, logsvg.logentry(e, time, text))
+         end
+         table.insert(
+            column_groups,
+            {'g',
+             {transform=logsvg.translate(x,0)},
+             text_elements})
       end
-      return ts
+      return column_groups
    end
    return logsvg.svg(e, g)
+end
+
+-- Let the log entries repell each other, by moving them forward in
+-- time if they are too close.
+function logsvg.repell(entries, delta_t)
+   if #entries == 0 then return entries end
+   local t = entries[1][1]
+   out_entries = {}
+   for i, entry in ipairs(entries) do
+      local time, text = unpack(entry)
+      -- Update t for next entry depending on whether this one fits.
+      if time >= t then
+         t = time + delta_t
+      else
+         time = t
+         t = t + delta_t
+      end
+      table.insert(out_entries, {time, text})
+   end
+   return out_entries
 end
 
 return logsvg
