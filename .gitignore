@@ -18,4 +18,6 @@ cscope.po.out
 core
 *.rej
 target
-
+*.lock
+rust/cmix_ex/ex1/test
+rust/cmix_ex/ex2/test

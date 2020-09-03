@@ -9,44 +9,21 @@ local uv        = require('lluv')
 local webserver = require('lib.webserver')
 local mixin     = require('lib.mixin')
 local actor     = require('lib.actor')
+local logsvg    = require('lib.logsvg')
 
-local function svg()
-   return
-      {'svg',
-       {xmlns='http://www.w3.org/2000/svg',
-        width=200,
-        height=2000},{
-          {'style',{},
-           {".small { font-family: monospace; font-size: 10px }\n"}},
-          {'rect',
-           {width=100,
-            height=100,
-            stroke='white',
-            fill='grey'}},
-          {'rect',
-           {transform='translate(10,10)',
-            width=50,
-            height=50,
-            stroke='white',
-            fill='blue'}},
-          {'text',
-           {width=50,
-            height=50,
-            transform='translate(0,20)',
-            class='small',
-            stroke='black'},
-           {'Test 123'}}
-       }
-      }
-end
-
+local stamped_log = {
+   {1, 'Time 1'},
+   {2, 'Time 2'},
+   {4, 'Time 4'},
+}
 
 -- behaviors
 local conn = {}
 function conn:serve(uri)
    io.stderr:write("serve: " .. uri .. "\n")
    if uri == "/" then
-      self:response_svg(svg())
+      self:response_svg(
+         logsvg.render(stamped_log))
    else
       self:response_404()
    end
