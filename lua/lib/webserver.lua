@@ -49,9 +49,19 @@ function webserver:connect()
    -- Handle request
    log("req: " .. req)
    local uri = string.match(req, "GET (.*) HTTP/1.1\r\n")
-   log("uri: " .. uri .. "\n")
+   local uri1, query = string.match(uri, "(.*)?(.*)")
+   local q = {}
+   if query then
+      -- log("query: " .. query .. "\n")
+      for key, val in string.gmatch(query .. "&", "(.-)=(.-)&") do
+         -- log("kv: " .. key .. "='" .. val .. "'\n")
+         q[key] = val
+      end
+      uri = uri1
+   end
+   -- log("uri: " .. uri .. "\n")
    -- Pass it to delegate
-   self:serve(uri, hdrs)
+   self:serve(uri, q, hdrs)
 end
 
 function webserver.start(scheduler, serv_obj)
