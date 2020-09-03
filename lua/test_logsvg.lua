@@ -24,16 +24,16 @@ local stamped_log2 = {
    {7, 'Time 7'},
 }
 
-
 -- behaviors
 local conn = {}
-function conn:serve(uri)
+function conn:serve(uri, q)
    io.stderr:write("serve: " .. uri .. "\n")
    local e = {
-      repell = 1, y_offset = 200, width = 500, height = 500,
+      repel = 1, y_offset = 200, width = 500, height = 500,
       time_to_y   = function(time) return 10*time end,
       column_to_x = function(column_nb) return (column_nb-1) * 100 end
    }
+   webserver.q_tonumber(q, {'width','height','repel'}, e)
 
    if uri == "/" then
       self:response_svg(logsvg.render(e, {stamped_log1, stamped_log2}))

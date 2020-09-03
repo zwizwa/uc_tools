@@ -44,6 +44,9 @@ function logsvg.render(e, logs)
    local function g(e)
       local column_groups = {}
       for j, entries in ipairs(logs) do
+         if e.repel then
+            entries = logsvg.repel(entries, e.repel)
+         end
          local x = e.column_to_x(j)
          local text_elements = {}
          for i, entry in ipairs(entries) do
@@ -61,9 +64,9 @@ function logsvg.render(e, logs)
    return logsvg.svg(e, g)
 end
 
--- Let the log entries repell each other, by moving them forward in
+-- Let the log entries repel each other, by moving them forward in
 -- time if they are too close.
-function logsvg.repell(entries, delta_t)
+function logsvg.repel(entries, delta_t)
    if #entries == 0 then return entries end
    local t = entries[1][1]
    out_entries = {}

@@ -33,6 +33,17 @@ function webserver:response_404()
    self.socket:write("HTTP/1.1 404 Not Found\r\n\r\n404\r\n")
 end
 
+
+-- Small pure tools.
+function webserver.q_tonumber(q, keys, nums)
+   for i,key in ipairs(keys) do
+      if q[key] then
+         nums[key] = tonumber(q[key])
+      end
+   end
+end
+
+
 -- Called as the body of a new task actor_uv, to handle the tcp
 -- connection.  recv() produces lines, as we are configured in line
 -- mode.
