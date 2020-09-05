@@ -5,6 +5,9 @@
 -- SVG header.  This sets the style sheet and inlines a g which is
 -- parameterized by environment, and expands to a group of SVG
 -- commands.
+
+local list = require('lib.tools.list')
+
 local logsvg = {}
 
 local function log(str) io.stderr:write(str) end
@@ -73,6 +76,7 @@ function logsvg.repel(entries, delta_t)
    for i, entry in ipairs(entries) do
       local time, text = unpack(entry)
       -- Update t for next entry depending on whether this one fits.
+      -- FIXME: draw a line from actual time to text location.
       if time >= t then
          t = time + delta_t
       else
@@ -83,5 +87,47 @@ function logsvg.repel(entries, delta_t)
    end
    return out_entries
 end
+
+
+-- Put this in a tools library, together with the popen variant.
+local function read_file(filename)
+   local f = io.open(filename, "r+")
+   if not f then
+      error("cant_open:" .. filename)
+   end
+   local str = f:read('*a')
+   f:close()
+   return str
+end
+
+
+-- Read a time-stamped log.  For now this assumes that the timestamp
+-- is a 8-digit lower case hex number at the start of the line,
+-- followed by a space.
+--
+-- FIXME: To handle counter wrap-around the following convention is
+-- used: it is assumed that there is at least one message per
+-- wrap-around (32bit, 72MHz) such that there is no aliasing.  In that
+-- case, we can just catch wraps here.
+
+function logsvg.read_log(filename)
+   local str = read_file(filename)
+   local lines = {}
+   for stamp, logline in string.gmatch(str, "([0123456789abcdef]-) (.-)\n") do
+      local n = tonumber(stamp,16)
+      -- log(n .. "\n")
+      -- log(logline .. "\n")
+      table.insert(lines, {n, logline})
+   end
+   return lines
+end
+
+
+-- For convenience.  This is the "user scenario": convert a list of
+-- microcontroller trace log files to an svg.
+function logsvg.render_logfiles(e, filenames)
+   return logsvg.render(e, list.map(logsvg.read_log, filenames))
+end
+
 
 return logsvg

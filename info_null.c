@@ -1,7 +1,5 @@
-/* This is not implemented using cbuf.h because the behavior is
- * slightly different: on overflow, we still update counters, but on
- * readout the lost characters are replaced with '?' to give some
- * indication data was lost. */
+/* Implementation of the base functionality needed by infof.c
+   FIXME: Change the name of this file to something meaningful. */
 
 #if 0
 // Stub for info calls.

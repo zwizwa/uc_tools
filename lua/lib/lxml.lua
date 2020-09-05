@@ -10,11 +10,23 @@
 -- implementation later, and a _to_string renderer for convenience.
 --
 -- FIXME: Do proper string quoting. Implement once needed.
---  (") &quot;
---  (&) &amp;
---  (') &apos;
---  (<) &lt;
---  (>) &gt;
+
+local quote = {
+   [34] = '&quot;', -- "
+   [38] = '&amp;',  -- &
+   [39] = '&apos;', -- '
+   [60] = '&lt;',   -- <
+   [62] = '&gt;',   -- >
+}
+
+local function quote_string(str)
+   for i=1,#str do
+      local q = quote[str:byte(i)]
+      if q then return "FIXME_QUOTE" end
+   end
+   return str
+end
+
 
 local lxml = {}
 function lxml.w_elements(w, elements)
@@ -23,7 +35,8 @@ function lxml.w_elements(w, elements)
       assert(element)
       if type(element) == 'string' then
          -- FIXME: Do proper string quoting.
-         w(element)
+         local quoted_element = quote_string(element)
+         w(quoted_element)
          return
       end
       local tag, attrs, elements = unpack(element)
@@ -37,7 +50,7 @@ function lxml.w_elements(w, elements)
       end
       w('>')
       lxml.w_elements(w, elements)
-      w('</') ; w(tag) ; w('>')
+      w('</') ; w(tag) ; w('>\n')
    end
 end
 
