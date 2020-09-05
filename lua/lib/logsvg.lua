@@ -21,7 +21,7 @@ function logsvg.svg(e, g)
       {'svg',
        {xmlns='http://www.w3.org/2000/svg',
         width=e.width,
-        height=e.hight},{
+        height=e.height},{
           {'style',{},
            {".small { font-family: monospace; font-size: 10px }\n"}},
           {'g',{},g(e)}}}
@@ -53,8 +53,8 @@ function logsvg.render(e, logs)
          local x = e.column_to_x(j)
          local text_elements = {}
          for i, entry in ipairs(entries) do
-            local time, text = unpack(entry)
-            table.insert(text_elements, logsvg.logentry(e, time, text))
+            local time, adj_time, text = unpack(entry)
+            table.insert(text_elements, logsvg.logentry(e, adj_time, text))
          end
          table.insert(
             column_groups,
@@ -74,16 +74,17 @@ function logsvg.repel(entries, delta_t)
    local t = entries[1][1]
    out_entries = {}
    for i, entry in ipairs(entries) do
-      local time, text = unpack(entry)
+      local time, adj_time, text = unpack(entry)
       -- Update t for next entry depending on whether this one fits.
       -- FIXME: draw a line from actual time to text location.
       if time >= t then
+         adj_time = time
          t = time + delta_t
       else
-         time = t
+         adj_time = t
          t = t + delta_t
       end
-      table.insert(out_entries, {time, text})
+      table.insert(out_entries, {time, adj_time, text})
    end
    return out_entries
 end
@@ -110,14 +111,33 @@ end
 -- wrap-around (32bit, 72MHz) such that there is no aliasing.  In that
 -- case, we can just catch wraps here.
 
-function logsvg.read_log(filename)
+function logsvg.read_log(filename, sync_re)
+   sync_re = sync_re or "ping (.-)"
    local str = read_file(filename)
    local lines = {}
+   local last = nil
+   local fist = nil
+   local wraps = 0;
+
    for stamp, logline in string.gmatch(str, "([0123456789abcdef]-) (.-)\n") do
-      local n = tonumber(stamp,16)
       -- log(n .. "\n")
       -- log(logline .. "\n")
-      table.insert(lines, {n, logline})
+      local n = tonumber(stamp,16)
+      if not last then
+         if string.match(logline, sync_re) then
+            last  = n
+            first = n
+         end
+      end
+      if last then
+         local diff = n - last
+         if (diff < 0) then
+            wraps = wraps + 1
+         end
+         local adjusted_n = n - first + wraps * 0x100000000
+         last = n
+         table.insert(lines, {adjusted_n, adjusted_n, logline})
+      end
    end
    return lines
 end
@@ -126,7 +146,12 @@ end
 -- For convenience.  This is the "user scenario": convert a list of
 -- microcontroller trace log files to an svg.
 function logsvg.render_logfiles(e, filenames)
-   return logsvg.render(e, list.map(logsvg.read_log, filenames))
+   local function process(filename)
+      local l = logsvg.read_log(filename)
+      return logsvg.repel(l, 100000)
+   end
+
+   return logsvg.render(e, list.map(process, filenames))
 end
 
 
