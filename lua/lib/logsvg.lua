@@ -37,14 +37,9 @@ function logsvg.translate(x, y)
    return 'translate(' .. x .. ',' .. y .. ')'
 end
 
-function logsvg.time_to_y(e, time)
-   assert(e.ticks_per_pixel)
-   return time / e.ticks_per_pixel
-end
-
 -- text element for log entry at specific time
 function logsvg.logentry(e, time, text)
-   local y = logsvg.time_to_y(e, time)
+   local y = time / e.ticks_per_pixel
    return
       {'text',
        {width=e.width,
@@ -59,8 +54,8 @@ end
 function logsvg.timelink(e, adj_time, time)
    local x1 = e.x_actual   or -20
    local x2 = e.x_adjusted or   0
-   local y1 = logsvg.time_to_y(e, time)
-   local y2 = logsvg.time_to_y(e, adj_time)
+   local y1 = time / e.ticks_per_pixel
+   local y2 = adj_time / e.ticks_per_pixel
    return {'line',
            {height='auto',
             line='auto',
@@ -71,7 +66,8 @@ end
 
 
 -- Merge logs, sort by time, add tag
-function logsvg.merge_logs(logs)
+function logsvg.merge_logs(logs, sort_by)
+   sort_by = sort_by or 1
    local tagged_log = {}
    for i,log in ipairs(logs) do
       for j,entry in ipairs(log) do
@@ -83,9 +79,7 @@ function logsvg.merge_logs(logs)
    table.sort(tagged_log,
               function(a,b)
                  -- log_desc({a,b})
-                 assert(a[1])
-                 assert(b[1])
-                 return a[1] < b[1] end)
+                 return a[sort_by] < b[sort_by] end)
    return tagged_log
 end
 
@@ -102,34 +96,42 @@ function logsvg.render(e, logs)
    -- some time cuts.
    local y = 0
    local last_adj_time = 0
-   local merged_log = logsvg.merge_logs(repelled_logs)
+   -- Sort by adj_time, which is actual y distance used below for y_diff
+   local sort_by = 2
+   local merged_log = logsvg.merge_logs(repelled_logs, sort_by)
    local function g(e)
       local group_elements = {}
       for i, entry in ipairs(merged_log) do
          local time, adj_time, text, column = unpack(entry)
          local x = e.column_to_x(column)
-         local y_diff = logsvg.time_to_y(e, adj_time - last_adj_time)
+         local t_diff = adj_time - last_adj_time
+         local y_diff = t_diff / e.ticks_per_pixel
          last_adj_time = adj_time
 
-         -- FIXME: Not well-defined
+         -- Cut y space if there is too much time between subsequent
+         -- log entries.  FIXME: Make this configurable.
+         local y_diff_max = 100
 
-         -- Cut some y space if there is too much time between
-         -- subsequent log entries.  FIXME: Configurable.  FIXME: Draw
-         -- separator.
+         if (y_diff > y_diff_max) then
+            local y_adjust = y_diff - y_diff_max
+            local t_adjust = e.ticks_per_pixel * y_adjust
 
-         if (false and y_diff > 100) then
-            y = y - (y_diff - 100)
+            y = y - y_adjust
             -- we add this to group_elements, which has absolute y
             -- coordinates, outside of transform for the entry
-            local y0 = logsvg.time_to_y(e, adj_time) - y
+            local red_line_y_spacing = 15
+            local y0 = adj_time / e.ticks_per_pixel + y - red_line_y_spacing
             table.insert(
                group_elements,
-               {'line',
-                {height='auto',
-                 line='auto',
-                 x1=0,       y1=y0,
-                 x2=e.width, y2=y0,
-                 stroke='red'}})
+               {'g', {transform=logsvg.translate(0, y0)},
+                {{'text',
+                  {width='auto',  height='auto',
+                   class='small', stroke='red'},
+                  {"t_adjust = " .. t_adjust / 72000}},
+                 {'line',
+                  {height='auto', width='auto',
+                   x1=0, y1=0, x2=e.width, y2=0,
+                   stroke='red'}}}})
          end
 
          table.insert(
