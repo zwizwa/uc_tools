@@ -9,7 +9,6 @@
 -- Two variants are provided: a writer to allow a more efficinet
 -- implementation later, and a _to_string renderer for convenience.
 --
--- FIXME: Do proper string quoting. Implement once needed.
 
 local quote = {
    [34] = '&quot;', -- "
@@ -19,12 +18,26 @@ local quote = {
    [62] = '&gt;',   -- >
 }
 
-local function quote_string(str)
+local function w_string(w, str)
    for i=1,#str do
       local q = quote[str:byte(i)]
-      if q then return "FIXME_QUOTE" end
+      if q then
+         -- There is at least one quoted character.  Special case the
+         -- whole string so we don't need to re-hash anything if there
+         -- are no quoted characters.
+         for j=1,#str do
+            local c = str:byte(j)
+            local q = quote[c]
+            if q then
+               w(q)
+            else
+               w(string.char(c))
+            end
+         end
+         return
+      end
    end
-   return str
+   w(str)
 end
 
 
@@ -34,9 +47,7 @@ function lxml.w_elements(w, elements)
       assert(w)
       assert(element)
       if type(element) == 'string' then
-         -- FIXME: Do proper string quoting.
-         local quoted_element = quote_string(element)
-         w(quoted_element)
+         w_string(w, element)
          return
       end
       local tag, attrs, elements = unpack(element)
@@ -80,7 +91,7 @@ end
 --   as possible to catch errors early.
 --
 
-
+-- FIXME: Currently I only need SVG, so this is not yet translated.
 
 
 

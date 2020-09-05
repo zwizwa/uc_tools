@@ -1,17 +1,23 @@
 -- All generators are parameterized by a configuration environment
--- 'e'.  This is a little messy, but overall seems to be the simplest
--- way to do render parameterization.
+-- 'e'.  A single flat namespace is a little messy, but at the current
+-- complexity level that seems to be the simplest way to do render
+-- parameterization.
 
--- SVG header.  This sets the style sheet and inlines a g which is
--- parameterized by environment, and expands to a group of SVG
--- commands.
+-- See notes at the bottom.
 
 local list = require('lib.tools.list')
 
 local logsvg = {}
 
+local prompt = require('prompt')
 local function log(str) io.stderr:write(str) end
+local function log_desc(thing) log(prompt.describe(thing)) end
 
+
+
+-- SVG header.  This sets the style sheet and inlines a g which is
+-- parameterized by environment, and expands to a group of SVG
+-- commands.
 function logsvg.svg(e, g)
    assert(e)
    assert(e.width)
@@ -31,8 +37,14 @@ function logsvg.translate(x, y)
    return 'translate(' .. x .. ',' .. y .. ')'
 end
 
+function logsvg.time_to_y(e, time)
+   assert(e.ticks_per_pixel)
+   return time / e.ticks_per_pixel
+end
+
+-- text element for log entry at specific time
 function logsvg.logentry(e, time, text)
-   local y = e.time_to_y(time)
+   local y = logsvg.time_to_y(e, time)
    return
       {'text',
        {width=e.width,
@@ -43,29 +55,96 @@ function logsvg.logentry(e, time, text)
        {text}}
 end
 
-function logsvg.render(e, logs)
-   local function g(e)
-      local column_groups = {}
-      for j, entries in ipairs(logs) do
-         if e.repel then
-            entries = logsvg.repel(entries, e.repel)
-         end
-         local x = e.column_to_x(j)
-         local text_elements = {}
-         for i, entry in ipairs(entries) do
-            local time, adj_time, text = unpack(entry)
-            table.insert(text_elements, logsvg.logentry(e, adj_time, text))
-         end
-         table.insert(
-            column_groups,
-            {'g',
-             {transform=logsvg.translate(x,0)},
-             text_elements})
+-- line from adjusted time (next to text) to actual time
+function logsvg.timelink(e, adj_time, time)
+   local x1 = e.x_actual   or -20
+   local x2 = e.x_adjusted or   0
+   local y1 = logsvg.time_to_y(e, time)
+   local y2 = logsvg.time_to_y(e, adj_time)
+   return {'line',
+           {height='auto',
+            line='auto',
+            x1=x1, y1=y1,
+            x2=x2, y2=y2,
+            stroke='black'}}
+end
+
+
+-- Merge logs, sort by time, add tag
+function logsvg.merge_logs(logs)
+   local tagged_log = {}
+   for i,log in ipairs(logs) do
+      for j,entry in ipairs(log) do
+         local time, adj_time, line = unpack(entry)
+         -- log_desc(log)
+         table.insert(tagged_log, {time, adj_time, line, i})
       end
-      return column_groups
+   end
+   table.sort(tagged_log,
+              function(a,b)
+                 -- log_desc({a,b})
+                 assert(a[1])
+                 assert(b[1])
+                 return a[1] < b[1] end)
+   return tagged_log
+end
+
+function logsvg.render(e, logs)
+   -- Repel operates on the individual logs
+   assert(e.repel)
+   assert(e.ticks_per_pixel)
+   local repelled_logs = list.map(
+      function(l)
+         -- repel operates on time coordinates
+         return logsvg.repel(l, e.repel * e.ticks_per_pixel) end,
+      logs)
+   -- For rendering, we need a single time stream to be able to do
+   -- some time cuts.
+   local y = 0
+   local last_adj_time = 0
+   local merged_log = logsvg.merge_logs(repelled_logs)
+   local function g(e)
+      local group_elements = {}
+      for i, entry in ipairs(merged_log) do
+         local time, adj_time, text, column = unpack(entry)
+         local x = e.column_to_x(column)
+         local y_diff = logsvg.time_to_y(e, adj_time - last_adj_time)
+         last_adj_time = adj_time
+
+         -- FIXME: Not well-defined
+
+         -- Cut some y space if there is too much time between
+         -- subsequent log entries.  FIXME: Configurable.  FIXME: Draw
+         -- separator.
+
+         if (false and y_diff > 100) then
+            y = y - (y_diff - 100)
+            -- we add this to group_elements, which has absolute y
+            -- coordinates, outside of transform for the entry
+            local y0 = logsvg.time_to_y(e, adj_time) - y
+            table.insert(
+               group_elements,
+               {'line',
+                {height='auto',
+                 line='auto',
+                 x1=0,       y1=y0,
+                 x2=e.width, y2=y0,
+                 stroke='red'}})
+         end
+
+         table.insert(
+            group_elements,
+            {'g', {transform=logsvg.translate(x,y)},
+             {logsvg.logentry(e, adj_time, text),
+              logsvg.timelink(e, adj_time, time)}})
+
+
+      end
+      return group_elements
    end
    return logsvg.svg(e, g)
 end
+
 
 -- Let the log entries repel each other, by moving them forward in
 -- time if they are too close.
@@ -146,9 +225,10 @@ end
 -- For convenience.  This is the "user scenario": convert a list of
 -- microcontroller trace log files to an svg.
 function logsvg.render_logfiles(e, filenames)
+   assert(e.repel)
    local function process(filename)
       local l = logsvg.read_log(filename)
-      return logsvg.repel(l, 100000)
+      return logsvg.repel(l, e.repel)
    end
 
    return logsvg.render(e, list.map(process, filenames))
@@ -156,3 +236,10 @@ end
 
 
 return logsvg
+
+
+-- Notes
+--
+-- 1. After first iteration, it seems a useful feature would be to
+-- snap the dead space.  To do this, it might be simplest to
+-- interleave the logs into a single one.
