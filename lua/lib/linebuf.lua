@@ -1,5 +1,5 @@
--- Line buffering.  push() takes arbitrarily chunked data, and line()
--- is called for each line.
+-- Line buffering.  push() takes arbitrarily chunked data, and
+-- push_line() is called for each line.
 
 local linebuf = {}
 

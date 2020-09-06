@@ -49,16 +49,23 @@ function webserver.q_tonumber(q, keys, nums)
 end
 
 
+-- Select socket packet.
+function webserver:recv_socket(s)
+   s = s or self.socket  -- Default is 'the' socket
+   local tagged = self:recv(function(msg) return msg[1] == s end)
+   return tagged[2]
+end
+
 -- Called as the body of a new task actor_uv, to handle the tcp
 -- connection.  recv() produces lines, as we are configured in line
 -- mode.
 function webserver:connect()
    -- First line is request
-   local req = self:recv()
+   local req = self:recv_socket()
    -- Rest is headers up to empty line.  Collect those in an array.
    local hdrs = {}
    while true do
-      local line = self:recv()
+      local line = self:recv_socket()
       if line == '\r\n' then break end
       table.insert(hdrs, line)
    end

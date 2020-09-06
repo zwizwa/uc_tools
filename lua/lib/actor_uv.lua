@@ -5,10 +5,10 @@
 -- event, set up a callback that will send a message and then run the
 -- actor scheduler.
 
-local uv      = require('lluv')
-local actor   = require('lib.actor')
-local linebuf = require('lib.linebuf')
-local mixin   = require('lib.mixin')
+local uv        = require('lluv')
+local actor     = require('lib.actor')
+local linebuf   = require('lib.linebuf')
+local mixin     = require('lib.mixin')
 
 local function log(str)
    io.stderr:write(str)
@@ -72,20 +72,24 @@ function actor_uv.spawn_tcp_server(scheduler, serv_obj)
       -- seems simpler to do this at the write end as opposed to the
       -- read end.
       local push
+
       if serv_obj.mode == 'line' then
          -- Line buffer is presented with chunks from the socket,
          -- which then get pushed into the mailbox of a task.
          local buf = linebuf:new()
-         buf.push_line = function(self, line)
-            task:send_and_schedule(line)
-         end
-         push = function(data)
-            buf:push(data)
-         end
+         buf.push_line = function(self, line) task:send_and_schedule({task.socket,line}) end
+         push = function(data) buf:push(data) end
+
+      elseif serv_obj.mode and serv_obj.mode[1] == 'packet' then
+         local size_bytes = serv_obj.mode[2]
+         assert(size_bytes)
+         local buf = packetbuf:new(size_bytes)
+         buf.push_packet = function(self, packet) task:send_and_schedule({task.socket,packet})  end
+         push = function(data) buf:push(data) end
+
       elseif serv_obj.mode == 'raw' then
-         push = function(data)
-            task:send_and_schedule(data)
-         end
+         push = function(data) task:send_and_schedule({task.socket,data}) end
+
       else
          error('bad .mode')
       end
@@ -121,5 +125,6 @@ function actor_uv:write_socket(socket, data)
       end)
    self:recv(function(msg) return socket == msg end)
 end
+
 
 return actor_uv

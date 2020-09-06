@@ -104,7 +104,7 @@ function logsvg.render(e, logs)
       local group_elements = {}
       for i, entry in ipairs(merged_log) do
          local time, adj_time, text, column = unpack(entry)
-         local x = e.column_to_x(column)
+         local x = (column-1) * e.pixels_per_column
          local t_diff = adj_time - last_adj_time
          local y_diff = t_diff / e.ticks_per_pixel
          last_adj_time = adj_time
