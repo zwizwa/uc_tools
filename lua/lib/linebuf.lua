@@ -18,8 +18,8 @@ function linebuf:push(data)
    end
 end
 
-function linebuf.new(tag)
-   local obj = {tag = tag or "", buf = ""}
+function linebuf.new()
+   local obj = {buf = ""}
    setmetatable(obj, {__index = linebuf})
    return obj
 end

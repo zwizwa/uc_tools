@@ -8,6 +8,7 @@
 local uv        = require('lluv')
 local actor     = require('lib.actor')
 local linebuf   = require('lib.linebuf')
+local packetbuf = require('lib.packetbuf')
 local mixin     = require('lib.mixin')
 
 local function log(str)
@@ -76,14 +77,14 @@ function actor_uv.spawn_tcp_server(scheduler, serv_obj)
       if serv_obj.mode == 'line' then
          -- Line buffer is presented with chunks from the socket,
          -- which then get pushed into the mailbox of a task.
-         local buf = linebuf:new()
+         local buf = linebuf.new()
          buf.push_line = function(self, line) task:send_and_schedule({task.socket,line}) end
          push = function(data) buf:push(data) end
 
       elseif serv_obj.mode and serv_obj.mode[1] == 'packet' then
          local size_bytes = serv_obj.mode[2]
-         assert(size_bytes)
-         local buf = packetbuf:new(size_bytes)
+         assert('number' == type(size_bytes))
+         local buf = packetbuf.new(size_bytes)
          buf.push_packet = function(self, packet) task:send_and_schedule({task.socket,packet})  end
          push = function(data) buf:push(data) end
 
