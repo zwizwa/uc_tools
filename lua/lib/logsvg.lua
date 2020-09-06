@@ -30,7 +30,7 @@ function logsvg.svg(e, g)
         height=e.height},{
           {'style',{},
            {".small { font-family: monospace; font-size: 10px }\n"}},
-          {'g',{},g(e)}}}
+          {'g',{},g}}}
 end
 
 function logsvg.translate(x, y)
@@ -94,12 +94,13 @@ function logsvg.render(e, logs)
       logs)
    -- For rendering, we need a single time stream to be able to do
    -- some time cuts.
-   local y = 0
+   local y = 20
    local last_adj_time = 0
    -- Sort by adj_time, which is actual y distance used below for y_diff
    local sort_by = 2
    local merged_log = logsvg.merge_logs(repelled_logs, sort_by)
-   local function g(e)
+
+   local function render_g(e)
       local group_elements = {}
       for i, entry in ipairs(merged_log) do
          local time, adj_time, text, column = unpack(entry)
@@ -110,13 +111,13 @@ function logsvg.render(e, logs)
 
          -- Cut y space if there is too much time between subsequent
          -- log entries.  FIXME: Make this configurable.
-         local y_diff_max = 100
+         local y_diff_max = 70
 
          if (y_diff > y_diff_max) then
-            local y_adjust = y_diff - y_diff_max
-            local t_adjust = e.ticks_per_pixel * y_adjust
+            local y_cut = y_diff - y_diff_max
+            local t_cut = e.ticks_per_pixel * y_cut
 
-            y = y - y_adjust
+            y = y - y_cut
             -- we add this to group_elements, which has absolute y
             -- coordinates, outside of transform for the entry
             local red_line_y_spacing = 15
@@ -127,7 +128,7 @@ function logsvg.render(e, logs)
                 {{'text',
                   {width='auto',  height='auto',
                    class='small', stroke='red'},
-                  {"t_adjust = " .. t_adjust / 72000}},
+                  {"t_cut = " .. t_cut / 72000}},
                  {'line',
                   {height='auto', width='auto',
                    x1=0, y1=0, x2=e.width, y2=0,
@@ -142,8 +143,16 @@ function logsvg.render(e, logs)
 
 
       end
+
+
       return group_elements
    end
+
+   local g = render_g(e)
+   local t_total = merged_log[#merged_log][2] -- adj_time field
+   local y_total = t_total / e.ticks_per_pixel
+   -- As a side effect of rendering, y contains the total y adjust
+   e.height = y_total + 20 + y
    return logsvg.svg(e, g)
 end
 
