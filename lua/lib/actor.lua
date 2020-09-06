@@ -170,6 +170,15 @@ function actor.task:send(msg)
    self.scheduler:send(self, msg)
 end
 
+-- For events that are generated outside of a schedule() run, the
+-- scheduler needs to be run after a send() call.  The send() call
+-- only queues the message.  E.g. in an event-driven system, this is
+-- called from event callback functions.
+function actor.task:send_and_schedule(msg)
+   self:send(msg)
+   self.scheduler:schedule()
+end
+
 -- Receive blocks if there are no available messages.  Note that a
 -- filtering mechanism is necessary for implementing message priority
 -- schemes.  See e.g. the implementation of actor_uv.sleep.

@@ -16,16 +16,21 @@ end
 -- Behavior associated to a single connection.
 local webserver = {}
 
+function webserver:write(str)
+   return self:write_socket(self.socket, str)
+end
+
 function webserver:response_html(lxml_element)
+   -- local function write_cb() log("write_cb\n") end
    log("->200\n")
-   self.socket:write("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n")
-   self.socket:write(lxml.elements_to_string({lxml_element}))
+   self:write("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n")
+   self:write(lxml.elements_to_string({lxml_element}))
 end
 
 function webserver:response_svg(lxml_element)
    log("->200\n")
-   self.socket:write("HTTP/1.1 200 OK\r\nContent-Type: image/svg+xml\r\n\r\n")
-   self.socket:write(lxml.elements_to_string({lxml_element}))
+   self:write("HTTP/1.1 200 OK\r\nContent-Type: image/svg+xml\r\n\r\n")
+   self:write(lxml.elements_to_string({lxml_element}))
 end
 
 function webserver:response_404()

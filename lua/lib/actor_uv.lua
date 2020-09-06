@@ -1,4 +1,5 @@
 -- I/O functionality for actor.lua based on libuv.
+-- https://github.com/moteus/lua-lluv
 --
 -- These are small wrappers that all have the same style: for a libuv
 -- event, set up a callback that will send a message and then run the
@@ -24,8 +25,7 @@ function actor_uv.send_after(task, msg, ms, t)
       ms, 0,
       function(timer)
          timer:close()
-         task:send(msg) -- deliver
-         task.scheduler:schedule() -- propagate
+         task:send_and_schedule(msg)
       end)
    return t
 end
@@ -59,6 +59,7 @@ function actor_uv.spawn_tcp_server(scheduler, serv_obj)
       -- We then add task behavior mixin.
       actor_uv.task(scheduler, task)
       task.socket = lsocket:accept()
+      assert(task.socket)
 
       scheduler:spawn(
          function(task)
@@ -76,16 +77,14 @@ function actor_uv.spawn_tcp_server(scheduler, serv_obj)
          -- which then get pushed into the mailbox of a task.
          local buf = linebuf:new()
          buf.push_line = function(self, line)
-            task:send(line) -- deliver
-            scheduler:schedule() -- propagate
+            task:send_and_schedule(line)
          end
          push = function(data)
             buf:push(data)
          end
       elseif serv_obj.mode == 'raw' then
          push = function(data)
-            task:send(data)
-            scheduler:schedule() -- propagate
+            task:send_and_schedule(data)
          end
       else
          error('bad .mode')
@@ -111,5 +110,16 @@ function actor_uv.spawn_tcp_server(scheduler, serv_obj)
    return lsocket
 end
 
+-- Blocking abstraction for asynchronous socket writes.
+function actor_uv:write_socket(socket, data)
+   socket:write(
+      data,
+      function()
+         -- FIXME: handle write errors in callback.
+         -- Use the socket as sync message
+         self:send_and_schedule(socket)
+      end)
+   self:recv(function(msg) return socket == msg end)
+end
 
 return actor_uv
