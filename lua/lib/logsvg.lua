@@ -144,8 +144,10 @@ function logsvg.render(e, logs)
 
       end
 
-
-      return group_elements
+      -- Translate the entire frame to make room for the time pointers
+      -- which have negative x coordinates.
+      return {{'g', {transform=logsvg.translate(30,0)},
+               group_elements}}
    end
 
    local g = render_g(e)
