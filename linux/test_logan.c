@@ -14,13 +14,16 @@ void uart_out(struct la *la, const struct la_event *e) {
 }
 
 // First data bit is 0, the following are the bit number of parity and stop bits
-#define BIT_PARITY 8
-#define BIT_STOP   9
-#define UART_DIV   4
+#define BIT_PARITY -1 // no parity
+#define BIT_STOP    8
+#define UART_DIV    4
+
+#define BRK (1 << BIT_STOP)
 
 static inline void test_uart_bits(struct la_uart *s, struct la_event *e, int value, int nb_bits) {
     for (int j=0; j<nb_bits; j++) {
-        e->value = (value >> j) & 1;
+        e->value = value & 1;
+        value >>= 1;
         for (int i=0; i<s->config->clock_div; i++) {
             la_uart_push(s, e);
             e->time++;
@@ -29,16 +32,15 @@ static inline void test_uart_bits(struct la_uart *s, struct la_event *e, int val
 }
 static inline void test_uart_bytes(struct la_uart *s, struct la_event *e, const uint16_t *b, int nb_bytes) {
     for (int i=0; i<nb_bytes; i++) {
-        if (b[i] == 512) {
+        if (b[i] == BRK) {
             // DMX Break=176uS, MAB=44
             // At 250kBaud, a bit is 4uS
             int bit_us = 4;
-            int break_ticks = (UART_DIV * 176) / bit_us;
-            int mab_ticks   = (UART_DIV * 44)  / bit_us;
+            int brk_ticks = (UART_DIV * 176) / bit_us;
+            int mab_ticks = (UART_DIV *  44) / bit_us;
 
-            // FIXME: Calculate these numbers
-            for(int i=0; i<break_ticks; i++) test_uart_bits(s, e, 0, 1);
-            for(int i=0; i<mab_ticks; i++)   test_uart_bits(s, e, 1, 1);
+            test_uart_bits(s, e,  0, brk_ticks);
+            test_uart_bits(s, e, -1, mab_ticks);
         }
         else if (b[i] < 256) {
             test_uart_bits(s, e, -1,   1); // idle
@@ -77,7 +79,7 @@ void test_uart_assert(uint16_t *test_data, uintptr_t test_size) {
     }
 }
 void test_uart(void) {
-    uint16_t test_data[] = {512, 1, 2, 3, 4};
+    uint16_t test_data[] = {BRK, 1, 2, 3, 4};
     test_uart_assert(test_data, 5);
 }
 

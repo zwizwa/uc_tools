@@ -85,7 +85,7 @@ struct la_uart_config {
     uintptr_t channel;
     uintptr_t clock_div;
     uintptr_t bit_stop;
-    uintptr_t bit_parity;
+    intptr_t bit_parity;   // negative is no parity
     /* Analyzed data is pushed here. */
     struct la *out;
 };
@@ -174,7 +174,7 @@ INLINE void la_uart_push(struct la_uart *s,
             else if (s->bits_count == c->bit_parity) {
                 if (bit != s->bits_parity) {
                     LOG_DBG("\n[P]");
-                    // ignore it
+                    s->bits_data |= (1 << c->bit_parity);
                 }
             }
             else { // DATA BIT
