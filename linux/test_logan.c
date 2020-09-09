@@ -1,65 +1,52 @@
-/* There are Rust and C++ counterparts to this.  However, currently I
-   am stuck in low-resource C land, so I am revisiting
-   requirements.
+#include "la_uart.h"
 
-   - A small DAQ head that can run in EXTI ISR on STM32F103,
-     differential logging, spill to USB
+void uart_out(struct la *la, const struct la_event *e) {
+    LOG("%d\n", e->value);
+}
 
-   - Parsers that can operate on differential data.  This seems to
-     require two operations:
+// First data bit is 0, the following are the bit number of parity and stop bits
+#define BIT_PARITY 8
+#define BIT_STOP   9
+#define UART_DIV   4
 
-     - Wind forward in time and get value
-
-     - Wind to next event and measure time diff
-
-   - Parsers are written in "push style", presented with one event at
-     a time, exposed as a static inline function to allow inlining
-     when composing machines.
-
-   Looking at in-place processing to simplify memory management and
-   increase data locality for speed.  This probably means that
-   analyzers have to be generated and specialized to task.
-
-   So we are looking at DSL + primitives.
-
-*/
-
-#include "macros.h"
-#include <stdint.h>
-
-/* All protocol analysis will probably happen on 64 bit host, so data
-   structures should be designed to be native.  Let's stick to time as
-   uintptr_t, which is 71 minutes @ 1MHz on 32-bit, still plenty to
-   run some protocol analysis on a 32-bit microcontroller. */
-typedef uint32_t la_time_t;
-
-/* An event is a data sample in time.  Processors should not assume
-   that a value changes between events. */
-struct la_event {
-    la_time_t time;
-    union {
-        uintptr_t uptr;
-    } value;
-};
-
-/* For representation on uC, a bit-packet representation is probably
-   more appropriate, e.g. 1 bit value + 15 bit relative time, or 2 bit
-   value + 14. bit relative time. */
-
-/* A UART parser */
-struct la_uart {
-    /* Not clear what is best.  To use 8-bit or machine words?  This
-       is going to end up as part of inner loop state, so likely will
-       be implmented as registers.  For now, let's stick to 8-bit,
-       then later change when performance metrics are available. */
-    uint16_t shiftreg;
-    uint8_t state;
-    uint8_t nb_start;
-    uint8_t nb_stop;
-    uint8_t nb_data;
-};
+static inline void test_uart_bits(struct la_uart *s, struct la_event *e, int value, int nb_bits) {
+    for (int j=0; j<nb_bits; j++) {
+        e->value = (value >> j) & 1;
+        for (int i=0; i<s->config->clock_div; i++) {
+            la_uart_push(s, e);
+            e->time++;
+        }
+    }
+}
+static inline void test_uart_bytes(struct la_uart *s, struct la_event *e, const uint8_t *b, int nb_bytes) {
+    for (int i=0; i<nb_bytes; i++) {
+        test_uart_bits(s, e, -1,   1); // idle
+        test_uart_bits(s, e, 0,    1); // start
+        test_uart_bits(s, e, b[i], 8); // stop
+        test_uart_bits(s, e, -1,   2); // stop
+    }
+}
+void test_uart(void) {
+    struct la out = {
+        .push = uart_out
+    };
+    struct la_uart_config c = {
+        .out = &out,
+        .channel = 0,
+        .clock_div  = UART_DIV,
+        .bit_stop   = BIT_STOP,
+        .bit_parity = BIT_PARITY,
+    };
+    struct la_uart s = {
+        .config = &c
+    };
+    uint8_t test_data[] = {1,2,3};
+    struct la_event e = {};
+    test_uart_bytes(&s, &e, test_data, sizeof(test_data));
+}
 
 int main(int argc, char **argv) {
     LOG("%s\n", argv[0]);
+    test_uart();
     return 0;
 }
