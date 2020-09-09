@@ -20,14 +20,18 @@ struct uart_out {
     la_time_t brk_time;
 };
 
+void frame_print(struct uart_out *s) {
+    uint64_t timestamp = TIME_MUL * (uint64_t)s->brk_time;
+    printf("%08x", (uint32_t)timestamp);
+    for(int i=0; i<s->count; i++) { printf(" %02x", s->buf[i]); }
+    printf("\n");
+}
+
 void uart_out(struct la *la, const struct la_event *e) {
     struct uart_out *s = (void*)la;
     if (e->value == BRK) {
         // Break.  Print collected packet in text log format.
-        uint64_t timestamp = TIME_MUL * (uint64_t)s->brk_time;
-        printf("%08x", (uint32_t)timestamp);
-        for(int i=0; i<s->count; i++) { printf(" %02x", s->buf[i]); }
-        printf("\n");
+        frame_print(s);
         // Set up for capturing the next packet
         s->count = 0;
         s->brk_time = e->time;
