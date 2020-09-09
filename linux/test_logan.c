@@ -1,7 +1,16 @@
 #include "la_uart.h"
 
+/* Test for lu_uart.h using DMX framing. */
+
+struct uart_out {
+    struct la la;
+    uint16_t buf[1024];
+    uintptr_t count;
+};
+
 void uart_out(struct la *la, const struct la_event *e) {
-    LOG("%d\n", e->value);
+    struct uart_out *s = (void*)la;
+    s->buf[s->count++] = e->value;
 }
 
 // First data bit is 0, the following are the bit number of parity and stop bits
@@ -18,20 +27,36 @@ static inline void test_uart_bits(struct la_uart *s, struct la_event *e, int val
         }
     }
 }
-static inline void test_uart_bytes(struct la_uart *s, struct la_event *e, const uint8_t *b, int nb_bytes) {
+static inline void test_uart_bytes(struct la_uart *s, struct la_event *e, const uint16_t *b, int nb_bytes) {
     for (int i=0; i<nb_bytes; i++) {
-        test_uart_bits(s, e, -1,   1); // idle
-        test_uart_bits(s, e, 0,    1); // start
-        test_uart_bits(s, e, b[i], 8); // stop
-        test_uart_bits(s, e, -1,   2); // stop
+        if (b[i] == 512) {
+            // DMX Break=176uS, MAB=44
+            // At 250kBaud, a bit is 4uS
+            int bit_us = 4;
+            int break_ticks = (UART_DIV * 176) / bit_us;
+            int mab_ticks   = (UART_DIV * 44)  / bit_us;
+
+            // FIXME: Calculate these numbers
+            for(int i=0; i<break_ticks; i++) test_uart_bits(s, e, 0, 1);
+            for(int i=0; i<mab_ticks; i++)   test_uart_bits(s, e, 1, 1);
+        }
+        else if (b[i] < 256) {
+            test_uart_bits(s, e, -1,   1); // idle
+            test_uart_bits(s, e, 0,    1); // start
+            test_uart_bits(s, e, b[i], 8); // data
+            test_uart_bits(s, e, -1,   2); // stop
+        }
+        else {
+            LOG("unknown token: %d\n", b[i]);
+        }
     }
 }
-void test_uart(void) {
-    struct la out = {
-        .push = uart_out
+void test_uart_assert(uint16_t *test_data, uintptr_t test_size) {
+    struct uart_out out = {
+        .la = { .push = uart_out },
     };
     struct la_uart_config c = {
-        .out = &out,
+        .out = &out.la,
         .channel = 0,
         .clock_div  = UART_DIV,
         .bit_stop   = BIT_STOP,
@@ -40,9 +65,20 @@ void test_uart(void) {
     struct la_uart s = {
         .config = &c
     };
-    uint8_t test_data[] = {1,2,3};
     struct la_event e = {};
-    test_uart_bytes(&s, &e, test_data, sizeof(test_data));
+    test_uart_bytes(&s, &e, test_data, test_size);
+    for(int i=0; i<out.count; i++){
+        LOG("%d ", out.buf[i]);
+    }
+    LOG("\n");
+    ASSERT(test_size == out.count);
+    for(int i=0; i<out.count; i++){
+        ASSERT(test_data[i] == out.buf[i]);
+    }
+}
+void test_uart(void) {
+    uint16_t test_data[] = {512, 1, 2, 3, 4};
+    test_uart_assert(test_data, 5);
 }
 
 int main(int argc, char **argv) {

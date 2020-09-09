@@ -154,17 +154,22 @@ INLINE void la_uart_push(struct la_uart *s,
         }
         else {
             if (s->bits_count == c->bit_stop) {
-                if (!bit) {
-                    LOG_DBG("\n[F]");
-                    // _set_state(sm_break);  // FIXME: break condition not implemented
-                }
                 struct la_event e = {
                     .time  = in->time,
                     .value = s->bits_data,
                 };
+                if (!bit) {
+                    LOG_DBG("\n[F]");
+                    /* Use the location of the stop bit as the
+                       location of the frame error bit. */
+                    e.value |= (1 << c->bit_stop);
+                    s->state = LA_UART_BREAK;
+                }
+                else {
+                    s->state = LA_UART_IDLE;
+                }
                 struct la *out = s->config->out;
                 out->push(out, &e);
-                s->state = LA_UART_IDLE;
             }
             else if (s->bits_count == c->bit_parity) {
                 if (bit != s->bits_parity) {
