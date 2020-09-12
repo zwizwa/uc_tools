@@ -1,11 +1,26 @@
-/* ARM cycle counter. */
+/* Timing routines using the machine cycle clounter. */
 #ifndef CYCLE_COUNTER_H
 #define CYCLE_COUNTER_H
 
+#include "stdint.h"
 
+/* Having code depend on absolute time introduces some linker
+   complications, e.g.:
 
-/* Hardware-specific. */
-#ifndef EMU
+   - We want code to be fast for specific platform, e.g. STM32F1
+
+   - We also want a generic version, e.g. to be able to emulate code
+     that depends on a notion absolute time.
+
+   - We probably no not want to run such code in a non-polling
+     situation, e.g. a Linux application (other than an emulator).
+
+   Currently this is solved by providing the counter implementation
+   for specific machines, and resort to an externally defined C
+   function in other cases.
+*/
+
+#ifdef STM32F1
 
 /* Use the ARM 32-bit cycle counter to do time stamping.  It's more
    convenient than having to work around 16bit counter limitations.
@@ -25,6 +40,12 @@ static inline void enable_cycle_counter(void) {
 static inline uint32_t cycle_counter(void) {
     return DWT_CYCCNT;
 }
+#else
+
+#define CYCLE_COUNTER_NO_INLINE
+uint32_t cycle_counter(void);
+void enable_cycle_counter(void);
+
 #endif
 
 
