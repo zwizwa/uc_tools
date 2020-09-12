@@ -98,11 +98,12 @@ struct cycle_counter_interval {
     uint32_t expire;  // absolute expiration time
     int32_t diff;     // relative remaining time, negative means timeout
 };
+#include "infof.h"
 static inline void cycle_counter_init_timeout(struct cycle_counter_interval *cci, uint32_t timeout) {
     cci->expire = cycle_counter_future_time(timeout);
+    infof("expire %x\n", cci->expire);
 }
-static inline int cycle_counter_wait_timeout(struct cycle_counter_interval *cci, int wait_condition) {
-    if (wait_condition) return 1; // resume due to wait condition true
+static inline int cycle_counter_wait_timeout(struct cycle_counter_interval *cci) {
     uint32_t now = cycle_counter(); // sample once. value is used twice
     cci->diff = cycle_counter_diff(cci->expire, now);
     if (cci->diff < 0) return 1; // resume due to time expire
@@ -110,10 +111,18 @@ static inline int cycle_counter_wait_timeout(struct cycle_counter_interval *cci,
 }
 
 /* This macro can be used in conjunction with sm.h, but doesn't pull
-   in the header.  Return value < 0 means timeout. */
-#define SM_WAIT_CC_TIMEOUT(s, interval, timeout, condition) ({             \
+   in the header.  Return value < 0 means timeout.  Note that timeout
+   is evaluated first to make sure that ->diff gets updated on each
+   try. */
+#define SM_WAIT_CC_TIMEOUT(s, interval, timeout, condition) ({          \
             cycle_counter_init_timeout(interval, timeout);              \
-            SM_WAIT(s, cycle_counter_wait_timeout(interval, condition)); \
+            SM_WAIT(s, cycle_counter_wait_timeout(interval) || (condition)); \
+            (interval)->diff; })
+
+/* Similar, but for SM_READ. */
+#define SM_READ_CC_TIMEOUT(s, interval, timeout, var, chan) ({          \
+            cycle_counter_init_timeout(interval, timeout);              \
+            SM_WAIT(s, ((var=0),cycle_counter_wait_timeout(interval)) || (var = sm_read(chan))) ; \
             (interval)->diff; })
 
 
