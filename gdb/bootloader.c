@@ -33,15 +33,10 @@
 #include "gdbstub.h"
 #include "bootloader.h"
 
-// FIXME: This makes it platform-dependent
-
-
-
-#define POLL_TABLE_SIZE 16
-static gdbstub_fn_poll poll_table[POLL_TABLE_SIZE];
+static gdbstub_fn_poll poll_table[GDBSTUB_SERVICE_NB_POLL];
 static uint32_t poll_used = 0;
 static void poll_add (gdbstub_fn_poll fn) {
-    if (poll_used < POLL_TABLE_SIZE) {
+    if (poll_used < GDBSTUB_SERVICE_NB_POLL) {
         poll_table[poll_used++] = fn;
     }
 }

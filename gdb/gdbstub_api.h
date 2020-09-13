@@ -79,6 +79,10 @@ struct gdbstub_service {
 /* Instance is stored in Flash - see stm32f1.ld */
 extern const struct gdbstub_service _service;
 
+/* There is room for a fixed number of poll tasks.  If more are
+   needed, the firmware should provide its own mechanism. */
+#define GDBSTUB_SERVICE_NB_POLL 16
+
 /* Regarding protocol:
    (1) Gives access to the debugger stub using the GDB RSP protocol
    (2) Interprets read/write on the CDC ACM serial port (application protocol)
