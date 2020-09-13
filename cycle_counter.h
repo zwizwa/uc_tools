@@ -98,10 +98,10 @@ struct cycle_counter_interval {
     uint32_t expire;  // absolute expiration time
     int32_t diff;     // relative remaining time, negative means timeout
 };
-#include "infof.h"
+//#include "infof.h"
 static inline void cycle_counter_init_timeout(struct cycle_counter_interval *cci, uint32_t timeout) {
     cci->expire = cycle_counter_future_time(timeout);
-    infof("expire %x\n", cci->expire);
+    //infof("expire %x\n", cci->expire);
 }
 static inline int cycle_counter_wait_timeout(struct cycle_counter_interval *cci) {
     uint32_t now = cycle_counter(); // sample once. value is used twice
