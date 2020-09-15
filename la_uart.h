@@ -86,6 +86,7 @@ struct la_uart_config {
     uintptr_t clock_div;
     uintptr_t bit_stop;
     intptr_t bit_parity;   // negative is no parity
+    uintptr_t max_idle;    // send idle tokens
     /* Analyzed data is pushed here. */
     struct la *out;
 };
@@ -103,6 +104,7 @@ struct la_uart {
     uintptr_t bits_count;
     uintptr_t bits_parity;
     uintptr_t delay;
+    uintptr_t idle_expire;
 
 };
 
@@ -131,7 +133,29 @@ INLINE void la_uart_push(struct la_uart *s,
 
     case LA_UART_IDLE:
         LOG_DBG("I");
-        if (bit) break; // still idle
+        if (bit) {
+            // still idle
+            if (c->max_idle) {
+                uintptr_t idle_diff = s->idle_expire - in->time;
+
+                if (((intptr_t)idle_diff) < 0) {
+                    // The bit after the stop bit is used for control
+                    // tokens.  Not sure if this is a great idea, but
+                    // it avoids having to set a fixed token API here.
+                    uintptr_t control_tag = 1 << (c->bit_stop + 1);
+                    uintptr_t control_code = 0;
+                    struct la_event e = {
+                        .time  = in->time,
+                        .value = control_tag | control_code,
+                    };
+                    struct la *out = s->config->out;
+                    out->push(out, &e);
+                    // Reset timer
+                    goto idle_set_timeout;
+                }
+            }
+            break;
+        }
 
         // Skip start bit and sample first bit in the middle.
         s->state = LA_UART_SAMPLE;
@@ -144,8 +168,7 @@ INLINE void la_uart_push(struct la_uart *s,
     case LA_UART_BREAK:
         LOG_DBG("B");
         if (!bit) break; // still break
-        s->state = LA_UART_IDLE;
-        break;
+        goto idle_set_timeout;
 
     case LA_UART_SAMPLE:
         LOG_DBG("D");
@@ -158,18 +181,19 @@ INLINE void la_uart_push(struct la_uart *s,
                     .time  = in->time,
                     .value = s->bits_data,
                 };
+                struct la *out = s->config->out;
                 if (!bit) {
                     LOG_DBG("\n[F]");
                     /* Use the location of the stop bit as the
                        location of the frame error bit. */
                     e.value |= (1 << c->bit_stop);
                     s->state = LA_UART_BREAK;
+                    out->push(out, &e);
                 }
                 else {
-                    s->state = LA_UART_IDLE;
+                    out->push(out, &e);
+                    goto idle_set_timeout;
                 }
-                struct la *out = s->config->out;
-                out->push(out, &e);
             }
             else if (s->bits_count == c->bit_parity) {
                 if (bit != s->bits_parity) {
@@ -193,4 +217,13 @@ INLINE void la_uart_push(struct la_uart *s,
         // NOT REACHED
         break;
     }
+    return;
+
+
+    // Transition to idle state and set timeout.
+  idle_set_timeout:
+    s->state = LA_UART_IDLE;
+    s->idle_expire = in->time + c->max_idle;
+    //LOG("idle_expire = %d\n", s->idle_expire);
+
 }

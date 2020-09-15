@@ -13,10 +13,22 @@
 #define BIT_STOP    8
 
 // These should be confiugrable
-#define UART_DIV  8   // 2MHz sample rate / 250kBaud UART
-#define TIME_MUL  36  // 72MHz STM32 clock rate / 2Mhz sample rate.
+#define UART_DIV   8   // 2MHz sample rate / 250kBaud UART
+#define SAMPLE_MHZ 2
 
-#define BRK (1 << BIT_STOP)
+// DMX frame timeout.  For debugging purposes it is probably best to
+// keep this low.  Note that DMX standard allows for 1 second before
+// calling lost data.
+#define MAX_IDLE_MS(ms) (SAMPLE_MHZ * 1000 * (ms))
+#define MAX_IDLE MAX_IDLE_MS(100)
+
+// For time stamp logging, use the same resolution as STM32 clock
+#define TIME_MUL   (72 / SAMPLE_MHZ)
+
+// Stop bit position is used to encode frame errors and the location
+// of the control code tag.  See la_uart.h
+#define BRK  (1 << BIT_STOP)
+#define IDLE (1 << (BIT_STOP + 1))
 
 /* Convert direct stream on stdin to {packet,4} DMX packet stream on stdout. */
 #define BUF_SIZE 1024
@@ -30,7 +42,10 @@ struct uart_out {
 
 static void frame_print(struct uart_out *s) {
     uint64_t timestamp = TIME_MUL * (uint64_t)s->brk_time;
-    printf("%08x %02x:", (uint32_t)timestamp, s->port);
+    /* About the format: The ':' can be used to separate header from
+       payload.  The header contains size, but that is mostly to make
+       it human-readable. */
+    printf("%08x %d %d:", (uint32_t)timestamp, s->port, s->count);
     for(int i=0; i<s->count; i++) { printf(" %02x", s->buf[i]); }
     printf("\n");
 }
@@ -47,19 +62,34 @@ static void frame_send(struct uart_out *s) {
     assert_write(1, buf, 4 + HDR_SIZE + s->count);
 }
 
+// Make this configurable
+static void frame_out(struct uart_out *s) {
+    if (1) {
+        frame_print(s);
+    }
+    else {
+        frame_send(s);
+    }
+}
+
 static void uart_out(struct la *la, const struct la_event *e) {
     struct uart_out *s = (void*)la;
     if (e->value == BRK) {
         // Break.  Print collected packet in text log format.
-        if (1) {
-            frame_print(s);
-        }
-        else {
-            frame_send(s);
-        }
+        frame_out(s);
         // Set up for capturing the next packet
         s->count = 0;
         s->brk_time = e->time;
+    }
+    else if (e->value == IDLE) {
+        // Idle.  If there was a non-zero length packet then send it.
+        // FIXME: This is not entirely correct.  We do want to report
+        // zero length packets (break + no data).
+        if (s->count > 0) {
+            frame_out(s);
+            // Set up for capturing the next packet
+            s->count = 0;
+        }
     }
     else {
         if (s->count < sizeof(s->buf)) {
@@ -80,6 +110,7 @@ static void uart_out(struct la *la, const struct la_event *e) {
         .clock_div  = UART_DIV,                 \
         .bit_stop   = BIT_STOP,                 \
         .bit_parity = BIT_PARITY,               \
+        .max_idle   = MAX_IDLE,                 \
     };                                          \
     struct la_uart s_##n = {                    \
         .config = &c_##n                        \
@@ -96,8 +127,8 @@ static void start(void) {
     FOR_PORTS(DEF_PORT)
 
     uint8_t in_buf[256 * 1024]; // Logic8 write size.
+    struct la_event e = {};
     for(;;) {
-        struct la_event e = {};
         ssize_t n = assert_read(0, in_buf, sizeof(in_buf));
         for(size_t i=0; i<n; i++) {
             e.value = in_buf[i];
