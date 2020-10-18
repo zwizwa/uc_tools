@@ -18,9 +18,9 @@ int main(int argc, char **argv) {
     ASSERT(0 == fseek(f_fw, 0, SEEK_SET));
     ASSERT(fw_len == fread(fw, 1, fw_len, f_fw));
 
-    struct fwstream fws = { .chunk_size = 128 };
+    struct fwstream fws = { .chunk_size = 128, .max_size = 0xD000 };
     for (int i=0; i<fw_len/fws.chunk_size; i++) {
-        fwstream_push(&fws, i, fw + i*fws.chunk_size);
+        ASSERT(0 == fwstream_push(&fws, i, fw + i*fws.chunk_size));
     }
 
     return 0;
