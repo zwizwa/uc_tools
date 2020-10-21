@@ -2,7 +2,11 @@
 #include "gdbstub.h"
 #include "gdbstub_api.h"
 
-const char gdbstub_memory_map[] = GDBSTUB_MEMORY_MAP_STM32F103C8;
+#ifndef GDBSTUB_MEMORY_MAP
+#define GDBSTUB_MEMORY_MAP GDBSTUB_MEMORY_MAP_STM32F103C8
+#endif
+
+const char gdbstub_memory_map[] = GDBSTUB_MEMORY_MAP;
 const uint32_t flash_page_size_log = 10; // 1k
 
 
