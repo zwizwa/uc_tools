@@ -76,11 +76,18 @@ struct cbuf uart1_out; uint8_t uart1_out_buf[1024];
 struct pbuf packet_in; uint8_t packet_in_buf[64+1024]; // FLASH_WRITE
 
 
-/* Each lab board can have a temperature sensor attached. */
 #define TIMEBASE_DIV 0x10000
+
+
+/* Each lab board can have a temperature sensor attached.
+   EDIT: This is disabled.  Make it into a loadable module instead.
+*/
+
+#ifdef DHT11
 #define DHT11_COMM  GPIOB,15
 #define DHT11_SLIP_CBUF (&slip_out)
 #include "mod_dht11.c"
+#endif
 
 
 
@@ -202,6 +209,7 @@ void dispatch(void *ctx, const struct pbuf *p) {
 
 
 void poll_timebase(void) {
+#ifdef DHT11
     static uint32_t dht11_sync;
     if (timebase_sync_sub(&dht11_sync, 14)) {
         // 10 is 1.07 Hz
@@ -209,6 +217,7 @@ void poll_timebase(void) {
         // infof("tick\n");
         dht11_request(&dht11);
     }
+#endif
 }
 
 uint32_t uart1_read(uint8_t *buf, uint32_t len) {
@@ -293,8 +302,10 @@ void start(void) {
     CBUF_INIT(slip_out);
     PBUF_INIT(packet_in);
 
+#ifdef DHT11
     /* This includes timebase_init() */
     dht11_init();
+#endif
 
     usart1_init();
 
