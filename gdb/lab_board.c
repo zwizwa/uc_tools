@@ -338,6 +338,8 @@ struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .start           = start,
     .stop            = stop,
     .switch_protocol = switch_protocol,
+    .flash_start     = (const void*)&config,
+    .flash_endx      = (const void*)&_eflash,
 };
 
 

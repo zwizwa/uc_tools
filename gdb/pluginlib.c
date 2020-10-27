@@ -20,7 +20,7 @@ struct plugin_service *plugin_service_ = 0;
 static struct plugin_service *plugin_service(void) {
     /* Anything programmed during this session gets priority,
        otherwise use what's stored in Flash */
-    if (!plugin_service_) plugin_service_ = &_eflash;
+    if (!plugin_service_) plugin_service_ = (void*)&_eflash;
     if (plugin_service_->version != PLUGIN_API_VERSION) return NULL;
     return plugin_service_;
 }

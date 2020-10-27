@@ -121,7 +121,7 @@ case "$TYPE" in
         ;;
     fw)
         # Take a .bin produced by previous rule, and append the
-        # control block.
+        # firmware control block used by trampoline.c
         assert_vars ARCH BIN FW BIN2FW
         . $UC_TOOLS/gdb/env.$ARCH.sh
         $BIN2FW $BIN $FW
