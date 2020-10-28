@@ -166,12 +166,25 @@ PROVIDE(_store = 0x08030000);
 after the .config and .mem.* sections? */
 
 SECTIONS {
-	/* _eflash:         first free block in Flash memory for application use.
+	/* _eflash:         first free block in Flash memory after code.
 	   _flash_bin_endx: end of firmware binary */
  	.flash_pad : {
 		_flash_bin_endx = . ;     
 		. = ALIGN(1024);
 		_eflash = . ;     
  	} >rom
+
+        /* If there is a .control section, then reserve a control
+           block at _eflash that can later be patched by objcopy
+           --update-section.  This is used e.g. by
+           patch-control-block.sh to store CRC data in the .elf, which
+           can only be computed in a second pass after linking has
+           finished. */
+
+        .control : {
+		_control = . ;
+                KEEP (*(.control)) ;
+		. = ALIGN(1024);
+        } >rom
 }
 

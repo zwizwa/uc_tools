@@ -342,5 +342,4 @@ struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .flash_endx      = (const void*)&_eflash,
 };
 
-
-
+struct gdbstub_control control CONTROL_SECTION;

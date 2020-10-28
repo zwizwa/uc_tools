@@ -251,4 +251,11 @@ static inline void gdbstub_service_stop(const struct gdbstub_service *s) {
 #define STORE_HEADER_SECTION  __attribute__ ((section (".store_header")))
 #define STORE_DATA_SECTION    __attribute__ ((section (".store_data")))
 
+/* Firmware control block contains things like CRC, which is computed
+   after linking has finished and patched into the elf. */
+#define CONTROL_SECTION       __attribute__ ((section (".control")))
+
+
+
+
 #endif
