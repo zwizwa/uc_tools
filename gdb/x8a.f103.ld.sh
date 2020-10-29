@@ -71,6 +71,19 @@ SECTIONS {
 		. = ALIGN(1024);
 		_eflash = . ;     
  	} >rom
+
+        /* If there is a .control section, then reserve a control
+           block at _eflash that can later be patched by objcopy
+           --update-section.  This is used e.g. by
+           patch-control-block.sh to store CRC data in the .elf, which
+           can only be computed in a second pass after linking has
+           finished. */
+
+        .control : {
+		_control = . ;
+                KEEP (*(.control)) ;
+		. = ALIGN(1024);
+        } >rom
 }
 
 EOF

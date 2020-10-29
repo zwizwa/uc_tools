@@ -127,9 +127,9 @@ case "$TYPE" in
         # BIN to BIN.  It is more trouble than it's worth to keep
         # intermediate raw binaries due to lack of metatdata.  If raw
         # binaries are necessary, derive them from ELF files.
-        assert_vars ARCH ELF FW
+        assert_vars ARCH ELF FW BIN2FW
         . $UC_TOOLS/gdb/env.$ARCH.sh
-        $UC_TOOLS/elf2fw.sh $ELF $FW
+        $UC_TOOLS/gdb/elf2fw.sh $ELF $FW
         ;;
     data)
         # Convert binary to elf to be loaded at address.  Note that

@@ -59,7 +59,8 @@ FW="$2"
 rm -f "$FW"
 
 
-# Caller is responsible for building this binary.
+# Caller is responsible for building this binary from bin2fw.c and is
+# allowed to specify its location.  Otherwise we use default.
 [ -z "$BIN2FW" ] && BIN2FW=$(dirname $0)/../linux/bin2fw.dynamic.host.elf
 [ ! -x "$BIN2FW" ] && echo "BIN2FW=$BINFW is not executable" && exit 1
 
