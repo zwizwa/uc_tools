@@ -342,4 +342,9 @@ struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .flash_endx      = (const void*)&_eflash,
 };
 
+/* If this is present, the linker script will include a .control
+   section that can later be overwritten by objcopy --modify-section.
+   To compute CRC, a 2-pass approach is needed: build elf, convert to
+   bin, compute checksum for control block, then patch control block
+   into elf. See e.g. patch-control.sh */
 struct gdbstub_control control CONTROL_SECTION;

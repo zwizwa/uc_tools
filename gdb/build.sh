@@ -113,21 +113,29 @@ case "$TYPE" in
             $O $O_SYSTEM $A $LDLIBS
         ;;
     bin)
-        # Convert .elf to .bin in the most straighforward way.
+        # Convert an ELF file to .bin in the most straighforward way.
+        # This will produce a file where the first byte is from the
+        # loadable section that has the lowest address.  All the rest
+        # is filled in and padded with zeros.
         assert_vars ARCH ELF BIN
         . $UC_TOOLS/gdb/env.$ARCH.sh
         # $OBJDUMP -d $ELF
         $OBJCOPY -O binary $ELF $BIN
         ;;
     fw)
-        # Take a .bin produced by previous rule, and append the
-        # firmware control block used by trampoline.c
-        assert_vars ARCH BIN FW BIN2FW
+        # Note that this has changed.  We map ELF to ELF, instead of
+        # BIN to BIN.  It is more trouble than it's worth to keep
+        # intermediate raw binaries due to lack of metatdata.  If raw
+        # binaries are necessary, derive them from ELF files.
+        assert_vars ARCH ELF FW
         . $UC_TOOLS/gdb/env.$ARCH.sh
-        $BIN2FW $BIN $FW
+        $UC_TOOLS/elf2fw.sh $ELF $FW
         ;;
     data)
-        # Convert binary to elf to be loaded at address.
+        # Convert binary to elf to be loaded at address.  Note that
+        # this is a last resort.  Of possible, please don't project
+        # onto binary: use objcopy --modify-section to add data to an
+        # ELF file after linking.
         assert_vars ARCH BIN DATA ADDR
         . $UC_TOOLS/gdb/env.$ARCH.sh
         assert_vars ELFTYPE
