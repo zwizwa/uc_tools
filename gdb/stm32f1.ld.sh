@@ -118,10 +118,9 @@ SECTIONS {
         /* Configuration block.
            This has a default in core and might be overwritten by app. */
         .config $CONFIG : { 
-                _flash_bin_start = .;
+                _firmware_start = .;
                 KEEP (*(.config_header))
                 KEEP (*(.config_data))
-                /* Pad the rest with zeros to give predictable crc. */
                 . = ALIGN(0x800);
         }
 

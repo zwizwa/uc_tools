@@ -61,15 +61,12 @@ int main(int argc, char **argv) {
     uint32_t span = endx - start;
     LOG("span    = 0x%08x (%d) block-padded span of original firmware\n", span, span);
 
-    /* Make sure the span is padded to block_size.  This is done by
-       the linker script, see ALIGN(1024) before definition of
-       _eflash. */
-    ASSERT((span & (block_size - 1)) == 0);
+    uint32_t span_pad = (((span-1)>>block_logsize)+1)<<block_logsize;
 
     /* Looks ok.  Add the control block.  We don't really care if the
        original file had a control block as we will just overwrite
        it. */
-    uint32_t fw_len = span + block_size;
+    uint32_t fw_len = span_pad + block_size;
     LOG("fw_len  = 0x%08x (%d) firmware size with control block\n", fw_len, fw_len);
 
     /* Make sure it fits in the buffer. */
@@ -78,7 +75,7 @@ int main(int argc, char **argv) {
     /* Fill the control block. */
     uint32_t fw_crc = crc32b((uint8_t*)fw, span);
     LOG("crc     = 0x%08x checksum of original firmware\n", fw_crc);
-    struct gdbstub_control *control = (void*)(fw + span/4);
+    struct gdbstub_control *control = (void*)(fw + span_pad/4);
 
     control->version = 0;
     control->fw_crc = fw_crc;

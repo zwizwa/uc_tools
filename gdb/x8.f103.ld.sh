@@ -5,6 +5,7 @@
 # builds.  So just flatten it.
 
 [ -z "$MAIN_LD" ] && MAIN_LD=$(dirname $0)/stm32f1.ld.sh
+[ -z "$END_LD" ]  && END_LD=$(dirname $0)/stm32f1_end.ld.sh 
 
 cat <<EOF
 
@@ -28,37 +29,19 @@ ENTRY (_fake_reset_handler); */
 ENTRY (reset_handler);
 
 
-/* BEGIN: Include the common ld script. */
+/* BEGIN: $MAIN_LD */
 
 $($MAIN_LD)
 
-/* END: Include the common ld script. */  
+/* END: $MAIN_LD */
 
-/* FIXME: Can't put this in the bootloader.  Is it ok to sit here
-after the .config and .mem.* sections? */
 
-SECTIONS {
-	/* _eflash:         first free block in Flash memory after code.
-	   _flash_bin_endx: end of firmware binary */
- 	.flash_pad : {
-		_flash_bin_endx = . ;     
-		. = ALIGN(1024);
-		_eflash = . ;     
- 	} >rom
+/* BEGIN: $END_LD */
 
-        /* If there is a .control section, then reserve a control
-           block at _eflash that can later be patched by objcopy
-           --update-section.  This is used e.g. by
-           patch-control-block.sh to store CRC data in the .elf, which
-           can only be computed in a second pass after linking has
-           finished. */
+$($END_LD)
 
-        .control : {
-		_control = . ;
-                KEEP (*(.control)) ;
-		. = ALIGN(1024);
-        } >rom
-}
+/* END: $END_LD */
+
 
 EOF
 

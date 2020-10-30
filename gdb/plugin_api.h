@@ -52,7 +52,7 @@ struct plugin_service {
 /* Memory initialization is duplicated here, as init_memory() in
  * vector.c is in the main app, hard-coded to its segements. */
 
-extern uint8_t _eflash;
+extern uint8_t _flash_free;
 extern uint8_t _ebss;
 
 extern unsigned _data_loadaddr, _data, _edata, _stack, _eplugin;

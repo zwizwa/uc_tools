@@ -87,9 +87,15 @@ hd "$CONTROL"
 
 cp -a "$ELF" "$FW_TMP"
 
+# Update the control section.
 "$OBJCOPY" --update-section .control="$CONTROL" "$FW_TMP"
 mv "$FW_TMP" "$FW"
 
+## FIXME: Try to solve it in the linker script.
+# Change the config section such that it is padded to zeros spanning
+# the full 2K.  This is importannt to keep the CRC well-defined,
+# because the gap between sections is not defined during programming.
+# "$OBJCOPY" --section=.config -O binary /tmp/foo.bin
 
 cleanup
 

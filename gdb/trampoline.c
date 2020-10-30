@@ -49,22 +49,31 @@
 struct pconfig {
     const struct gdbstub_config *config;
     uint32_t max_size;
-    uint32_t page_size;
+    uint32_t page_logsize;
 };
 
 /* We are specialized to the partitions provided in the linker files,
    so these are hardcoded. */
 static const struct pconfig part[] = {
-    { .max_size = 0xE000, .page_size = 1<<10, .config = (void*)0x08004000 },
-    { .max_size = 0xE000, .page_size = 1<<10, .config = (void*)0x08012000 },
+    { .max_size = 0xE000, .page_logsize = 10, .config = (void*)0x08004000 },
+    { .max_size = 0xE000, .page_logsize = 10, .config = (void*)0x08012000 },
 };
 
+/* Instantiate the function so it won't be inlined, making it
+   available in gdb. */
+uint32_t __attribute__ ((noinline)) crc(const uint8_t *buf, uint32_t len) {
+    return crc32b(buf, len);
+}
 
 static const struct gdbstub_control *valid_partition(const struct pconfig *p) {
+    uint32_t page_size = 1 << p->page_logsize;
     /* The config struct can be dereferenced as we know it points into
        mapped Flash memory, but it might still contain garbage. */
     const uint8_t *start = p->config->flash_start;
     const uint8_t *endx  = p->config->flash_endx;
+
+    uintptr_t flash_endx = (uintptr_t)endx;
+    uintptr_t flash_endx_padded = (((flash_endx-1)>>p->page_logsize)+1)<<p->page_logsize;
 
     /* Make sure it is loaded into flash at the correct address. */
     if ((void*)start != (void*)p->config) return 0;
@@ -72,22 +81,22 @@ static const struct gdbstub_control *valid_partition(const struct pconfig *p) {
     /* Make sure the image is inside the partition boundaries.  One
        page is reserved for the control block. */
     if (endx <= start) return 0;
-    if (endx > (start + (p->max_size - p->page_size))) return 0;
+    if (endx > (start + (p->max_size - page_size))) return 0;
 
     /* We now know that the firmware and the control block are in
        meaningful locations. */
-    const struct gdbstub_control *control = (void*)endx;
+    const struct gdbstub_control *control = (void*)flash_endx_padded;
 
     /* The next value we need to trust is the size of the control
        block.  The CRC for the control block is stored after the
        control block.  Check that location of CRC slot is within the
        page reserved for the control block... */
-    if (control->size > p->page_size) return 0;
+    if (control->size > page_size) return 0;
     /* ... and that the entire struct is accounted for. */
     if (control->size < sizeof(*control)) return 0;
 
     /* Validate control block. */
-    uint32_t computed_ctrl_crc = crc32b((void*)control, control->size - 4);
+    uint32_t computed_ctrl_crc = crc((void*)control, control->size - 4);
     if (control->ctrl_crc != computed_ctrl_crc) return 0;
 
     /* We can now trust what is inside the control block. */
@@ -97,7 +106,7 @@ static const struct gdbstub_control *valid_partition(const struct pconfig *p) {
     if (control->version != 0) return 0;
 
     /* Compute and check firmware CRC. */
-    uint32_t computed_fw_crc = crc32b(start, endx-start);
+    uint32_t computed_fw_crc = crc(start, endx-start);
     if (control->fw_crc != computed_fw_crc) return 0;
 
     /* We're good.  Caller can trust contents of control block to make
@@ -186,3 +195,19 @@ struct gdbstub_config config CONFIG_HEADER_SECTION = {
 
 
 
+/* How to debug.
+
+   This code is very minimal and has no logging.  Use a SWD debugger.
+
+   Here's a note about some issues I ran into trying to properly trap
+   start().  It appears that upon reset, gdb/openocd/stlink in my
+   current setup cannot trap fast enough.  I do faintly recall this
+   working before, but anyways..
+
+   If it doesn't trap and the code also doesn't load any partition, it
+   is possible to run "p config.start()" with the trampoline elf
+   symbols loaded into gdb.  This will then trap and makes it possible
+   to call individual functions to debug why a partition isn't
+   loading, e.g. "p valid_partition(&part[0])"
+
+*/

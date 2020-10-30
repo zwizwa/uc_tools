@@ -314,8 +314,8 @@ void start(void) {
 
 
     infof("lab_board.c\n\n");
-    infof("_eflash = 0x%08x\n", &_eflash);
-    infof("_ebss   = 0x%08x\n", &_ebss);
+    //infof("_eflash = 0x%08x\n", &_eflash);
+    //infof("_ebss   = 0x%08x\n", &_ebss);
 
 }
 void stop(void) {
@@ -329,6 +329,8 @@ const char config_firmware[]     CONFIG_DATA_SECTION = FIRMWARE;
 const char config_version[]      CONFIG_DATA_SECTION = BUILD;
 const char config_protocol[]     CONFIG_DATA_SECTION = "{driver,lab_board,slip}";
 
+extern uint8_t _firmware_endx;
+
 struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .manufacturer    = config_manufacturer,
     .product         = config_product,
@@ -339,12 +341,12 @@ struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .stop            = stop,
     .switch_protocol = switch_protocol,
     .flash_start     = (const void*)&config,
-    .flash_endx      = (const void*)&_eflash,
+    .flash_endx      = (const void*)&_firmware_endx,
 };
 
 /* If this is present, the linker script will include a .control
    section that can later be overwritten by objcopy --modify-section.
    To compute CRC, a 2-pass approach is needed: build elf, convert to
    bin, compute checksum for control block, then patch control block
-   into elf. See e.g. patch-control.sh */
+   into elf. See e.g. elf2fw.sh */
 struct gdbstub_control control CONTROL_SECTION;

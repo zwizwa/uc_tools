@@ -181,8 +181,8 @@ struct gdbstub_config config CONFIG_HEADER_SECTION = {
 };
 void info_firmware(void) {
     infof("%s: SLIP on serial port.\n", config_product);
-    infof("_eflash = 0x%08x\n", &_eflash);
-    infof("_ebss   = 0x%08x\n", &_ebss);
+    infof("_flash_free = 0x%08x\n", &_flash_free);
+    infof("_ebss       = 0x%08x\n", &_ebss);
 }
 
 

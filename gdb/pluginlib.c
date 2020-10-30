@@ -17,10 +17,11 @@
    we have to keep track of whether they are started or not. */
 int plugin_started_ = 0;
 struct plugin_service *plugin_service_ = 0;
+extern uint8_t _flash_free;
 static struct plugin_service *plugin_service(void) {
     /* Anything programmed during this session gets priority,
        otherwise use what's stored in Flash */
-    if (!plugin_service_) plugin_service_ = (void*)&_eflash;
+    if (!plugin_service_) plugin_service_ = (void*)&_flash_free;
     if (plugin_service_->version != PLUGIN_API_VERSION) return NULL;
     return plugin_service_;
 }
@@ -52,7 +53,7 @@ static uint32_t map_addr(uint32_t addr) {
     }
     else {
         // Assume relative to _eflash.
-        uint32_t abs_addr = addr + (uint32_t)(&_eflash);
+        uint32_t abs_addr = addr + (uint32_t)(&_flash_free);
         // infof("%08x->%08x\n", addr, abs_addr);
         return abs_addr;
     }
@@ -140,7 +141,7 @@ uint32_t plugin_handle_message(const uint8_t *buf, uint32_t len) {
                 goto handled;
             }
             void *ram_load_addr = &_ebss;
-            void *flash_load_addr = &_eflash;
+            void *flash_load_addr = &_flash_free;
 
             plugin_stop();
             uint32_t rel_addr = read_be(buf+4, 4);
@@ -195,7 +196,7 @@ uint32_t plugin_handle_message(const uint8_t *buf, uint32_t len) {
             }
             else {
                 infof("load_addr %08x doesn't match Flash %08x or RAM %08x\n",
-                      plugin->load_addr, &_eflash, &_ebss);
+                      plugin->load_addr, &_flash_free, &_ebss);
                 goto not_handled;
             }
             infof("R:%08x -> A:%08x\n", rel_addr, abs_addr);

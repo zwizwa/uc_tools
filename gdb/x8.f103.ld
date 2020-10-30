@@ -19,7 +19,7 @@ ENTRY (_fake_reset_handler); */
 ENTRY (reset_handler);
 
 
-/* BEGIN: Include the common ld script. */
+/* BEGIN: uc_tools/gdb/stm32f1.ld.sh */
 
 
 /* Locally modified version of
@@ -136,10 +136,9 @@ SECTIONS {
         /* Configuration block.
            This has a default in core and might be overwritten by app. */
         .config 0x8002800 : { 
-                _flash_bin_start = .;
+                _firmware_start = .;
                 KEEP (*(.config_header))
                 KEEP (*(.config_data))
-                /* Pad the rest with zeros to give predictable crc. */
                 . = ALIGN(0x800);
         }
 
@@ -160,24 +159,33 @@ PROVIDE(_config = 0x8002800);
 /* Data store. */
 PROVIDE(_store = 0x08030000);
 
-/* END: Include the common ld script. */  
+/* END: uc_tools/gdb/stm32f1.ld.sh */
 
-/* FIXME: Can't put this in the bootloader.  Is it ok to sit here
-after the .config and .mem.* sections? */
+
+/* BEGIN: uc_tools/gdb/stm32f1_end.ld.sh */
+
 
 SECTIONS {
-	/* _eflash:         first free block in Flash memory after code.
-	   _flash_bin_endx: end of firmware binary */
- 	.flash_pad : {
-		_flash_bin_endx = . ;     
+
+        /* In previous versions, _eflash pointed to the end of Flash
+           memory, which used to be the start of the region that the
+           application could use to write to the Flash.  It was also
+           used as endx to compute the firmware image CRC.  However,
+           the contents of the padded memory is not defined, so for
+           CRC we now usethe symbol name is changed to _flash_endx and
+           not rounded.  Semantics changed, so we're using new
+           names. */
+
+ 	.firmware_end : {
+		_firmware_endx = . ;     
 		. = ALIGN(1024);
-		_eflash = . ;     
+		_firmware_block_endx = . ;     
  	} >rom
 
-        /* If there is a .control section, then reserve a control
-           block at _eflash that can later be patched by objcopy
-           --update-section.  This is used e.g. by
-           patch-control-block.sh to store CRC data in the .elf, which
+        /* If there is a .control section in the .o files, then
+           reserve a control block following the firmware blocks that
+           can later be patched by objcopy --update-section.  This is
+           used e.g. by elf2fw.sh to store CRC data in the .elf, which
            can only be computed in a second pass after linking has
            finished. */
 
@@ -186,5 +194,13 @@ SECTIONS {
                 KEEP (*(.control)) ;
 		. = ALIGN(1024);
         } >rom
+
+        .flash_free : {
+                _flash_free = . ;
+        } >rom
+
 }
+
+/* END: uc_tools/gdb/stm32f1_end.ld.sh */
+
 
