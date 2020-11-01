@@ -39,84 +39,28 @@
      Flash erase boundary so can be updated separately.
 */
 
-#include "base.h"
-#include "gdbstub_api.h"
-#include <string.h>
-#include "crc.h"
-#include "tools.h"
+/* Platform-independent partition validation routine. */
+#include "partition_config.h"
 
-/* Environment used in the functions below. */
-struct pconfig {
-    const struct gdbstub_config *config;
-    uint32_t max_size;
-    uint32_t page_logsize;
-};
+#include "base.h"
+#include <string.h>
+#include "tools.h"
 
 /* We are specialized to the partitions provided in the linker files,
    so these are hardcoded. */
-static const struct pconfig part[] = {
-    { .max_size = 0xE000, .page_logsize = 10, .config = (void*)0x08004000 },
-    { .max_size = 0xE000, .page_logsize = 10, .config = (void*)0x08012000 },
-};
+static const struct partition_config part[] = PARTITION_CONFIG_DEFAULT_INIT;
 
-/* Instantiate the function so it won't be inlined, making it
-   available in gdb. */
+/* Instantiate these functions so they won't be inlined, making them
+   available for manual interaction in gdb. */
 uint32_t __attribute__ ((noinline)) crc(const uint8_t *buf, uint32_t len) {
     return crc32b(buf, len);
 }
-
-static const struct gdbstub_control *valid_partition(const struct pconfig *p) {
-    uint32_t page_size = 1 << p->page_logsize;
-    /* The config struct can be dereferenced as we know it points into
-       mapped Flash memory, but it might still contain garbage. */
-    const uint8_t *start = p->config->flash_start;
-    const uint8_t *endx  = p->config->flash_endx;
-
-    uintptr_t flash_endx = (uintptr_t)endx;
-    uintptr_t flash_endx_padded = (((flash_endx-1)>>p->page_logsize)+1)<<p->page_logsize;
-
-    /* Make sure it is loaded into flash at the correct address. */
-    if ((void*)start != (void*)p->config) return 0;
-
-    /* Make sure the image is inside the partition boundaries.  One
-       page is reserved for the control block. */
-    if (endx <= start) return 0;
-    if (endx > (start + (p->max_size - page_size))) return 0;
-
-    /* We now know that the firmware and the control block are in
-       meaningful locations. */
-    const struct gdbstub_control *control = (void*)flash_endx_padded;
-
-    /* The next value we need to trust is the size of the control
-       block.  The CRC for the control block is stored after the
-       control block.  Check that location of CRC slot is within the
-       page reserved for the control block... */
-    if (control->size > page_size) return 0;
-    /* ... and that the entire struct is accounted for. */
-    if (control->size < sizeof(*control)) return 0;
-
-    /* Validate control block. */
-    uint32_t computed_ctrl_crc = crc((void*)control, control->size - 4);
-    if (control->ctrl_crc != computed_ctrl_crc) return 0;
-
-    /* We can now trust what is inside the control block. */
-
-    /* The version tag is for future extensions after the format
-       stabilizes and should be 0 for now. */
-    if (control->version != 0) return 0;
-
-    /* Compute and check firmware CRC. */
-    uint32_t computed_fw_crc = crc(start, endx-start);
-    if (control->fw_crc != computed_fw_crc) return 0;
-
-    /* We're good.  Caller can trust contents of control block to make
-       boot decisions other than version compare. */
-    return control;
-
+const struct gdbstub_control __attribute__ ((noinline)) *valid_partition(const struct partition_config *p) {
+    return partition_config_valid(p, crc, NULL);
 }
 
-const struct pconfig *choose_partition(
-    const struct pconfig *a, const struct pconfig *b) {
+const struct partition_config *choose_partition(
+    const struct partition_config *a, const struct partition_config *b) {
 
     const struct gdbstub_control *a_valid = valid_partition(a);
     const struct gdbstub_control *b_valid = valid_partition(b);
@@ -147,7 +91,7 @@ void switch_protocol(const uint8_t *buf, uint32_t len) {
        in this function.  I.e. it is essential that part is static
        const, so it is guaranteed to be located in our Flash
        segment. */
-    const struct pconfig *p = choose_partition(&part[0], &part[1]);
+    const struct partition_config *p = choose_partition(&part[0], &part[1]);
     if (p && p->config->switch_protocol) {
         p->config->switch_protocol(buf, len);
         return;
@@ -161,7 +105,7 @@ void start(void) {
     hw_app_init();
 
     /* The rest is generic and later can go into the library. */
-    const struct pconfig *p = choose_partition(&part[0], &part[1]);
+    const struct partition_config *p = choose_partition(&part[0], &part[1]);
     if (p) p->config->start();
 }
 
