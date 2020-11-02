@@ -117,14 +117,19 @@ void start(void) {
 #define PRODUCT "Trampoline"
 #endif
 
+/* See uc_tools/gdb/build.sh for more information. */
+#ifndef VERSION
+#define VERSION "current"
+#endif
+
+
 /* Note that config variables of the trampoline are never updated,
    e.g. the USB strings do not refer to one of the two firmware
    images. */
 const char config_manufacturer[] CONFIG_DATA_SECTION = MANUFACTURER;
 const char config_product[]      CONFIG_DATA_SECTION = PRODUCT;
 const char config_firmware[]     CONFIG_DATA_SECTION = FIRMWARE;
-const char config_version[]      CONFIG_DATA_SECTION = BUILD;
-
+const char config_version[]      CONFIG_DATA_SECTION = VERSION;
 
 
 struct gdbstub_config config CONFIG_HEADER_SECTION = {

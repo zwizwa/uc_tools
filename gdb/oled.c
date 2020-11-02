@@ -214,13 +214,16 @@ void stop(void) {
     _service.reset();
 }
 
+#ifndef VERSION
+#define VERSION "current"
+#endif
 
 
 /* Application description for bootloader.  Stored in Flash at a fixed location. */
 const char config_manufacturer[] CONFIG_DATA_SECTION = "Zwizwa";
 const char config_product[]      CONFIG_DATA_SECTION = "OLED+PWM test";
 const char config_firmware[]     CONFIG_DATA_SECTION = FIRMWARE;
-const char config_version[]      CONFIG_DATA_SECTION = BUILD;
+const char config_version[]      CONFIG_DATA_SECTION = VERSION;
 const char config_protocol[]     CONFIG_DATA_SECTION = "slip";
 
 struct gdbstub_config config CONFIG_HEADER_SECTION = {

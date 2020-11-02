@@ -83,7 +83,7 @@ cleanup
 "$OBJCOPY" -O binary "$ELF" "$BIN"
 "$BIN2FW" "$BIN" "$FW_BIN" "$CONTROL"
 
-hd "$CONTROL"
+hd "$CONTROL" >&2
 
 cp -a "$ELF" "$FW_TMP"
 
@@ -99,8 +99,9 @@ mv "$FW_TMP" "$FW"
 
 cleanup
 
-echo "FW=$FW"
-ls -l "$FW"
+echo "FW=$FW" >&2
+ls -l "$FW" >&2
+
 
 
 

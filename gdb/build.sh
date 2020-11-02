@@ -56,18 +56,33 @@ assert_vars() {
     done
 }
 
+# A note about $VERSION
 
+# - If defined, we will propagate $VERSION to the string macro BUILD
+#   which is picked up by the .o build rule, so it can be embedded in
+#   binaries.
+#
+# - If the env var is not defined, we will not define the macro.
+#
+# - This can be used to support two build mechanisms:
+#
+#   - Clean reelease build, where VERSION is clearly defined, and each
+#     .o file build picks up the environment variable.
+#
+#   - Development build, where VERSION is _not_ defined, and a
+#     #ifndef VERSION is used to include a header file that was
+#     generated just before running the normal build process, such that
+#     the change of this file acts as a proper dependency, and
+#     retriggers the building of the .o file that contains the version
+#     string.
 
 assert_vars UC_TOOLS
-if [ -z "$VERSION" ] ; then
-    VERSION=current
-    #echo "WARNING: VERSION=current"
-fi
 
 case "$TYPE" in
     o)
         assert_vars O C D ARCH FIRMWARE
         . $UC_TOOLS/gdb/env.$ARCH.sh
+        [ ! -z "$VERSION" ] && DEFINE_BUILD_VERSION="-DBUILD=\"$VERSION\""
         $GCC \
             $CFLAGS \
             $CFLAGS_EXTRA \
@@ -75,10 +90,11 @@ case "$TYPE" in
             -I$UC_TOOLS_GDB_DIR/.. \
             -MD -MF $D \
             -DFIRMWARE=\"$FIRMWARE\" \
-            -DBUILD=\"$VERSION\" \
+            $DEFINE_BUILD_VERSION \
             -o $O \
             -c $C
         ;;
+
     o_data)
         assert_vars O DATA ARCH 
         . $UC_TOOLS/gdb/env.$ARCH.sh
