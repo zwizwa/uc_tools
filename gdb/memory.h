@@ -106,7 +106,11 @@ static inline int32_t hw_flash_write(uint32_t addr, const uint8_t *b_buf,
     hw_flash_lock();
     return rv;
 }
-/* Write + erase automatically on page boundary.  */
+/* Write + erase automatically on page boundary.
+   Return value:
+   -1 ERROR operation in progress  (from hw_flash_check_eop())
+    0 OK
+*/
 static inline int32_t hw_flash_write_and_erase(
     uint32_t flash_page_size_log,
     uint32_t addr, const uint8_t *b_buf,
