@@ -1018,6 +1018,12 @@ INLINE void hw_usart_enable(uint32_t usart) {
 INLINE void hw_usart_disable(uint32_t usart) {
     USART_CR1(usart) &= ~USART_CR1_UE;
 }
+INLINE void hw_usart_rx_enable(uint32_t usart) {
+    USART_CR1(usart) |= USART_CR1_RE;
+}
+INLINE void hw_usart_rx_disable(uint32_t usart) {
+    USART_CR1(usart) &= ~USART_CR1_RE;
+}
 INLINE void hw_usart_set_databits(uint32_t usart, uint32_t bits) {
 	if (bits == 8) {
 		USART_CR1(usart) &= ~USART_CR1_M; /* 8 data bits */
@@ -1052,7 +1058,6 @@ INLINE void hw_usart_set_flow_control(uint32_t usart, uint32_t flowcontrol) {
 INLINE void hw_usart_set_baudrate_div(uint32_t usart, uint32_t div) {
 	USART_BRR(usart) = div;
 }
-
 INLINE void hw_usart_enable_rx_interrupt(uint32_t usart) {
 	USART_CR1(usart) |= USART_CR1_RXNEIE;
 }
@@ -1078,6 +1083,9 @@ INLINE int hw_usart_send_done_interrupt_enabled(uint32_t usart) {
 INLINE int hw_usart_send_ready_interrupt_enabled(uint32_t usart) {
         return !!(USART_CR1(usart) & USART_CR1_TXEIE);
 }
+
+
+
 
 /* Note on baud divisors:
    USART1 wrt. APB2 @72Mhz
