@@ -25,6 +25,9 @@ KEEP uint32_t info_bytes() {
 }
 uint32_t info_overflow_errors = 0;
 KEEP int info_putchar_inner(int c) {
+#if 0 // A quick way to turn off logging
+    return 0;
+#else
     uint32_t room = INFO_SIZE - (info_write_next - info_read_next);
     if (room == 0) return 0;  // drop character and don't overflow the buffer
     if (room == 1) c = '?';   // when almost full, write some kind of indicator
@@ -32,6 +35,7 @@ KEEP int info_putchar_inner(int c) {
     uint32_t offset = (info_write_next++) & INFO_MASK;
     info_buf[offset] = c;
     return 0;
+#endif
 }
 
 /* Wrap info_putchar() with a hook called before printing the first

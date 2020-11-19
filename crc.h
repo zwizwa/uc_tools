@@ -41,6 +41,17 @@ static inline unsigned crc8x_simple(unsigned crc, void const *mem, uintptr_t len
     return crc;
 }
 
+// BSD checksum
+// https://en.wikipedia.org/wiki/BSD_checksum
+// Initialize with state=0
+static inline uint16_t bsd_checksum_inc(const uint8_t *buf, uint32_t len, uint16_t state) {
+    for(int i=0; i<len; i++) {
+        state = (state >> 1) + ((state & 1) << 15);
+        state += buf[i];
+    }
+    return state;
+}
+
 /*
 
 Flash checksum:
