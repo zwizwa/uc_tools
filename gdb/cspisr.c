@@ -11,13 +11,18 @@
 */
 
 #include "base.h"
+
 #include "gdbstub_api.h"
 #include "cbuf.h"
 #include "pbuf.h"
 #include "sliplib.h"
+#include "tag_u32.h"
+
+#include <stdint.h>
 #include <string.h>
 
-#define TICKS_PER_US 1
+
+#define TICKS_PER_US 1000
 
 const struct hw_delay hw_tim[] = {
 //          rcc       irq            tim   psc
@@ -31,8 +36,6 @@ volatile struct {
     uint32_t tim_isr_count;
 } stat;
 
-struct pbuf packet_in; uint8_t packet_in_buf[1024 + 64];
-struct cbuf usb_out;   uint8_t usb_out_buf[16];
 struct cbuf hw_event;  uint8_t hw_event_buf[16];
 #define HW_EVENT_TIMEOUT 1
 
@@ -41,6 +44,9 @@ void HW_TIM_ISR(TIM)(void) {
     stat.tim_isr_count++;
     cbuf_put(&hw_event, HW_EVENT_TIMEOUT);
     hw_delay_ack(C_TIM);
+    // infof("tim_isr\n");
+    hw_delay_arm(C_TIM, 1000);
+    hw_delay_trigger(C_TIM);
 }
 
 static void poll_event(void) {
@@ -53,60 +59,76 @@ static void poll_event(void) {
     }
 }
 
-void app_handle(struct pbuf *p) {
-    if (!p->count) return;
 
-    /* Keep non-CSP buffer drains out of CSP tasks, and move anything
-       else into the CSP input task. */
-    switch(read_be(&p->buf[0], 2)) {
-    case TAG_PING:
-        cbuf_write_slip_tagged(&usb_out, TAG_REPLY, &p->buf[2], p->count-2);
-        break;
-    case TAG_GDB:
-        _service.rsp_io.write(&p->buf[2], p->count-2);
-        break;
-    default:
-        //if (!csp_send(&sched, CHAN_USB_IN, &p->buf[0], p->count)) {
-        //    infof("CSP USB message dropped: %d bytes\n", p->count);
-        //}
-        break;
-    }
-}
-static void app_write(const uint8_t *buf, uint32_t len) {
-    /* Incoming SLIP protocol goes to pbuf and is handled when complete. */
-    pbuf_slip_for(&packet_in, buf, len, app_handle);
-}
-static uint32_t app_read(uint8_t *buf, uint32_t room) {
-    int rv;
-    if ((rv = cbuf_read(&usb_out, buf, room))) return rv; // drain this first
-    if ((rv = slip_read_tagged(TAG_INFO, info_read, buf, room))) return rv;
-    if ((rv = slip_read_tagged(TAG_GDB, _service.rsp_io.read, buf, room))) return rv;
+
+/* Protocol-wise we don't really need anything special, so use
+   slipstub_buffered to do the basics (SLIP framing, PING, GDB, INFO)
+   and use tag_u32 for app-specific commands. */
+#include "slipstub.h"
+struct slipstub slipstub;
+struct slipstub_buffers slipstub_buffers;
+
+
+/* slipstub calls this one for application tags.  We then patch
+   through to command handler. */
+
+int handle_tag_u32(
+    void *context,
+    const uint32_t *arg,  uint32_t nb_args,
+    const uint8_t *bytes, uint32_t nb_bytes) {
+
     return 0;
 }
-const struct gdbstub_io app_io = {
-    .read  = app_read,
-    .write = app_write,
-};
-static void switch_protocol(const uint8_t *buf, uint32_t size) {
-    infof("os.c: SLIP on serial port.\n");
-    *_service.io = (struct gdbstub_io *)(&app_io);
-    (*_service.io)->write(buf, size);
+
+void handle_tag(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
+    //infof("tag %d\n", tag);
+    switch(tag) {
+    case TAG_U32: {
+        /* name ! {send_u32, [101, 1000000000, 1,2,3]}. */
+        int rv = tag_u32_dispatch(handle_tag_u32, NULL, p->buf, p->count);
+        if (rv) { infof("tag_u32_dispatch returned %d\n", rv); }
+        break;
+    }
+    default:
+        infof("unknown tag 0x%x\n", tag);
+    }
 }
+
+
+/* STARTUP */
+
+
 void start(void) {
     hw_app_init();
     CBUF_INIT(hw_event);
-    CBUF_INIT(usb_out);
-    PBUF_INIT(packet_in);
+
+    rcc_periph_clock_enable(RCC_GPIOA | RCC_GPIOB | RCC_AFIO);
+
+    /* Use framwork for handling incoming USB SLIP commands. */
+    slipstub_init(handle_tag);
+
     hw_delay_init(C_TIM, 0xFFFF, 1 /*enable interrupt*/);
+    hw_delay_arm(C_TIM, 1000);
+    hw_delay_trigger(C_TIM);
+
     _service.add(poll_event);
+
     infof("cspisr\n");
 
 }
+void stop(void) {
+    hw_app_stop();
+    _service.reset();
+}
+
+#ifndef VERSION
+#define VERSION "current"
+#endif
 
 const char config_manufacturer[] CONFIG_DATA_SECTION = "Zwizwa";
-const char config_product[]      CONFIG_DATA_SECTION = "CSP ISR Test";
+const char config_product[]      CONFIG_DATA_SECTION = "CSP ISR TEST";
 const char config_firmware[]     CONFIG_DATA_SECTION = FIRMWARE;
-const char config_version[]      CONFIG_DATA_SECTION = "current";
+const char config_version[]      CONFIG_DATA_SECTION = VERSION;
 const char config_protocol[]     CONFIG_DATA_SECTION = "slip";
 
 struct gdbstub_config config CONFIG_HEADER_SECTION = {
@@ -116,5 +138,7 @@ struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .version         = config_version,
     .protocol        = config_protocol,
     .start           = start,
-    .switch_protocol = switch_protocol,
+    .stop            = stop,
+    .switch_protocol = slipstub_switch_protocol,
 };
+
