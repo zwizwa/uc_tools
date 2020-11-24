@@ -7,6 +7,7 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <netdb.h>
+#include <string.h>
 
 static inline void assert_gethostbyname(struct sockaddr_in *address_in, const char *host) {
     struct hostent *hp;
@@ -53,6 +54,20 @@ static inline int assert_tcp_connect(const char *host, int port) {
     //LOG("connected to %s:%d\n", host, port);
     return sockfd;
 }
+
+#if 0
+// probably not what you want. this doesn't deliver tcp,udp
+static inline int assert_raw_listen(const char *iface) {
+    int sockfd = 0;
+    ASSERT_ERRNO(sockfd = socket(PF_INET, SOCK_RAW, IPPROTO_TCP /*?*/));
+    //socklen_t len = strnlen(iface, IFNAMSIZ);
+    //ASSERT(IFNAMSIZ != len);
+    socklen_t len = strlen(iface);
+    ASSERT_ERRNO(setsockopt(sockfd, SOL_SOCKET, SO_BINDTODEVICE, iface, len));
+    return sockfd;
+}
+#endif
+
 
 
 #endif
