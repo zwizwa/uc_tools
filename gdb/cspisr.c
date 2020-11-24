@@ -8,6 +8,14 @@
    The ringbuffer is there to handle the case where the CSP network is
    not fast enough to handle multiple interrupts before buffers run
    out.
+
+   The hw_isr is also useful for translating and filtering hardware
+   events to perform data reduction.
+
+
+   TODO: First make all interrups arrive in a single point.  3xUART
+   RX/TX, 3xGPIO, timer.
+
 */
 
 #include "base.h"
@@ -17,12 +25,13 @@
 #include "pbuf.h"
 #include "sliplib.h"
 #include "tag_u32.h"
+#include "swtimer.h"
 
 #include <stdint.h>
 #include <string.h>
 
 
-#define TICKS_PER_US 1000
+#define TICKS_PER_US 100
 
 const struct hw_delay hw_tim[] = {
 //          rcc       irq            tim   psc
@@ -32,6 +41,7 @@ const struct hw_delay hw_tim[] = {
 #define TIM 3
 #define C_TIM hw_tim[TIM]
 
+
 volatile struct {
     uint32_t tim_isr_count;
 } stat;
@@ -40,19 +50,33 @@ struct cbuf hw_event;  uint8_t hw_event_buf[16];
 #define HW_EVENT_TIMEOUT 1
 
 /* Timeout interrupt. */
+swtimer_element_t swtimer_elements[10]; // FIXME: how many?
+struct swtimer swtimer = { .nb = 0, .arr = swtimer_elements };
+uint16_t swtimer_last = 0;
+
 void HW_TIM_ISR(TIM)(void) {
     stat.tim_isr_count++;
     cbuf_put(&hw_event, HW_EVENT_TIMEOUT);
     hw_delay_ack(C_TIM);
-    // infof("tim_isr\n");
-    hw_delay_arm(C_TIM, 1000);
-    hw_delay_trigger(C_TIM);
+
+    swtimer_element_t next;
+    if (swtimer_next(&swtimer, &next)) {
+        /* FIXME: How to keep the timer rolling?  Currently the update
+           depends on the speed at which we can handle the interrupt,
+           which isn't a huge problem for many applications but
+           introduces subtle delays... */
+        uint16_t diff = next.time - swtimer_last;
+        swtimer_last = next.time;
+        hw_delay_arm(C_TIM, diff);
+        hw_delay_trigger(C_TIM);
+    }
 }
 
 static void poll_event(void) {
+    static uint32_t event;
     uint16_t token;
     if (CBUF_EAGAIN != (token = cbuf_get(&hw_event))) {
-        infof("event\n");
+        infof("event %d\n", event++);
         //if (!csp_send(&sched, CHAN_HW_EVENT, &token, sizeof(token))) {
         //    infof("CSP hw_event dropped\n");
         //}
@@ -112,6 +136,12 @@ void start(void) {
     hw_delay_trigger(C_TIM);
 
     _service.add(poll_event);
+
+
+    swtimer_schedule(&swtimer, 0x1000,0);
+    swtimer_schedule(&swtimer, 0x2000,0);
+    swtimer_schedule(&swtimer, 0x3000,0);
+
 
     infof("cspisr\n");
 
