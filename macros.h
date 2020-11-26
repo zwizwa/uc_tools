@@ -138,5 +138,10 @@ int kill(pid_t pid, int sig);
 #define OFFSETOF(typ,fld) ((uintptr_t)(&(((typ*)(0))->fld)))
 #endif
 
+// FIXME: pick a better name
+#define STRUCT_FROM_FIELD(typ,fld,fld_ptr) ({ \
+    void *v_fld_ptr = fld_ptr; \
+    typ *par_ptr = v_fld_ptr - OFFSETOF(typ,fld); \
+    par_ptr; })
 
 #endif
