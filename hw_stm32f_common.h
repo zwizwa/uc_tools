@@ -278,6 +278,11 @@ INLINE void hw_gpio_pulse(uint32_t gpio, uint32_t pin, int value, uint32_t nb_lo
 INLINE int hw_gpio_read(uint32_t gpio, uint32_t pin) {
     return (GPIO_IDR(gpio) >> pin) & 1;
 }
+INLINE uint16_t hw_gpio_read_port(uint32_t gpio) {
+    return GPIO_IDR(gpio);
+}
+
+
 /* Switch between alternate function (alt=1) and gpo (alt=0) can be
    done with a single bitband write.  Call hw_gpio_config() once first. */
 // TODO: test this
