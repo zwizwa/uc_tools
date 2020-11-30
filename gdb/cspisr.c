@@ -13,8 +13,12 @@
    events to perform data reduction.
 
 
-   TODO: First make all interrups arrive in a single point.  3xUART
-   RX/TX, 3xGPIO, timer.
+   TODO:
+   - Make sure the swtimer works properly
+   - Create two ISR levels: hw events, sw queue handler
+   - Set up a transmit, reply/timeout program
+   - Generalize to 3xUART RX/TX, 3xGPIO, timer all from ISR
+   - Can STM uart do start bit detection interrupt?
 
 */
 
@@ -30,6 +34,13 @@
 #include <stdint.h>
 #include <string.h>
 
+
+
+/* Timer.
+   Operation is split into two parts:
+   - ISR pushes event into queue
+   - Handler which resets the timer, and also handles timer events.
+*/
 
 #define TICKS_PER_US 100
 
@@ -49,40 +60,36 @@ volatile struct {
 struct cbuf hw_event;  uint8_t hw_event_buf[16];
 #define HW_EVENT_TIMEOUT 1
 
-/* Timeout interrupt. */
-swtimer_element_t swtimer_elements[10]; // FIXME: how many?
-struct swtimer swtimer = { .nb = 0, .arr = swtimer_elements };
-uint16_t swtimer_last = 0;
 
-void HW_TIM_ISR(TIM)(void) {
-    stat.tim_isr_count++;
-    cbuf_put(&hw_event, HW_EVENT_TIMEOUT);
-    hw_delay_ack(C_TIM);
+#define STAT_INC(var) stat.var++
+#include "mod_swtimer.c"
 
-    swtimer_element_t next;
-    if (swtimer_next(&swtimer, &next)) {
-        /* FIXME: How to keep the timer rolling?  Currently the update
-           depends on the speed at which we can handle the interrupt,
-           which isn't a huge problem for many applications but
-           introduces subtle delays... */
-        uint16_t diff = next.time - swtimer_last;
-        swtimer_last = next.time;
-        hw_delay_arm(C_TIM, diff);
-        hw_delay_trigger(C_TIM);
-    }
-}
 
 static void poll_event(void) {
-    static uint32_t event;
     uint16_t token;
-    if (CBUF_EAGAIN != (token = cbuf_get(&hw_event))) {
-        infof("event %d\n", event++);
-        //if (!csp_send(&sched, CHAN_HW_EVENT, &token, sizeof(token))) {
-        //    infof("CSP hw_event dropped\n");
-        //}
+    while (CBUF_EAGAIN != (token = cbuf_get(&hw_event))) {
+
+        switch(token) {
+        case HW_EVENT_TIMEOUT: {
+            infof("timeout %x %d\n", timer_last.time, timer_last.tag);
+            swtimer_element_t next;
+            if (swtimer_next(&timer, &next)) {
+                uint16_t diff = next.time - timer_last.time;
+                timer_last = next;
+                hw_delay_arm(C_TIM, diff);
+                hw_delay_trigger(C_TIM);
+            }
+            break;
+        }
+        default:
+            //infof("event %d\n", token);
+            //if (!csp_send(&sched, CHAN_HW_EVENT, &token, sizeof(token))) {
+            //    infof("CSP hw_event dropped\n");
+            //}
+            break;
+        }
     }
 }
-
 
 
 /* Protocol-wise we don't really need anything special, so use
@@ -137,11 +144,12 @@ void start(void) {
 
     _service.add(poll_event);
 
+    /* FIXME: swtimer can only be accessed in the isr.
+       Setting timer events probably needs a separate mechanism. */
 
-    swtimer_schedule(&swtimer, 0x1000,0);
-    swtimer_schedule(&swtimer, 0x2000,0);
-    swtimer_schedule(&swtimer, 0x3000,0);
-
+    for (int i=1; i<=3; i++) {
+        swtimer_schedule(&timer,0x1000*i,i);
+    }
 
     infof("cspisr\n");
 
