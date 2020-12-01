@@ -30,6 +30,9 @@ static inline void write_be(uint8_t *buf, uint64_t word, uint32_t nb) {
 #define U16_BE(t) ((t) >> 8), ((t) & 0xFF)
 #define U32_BE(t) U16_BE((t) >> 16), U16_BE((t) & 0xFFFF)
 
+#define U16_LE(t) ((t) & 0xFF), ((t) >> 8)
+#define U32_LE(t) U16_LE((t) & 0xFFFF), U16_LE((t) >> 16)
+
 
 
 
