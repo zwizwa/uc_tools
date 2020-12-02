@@ -26,6 +26,23 @@ static inline void write_be(uint8_t *buf, uint64_t word, uint32_t nb) {
         nb--;
     }
 }
+// Buffer read and write
+static inline uint32_t read_be_32(const uint8_t *buf, uint32_t nb) {
+    uint32_t accu = 0;
+    while(nb) {
+        accu = (accu << 8) | (*buf++);
+        nb--;
+    }
+    return accu;
+}
+static inline void write_be_32(uint8_t *buf, uint32_t word, uint32_t nb) {
+    buf += nb;
+    while(nb) {
+        *(--buf) = word;
+        word = word >> 8;
+        nb--;
+    }
+}
 /* Array splices with embedded commas */
 #define U16_BE(t) ((t) >> 8), ((t) & 0xFF)
 #define U32_BE(t) U16_BE((t) >> 16), U16_BE((t) & 0xFFFF)
