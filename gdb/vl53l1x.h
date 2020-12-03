@@ -80,7 +80,19 @@ struct vl53l1x {
 #define VL51L1X_HAL_WAIT_MS(...) // FIXME
 #endif
 
-#define VL51L1X_I2C_ADDR 123 // FIXME
+/* Driver assumes this is known at compile time.  The convention used
+   here is what is provided to the original SetInterruptPolarity
+   routine, (1=active high, 0=active low), which sets the inverse of
+   bit 4 in GPIO_HV_MUX__CTRL. */
+#ifndef VL53L1X_INTERRUPT_POLARITY
+#define VL53L1X_INTERRUPT_POLARITY 1
+#endif
+
+/* Datasheet uses the convention that the R/W bit is part of the
+   address, and states devices address as 0x52 for read and 0x53 for
+   write.  We use the convention that address signifies the upper 7
+   bits only, so shift by one. */
+#define VL51L1X_I2C_ADDR (0x52>>1)
 
 static inline void vl53l1x_write(struct vl53l1x *s, uint16_t index, uint8_t *buf, uint32_t len) {
     uint8_t header[2] = { U16_BE(index) };
@@ -104,8 +116,13 @@ static inline void vl53l1x_read(struct vl53l1x *s, uint16_t index, uint8_t *buf,
 }
 
 /* Only the ones that are actually used are copied here. */
-#define VL53L1_IDENTIFICATION__MODEL_ID               0x010F
-#define VL53L1_VHV_CONFIG__TIMEOUT_MACROP_LOOP_BOUND  0x0008
+#define VL53L1_IDENTIFICATION__MODEL_ID                       0x010F
+#define VL53L1_VHV_CONFIG__TIMEOUT_MACROP_LOOP_BOUND          0x0008
+#define SYSTEM__INTERRUPT_CLEAR                               0x0086
+#define SYSTEM__MODE_START                                    0x0087
+#define VL53L1_RESULT__FINAL_CROSSTALK_CORRECTED_RANGE_MM_SD0 0x0096
+#define GPIO__TIO_HV_STATUS                                   0x0031
+
 
 typedef int8_t vl53l1x_error_t;
 #define VL53L1_ERROR_TIME_OUT  ((vl53l1x_error_t) - 7)
@@ -121,7 +138,6 @@ static inline uint32_t vl53l1x_rd_reg(struct vl53l1x *s, uint16_t index, uint32_
 static inline uint16_t vl53l1x_rd_u8 (struct vl53l1x *s, uint16_t i) { return vl53l1x_rd_reg(s, i, 1); }
 static inline uint16_t vl53l1x_rd_u16(struct vl53l1x *s, uint16_t i) { return vl53l1x_rd_reg(s, i, 2); }
 static inline uint16_t vl53l1x_rd_u32(struct vl53l1x *s, uint16_t i) { return vl53l1x_rd_reg(s, i, 4); }
-static inline uint16_t vl53l1x_get_sensor_id(struct vl53l1x *s) { return vl53l1x_rd_u16(s, VL53L1_IDENTIFICATION__MODEL_ID); }
 
 static inline void vl53l1x_wr_reg(struct vl53l1x *s, uint16_t index, uint32_t reg_size, uint32_t value) {
     // ASSERT(reg_size <= 4);
@@ -134,23 +150,20 @@ static inline void vl53l1x_wr_u16(struct vl53l1x *s, uint16_t i, uint16_t v) { v
 static inline void vl53l1x_wr_u32(struct vl53l1x *s, uint16_t i, uint32_t v) { vl53l1x_wr_reg(s, i, 4, v); }
 
 
+static inline uint16_t vl53l1x_get_sensor_id       (struct vl53l1x *s) { return vl53l1x_rd_u16(s, VL53L1_IDENTIFICATION__MODEL_ID); }
+static inline uint16_t vl53l1x_get_distance        (struct vl53l1x *s) { return vl53l1x_rd_u16(s, VL53L1_RESULT__FINAL_CROSSTALK_CORRECTED_RANGE_MM_SD0); }
 
+static inline uint8_t vl53l1x_check_for_data_ready(struct vl53l1x *s) {
+    /* Driver assumes the input polarity is known at compile time.
+       The original ST driver queries the chip fir this, which seems
+       silly. */
+    return (vl53l1x_rd_u8(s, GPIO__TIO_HV_STATUS) & 1) ^ (1^VL53L1X_INTERRUPT_POLARITY);
+}
 
-static inline int vl53l1x_start_ranging(struct vl53l1x *s) {
-    return 0;
-}
-static inline int vl53l1x_check_for_data_ready(struct vl53l1x *s) {
-    return 0;
-}
-static inline int vl53l1x_get_distance(struct vl53l1x *s) {
-    return 0;
-}
-static inline int vl53l1x_clear_interrupt(struct vl53l1x *s) {
-    return 0;
-}
-static inline int vl53l1x_stop_ranging(struct vl53l1x *s) {
-    return 0;
-}
+static inline void     vl53l1x_clear_interrupt(struct vl53l1x *s) { vl53l1x_wr_u8 (s, SYSTEM__INTERRUPT_CLEAR, 1); }
+static inline void     vl53l1x_start_ranging  (struct vl53l1x *s) { vl53l1x_wr_u8 (s, SYSTEM__MODE_START, 0x40); }
+static inline void     vl53l1x_stop_ranging   (struct vl53l1x *s) { vl53l1x_wr_u8 (s, SYSTEM__MODE_START, 0x00); }
+
 
 /* Contains busywait with 150ms timeout. Run this only at startup. */
 
