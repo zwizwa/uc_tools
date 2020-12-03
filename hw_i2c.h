@@ -6,9 +6,17 @@
    'B6 SCL */
 
 
+// FIXME: make this a parameter
+
 
 #include "hw_stm32f103.h"
 #include <libopencm3/stm32/i2c.h>
+
+/* This is code from i2c_common_v1 inlined.  There was a bug not
+   checking AF, so I no longer trust it was tested well.
+   I've added a simple timeout mechanism in every busy loop.
+*/
+#define HW_I2C_TRIES 100000  // FIXME: Map this to absolute time
 
 struct hw_i2c {
     uint32_t rcc;
@@ -19,6 +27,7 @@ struct hw_i2c {
     uint32_t speed;
 };
 
+// FIXME: Name the error codes.  For now they are ad-hoc.
 
 static inline void hw_i2c_setup(struct hw_i2c c) {
 
@@ -33,7 +42,8 @@ static inline void hw_i2c_setup(struct hw_i2c c) {
     //hw_gpio_config(c.gpio, c.sda, HW_GPIO_CONFIG_OUTPUT);
     //hw_gpio_low(c.gpio, c.sda); // pull direction
 
-
+    // FIXME: make this configurable to use external resistors?
+    // Might not be necessary to disable pull if internal pull is weak.
     hw_gpio_high(c.gpio, c.scl); // pull direction
     hw_gpio_high(c.gpio, c.sda); // pull direction
     hw_gpio_config(c.gpio, c.scl, HW_GPIO_CONFIG_ALTFN_OPEN_DRAIN);
@@ -48,11 +58,6 @@ static inline void hw_i2c_setup(struct hw_i2c c) {
 
 
 
-/* This is code from i2c_common_v1 inlined.  There was a bug not
-   checking AF, so I no longer trust it was tested well.
-
-   FIXME: REMOVE ALL BUSY LOOPS.  Replace with finite loops and a
-   reset to recover bad conditions. */
 
 /* Note that many protocols need a header, so we allow for that. */
 
@@ -61,22 +66,39 @@ static inline uint32_t hw_i2c_transmit(
     const uint8_t *hdr, uint32_t hdr_len,
     const uint8_t *data, uint32_t data_len) {
 
+    uint32_t tries = HW_I2C_TRIES;
+
     uint32_t sr;
 
-    while ((I2C_SR2(c.i2c) & I2C_SR2_BUSY));
+    while ((I2C_SR2(c.i2c) & I2C_SR2_BUSY)) {
+        if (!tries--) {
+            sr = 0x30000;
+            goto error;
+        }
+    }
 
     /* send start */
     I2C_CR1(c.i2c) |= I2C_CR1_START;
 
     /* Wait for master mode selected */
     while (!((I2C_SR1(c.i2c) & I2C_SR1_SB) &
-             (I2C_SR2(c.i2c) & (I2C_SR2_MSL | I2C_SR2_BUSY))));
+             (I2C_SR2(c.i2c) & (I2C_SR2_MSL | I2C_SR2_BUSY)))) {
+        if (!tries--) {
+            sr = 0x30001;
+            goto error;
+        }
+    }
 
     /* Send 7bit address */
     I2C_DR(c.i2c) = (uint8_t)((slave << 1) | I2C_WRITE);
 
     /* Wait for address bit done or error. */
-    while(!(sr = I2C_SR1(c.i2c)));
+    while(!(sr = I2C_SR1(c.i2c))) {
+        if (!tries--) {
+            sr = 0x30002;
+            goto error;
+        }
+    }
     if (!(sr & I2C_SR1_ADDR)) goto error;
 
     /* Clearing ADDR condition sequence. */
@@ -85,26 +107,39 @@ static inline uint32_t hw_i2c_transmit(
     if (hdr) {
         for (size_t i = 0; i < hdr_len; i++) {
             I2C_DR(c.i2c) = hdr[i];
-            while (!(sr = I2C_SR1(c.i2c)));
+            while (!(sr = I2C_SR1(c.i2c))) {
+                if (!tries--) {
+                    sr = 0x30003;
+                    goto error;
+                }
+            }
             if (!(sr | I2C_SR1_BTF)) goto error;
         }
     }
     if (data) {
         for (size_t i = 0; i < data_len; i++) {
             I2C_DR(c.i2c) = data[i];
-            while (!(sr = I2C_SR1(c.i2c)));
+            while (!(sr = I2C_SR1(c.i2c))) {
+                if (!tries--) {
+                    sr = 0x30004;
+                    goto error;
+                }
+            }
             if (!(sr | I2C_SR1_BTF)) goto error;
         }
     }
     return 0;
 
   error:
-    infof("i2c transmit error: SR1=%x\n", sr);
+    infof("i2c transmit error: %x\n", sr);
     return sr;
 }
 static inline uint32_t hw_i2c_receive(
     struct hw_i2c c, uint32_t slave,
     uint8_t *data, uint32_t len) {
+
+    uint32_t tries = HW_I2C_TRIES;
+
 
     uint32_t sr;
 
@@ -116,7 +151,12 @@ static inline uint32_t hw_i2c_receive(
 
     /* Wait for master mode selected */
     while (!((I2C_SR1(c.i2c) & I2C_SR1_SB) &
-             (I2C_SR2(c.i2c) & (I2C_SR2_MSL | I2C_SR2_BUSY))));
+             (I2C_SR2(c.i2c) & (I2C_SR2_MSL | I2C_SR2_BUSY)))) {
+        if (!tries--) {
+            sr = 0x30011;
+            goto error;
+        }
+    }
 
     /* Send 7bit address */
     I2C_DR(c.i2c) = (uint8_t)((slave << 1) | I2C_READ);
@@ -125,7 +165,12 @@ static inline uint32_t hw_i2c_receive(
     I2C_CR1(c.i2c) |= I2C_CR1_ACK;
 
     /* Wait for address bit done or error. */
-    while(!(sr = I2C_SR1(c.i2c)));
+    while(!(sr = I2C_SR1(c.i2c))) {
+        if (!tries--) {
+            sr = 0x30012;
+            goto error;
+        }
+    }
     if (!(sr & I2C_SR1_ADDR)) {
         infof("i2c receive error waiting for addr: SR1=%x\n", sr);
         return sr;
@@ -140,7 +185,12 @@ static inline uint32_t hw_i2c_receive(
             I2C_CR1(c.i2c) &= ~I2C_CR1_ACK;
         }
 
-        while (!(sr = I2C_SR1(c.i2c)));
+        while (!(sr = I2C_SR1(c.i2c))) {
+            if (!tries--) {
+                sr = 0x30013;
+                goto error;
+            }
+        }
         if (!(I2C_SR1(c.i2c) & I2C_SR1_RxNE)) {
             infof("i2c receive data byte %d: SR1=%x\n", i, sr);
         }
@@ -148,6 +198,9 @@ static inline uint32_t hw_i2c_receive(
     }
 
     return 0;
+error:
+    infof("i2c receive error: SR1=%x\n", sr);
+    return sr;
 
 }
 

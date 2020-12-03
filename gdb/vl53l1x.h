@@ -76,6 +76,13 @@ struct vl53l1x {
 #define VL51L1X_HAL_I2C_RECEIVE hw_i2c_receive
 #endif
 
+/* Stop condition is separate in uc_tools HAL to allow restarts, but
+   we need to send stop.  Chip does not use restart. */
+#ifndef VL51L1X_HAL_I2C_STOP
+#define VL51L1X_HAL_I2C_STOP hw_i2c_stop
+#endif
+
+
 #ifndef VL51L1X_HAL_WAIT_MS
 #define VL51L1X_HAL_WAIT_MS(...) // FIXME
 #endif
@@ -101,6 +108,7 @@ static inline void vl53l1x_write(struct vl53l1x *s, uint16_t index, uint8_t *buf
             VL51L1X_HAL_I2C_BUS, VL51L1X_I2C_ADDR,
             header, sizeof(header),
             buf, len);
+    VL51L1X_HAL_I2C_STOP(VL51L1X_HAL_I2C_BUS);
     (void)i2c_status; // FIXME
     s->status = 0; // FIXME
 }
@@ -111,6 +119,7 @@ static inline void vl53l1x_read(struct vl53l1x *s, uint16_t index, uint8_t *buf,
         VL51L1X_HAL_I2C_RECEIVE(
             VL51L1X_HAL_I2C_BUS, VL51L1X_I2C_ADDR,
             buf, len);
+    VL51L1X_HAL_I2C_STOP(VL51L1X_HAL_I2C_BUS);
     (void)i2c_status; // FIXME
     s->status = 0; // FIXME
 }
