@@ -79,7 +79,7 @@ struct vl53l1x {
 
 
 #ifndef VL51L1X_HAL_WAIT_MS
-#define VL51L1X_HAL_WAIT_MS(...) // FIXME
+#error need VL51L1X_HAL_WAIT_MS
 #endif
 
 /* Driver assumes this is known at compile time.  The convention used
