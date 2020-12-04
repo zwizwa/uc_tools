@@ -60,26 +60,21 @@ struct vl53l1x {
 };
 
 
-/* The HAL uses macros instead of function pointers, to create some
-   more compact code.  Configuration is done by defining these macros
-   before inclusion of the .h file.  The default implementations maps
-   to uc_tools i2c HAL inline functions. */
-#ifndef VL51L1X_HAL_I2C_BUS
-#define VL51L1X_HAL_I2C_BUS HW_I2C_BUS
-#endif
+/* The HAL uses macros instead of function pointers to avoid function
+   pointer red tape. */
 
 #ifndef VL51L1X_HAL_I2C_TRANSIMIT
-#define VL51L1X_HAL_I2C_TRANSIMIT hw_i2c_transmit
+#error need VL51L1X_HAL_I2C_TRANSIMIT
 #endif
 
 #ifndef VL51L1X_HAL_I2C_RECEIVE
-#define VL51L1X_HAL_I2C_RECEIVE hw_i2c_receive
+#error need VL51L1X_HAL_I2C_RECEIVE
 #endif
 
 /* Stop condition is separate in uc_tools HAL to allow restarts, but
    we need to send stop.  Chip does not use restart. */
 #ifndef VL51L1X_HAL_I2C_STOP
-#define VL51L1X_HAL_I2C_STOP hw_i2c_stop
+#error need VL51L1X_HAL_I2C_STOP
 #endif
 
 
@@ -103,25 +98,22 @@ struct vl53l1x {
 
 static inline void vl53l1x_write(struct vl53l1x *s, uint16_t index, uint8_t *buf, uint32_t len) {
     uint8_t header[2] = { U16_BE(index) };
-    uint32_t i2c_status =
+    s->status =
         VL51L1X_HAL_I2C_TRANSIMIT(
-            VL51L1X_HAL_I2C_BUS, VL51L1X_I2C_ADDR,
+            VL51L1X_I2C_ADDR,
             header, sizeof(header),
             buf, len);
-    VL51L1X_HAL_I2C_STOP(VL51L1X_HAL_I2C_BUS);
-    (void)i2c_status; // FIXME
-    s->status = 0; // FIXME
+    VL51L1X_HAL_I2C_STOP();
 }
 static inline void vl53l1x_read(struct vl53l1x *s, uint16_t index, uint8_t *buf, uint32_t len) {
     /* The device uses write followed by read.  No repeated start. */
     vl53l1x_write(s, index, 0, 0);
-    uint32_t i2c_status =
+    if (s->status) return;
+    s->status =
         VL51L1X_HAL_I2C_RECEIVE(
-            VL51L1X_HAL_I2C_BUS, VL51L1X_I2C_ADDR,
+            VL51L1X_I2C_ADDR,
             buf, len);
-    VL51L1X_HAL_I2C_STOP(VL51L1X_HAL_I2C_BUS);
-    (void)i2c_status; // FIXME
-    s->status = 0; // FIXME
+    VL51L1X_HAL_I2C_STOP();
 }
 
 /* Only the ones that are actually used are copied here. */
@@ -139,9 +131,8 @@ typedef int8_t vl53l1x_error_t;
 
 /* Register read. */
 static inline uint32_t vl53l1x_rd_reg(struct vl53l1x *s, uint16_t index, uint32_t reg_size) {
-    // ASSERT(reg_size <= 4);
-    uint8_t buf[4] = {};
-    vl53l1x_read(s, index, buf, sizeof(buf));
+    uint8_t buf[reg_size];
+    vl53l1x_read(s, index, buf, reg_size);
     return read_be_32(buf, reg_size);
 }
 static inline uint16_t vl53l1x_rd_u8 (struct vl53l1x *s, uint16_t i) { return vl53l1x_rd_reg(s, i, 1); }
@@ -149,18 +140,17 @@ static inline uint16_t vl53l1x_rd_u16(struct vl53l1x *s, uint16_t i) { return vl
 static inline uint16_t vl53l1x_rd_u32(struct vl53l1x *s, uint16_t i) { return vl53l1x_rd_reg(s, i, 4); }
 
 static inline void vl53l1x_wr_reg(struct vl53l1x *s, uint16_t index, uint32_t reg_size, uint32_t value) {
-    // ASSERT(reg_size <= 4);
-    uint8_t buf[4] = {};
-    write_be_32(buf, reg_size, value);
-    vl53l1x_write(s, index, buf, sizeof(buf));
+    uint8_t buf[reg_size];
+    write_be_32(buf, value, reg_size);
+    vl53l1x_write(s, index, buf, reg_size);
 }
 static inline void vl53l1x_wr_u8 (struct vl53l1x *s, uint16_t i, uint8_t v)  { vl53l1x_wr_reg(s, i, 1, v); }
 static inline void vl53l1x_wr_u16(struct vl53l1x *s, uint16_t i, uint16_t v) { vl53l1x_wr_reg(s, i, 2, v); }
 static inline void vl53l1x_wr_u32(struct vl53l1x *s, uint16_t i, uint32_t v) { vl53l1x_wr_reg(s, i, 4, v); }
 
 
-static inline uint16_t vl53l1x_get_sensor_id       (struct vl53l1x *s) { return vl53l1x_rd_u16(s, VL53L1_IDENTIFICATION__MODEL_ID); }
-static inline uint16_t vl53l1x_get_distance        (struct vl53l1x *s) { return vl53l1x_rd_u16(s, VL53L1_RESULT__FINAL_CROSSTALK_CORRECTED_RANGE_MM_SD0); }
+static inline uint16_t vl53l1x_get_sensor_id (struct vl53l1x *s) { return vl53l1x_rd_u16(s, VL53L1_IDENTIFICATION__MODEL_ID); }
+static inline uint16_t vl53l1x_get_distance  (struct vl53l1x *s) { return vl53l1x_rd_u16(s, VL53L1_RESULT__FINAL_CROSSTALK_CORRECTED_RANGE_MM_SD0); }
 
 static inline uint8_t vl53l1x_check_for_data_ready(struct vl53l1x *s) {
     /* Driver assumes the input polarity is known at compile time.
@@ -169,9 +159,9 @@ static inline uint8_t vl53l1x_check_for_data_ready(struct vl53l1x *s) {
     return (vl53l1x_rd_u8(s, GPIO__TIO_HV_STATUS) & 1) ^ (1^VL53L1X_INTERRUPT_POLARITY);
 }
 
-static inline void     vl53l1x_clear_interrupt(struct vl53l1x *s) { vl53l1x_wr_u8 (s, SYSTEM__INTERRUPT_CLEAR, 1); }
-static inline void     vl53l1x_start_ranging  (struct vl53l1x *s) { vl53l1x_wr_u8 (s, SYSTEM__MODE_START, 0x40); }
-static inline void     vl53l1x_stop_ranging   (struct vl53l1x *s) { vl53l1x_wr_u8 (s, SYSTEM__MODE_START, 0x00); }
+static inline void vl53l1x_clear_interrupt(struct vl53l1x *s) { vl53l1x_wr_u8 (s, SYSTEM__INTERRUPT_CLEAR, 1); }
+static inline void vl53l1x_start_ranging  (struct vl53l1x *s) { vl53l1x_wr_u8 (s, SYSTEM__MODE_START, 0x40); }
+static inline void vl53l1x_stop_ranging   (struct vl53l1x *s) { vl53l1x_wr_u8 (s, SYSTEM__MODE_START, 0x00); }
 
 
 /* Contains busywait with 150ms timeout. Run this only at startup. */
@@ -271,31 +261,46 @@ static inline void     vl53l1x_stop_ranging   (struct vl53l1x *s) { vl53l1x_wr_u
 }
 
 static inline int vl53l1x_init(struct vl53l1x *s) {
-    const uint8_t config[] = VL51L1X_DEFAULT_CONFIGURATION_INIT;
-
-    for (uint8_t addr = 0x2d; addr <= 0x87; addr++) {
-        vl53l1x_wr_u8(s, addr, config[addr - 0x2d]);
+    static const uint8_t config[] = VL51L1X_DEFAULT_CONFIGURATION_INIT;
+    for (uint32_t i=0; i<sizeof(config); i++) {
+        vl53l1x_wr_u8(s, 0x2d+i, config[i]);
+        if (s->status) goto error;
     }
+
     vl53l1x_start_ranging(s);
+    if (s->status) goto error;
 
     /* We need to wait at least the default intermeasurement period of
        103ms before dataready will occur. But if a unit has already
        been powered and polling, it may happen much faster. */
     uint32_t dataReady = 0, timeout = 0;
     while (dataReady == 0) {
-        dataReady = vl53l1x_check_for_data_ready(s);
+        dataReady = vl53l1x_check_for_data_ready(s); if (s->status) goto error;
         if (timeout++ > 150) { return VL53L1_ERROR_TIME_OUT; }
         VL51L1X_HAL_WAIT_MS(1);
     }
     vl53l1x_clear_interrupt(s);
+    if (s->status) goto error;
+
     vl53l1x_stop_ranging(s);
+    if (s->status) goto error;
+
     vl53l1x_wr_u8(s, VL53L1_VHV_CONFIG__TIMEOUT_MACROP_LOOP_BOUND, 0x09); /* two bounds VHV */
+    if (s->status) goto error;
+
     vl53l1x_wr_u8(s, 0x0B, 0); /* start VHV from the previous temperature */
+    if (s->status) goto error;
+
     /* Note: Original code does not perform status checks during
        init, and just passes the status value of the last
        command.  That can't be right!  Maybe add some checks here. */
+    return 0;
+error:
+    // infof("status = %x\n", s->status);
     return s->status;
 }
+
+
 
 static inline int vl53l1x_begin(struct vl53l1x *s) {
     if (0xEACC != vl53l1x_get_sensor_id(s)) return 1;
