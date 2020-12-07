@@ -2,6 +2,7 @@
 #define GENERIC_H
 
 // Misc tools shared between STM32F103 and Linux C.
+// FIXME: Phase this out.  Use only "macros.h", and put the rest into specific header files.
 
 #include <stdint.h>
 #include "macros.h"

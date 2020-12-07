@@ -260,6 +260,7 @@ static inline void vl53l1x_stop_ranging   (struct vl53l1x *s) { vl53l1x_wr_u8 (s
 	0x00  /* 0x87 : start ranging, use StartRanging() or StopRanging(), If you want an automatic start after VL53L1X_init() call, put 0x40 in location 0x87 */ \
 }
 
+
 static inline int vl53l1x_init(struct vl53l1x *s) {
     static const uint8_t config[] = VL51L1X_DEFAULT_CONFIGURATION_INIT;
     for (uint32_t i=0; i<sizeof(config); i++) {

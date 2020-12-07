@@ -8,8 +8,8 @@
 
 #include <stdint.h>
 
-/* SM: Composable State Machines in C. */
-
+/* SM: Composable State Machines in C.
+   A.k.a. recursive protothreads. */
 
 
 /* RATIONALE:
