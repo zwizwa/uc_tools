@@ -104,7 +104,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // https://www.kernel.org/doc/Documentation/networking/tuntap.txt
 // https://wiki.wireshark.org/Development/LibpcapFileFormat
 
-static void log_addr(struct sockaddr_in *sa) {
+
+static void __attribute__((unused)) log_addr(struct sockaddr_in *sa) {
     uint8_t *a = (void*)&sa->sin_addr;
     LOG("%d.", a[0]);
     LOG("%d.", a[1]);
@@ -183,11 +184,6 @@ struct port *port_open_tundev(const char *dev, int flags) {
 
 /***** 1.2. UDP PORT */
 
-struct udp_port {
-    struct port p;
-    struct sockaddr_in peer;
-};
-
 static ssize_t udp_read(struct udp_port *p, uint8_t *buf, ssize_t len) {
     //LOG("udp_read\n");
     ssize_t rlen = 0;
@@ -201,9 +197,11 @@ static ssize_t udp_read(struct udp_port *p, uint8_t *buf, ssize_t len) {
 
     /* Associate to the last peer that sends to us.  This is to make
        setup simpler. */
+    /*
     if (!same_addr(&p->peer, &peer)) {
         LOG("peer:"); log_addr(&peer);
     }
+    */
     memcpy(&p->peer, &peer, sizeof(peer));
 
     //LOG("udp_read %d\n", rlen);
@@ -331,6 +329,7 @@ static void handle_signal(int sig) {
 }
 static void fd_open_command(int *in_fd, int *out_fd, const char **argv) {
     // This is confusing, so using long names.
+    int ignore;
     const int read_end = 0;
     const int write_end = 1;
     int parent_to_child[2];
@@ -343,8 +342,9 @@ static void fd_open_command(int *in_fd, int *out_fd, const char **argv) {
     /* CHILD */
     if (!pid){
         /* replace stdio with pipes and leave stderr as-is. */
-        close(0); dup(parent_to_child[read_end]);
-        close(1); dup(child_to_parent[write_end]);
+        close(0); ignore = dup(parent_to_child[read_end]);
+        close(1); ignore = dup(child_to_parent[write_end]);
+        (void)ignore;
 
         /* No longer needed */
         close(parent_to_child[read_end]);
@@ -912,26 +912,29 @@ void packet_loop(packet_handle_fn handle,
     struct pollfd pfd[ctx->nb_ports];
     memset(pfd, 0, sizeof(pfd));
 
-    for (int i=0; i<ctx->nb_ports; i++) {
-        pfd[i].fd = ctx->port[i]->fd;
-        pfd[i].events = POLLIN;
-        pfd[i].revents = 0;
-    }
     for(;;) {
         uint8_t buf[PACKET_BRIDGE_MAX_PACKET_SIZE]; // FIXME: Make this configurable
         int rv;
         // LOG("timeout %d\n", ctx->timeout);
+        for (int i=0; i<ctx->nb_ports; i++) {
+            pfd[i].fd = ctx->port[i]->fd;
+            pfd[i].events = ctx->port[i]->events ?
+                            ctx->port[i]->events : POLLIN;
+            pfd[i].revents = 0;
+        }
+
         ASSERT_ERRNO(rv = poll(&pfd[0], ctx->nb_ports, ctx->timeout));
         ASSERT(rv >= 0);
         // LOG("poll rv: %d\n", rv);
         if (rv == 0) {
             /* Handler is notified of timeouts. */
-            const int timeout_port = 2;
+            const int timeout_port = -1;
             handle(ctx, timeout_port, NULL, 0);
         }
         else {
             for (int i=0; i<ctx->nb_ports; i++) {
-                if(pfd[i].revents & POLLIN) {
+                if( pfd[i].revents & ctx->port[i]->events ||
+                    pfd[i].revents & POLLIN) {
                     struct port *in  = ctx->port[i];
 
                     int rlen;
