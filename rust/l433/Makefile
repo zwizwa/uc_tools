@@ -1,12 +1,3 @@
-# For general installation instructions, see
-# ../install.sh
-# https://rust-embedded.github.io/cortex-m-quickstart/cortex_m_quickstart/
-
-# We use cargo to build, but provide this wrapper makefile for do.erl
-
-# This is now set as an environment variable.
-# ELF=bluepill.f103.elf
-
 .PHONY: all
 all:
 	cargo build --release

@@ -1,15 +1,23 @@
 #![no_std]
 #![no_main]
 
+extern crate cortex_m;
 extern crate cortex_m_rt;
+extern crate cortex_m_semihosting;
 extern crate stm32f1;
-extern crate panic_halt;
+extern crate panic_semihosting;
 
 use cortex_m_rt::entry;
+use cortex_m_semihosting::{hprintln};
+
 use stm32f1::stm32f103;
+
+
 
 entry!(main);
 fn main() -> ! {
+
+    hprintln!("Hello, world!").unwrap();
 
     // get handles to the hardware
     let peripherals = stm32f103::Peripherals::take().unwrap();

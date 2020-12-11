@@ -14,8 +14,8 @@ cortex-m = "0.5.6"
 cortex-m-rt = "0.5.3"
 stm32f1 = {version = "0.6.0", features = ["stm32f103", "rt"]}
 
-# cortex-m-semihosting = "0.3.1"
-# panic-semihosting = "0.4.0"
+cortex-m-semihosting = "0.3.1"
+panic-semihosting = "0.4.0"
 panic-halt = "0.2.0"
 
 [profile.release]
@@ -26,4 +26,9 @@ opt-level = 's'
 
 [lib]
 path = "src/lib.rs"
+
+[[bin]]
+name = "bluepill"
+path = "src/main.rs"
+
 
