@@ -63,6 +63,10 @@ SECTIONS
 		. = ALIGN(4);
 		*(.rodata*)        /* Read-only data */
 		. = ALIGN(4);
+                _instances = .;                
+                KEEP (*(.instance)) /* Array of static instances. */
+                *(.instance*)
+		. = ALIGN(4);
 	} >rom
 
 	/* C++ Static constructors/destructors, also used for __attribute__
