@@ -15,7 +15,7 @@ void setup(void) {
     SEND_TAG_U32(4,5,6);
 }
 
-void poll(void) {
+void loop(void) {
 }
 
 // bp2 ! {send_u32,[1,2,3]}.
@@ -26,7 +26,7 @@ int handle_tag_u32(
 
     SEND_TAG_U32(4, nb_args);
 
-    return -1; // FIXME
+    return 0;
 }
 
 

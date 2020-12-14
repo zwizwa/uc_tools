@@ -71,7 +71,8 @@ uint16_t cbuf_peek_slip_decode(struct cbuf *b, uint32_t *nb_drop);
 uint16_t cbuf_get_slip_decode(struct cbuf *b);
 
 void cbuf_put_slip(struct cbuf *b, uint16_t fc);
-void cbuf_write_slip(struct cbuf *b, uint8_t *buf, uint32_t len);
+void cbuf_append_slip(struct cbuf *b, const uint8_t *buf, uint32_t len);
+void cbuf_write_slip(struct cbuf *b, const uint8_t *buf, uint32_t len);
 
 struct slice {
     const void *buf;

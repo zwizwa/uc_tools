@@ -78,11 +78,14 @@ void cbuf_put_slip(struct cbuf *b, uint16_t fc) {
     }
 }
 /* Write a complete double-ended slip packet. */
-void cbuf_write_slip(struct cbuf *b, uint8_t *buf, uint32_t len) {
-    cbuf_put(b, SLIP_END);
+void cbuf_append_slip(struct cbuf *b, const uint8_t *buf, uint32_t len) {
     for(uint32_t i=0; i<len; i++) {
         cbuf_put_slip(b, buf[i]);
     }
+}
+void cbuf_write_slip(struct cbuf *b, const uint8_t *buf, uint32_t len) {
+    cbuf_put(b, SLIP_END);
+    cbuf_append_slip(b, buf, len);
     cbuf_put(b, SLIP_END);
 }
 

@@ -22,8 +22,8 @@ int handle_tag_u32(
     void *context,
     const uint32_t *arg,  uint32_t nb_args,
     const uint8_t *bytes, uint32_t nb_bytes);
-void poll(void);
 void setup(void);
+void loop(void);
 
 void handle_tag(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
     //infof("tag %d\n", tag);
@@ -48,12 +48,12 @@ void send_tag_u32(
     uint8_t hdr[] = {U16_BE(TAG_U32), U16_BE(nb_args)};
     struct cbuf *b = slipstub.slip_out;
     cbuf_put(b, SLIP_END);
-    cbuf_write(b, hdr, sizeof(hdr));
+    cbuf_append_slip(b, hdr, sizeof(hdr));
     for (uint32_t i=0; i<nb_args; i++) {
         uint8_t a[] = {U32_BE(arg[i])};
-        cbuf_write(b, a, sizeof(a));
+        cbuf_append_slip(b, a, sizeof(a));
     }
-    cbuf_write(b, bytes, nb_bytes);
+    cbuf_append_slip(b, bytes, nb_bytes);
     cbuf_put(b, SLIP_END);
 }
 #define SEND_TAG_U32(...) {                                     \
@@ -73,7 +73,7 @@ void start(void) {
     slipstub_init(handle_tag);
 
     setup();
-    _service.add(poll);
+    _service.add(loop);
 }
 void stop(void) {
     hw_app_stop();
