@@ -22,5 +22,7 @@ extern const struct instance _instance_endx;
         .init = name##_init,                                   \
     }
 
+void instance_need(const struct instance *instance);
+
 
 #endif
