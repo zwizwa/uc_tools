@@ -22,13 +22,13 @@
    array.
 */
 uint32_t instance_initialized;
-void instance_need(const struct instance *instance) {
+void instance_need(const struct instance const* *instance) {
     int n = &_instance_endx - &_instance_start;
     int i = instance - &_instance_start;
     if ((i >= 0) && (i < n)) {
         if (!(instance_initialized && (1 << i))) {
             //infof("init %d %x\n", i, instance);
-            instance->init();
+            (*instance)->init();
             instance_initialized |= (1 << i);
         }
         else {

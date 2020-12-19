@@ -4,8 +4,8 @@
 /* This uses the uc_tools linker support to create the command
    dictionary in a distributed way.
 
-   Each module can include DEF_COMMAND declarations, and we don't need
-   to reference the list of commands explicitly. */
+   Each module can register commands, and we don't need to reference
+   the list of commands explicitly. */
 
 #include "command.h"
 
@@ -70,11 +70,16 @@ void console_write_echo(const uint8_t *buf, uint32_t len) {
     }
 }
 
-/* TODO: implement gdbtub monitor as well. */
-const char console_reply[] = "ok\n";
+/* Support for GDB monitor command. */
+const char console_newline[] = "\n";
 const char *console_monitor(const char *command) {
-    console_handle(command);
-    return console_reply;
+    console_write((const uint8_t*)command, strlen(command));
+    console_write((const uint8_t*)console_newline,1);
+    /* Replies current ly don't seem to work, but we're not using them
+       anyway as all output goes to the console log.  Send a non-null
+       dummy value.  NULL means command not supported, which we don't
+       know here anyway. */
+    return console_newline;
 }
 
 const struct gdbstub_io standalone_io = {

@@ -13,16 +13,17 @@
 struct instance {
     void (*init)(void);
 };
-extern const struct instance _instance_start;
-extern const struct instance _instance_endx;
+extern const struct instance const* _instance_start;
+extern const struct instance const* _instance_endx;
 #define FOR_INSTANCE(i) \
-    for (const struct instance *i = &_instance_start; i < &_instance_endx; i++)
-#define DEF_INSTANCE(name) \
-    const struct instance instance_##name INSTANCE_SECTION = { \
-        .init = name##_init,                                   \
-    }
+    for (const struct instance **i = &_instance_start; i < &_instance_endx; i++)
 
-void instance_need(const struct instance *instance);
+/* Firmware will use the _cname to refer to the instance, so don't mangle it. */
+#define DEF_INSTANCE(_cname) \
+    const struct instance instance_##_cname = { .init = _cname##_init }; \
+    const struct instance *_cname INSTANCE_SECTION = &instance_##_cname
+
+void instance_need(const struct instance const* *instance);
 
 
 #endif
