@@ -64,11 +64,25 @@ SECTIONS
 		. = ALIGN(4);
 		*(.rodata*)        /* Read-only data */
 		. = ALIGN(4);
+
+                /* It is very convenient to be able to collect sets of
+                objects that were included in a firmware image by the
+                the compilation and linking processes, without having
+                to explicitly specify them.  This is used to track
+                object instances, and firmware commands. */
+
                 _instance_start = .;                
-                KEEP (*(.instance)) /* Array of static instances. */
+                KEEP (*(.instance))
                 *(.instance*)
                 _instance_endx = .;                
 		. = ALIGN(4);
+
+                _command_start = .;                
+                KEEP (*(.command))
+                *(.command*)
+                _command_endx = .;                
+		. = ALIGN(4);
+
 	} >rom
 
 	/* C++ Static constructors/destructors, also used for __attribute__
