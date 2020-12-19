@@ -75,6 +75,11 @@ static inline void pbuf_write(struct pbuf *p, const uint8_t *buf, uint32_t len) 
         pbuf_put(p, buf[i]);
     }
 }
+static inline void pbuf_zero_terminate(struct pbuf *p) {
+    /* Zero-terminate if size is at least 1.  Truncate if necessary. */
+    pbuf_put(p, 0);
+    p->buf[p->count-1] = 0;
+}
 
 
 typedef void (*pbuf_sink_t)(void*, const struct pbuf *p);
