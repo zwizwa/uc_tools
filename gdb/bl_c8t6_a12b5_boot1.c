@@ -1,3 +1,8 @@
+/* To configure, override these. */
+#ifndef GDBSTUB_BOOT1_ENABLED
+#define GDBSTUB_BOOT1_ENABLED(x) (x)
+#endif
+
 #include "hw_bootloader.h"
 #include "gdbstub.h"
 #include "gdbstub_api.h"
