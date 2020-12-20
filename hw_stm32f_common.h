@@ -212,7 +212,8 @@ INLINE volatile uint32_t *hw_bitband(volatile uint32_t *ptr, uint32_t bit) {
 */
 
 // Common uses:                             // CNF:2, MODE:2
-#define HW_GPIO_CONFIG_INPUT            0x4  // 0100 gpio input, floating
+#define HW_GPIO_CONFIG_INPUT_ANALOG     0x0  // 0000 analog input
+#define HW_GPIO_CONFIG_INPUT            0x4  // 0100 gpio input, floating (reset state)
 #define HW_GPIO_CONFIG_INPUT_PULL       0x8  // 1000 gpio input, pullup/down  (ODR=pull_dir)
 #define HW_GPIO_CONFIG_OUTPUT           0x3  // 0011 gpio output, push-pull
 #define HW_GPIO_CONFIG_OUTPUT_2MHZ      0x2  // 0010 gpio output, push-pull, 2MHz
