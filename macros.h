@@ -64,8 +64,20 @@ int kill(pid_t pid, int sig);
     (sizeof(x)/sizeof(x[0]))
 #endif
 
-#define FOR_ARRAY(a,p) \
-    for(__typeof__(&a[0]) p = &a[0]; p < &a[ARRAY_SIZE(a)]; p++)
+/* Two array iterators.  Note that these are very different, so are
+   named completely differently. */
+
+/* The first one is for sized array types.  We do not have a way to
+   check that a is an array and not a pointer, so be careful. */
+#define FOR_ARRAY(_array,_el) \
+    for(__typeof__(&_array[0]) _el = &_array[0]; _el < &_array[ARRAY_SIZE(_array)]; _el++)
+
+/* The second one works for a pointer to a null terminated array.
+   This could be an array of pointers, or an array of integers.
+   Doesn't matter, as long as the terminator evaluates to false. */
+#define UNTIL_NULL(_ptr,_el) \
+    for(__typeof__(_ptr[0]) *_el = &_ptr[0]; *_el; _el++)
+
 
 #ifndef MAX
 #define MAX(a,b) ({ __typeof__(a) _a = (a); __typeof__(b) _b = (b); _a >= _b ? _a : _b;})
