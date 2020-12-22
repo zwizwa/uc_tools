@@ -68,14 +68,8 @@ SECTIONS
                 /* It is very convenient to be able to collect sets of
                 objects that were included in a firmware image by the
                 the compilation and linking processes, without having
-                to explicitly specify them.  This is used to track
-                object instances, and firmware commands. */
-
-                _instance_start = .;                
-                KEEP (*(.instance))
-                *(.instance*)
-                _instance_endx = .;                
-		. = ALIGN(4);
+                to explicitly specify them.  This is currently used to
+                track debug commands. */
 
                 _command_start = .;                
                 KEEP (*(.command))
