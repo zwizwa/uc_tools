@@ -19,7 +19,14 @@
 
 #include <stdint.h>
 
-struct memoize_table;
+/* Expose the data structure, such that it can be used to derive a
+   dependency-ordered list from a sequence of init calls. */
+struct memoize_table {
+    const void **have;
+    uintptr_t nb_el;
+    uintptr_t max_nb_el;
+};
+
 typedef void (*memoize_eval_fn)(struct memoize_table *, void*);
 
 /* Recursive evaluator. */

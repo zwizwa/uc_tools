@@ -3,12 +3,6 @@
 #include <string.h>
 
 /* FIXME: this could be a generalized pbuf.h */
-struct memoize_table {
-    const void **have;
-    uintptr_t nb_el;
-    uintptr_t max_nb_el;
-};
-
 static inline int memoize_have(struct memoize_table *t, void *obj) {
     for(int i=0; i<t->nb_el; i++) {
         if (t->have[i] == obj) return 1;
@@ -40,5 +34,5 @@ void memoize_eval_top(uintptr_t max_nb_el,
     const void *have[max_nb_el];
     memset(have, 0, sizeof(have[0]) * max_nb_el);
     struct memoize_table memoize_table = { .have = have, .max_nb_el = max_nb_el };
-    return memoize_eval(&memoize_table, obj, eval);
+    memoize_eval(&memoize_table, obj, eval);
 }

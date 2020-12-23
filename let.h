@@ -20,6 +20,8 @@
 #define LET_STRUCT_REF(typ, nam, ...) \
     typ##_update(&nam, __VA_ARGS__)
 
-#define LET LET_STATIC
+
+
+//#define LET LET_STATIC
 
 #endif
