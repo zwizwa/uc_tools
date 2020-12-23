@@ -11,14 +11,12 @@ typedef struct memoize_table instance_init_t;
 
 struct instance {
     void (*init)(instance_init_t *);
-    void *state;
     const char *name;
 };
 
 #define DEF_INSTANCE(_cname)                                            \
     const struct instance _cname = {                                    \
         .init  = _cname##_init,                                         \
-        .state = &_cname##_state,                                       \
         .name  = #_cname                                                \
     };                                                                  \
 
