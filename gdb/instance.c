@@ -10,36 +10,33 @@
 #include "memoize.h"
 
 /* Callback for memoize_eval. */
-void instance_eval(
+instance_status_t instance_eval(
     instance_init_t *ctx,
     const struct instance *instance) {
-
-    instance->init(ctx);
-    infof("init %s\n", instance->name);
+    instance_status_t s = instance->init(ctx);
+    infof("init %s", instance->name);
+    if (s) { infof(": ERROR %x", s); }
+    infof("\n");
+    return s;
 }
-void instance_need(
+instance_status_t instance_need(
     instance_init_t *ctx,
     const struct instance *instance) {
-
-    memoize_eval(
-        ctx,
-        (void*)instance,
-        (memoize_eval_fn)instance_eval);
+    return
+        memoize_eval(
+            ctx,
+            (void*)instance,
+            (memoize_eval_fn)instance_eval);
 }
 
-void instance_need_top(
+instance_status_t instance_need_top(
     uintptr_t max_nb_instances,
     const struct instance *instance) {
-
-    memoize_eval_top(
-        max_nb_instances,
-        (void*)instance,
-        (memoize_eval_fn)instance_eval);
-}
-
-struct instance_poll {
-};
-void instance_poll_all(void) {
+    return
+        memoize_eval_top(
+            max_nb_instances,
+            (void*)instance,
+            (memoize_eval_fn)instance_eval);
 }
 
 

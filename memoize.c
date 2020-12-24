@@ -20,19 +20,21 @@ static inline void memoize_save(struct memoize_table *t, void *obj) {
     t->have[t->nb_el++] = obj;
 }
 /* Recursive evaluator. */
-void memoize_eval(struct memoize_table *t,
-                  void *obj,
-                  memoize_eval_fn eval) {
-    if (memoize_have(t, obj)) return;
-    eval(t, obj);
+memoize_status_t memoize_eval(struct memoize_table *t,
+                              void *obj,
+                              memoize_eval_fn eval) {
+    if (memoize_have(t, obj)) return 0;
+    memoize_status_t status = eval(t, obj);
+    if (status) return status;
     memoize_save(t, obj);
+    return 0;
 }
 /* Top level evaluator. */
-void memoize_eval_top(uintptr_t max_nb_el,
-                      void *obj,
-                      memoize_eval_fn eval) {
+memoize_status_t memoize_eval_top(uintptr_t max_nb_el,
+                                  void *obj,
+                                  memoize_eval_fn eval) {
     const void *have[max_nb_el];
     memset(have, 0, sizeof(have[0]) * max_nb_el);
     struct memoize_table memoize_table = { .have = have, .max_nb_el = max_nb_el };
-    memoize_eval(&memoize_table, obj, eval);
+    return memoize_eval(&memoize_table, obj, eval);
 }

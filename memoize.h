@@ -27,12 +27,14 @@ struct memoize_table {
     uintptr_t max_nb_el;
 };
 
-typedef void (*memoize_eval_fn)(struct memoize_table *, void*);
+/* 0 == OK */
+typedef uintptr_t memoize_status_t;
+typedef memoize_status_t (*memoize_eval_fn)(struct memoize_table *, void*);
 
 /* Recursive evaluator. */
-void memoize_eval(struct memoize_table *t, void *obj, memoize_eval_fn eval);
+memoize_status_t memoize_eval(struct memoize_table *t, void *obj, memoize_eval_fn eval);
 
 /* Top level evaluator. */
-void memoize_eval_top(uintptr_t max_nb, void *obj, memoize_eval_fn eval);
+memoize_status_t memoize_eval_top(uintptr_t max_nb, void *obj, memoize_eval_fn eval);
 
 #endif

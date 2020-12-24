@@ -2,15 +2,17 @@
 #define INSTANCE_H
 
 #include <stdint.h>
+#include "macros.h"
 
 /* Idempotent instance initialization. */
 
 /* Init is just a thin wrapper around memoized evaluation. */
 #include "memoize.h"
 typedef struct memoize_table instance_init_t;
-
+typedef uintptr_t instance_status_t;
 struct instance {
-    void (*init)(instance_init_t *);
+    /* 0 == OK, other is error code. */
+    instance_status_t (*init)(instance_init_t *);
     const char *name;
 };
 
@@ -20,12 +22,17 @@ struct instance {
         .name  = #_cname                                                \
     };                                                                  \
 
-void instance_need(instance_init_t *ctx,  const struct instance *instance);
-void instance_need_top(uintptr_t max_nb_instances, const struct instance *instance);
+instance_status_t instance_need(instance_init_t *ctx,  const struct instance *instance);
+instance_status_t instance_need_top(uintptr_t max_nb_instances, const struct instance *instance);
 
 
-// FIXME
-void instance_poll_all(void);
-
+/* This performs early return if instances are not available. */
+#define INSTANCE_NEED(ctx, ...) {                                       \
+        const struct instance * _instances[] = { __VA_ARGS__, NULL};    \
+        instance_status_t _status;                                      \
+        UNTIL_NULL(_instances, _ptr) {                                  \
+            if ((_status = instance_need(ctx, *_ptr))) return _status;  \
+        }                                                               \
+    }
 
 #endif
