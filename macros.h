@@ -11,7 +11,7 @@
 /* GENSYM, CONCAT */
 #include "gensym.h"
 
-/*  Only LOG is custom atm.  The rest is defined in macros.h */
+/*  Only LOG is custom atm.  */
 #ifdef __linux__
 #include <sys/types.h>
 #include <signal.h>
@@ -42,7 +42,7 @@ int kill(pid_t pid, int sig);
 #else
 #ifndef LOG
 
-/* FIXME: declaring this or including infof.y will bloat bootloader by
+/* FIXME: declaring this or including infof.h will bloat bootloader by
  * 750 bytes.  Why? */
 // #include "infof.h"
 // int infof(const char *fmt, ...);

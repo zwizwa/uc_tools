@@ -8,7 +8,7 @@
 
 // FIXME: make this a parameter
 
-
+#include "log.h"
 #include "hw_stm32f103.h"
 #include <libopencm3/stm32/i2c.h>
 
@@ -131,7 +131,7 @@ static inline uint32_t hw_i2c_transmit(
     return 0;
 
   error:
-    infof("i2c transmit error: %x\n", sr);
+    LOG("i2c transmit error: %x\n", sr);
     return sr;
 }
 static inline uint32_t hw_i2c_receive(

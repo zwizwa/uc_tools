@@ -1,6 +1,10 @@
 #ifndef COMMAND_H
 #define COMMAND_H
 
+#include "log.h"
+#include "tools.h"
+#include <string.h>
+
 /* Note that this requires linker script support to create the global
    command array. */
 
