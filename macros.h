@@ -78,6 +78,11 @@ int kill(pid_t pid, int sig);
 #define UNTIL_NULL(_ptr,_el) \
     for(__typeof__(_ptr[0]) *_el = &_ptr[0]; *_el; _el++)
 
+/* This is useful for arrays collected by the linker.  See e.g. command.h */
+#define FOR_START_ENDX(_start, _endx, _p) \
+    for (__typeof__(_start) _p = _start; _p < _endx; _p++)
+
+
 
 #ifndef MAX
 #define MAX(a,b) ({ __typeof__(a) _a = (a); __typeof__(b) _b = (b); _a >= _b ? _a : _b;})

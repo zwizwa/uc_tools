@@ -23,7 +23,8 @@ extern const struct command const *_command_start;
 extern const struct command const *_command_endx;
 
 #define FOR_COMMAND(c) \
-    for (const struct command **c = &_command_start; c < &_command_endx; c++)
+    FOR_START_ENDX(&_command_start, &_command_endx, c)
+
 #define COMMAND_REGISTER_NAMED(_name, _cname) \
     const struct command command_##_cname = { .name = _name, .run = _cname }; \
     const struct command *command_ref_##_cname COMMAND_SECTION = &command_##_cname
