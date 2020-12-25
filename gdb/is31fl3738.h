@@ -45,10 +45,12 @@ struct is31fl3738 {
 #define IS31FL3738_REG_WRLOCK    0xFE
 #define IS31FL3738_REG_INTMASK   0xF0
 #define IS31FL3738_REG_INTSTATUS 0xF1
-#define IS31FL3738_CMD_LEDCTL    0x00
-#define IS31FL3738_CMD_PWM       0x01
-#define IS31FL3738_CMD_ABM       0x02
-#define IS31FL3738_CMD_FUNC	 0x03
+
+/* IS31FL3738_REG_CMD selects one of these command register pages. */
+#define IS31FL3738_CMD_LEDCTL    0x00  /* 00-17 on/off 18-2D open 30-45 short */
+#define IS31FL3738_CMD_PWM       0x01  /* 00-BF PWM */
+#define IS31FL3738_CMD_ABM       0x02  /* 00-BF Auto Breath Mode (ABM) */
+#define IS31FL3738_CMD_FUNC	 0x03  /* 00 configuration register, 11 reset register */
 
 
 #define IS31FL3738_FUNC_CONFIG   0x00
@@ -84,6 +86,10 @@ static inline void is31fl3738_write(struct is31fl3738 *s, uint8_t reg, const uin
             buf, len);
     IS31FL3738_HAL_I2C_STOP();
 }
+#define IS31FL3738_WRITE(s, addr, ...) {                        \
+        const uint8_t _data[] = {__VA_ARGS__};                  \
+        is31fl3738_write(s, addr, _data, sizeof(_data));        \
+}
 static inline void is31fl3738_read(struct is31fl3738 *s, uint8_t reg, uint8_t *buf, uint32_t len) {
     /* The device uses write followed by read.  No repeated start. */
     is31fl3738_write(s, reg, 0, 0);
@@ -101,66 +107,30 @@ static inline void is31fl3738_read(struct is31fl3738 *s, uint8_t reg, uint8_t *b
 static inline void is31fl3738_write_byte(struct is31fl3738 *s, uint8_t reg, uint8_t byte) {
     is31fl3738_write(s, reg, &byte, 1);
 }
-static inline void is31fl3738_cmd(struct is31fl3738 *s, uint8_t cmd, const uint8_t *data, uint32_t data_len) {
+static inline void is31fl3738_page(struct is31fl3738 *s, uint8_t page) {
+    /* To change the page, the command register needs to be unlocked first. */
     is31fl3738_write_byte(s, IS31FL3738_REG_WRLOCK, IS31FL3738_WRLOCK_MAGIC);
     if (s->status) return;
-    is31fl3738_write_byte(s, IS31FL3738_REG_CMD, cmd);
-    if (data_len) {
-        // FIXME: if there is data, data[0] is always 00.  Read the datasheet and explain.
-        is31fl3738_write(s, data[0], data+1, data_len-1);
-    }
-}
-
-// FIXME: check the original init routine.  Not quite clear.
-
-/* Recoded */
-#define IS31FL3738_CMD(s, cmd, ...) {                 \
-        const uint8_t _data[] = {__VA_ARGS__};        \
-        is31fl3738_cmd(s, cmd, _data, sizeof(_data)); \
+    /* Then the page can be selected. */
+    is31fl3738_write_byte(s, IS31FL3738_REG_CMD, page);
 }
 
 static inline void is31fl3738_init(struct is31fl3738 *s) {
-    IS31FL3738_CMD(
-        s, IS31FL3738_CMD_LEDCTL,
-        0x00,
+    is31fl3738_page(s, IS31FL3738_CMD_LEDCTL);
+    IS31FL3738_WRITE(
+        s, 0x00,
         0xff, 0x03, 0xff, 0x03,   /* SW1 */
         0xff, 0x03, 0xff, 0x03,   /* SW2 */
         0xff, 0x03, 0xff, 0x03,   /* SW3 */
         0xff, 0x03, 0xff, 0x03,   /* SW4 */
         0xff, 0x03, 0xff, 0x03);  /* SW5 */
-    IS31FL3738_CMD(
-        s, IS31FL3738_CMD_FUNC,
-        0x00, 0x01, 0x80);        /* normal operation, set GCC to 128 */
-    IS31FL3738_CMD(
+    is31fl3738_page(s, IS31FL3738_CMD_FUNC);
+    IS31FL3738_WRITE(
+        s, 0x00,
+        0x01, 0x80);             /* normal operation, set GCC to 128 */
+    is31fl3738_page(
         s, IS31FL3738_CMD_PWM);   /* switch to PWM page access */
 }
-
-
-#if 0
-
-/* Ok this encodes message length in a weird way.
-   Let's not do it like that.
-   Command has high bit set, low 7 are command.
-   Next byte is length.
-   Rest is payload.
-*/
-
-
-// Look at this again... is it sending a data tail?
-static inline void is31fl3738_init(struct is31fl3738 *s) {
-    char tmp;
-    for(const uint8_t *init = init_data; *init; init++) {
-        uint8_t v = *init;
-        if(v&0x80) {
-            is31fl3738_cmd(s, v&0x7f);
-        else {
-            res = I2C_WRITE(SLAVE_ADDR, (const char *)init+1, v);
-            init+=v;
-        }
-    }
-}
-
-#endif
 
 #endif
 
