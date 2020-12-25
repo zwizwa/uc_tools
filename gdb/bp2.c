@@ -11,6 +11,8 @@
 #define PRODUCT "bp2"
 #include "mod_lab.c"
 
+#include "mod_ws2812.c"
+
 void setup(void) {
     SEND_TAG_U32(4,5,6);
 }
