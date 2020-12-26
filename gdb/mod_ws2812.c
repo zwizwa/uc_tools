@@ -63,8 +63,27 @@ void ledstrip_send(const struct grb *grb) {
             ledstrip_dma_buf,
             (const uint8_t*)grb,
             LEDSTRIP_NB_LEDS * 24);
-    //infof("ledstrip_send %d %d\n", dma_bytes, sizeof(ledstrip_dma_buf));
+    infof("ledstrip_send %d %d\n", dma_bytes, sizeof(ledstrip_dma_buf));
+    /* reset peripheral and start dma. */
+    hw_spi_reset(LEDSTRIP_C_SPI);
+    hw_spi_start(LEDSTRIP_C_SPI, ledstrip_dma_buf, dma_bytes);
+}
 
+/* Similar, but use data producing callback to avoid double buffering. */
+void ledstrip_send_gen(struct grb (*grb_gen)(void*, int led_nb), void *ctx, int nb_leds) {
+    /* Create PWM bitstream. */
+    struct bitbuf dst;
+    bitbuf_init(&dst, ledstrip_dma_buf);
+    for(uint32_t led=0; led<nb_leds; led++) {
+        struct bitbuf src;
+        struct grb grb = grb_gen(ctx, led);
+        bitbuf_init(&src, (void*)&grb);
+        for(uint32_t i=0; i<24; i++) {
+            pwm_bitstream_bitbuf_write(&dst, bitbuf_read(&src));
+        }
+    }
+    uint32_t dma_bytes = bitbuf_flush(&dst);
+    //infof("ledstrip_send %d %d\n", dma_bytes, sizeof(ledstrip_dma_buf));
     /* reset peripheral and start dma. */
     hw_spi_reset(LEDSTRIP_C_SPI);
     hw_spi_start(LEDSTRIP_C_SPI, ledstrip_dma_buf, dma_bytes);

@@ -18,6 +18,7 @@ struct slipstub_buffers slipstub_buffers;
 #include "tag_u32.h"
 
 #include "instance.h"
+#include "reset_device.h"
 
 #include "mod_console.c"
 
@@ -38,6 +39,10 @@ void handle_tag(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
         if (rv) { infof("tag_u32_dispatch returned %d\n", rv); }
         break;
     }
+    case TAG_RESET: {
+        reset_device();
+        break;
+    } 
     default:
         infof("unknown tag 0x%x\n", tag);
     }
