@@ -1,6 +1,8 @@
 #ifndef MOD_WS2812
 #define MOD_WS2812
 
+/* LED STRIP DRIVER */
+
 /* FIXME: This needs to be built on top of HAL, and further abstracted
    into a proper module. */
 #include <hw_stm32f103.h>
@@ -8,7 +10,6 @@
 #include "fixedpoint.h"
 
 
-/* LED STRIP DRIVER */
 
 
 /* This uses a SPI peripheral.  The STM32F103 at 72MHz is to slow to
@@ -16,8 +17,8 @@
    due to other interrupts running.  So prepare the bit pattern in RAM
    and send it out in one go using DMA. */
 
-/* Note that the protocol is 5V, and A7 is not 5V tolerant.
-   I'm using 74HC14 inverter with Schmitt-trigger inputs to adapt. */
+/* Note that the protocol is 5V, and A7 is not 5V tolerant.  I'm using
+   74HC14 inverter with Schmitt-trigger inputs (2x) to adapt. */
 
 
 //          rcc_gpio   rcc_spi   spi   rst       gpio    data clk master tx  hw_dma      ie  bits mode        div
@@ -36,44 +37,42 @@ const struct hw_spi hw_spi_tx8_master_0rw[] = {
    2. One SPI bit per WS2818 bit
       DIV_32 gives 0.4us bit spacing, usable with bit encoding
       The latter uses a bit sequencer from pwm_bitstream.h
+
+   I've removed the OLD one SPI byte per token.  See git history.
 */
 
 /* Byte order G-R-B */
+#define LEDSTRIP_C_SPI hw_spi_tx8_master_0rw[1]
 
-
-/* Data output is at A7.  FIXME: Clock is still at A5 but not used for
- * the LEDs. */
-#define C_LEDSTRIP_SPI hw_spi_tx8_master_0rw[1]
-
-#define LEDSTRIP_NB_BYTES 8*3
-uint8_t ledstrip_dma_buf[1+8*LEDSTRIP_NB_BYTES] = {};
-
-void ledstrip_send(const uint8_t *buf, uint32_t len) {
-#if 0 // Old approach, one SPI byte per token
-    if (len > LEDSTRIP_NB_BYTES) { len = LEDSTRIP_NB_BYTES; }
-    for(int i=0; i<len; i++) {
-        uint8_t b = buf[i];
-        for (int j=0; j<8; j++) {
-            ledstrip_dma_buf[i*8+j] =
-                (b & (1<<(7-j))) ?
-                0xF0 : // 1 = long pulse   11110000
-                0xC0;  // 0 = short pulse  11000000
-        }
-    }
-    uint32_t dma_bytes = len * 8 + 1;
-    ledstrip_dma_buf[dma_bytes-1] = 0; // needed to ensure line goes low
-#else // New approach: 3 SPI bits per token
-    uint32_t dma_bytes = pwm_bitstream_write(ledstrip_dma_buf, buf, len*8);
+#ifndef LEDSTRIP_NB_LEDS
+#error need LEDSTRIP_NB_LEDS
 #endif
 
+struct grb {
+    uint8_t g,r,b;
+} __attribute__((__packed__));
+
+uint8_t ledstrip_dma_buf[PWM_BITSTREAM_NB_BYTES((LEDSTRIP_NB_LEDS)*24)];
+//uint8_t ledstrip_dma_buf[400];
+
+
+void ledstrip_send(const struct grb *grb) {
+    /* Create PWM bitstream. */
+    uint32_t dma_bytes =
+        pwm_bitstream_write(
+            ledstrip_dma_buf,
+            (const uint8_t*)grb,
+            LEDSTRIP_NB_LEDS * 24);
+    //infof("ledstrip_send %d %d\n", dma_bytes, sizeof(ledstrip_dma_buf));
+
     /* reset peripheral and start dma. */
-    hw_spi_reset(C_LEDSTRIP_SPI);
-    hw_spi_start(C_LEDSTRIP_SPI, ledstrip_dma_buf, dma_bytes);
+    hw_spi_reset(LEDSTRIP_C_SPI);
+    hw_spi_start(LEDSTRIP_C_SPI, ledstrip_dma_buf, dma_bytes);
 }
 
 int ledstrip_dma_done(void) {
-    if (!hw_spi_ready(C_LEDSTRIP_SPI)) return 0;
-    hw_spi_ack(C_LEDSTRIP_SPI);
+    if (!hw_spi_ready(LEDSTRIP_C_SPI)) return 0;
+    hw_spi_ack(LEDSTRIP_C_SPI);
     return 1;
 }
 volatile uint32_t spi1_count;
@@ -142,6 +141,7 @@ void set_led(const struct ledstrip_config *config) {
     }
 };
 
+#if 0
 void ledstrip_animation_tick(void) {
     ledstrip_send(pixels, sizeof(pixels));
 
@@ -160,5 +160,12 @@ void ledstrip_animation_tick(void) {
         }
     }
 }
+#endif
 
+#include "instance.h"
+instance_status_t ledstrip_init(instance_init_t *i) {
+    hw_spi_init(LEDSTRIP_C_SPI);
+    return 0;
+}
+DEF_INSTANCE(ledstrip);
 #endif

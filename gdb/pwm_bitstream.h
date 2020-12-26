@@ -114,4 +114,10 @@ uint32_t pwm_bitstream_write(uint8_t *dst_buf, const uint8_t *src_buf, uint32_t 
     return bitbuf_flush(&dst);
 }
 
+// ASSERT(nbits > 0)
+// FIXME: I had to +1 this.  Why?
+#define PWM_BITSTREAM_NB_BYTES(nb_bits) (((((nb_bits)*3)-1)/8)+1+1)
+
+
+
 #endif

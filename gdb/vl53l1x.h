@@ -108,11 +108,12 @@ static inline void vl53l1x_write(struct vl53l1x *s, uint16_t index, uint8_t *buf
 static inline void vl53l1x_read(struct vl53l1x *s, uint16_t index, uint8_t *buf, uint32_t len) {
     /* The device uses write followed by read.  No repeated start. */
     vl53l1x_write(s, index, 0, 0);
-    if (s->status) return;
+    if (s->status) goto stop;
     s->status =
         VL51L1X_HAL_I2C_RECEIVE(
             VL51L1X_I2C_ADDR,
             buf, len);
+  stop:
     VL51L1X_HAL_I2C_STOP();
 }
 

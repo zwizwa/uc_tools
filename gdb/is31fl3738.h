@@ -93,11 +93,12 @@ static inline void is31fl3738_write(struct is31fl3738 *s, uint8_t reg, const uin
 static inline void is31fl3738_read(struct is31fl3738 *s, uint8_t reg, uint8_t *buf, uint32_t len) {
     /* The device uses write followed by read.  No repeated start. */
     is31fl3738_write(s, reg, 0, 0);
-    if (s->status) return;
+    if (s->status) goto stop;
     s->status =
         IS31FL3738_HAL_I2C_RECEIVE(
             IS31FL3738_I2C_ADDR,
             buf, len);
+  stop:
     IS31FL3738_HAL_I2C_STOP();
 }
 
@@ -115,8 +116,9 @@ static inline void is31fl3738_page(struct is31fl3738 *s, uint8_t page) {
     is31fl3738_write_byte(s, IS31FL3738_REG_CMD, page);
 }
 
-static inline void is31fl3738_init(struct is31fl3738 *s) {
+static void is31fl3738_init(struct is31fl3738 *s) {
     is31fl3738_page(s, IS31FL3738_CMD_LEDCTL);
+    if(s->status) goto error;
     IS31FL3738_WRITE(
         s, 0x00,
         0xff, 0x03, 0xff, 0x03,   /* SW1 */
@@ -125,11 +127,16 @@ static inline void is31fl3738_init(struct is31fl3738 *s) {
         0xff, 0x03, 0xff, 0x03,   /* SW4 */
         0xff, 0x03, 0xff, 0x03);  /* SW5 */
     is31fl3738_page(s, IS31FL3738_CMD_FUNC);
+    if(s->status) goto error;
     IS31FL3738_WRITE(
         s, 0x00,
         0x01, 0x80);             /* normal operation, set GCC to 128 */
+    if(s->status) goto error;
     is31fl3738_page(
         s, IS31FL3738_CMD_PWM);   /* switch to PWM page access */
+    if(s->status) goto error;
+  error:
+    return;
 }
 
 #endif
