@@ -1,4 +1,5 @@
 Compile-time configurable modules.
+==================================
 
 Objective is to allow:
 
@@ -48,3 +49,9 @@ module?  These are the rules I try to follow:
 - Anything else goes in `mod_*.c` files.  Typically this is glue code
   that e.g. instantiates inline functions and global data structures
   from `.h` files
+
+
+The `instance.h` init system can be used to properly sequence module
+initialization at boot.
+
+

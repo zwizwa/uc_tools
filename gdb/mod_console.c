@@ -1,5 +1,5 @@
-#ifndef MOD_CONSOLE_C
-#define MOD_CONSOLE_C
+#ifndef MOD_CONSOLE
+#define MOD_CONSOLE
 
 /* This uses the uc_tools linker support to create the command
    dictionary in a distributed way.
@@ -8,22 +8,24 @@
    the list of commands explicitly. */
 
 #include "command.h"
-
 #include "pbuf.h"
+#include "instance.h"
 
 /* Support for command.h style commands. */
-struct pbuf console_pbuf; uint8_t console_pbuf_buf[128];
+struct pbuf console_in; uint8_t console_in_buf[128];
 
-/* Basic stack implementation and generic Forth commands. */
-#include "mod_command_stack.c"
-#include "mod_forth_commands.c"
+/* Temporary buffer for console commands. */
+#ifndef TMP_BUF_SIZE
+#define TMP_BUF_SIZE 64
+#endif
+struct pbuf console_tmp; uint8_t console_tmp_buf[TMP_BUF_SIZE];
+
 
 void console_handle(const char *cmd) {
     command_handle(cmd);
 }
-
 void console_write(const uint8_t *buf, uint32_t len) {
-    struct pbuf *p = &console_pbuf;
+    struct pbuf *p = &console_in;
     for(uint32_t i=0; i<len; i++) {
         uint8_t c = buf[i];
         switch(c) {
@@ -101,8 +103,70 @@ int console_switch_protocol(const uint8_t *buf, uint32_t size) {
     return 0;
 }
 
-void console_init(void) {
-    PBUF_INIT(console_pbuf);
+
+/* Circular argument stack. */
+#ifndef COMMAND_STACK_LOGSIZE
+#define COMMAND_STACK_LOGSIZE 3
+#endif
+#define COMMAND_STACK_MASK ((1<<COMMAND_STACK_LOGSIZE)-1)
+uintptr_t command_stack[COMMAND_STACK_MASK+1];
+uintptr_t command_stack_top;
+void command_stack_push(uintptr_t word) {
+    command_stack[(--command_stack_top) & COMMAND_STACK_MASK] = word;
 }
+uintptr_t command_stack_pop(void) {
+    return command_stack[(command_stack_top++) & COMMAND_STACK_MASK];
+}
+
+/* These have non-C names. */
+void forth_add(void) {
+    command_stack_push(command_stack_pop() + command_stack_pop());
+}
+void forth_sub(void) {
+    uint32_t v = command_stack_pop(); command_stack_push(command_stack_pop() - v);
+}
+void forth_print(void) {
+    infof("%x\n", command_stack_pop());
+}
+COMMAND_REGISTER_NAMED("+", forth_add);
+COMMAND_REGISTER_NAMED("-", forth_sub);
+COMMAND_REGISTER_NAMED("p", forth_print);
+
+
+/* Don't use the name 'words' here.  Pick something that people expect. */
+DEF_COMMAND(commands) {
+    infof("commands: ");
+    FOR_COMMAND(c) { infof("%s ",(*c)->name); };
+    infof("\n");
+}
+DEF_COMMAND(clear) {
+    pbuf_clear(&console_tmp);
+}
+void tmp_buf_write_uint(uint32_t nb) {
+    uint8_t buf[nb];
+    write_be(buf, command_stack_pop(), nb);
+    pbuf_write(&console_tmp, buf, nb);
+}
+DEF_COMMAND(u8)   { tmp_buf_write_uint(1); }
+DEF_COMMAND(u16)  { tmp_buf_write_uint(2); }
+DEF_COMMAND(u32)  { tmp_buf_write_uint(4); }
+DEF_COMMAND(ptmp) {
+    struct pbuf *p = &console_tmp;
+    infof("%d:", p->count);
+    info_hex_u8(p->buf, p->count);
+    infof("\n");
+}
+
+//DEF_COMMAND_NAMED("buf", tmp_buf_span) {
+//    command_arg_push(tmp_buf.count);
+//    command_arg_push((uintptr_t)tmp_buf.buf);
+//}
+
+instance_status_t console_init(instance_init_t *ctx) {
+    PBUF_INIT(console_in);
+    PBUF_INIT(console_tmp);
+    return 0;
+}
+DEF_INSTANCE(console);
 
 #endif

@@ -17,6 +17,10 @@ struct slipstub_buffers slipstub_buffers;
 
 #include "tag_u32.h"
 
+#include "instance.h"
+
+#include "mod_console.c"
+
 /* Provided by main file. */
 int handle_tag_u32(
     void *context,
@@ -63,7 +67,7 @@ void send_tag_u32(
 
 /* STARTUP */
 
-
+extern const struct instance app;
 void start(void) {
     hw_app_init();
     /* FIXME: This assumes it's GPIOA */
@@ -72,8 +76,7 @@ void start(void) {
     /* Use framwork for handling incoming USB SLIP commands. */
     slipstub_init(handle_tag);
 
-    setup();
-    _service.add(loop);
+    instance_need_top(32, &app);
 }
 void stop(void) {
     hw_app_stop();
@@ -103,5 +106,6 @@ struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .start           = start,
     .stop            = stop,
     .switch_protocol = slipstub_switch_protocol,
+    .monitor         = console_monitor,
 };
 
