@@ -30,6 +30,39 @@ int handle_tag_u32(
 void setup(void);
 void loop(void);
 
+/* Map TAG_U32 messages directly to commands.  This seems to be the
+   least hassle default for experimenta code.  Let's try this for a
+   while and see how it goes.  lab_board.erl now supports commands
+   like this:
+
+   hy1 ! {leds,[10,0,0]}.
+
+   where the atom is the command, and the rest are the numbers passed
+   on the stack before executing.
+
+*/
+int handle_tag_u32(
+    void *context,
+    const uint32_t *arg,  uint32_t nb_args,
+    const uint8_t *bytes, uint32_t nb_bytes) {
+    if (nb_bytes > 0) {
+        char command[nb_bytes+1];
+        memcpy(command, bytes, nb_bytes);
+        command[nb_bytes] = 0;
+        FOR_COMMAND(c) {
+            if (!strcmp(command, (*c)->name)) {
+                for(uint32_t i=0; i<nb_args; i++) {
+                    command_stack_push(arg[i]);
+                }
+                (*c)->run();
+                return 0;
+            }
+        }
+    }
+    return -1;
+}
+
+
 void handle_tag(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
     //infof("tag %d\n", tag);
     switch(tag) {
@@ -47,6 +80,7 @@ void handle_tag(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
         infof("unknown tag 0x%x\n", tag);
     }
 }
+
 
 /* Keep the interface symmetric. */
 void send_tag_u32(

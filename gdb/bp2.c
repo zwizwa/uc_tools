@@ -18,12 +18,3 @@ instance_status_t app_init(instance_init_t *ctx) {
 }
 DEF_INSTANCE(app);
 
-/* mod_lab requires the handler to be defined. */
-// bp2 ! {send_u32,[1,2,3]}.
-int handle_tag_u32(
-    void *context,
-    const uint32_t *arg,  uint32_t nb_args,
-    const uint8_t *bytes, uint32_t nb_bytes) {
-    SEND_TAG_U32(4, nb_args);
-    return 0;
-}

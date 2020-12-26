@@ -7,14 +7,13 @@
 */
 
 #define LEDSTRIP_NB_LEDS 32
-
 #define PRODUCT "hy1"
+
 #include "mod_lab.c"
 #include "mod_ws2812.c"
-#include "mod_console.c"
-instance_status_t app_init(instance_init_t *ctx) {
-    INSTANCE_NEED(ctx, &console, &ledstrip);
-    SEND_TAG_U32(4,5,6);
+
+instance_status_t app_init(instance_init_t *i) {
+    INSTANCE_NEED(i, &console, &ledstrip);
     //_service.add(ledstrip_animation_tick);
     return 0;
 }
@@ -34,12 +33,3 @@ DEF_COMMAND(leds) { // r g b --
     ledstrip_send(frame);
 }
 
-/* mod_lab requires the handler to be defined. */
-// bp2 ! {send_u32,[1,2,3]}.
-int handle_tag_u32(
-    void *context,
-    const uint32_t *arg,  uint32_t nb_args,
-    const uint8_t *bytes, uint32_t nb_bytes) {
-    SEND_TAG_U32(4, nb_args);
-    return 0;
-}

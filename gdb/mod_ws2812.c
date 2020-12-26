@@ -55,6 +55,10 @@ struct grb {
 uint8_t ledstrip_dma_buf[PWM_BITSTREAM_NB_BYTES((LEDSTRIP_NB_LEDS)*24)];
 //uint8_t ledstrip_dma_buf[400];
 
+/* Invert the bitstream. */
+#ifndef LEDSTRIP_INVERT
+#define LEDSTRIP_INVERT 0
+#endif
 
 void ledstrip_send(const struct grb *grb) {
     /* Create PWM bitstream. */
@@ -63,7 +67,7 @@ void ledstrip_send(const struct grb *grb) {
             ledstrip_dma_buf,
             (const uint8_t*)grb,
             LEDSTRIP_NB_LEDS * 24);
-    infof("ledstrip_send %d %d\n", dma_bytes, sizeof(ledstrip_dma_buf));
+    //infof("ledstrip_send %d %d\n", dma_bytes, sizeof(ledstrip_dma_buf));
     /* reset peripheral and start dma. */
     hw_spi_reset(LEDSTRIP_C_SPI);
     hw_spi_start(LEDSTRIP_C_SPI, ledstrip_dma_buf, dma_bytes);
