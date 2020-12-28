@@ -30,10 +30,11 @@ int handle_tag_u32(
 void setup(void);
 void loop(void);
 
-/* Map TAG_U32 messages directly to commands.  This seems to be the
-   least hassle default for experimenta code.  Let's try this for a
-   while and see how it goes.  lab_board.erl now supports commands
-   like this:
+/* Map TAG_U32 messages directly to commands.
+
+   This seems to be the least hassle default for experimenta code.
+   Let's try this for a while and see how it goes.  lab_board.erl now
+   supports commands like this:
 
    hy1 ! {leds,[10,0,0]}.
 
@@ -75,7 +76,7 @@ void handle_tag(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
     case TAG_RESET: {
         reset_device();
         break;
-    } 
+    }
     default:
         infof("unknown tag 0x%x\n", tag);
     }
