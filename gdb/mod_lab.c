@@ -19,6 +19,7 @@ struct slipstub_buffers slipstub_buffers;
 
 #include "instance.h"
 #include "reset_device.h"
+#include "cycle_counter.h"
 
 #include "mod_console.c"
 
@@ -105,6 +106,11 @@ void send_tag_u32(
         send_tag_u32(NULL,a,sizeof(a)/sizeof(uint32_t),NULL,0); \
 }
 
+
+#define MS_PERIODIC(var, ms) \
+    CYCLE_COUNTER_PERIODIC(var, ((ms) * 72000))
+
+
 /* STARTUP */
 
 extern const struct instance app;
@@ -112,6 +118,8 @@ void start(void) {
     hw_app_init();
     /* FIXME: This assumes it's GPIOA */
     rcc_periph_clock_enable(RCC_GPIOA | RCC_GPIOB | RCC_AFIO);
+
+    enable_cycle_counter();
 
     /* Use framwork for handling incoming USB SLIP commands. */
     slipstub_init(handle_tag);

@@ -10,10 +10,26 @@
 #define LEDSTRIP_NB_LEDS 32
 #include "mod_lab.c"
 #include "mod_console.c"
+#include "mod_cproc.c"
+
+#define LET LET_STATIC
+
+#define IN GPIOA,0
+
+void app_poll(void) {
+    static uint32_t app_timer;
+    MS_PERIODIC(app_timer, 100) {
+        uint32_t in = hw_gpio_read(IN);
+        LET(proc_edge, in_edge, in);
+        LET(proc_acc,  in_edge_count, in_edge.out);
+        if (in_edge.out) {
+            infof("count = %d\n", in_edge_count);
+        }
+    }
+}
 instance_status_t app_init(instance_init_t *ctx) {
     INSTANCE_NEED(ctx, &console);
-    SEND_TAG_U32(4,5,6);
-    //_service.add(ledstrip_animation_tick);
+    _service.add(app_poll);
     return 0;
 }
 DEF_INSTANCE(app);
