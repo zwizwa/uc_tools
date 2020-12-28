@@ -26,6 +26,7 @@
 
 */
 
+#define TAG_PATCH       0xFFF1  // DAG patcher packet
 #define TAG_CSP         0xFFF2  // CSP packet
 #define TAG_EVENT       0xFFF3  // generic event, uint16_t subtag
 #define TAG_RESET       0xFFF4  // reset board
@@ -58,6 +59,15 @@
    N:    u16_be number of u32 arguments, high bit=endianness: 0=big
    Wx:   u32_be argument
    rest: opaque binary payload
+*/
+
+/* TAG_PATCH
+   Patcher control RPC protocol
+   u16_be: subcommand:
+     - 0 = bind <proc_id> [<in_instance_id> ...] -> <instance_id>
+     - 1 = kill <instance_id>
+     - 2 = find <anme> -> <proc_id>
+   rest: arguments
 */
 
 /* Reserved tags and ranges:
