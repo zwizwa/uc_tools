@@ -75,7 +75,8 @@ SECTIONS
                 KEEP (*(.command))
                 *(.command*)
                 _command_endx = .;                
-		. = ALIGN(4);
+
+		_eflash = .;
 
 	} >rom
 

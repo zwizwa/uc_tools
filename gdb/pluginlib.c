@@ -167,6 +167,7 @@ uint32_t plugin_handle_message(const uint8_t *buf, uint32_t len) {
                     plugin_service_ = plugin->load_addr;
                 }
                 else {
+                    infof("plugin: version %x\n", plugin->version);
                     goto bad_plugin;
                 }
             }
@@ -174,7 +175,10 @@ uint32_t plugin_handle_message(const uint8_t *buf, uint32_t len) {
                 /* On subsequent block, the plugin header will be in
                    Flash. */
                 plugin = plugin_service();
-                if (!plugin) goto bad_plugin;
+                if (!plugin) {
+                    infof("plugin: no header\n");
+                    goto bad_plugin;
+                }
             }
 
             /* We're going to constrain loading to where we expect

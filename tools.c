@@ -10,6 +10,11 @@ int32_t hex_char2int_check(uint8_t ch) {
     if ((ch >= 'A') && (ch <= 'F')) return ch - 'A' + 10;
     return -1;
 }
+int32_t dec_char2int_check(uint8_t ch) {
+    if ((ch >= '0') && (ch <= '9')) return ch - '0';
+    return -1;
+}
+
 uint32_t hex_char2int_ignore(uint8_t ch) {
     int32_t d = hex_char2int_check(ch);
     if (d<0) d = 0;

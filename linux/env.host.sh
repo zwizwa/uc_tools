@@ -4,6 +4,10 @@
 
 [ -z "$UC_TOOLS" ] && UC_TOOLS=..
 [ -z "$GCC" ] && GCC=gcc
+
+# CFLAGS_ERROR=-Werror
+CFLAGS_ERROR=
+
 CFLAGS=" \
 -I$UC_TOOLS/linux \
 -I$UC_TOOLS/ \
@@ -14,7 +18,6 @@ CFLAGS=" \
 -fdata-sections \
 -MD \
 -Wall \
--Werror \
 -Wno-format \
 -Wno-attributes \
 -Wno-multichar \
@@ -22,6 +25,7 @@ CFLAGS=" \
 -g \
 -O0 \
 -fPIC \
+$CFLAGS_ERROR \
 "
 LDFLAGS=" \
 -lm \

@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# FIXME: This needs to be implemented in a real programming language.
+# _eflash is no longer aligned to block boundaries
+
 [ -z "$1" ] && echo "usage: $0 <elf>" && exit 1
 
 [ ! -f "$1" ] && echo "$1 not found" && exit 1
@@ -10,7 +13,8 @@
 # linker script that produced the .elf
 
 EBSS=$($OBJDUMP -x $1 | grep '_ebss$' | awk '{print $1}')
-EFLASH=$($OBJDUMP -x $1 | grep '_eflash$' | awk '{print $1}')
+# EFLASH=$($OBJDUMP -x $1 | grep '_eflash$' | awk '{print $1}')
+EFLASH=08004800
 
 # echo "EBSS=$EBSS" >&2
 # echo "EFLASH=$EFLASH" >&2

@@ -29,6 +29,9 @@ CPPFLAGS_COMMON="\
 -I$LIBOPENCM3/include \
 "
 
+# CFLAGS_ERROR=-Werror
+CFLAGS_ERROR=
+
 CFLAGS_COMMON=" \
 -std=c99 \
 -fno-common \
@@ -36,12 +39,12 @@ CFLAGS_COMMON=" \
 -fdata-sections \
 -MD \
 -Wall \
--Werror \
 -Wno-format \
 -Wno-attributes \
 -Wno-multichar \
 -g \
 -Os \
+$CFLAGS_ERROR \
 "
 
 LDFLAGS_COMMON=" \

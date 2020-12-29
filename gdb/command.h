@@ -61,12 +61,22 @@ static inline void command_handle(const char *cmd_buf) {
     }
     /* Otherwise, convert to number if it parses. */
     uintptr_t word = 0;
-    if (0 == read_hex_nibbles_check_uptr(
+    uint32_t len = strlen(cmd_buf);
+    if ((len >= 3) && ('0' == cmd_buf[0]) && ('x' == cmd_buf[1])) {
+        if (0 == read_hex_nibbles_check_uptr(
+                (const uint8_t*)cmd_buf + 2, len-2, &word)) {
+            command_stack_push(word);
+            return;
+        }
+        goto bad;
+    }
+    if (0 == read_dec_nibbles_check_uptr(
             (const uint8_t*)cmd_buf, strlen(cmd_buf), &word)) {
         command_stack_push(word);
         return;
     }
 
+bad:
     /* Otherwise complain. */
     LOG("?\n");
 }
