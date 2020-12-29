@@ -20,8 +20,8 @@ void app_poll(void) {
     static uint32_t app_timer;
     MS_PERIODIC(app_timer, 100) {
         uint32_t in = hw_gpio_read(IN);
-        LET(in_edge,       /*=*/ proc_edge, in);
-        LET(in_edge_count, /*=*/ proc_acc,  in_edge.out);
+        LET(in_edge,       /*=*/ proc_edge, .in = in );
+        LET(in_edge_count, /*=*/ proc_acc,  .in = in_edge.out);
         if (in_edge.out) {
             infof("count = %d\n", in_edge_count);
         }
