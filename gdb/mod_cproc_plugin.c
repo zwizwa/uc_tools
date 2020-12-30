@@ -37,6 +37,7 @@ int handle_tag_u32(
 }
 
 void plugin_start(void) {
+    infof("plugin_start %s\n", __FILE__);
 }
 
 
