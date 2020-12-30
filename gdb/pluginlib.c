@@ -227,14 +227,21 @@ uint32_t plugin_handle_message(const uint8_t *buf, uint32_t len) {
     }
 #endif
     case TAG_U32: {
-        struct plugin_service *s;
-        int rv;
-        if ((s = plugin_started()) &&
-            s->handle_tag_u32 &&
-            !(rv = tag_u32_dispatch(s->handle_tag_u32, NULL, buf, len))) {
-            goto handled;
+        struct plugin_service *s = 0;
+        int rv = -1;
+        if (!(s = plugin_started())) {
+            infof("TAG_U32 plugin not started\n");
+            goto not_handled;
         }
-        break;
+        if (!s->handle_tag_u32) {
+            infof("TAG_U32 plugin has no handler\n");
+            goto not_handled;
+        }
+        if ((rv = tag_u32_dispatch(s->handle_tag_u32, NULL, buf, len))) {
+            infof("TAG_U32 plugin returned %d\n", rv);
+            goto not_handled;
+        }
+        goto handled;
     }
 
     case TAG_FLASH_ERASE:

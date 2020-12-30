@@ -82,29 +82,7 @@ void handle_tag(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
         infof("unknown tag 0x%x\n", tag);
     }
 }
-
-
-/* Keep the interface symmetric. */
-void send_tag_u32(
-    void *context, /* Why is this here? */
-    const uint32_t *arg,  uint32_t nb_args,
-    const uint8_t *bytes, uint32_t nb_bytes) {
-
-    uint8_t hdr[] = {U16_BE(TAG_U32), U16_BE(nb_args)};
-    struct cbuf *b = slipstub.slip_out;
-    cbuf_put(b, SLIP_END);
-    cbuf_append_slip(b, hdr, sizeof(hdr));
-    for (uint32_t i=0; i<nb_args; i++) {
-        uint8_t a[] = {U32_BE(arg[i])};
-        cbuf_append_slip(b, a, sizeof(a));
-    }
-    cbuf_append_slip(b, bytes, nb_bytes);
-    cbuf_put(b, SLIP_END);
-}
-#define SEND_TAG_U32(...) {                                     \
-        uint32_t a[] = { __VA_ARGS__ };                         \
-        send_tag_u32(NULL,a,sizeof(a)/sizeof(uint32_t),NULL,0); \
-}
+#include "mod_send_tag_u32_slip.c"
 
 
 #define MS_PERIODIC(var, ms) \

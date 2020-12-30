@@ -19,29 +19,8 @@ int handle_tag_u32(
 
 struct port *port;
 
-/* Keep the interface symmetric. */
-void send_tag_u32(
-    void *context, /* Why is this here? */
-    const uint32_t *arg,  uint32_t nb_args,
-    const uint8_t *bytes, uint32_t nb_bytes) {
-
-    uint32_t buf_size = 4 + 4 * nb_args + nb_bytes;
-    uint8_t buf[buf_size];
-    uint32_t n = 0;
-    write_be(buf+n, TAG_U32, 2); n+=2;
-    write_be(buf+n, nb_args, 2); n+=2;
-    for (uint32_t i=0; i<nb_args; i++) {
-        write_be(buf+n, arg[i], 4); n+=4;
-    }
-    memcpy(buf+n, bytes, nb_bytes); n+=nb_bytes;
-    ASSERT(n == buf_size);
-    port->write(port, buf, buf_size);
-}
-#define SEND_TAG_U32(...) {                                     \
-        uint32_t a[] = { __VA_ARGS__ };                         \
-        send_tag_u32(NULL,a,sizeof(a)/sizeof(uint32_t),NULL,0); \
-}
-
+#include <stdarg.h>
+#include "mod_send_tag_u32_pbuf.c"
 
 int main(int argc, char **argv) {
     const char *spec = "-:4";

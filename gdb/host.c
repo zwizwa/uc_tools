@@ -65,6 +65,7 @@ void app_write_byte(struct slip_write_state *s, uint8_t byte) {
 void app_write_end(struct slip_write_state *s) {
     struct pbuf *p = &packet_in;
 
+    /* This handles TAG_PLUGCTL, TAG_PLUGIO and TAG_U32 */
     if (plugin_handle_message(p->buf, p->count)) goto done;
 
     if (p->count >= 2) {
@@ -137,6 +138,10 @@ const struct gdbstub_io app_io = {
     .read  = app_read,
     .write = app_write,
 };
+
+#define SEND_TAG_U32_CBUF &slip_out
+#include "mod_send_tag_u32_slip.c"
+
 
 void info_firmware(void);
 static void switch_protocol(const uint8_t *buf, uint32_t size) {

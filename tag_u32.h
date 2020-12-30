@@ -43,6 +43,21 @@ static inline int tag_u32_dispatch(tag_u32_handle_fn handler, void *context,
     return handler(context, &a[0], nb_a, buf + offset_b, nb_b);
 }
 
-/* FIXME: Tie this into a SLIP handler as well. */
+/* Wrapper around send_tag_u32() to send a message without binary
+   payload. */
+#define SEND_TAG_U32(...) {                                     \
+        uint32_t a[] = { __VA_ARGS__ };                         \
+        send_tag_u32(NULL,a,sizeof(a)/sizeof(uint32_t),NULL,0); \
+}
+
+/* Note that send_tag_u32() which will have to be defined by the
+   firmware image.  See mod_send_tag_u32.c for an implementation that
+   sends over SLIP. */
+void send_tag_u32(
+    void *context,
+    const uint32_t *arg,  uint32_t nb_args,
+    const uint8_t *bytes, uint32_t nb_bytes);
+
+
 
 #endif

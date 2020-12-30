@@ -2,14 +2,15 @@
 #define MOD_CPROC_PLUGIN
 
 #include <stdint.h>
+#include "tag_u32.h"
 
 /* This is requred for cproc modules: the Erlang code uses TAG_U32 to
    perform I/O. */
-int tag_u32_handle(
+int handle_tag_u32(
     void *context,
-    const uint32_t *args, uint32_t nb_args,
+    const uint32_t *arg,  uint32_t nb_args,
     const uint8_t *bytes, uint32_t nb_bytes);
-#define TAG_U32_HANDLE tag_u32_handle
+#define HANDLE_TAG_U32 handle_tag_u32
 
 #include "mod_cproc.c"
 #include "mod_plugin.c"
@@ -28,15 +29,23 @@ int handle_tag_u32(
         uint32_t i = arg[0];
         uint32_t v = arg[1];
         if (i < CPROC_NB_INPUTS) {
+            infof("cproc_input %d %d\n", i, v);
             cproc_input[i] = v;
             cproc_update(cproc_input);
             return 0;
         }
     }
+    infof("ERROR: handle_tag_u32\n");
     return -1;
 }
 
+void cproc_output(uint32_t index, w value) {
+    infof("output %d %d\n", index, value);
+    SEND_TAG_U32(index, value);
+}
+
 void plugin_start(void) {
+    plugin_init_memory();
     infof("plugin_start %s\n", __FILE__);
 }
 
