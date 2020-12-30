@@ -209,6 +209,13 @@ uint32_t plugin_handle_message(const uint8_t *buf, uint32_t len) {
         }
         break;
     }
+
+    /* Communication with the plugin supports two mechanisms:
+
+       TAG_PLUGIO is a raw port that can be used to transport any
+       data, and TAG_U32 is an array of uint32_t followed by raw data,
+       which is slowly becoming the standard protocol for fine-grained
+       "path based" message routing. */
 #if 1
     case TAG_PLUGIO: {
         struct plugin_service *s;
@@ -218,8 +225,17 @@ uint32_t plugin_handle_message(const uint8_t *buf, uint32_t len) {
         goto handled;
         break;
     }
-
 #endif
+    case TAG_U32: {
+        struct plugin_service *s;
+        int rv;
+        if ((s = plugin_started()) &&
+            s->handle_tag_u32 &&
+            !(rv = tag_u32_dispatch(s->handle_tag_u32, NULL, buf, len))) {
+            goto handled;
+        }
+        break;
+    }
 
     case TAG_FLASH_ERASE:
     case TAG_FLASH_WRITE:

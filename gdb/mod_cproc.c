@@ -10,6 +10,7 @@
 
 /* Use a naming scheme compatible with let.h */
 #include "let.h"
+#include <stdint.h>
 
 /* The convention for now is that all state can be initialized to
    zero.  The update function follows the naming scheme in let.h All
