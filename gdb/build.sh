@@ -118,20 +118,28 @@ case "$TYPE" in
     elf)
         assert_vars ARCH LD MAP ELF O A
         . $UC_TOOLS/gdb/env.$ARCH.sh
-        # About versioining: I want incremental builds, and
-        # incremental uploads, and I want to _not_ upload when nothing
-        # changed.  This makes it difficult to include a generated
-        # version file in the dependencies of the elf file (did
-        # something change, or did just the version change?).  Instead
-        # it is easier to think of version tagging as something that
-        # happens at link time.  And re-linking only happens when an
-        # actual dependency changed.
+        # About versioning: I want incremental builds, and incremental
+        # uploads, and I want to _not_ upload when nothing changed.
+        # This makes it difficult to include a generated version file
+        # in the dependencies of the elf file (did something change,
+        # or did just the version change?).  Instead it is easier to
+        # think of version tagging as something that happens at link
+        # time.  And re-linking only happens when an actual dependency
+        # changed.
+        #
+        # Allow it to be a generator.  This is convenient as a default.
+        if [ -z "$VERSION_LINK" ] && [ ! -z "$VERSION_LINK_GEN" ]; then
+            VERSION_LINK=$($VERSION_LINK_GEN)
+        fi
+
         if [ ! -z "$VERSION_LINK" ]; then
             C_VERSION_LINK="$ELF.version_link.c"
             O_VERSION_LINK="$ELF.version_link.o"
-            echo "const char version_link[] = \"$VERSION_LINK\";" >$C_VERSION_LINK
+            # FIXME: hardcoded section.  make that configurable.
+            echo "const char config_version[] __attribute__ ((section (\".config_data\"))) = \"$VERSION_LINK\";" >$C_VERSION_LINK
             $GCC -o "$O_VERSION_LINK" -c "$C_VERSION_LINK" || exit 1
         fi
+        echo "$VERSION_LINK $ELF" >&2
 
         # Optionally link to parent elf file
         [ ! -z "$PARENT_ELF" ] && PARENT_ELF_LDFLAGS=-Wl,--just-symbols=$PARENT_ELF
