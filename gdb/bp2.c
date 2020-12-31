@@ -10,9 +10,8 @@
 #define LEDSTRIP_NB_LEDS 32
 #include "mod_lab.c"
 #include "mod_console.c"
-#include "mod_cproc.c"
+#include "cproc.h"
 
-#define LET LET_STATIC
 
 #define IN GPIOA,0
 
@@ -20,8 +19,8 @@ void app_poll(void) {
     static uint32_t app_timer;
     MS_PERIODIC(app_timer, 100) {
         uint32_t in = hw_gpio_read(IN);
-        LET(in_edge,       /*=*/ proc_edge, .in = in );
-        LET(in_edge_count, /*=*/ proc_acc,  .in = in_edge.out);
+        LET(in_edge,       /*=*/ edge, NULL, .in = in);
+        LET(in_edge_count, /*=*/ acc,  NULL, .in = in_edge.out);
         if (in_edge.out) {
             infof("count = %d\n", in_edge_count);
         }
