@@ -129,8 +129,9 @@ void start(void) {
 const char config_manufacturer[] CONFIG_DATA_SECTION = MANUFACTURER;
 const char config_product[]      CONFIG_DATA_SECTION = PRODUCT;
 const char config_firmware[]     CONFIG_DATA_SECTION = FIRMWARE;
-const char config_version[]      CONFIG_DATA_SECTION = VERSION;
 
+/* This is now generated at link time. */
+extern const char config_version[];
 
 struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .manufacturer    = config_manufacturer,

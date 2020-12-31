@@ -176,7 +176,6 @@ void start(void) {
 const char config_manufacturer[] CONFIG_DATA_SECTION = "Zwizwa";
 const char config_product[]      CONFIG_DATA_SECTION = PRODUCT;
 const char config_firmware[]     CONFIG_DATA_SECTION = FIRMWARE;
-const char config_version[]      CONFIG_DATA_SECTION = VERSION;
 
 // FIXME: Currently bootstrapped in lab_board
 //const char config_protocol[]     CONFIG_DATA_SECTION = "{driver,host_slip,slip}";

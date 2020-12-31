@@ -102,7 +102,6 @@ void start(void) {
 const char config_manufacturer[] CONFIG_DATA_SECTION = "Zwizwa";
 const char config_product[]      CONFIG_DATA_SECTION = "DHT11 interface board";
 const char config_firmware[]     CONFIG_DATA_SECTION = FIRMWARE;
-const char config_version[]      CONFIG_DATA_SECTION = BUILD;
 const char config_protocol[]     CONFIG_DATA_SECTION = "{driver,dht11_slip,slip}";
 
 struct gdbstub_config config CONFIG_HEADER_SECTION = {

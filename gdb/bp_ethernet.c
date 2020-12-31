@@ -253,7 +253,6 @@ const char config_manufacturer[] CONFIG_DATA_SECTION = "Zwizwa";
    trusted Ethernet segment.  See /etc/net/udev/tty/bp_ethernet.sh */
 const char config_product[]      CONFIG_DATA_SECTION = "bp_ethernet";
 const char config_firmware[]     CONFIG_DATA_SECTION = FIRMWARE;
-const char config_version[]      CONFIG_DATA_SECTION = BUILD;
 /* When this runs in tethered setup we can attach a special driver. */
 const char config_protocol[]     CONFIG_DATA_SECTION = "{driver,ethernet,{packet,4}}";
 

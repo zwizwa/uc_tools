@@ -330,7 +330,6 @@ void stop(void) {
 const char config_manufacturer[] CONFIG_DATA_SECTION = "Zwizwa";
 const char config_product[]      CONFIG_DATA_SECTION = "Lab Board";
 const char config_firmware[]     CONFIG_DATA_SECTION = FIRMWARE;
-const char config_version[]      CONFIG_DATA_SECTION = VERSION;
 const char config_protocol[]     CONFIG_DATA_SECTION = "{driver,lab_board,slip}";
 
 extern uint8_t _firmware_endx;

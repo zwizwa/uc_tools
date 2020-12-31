@@ -75,7 +75,6 @@ const char config_manufacturer[] CONFIG_DATA_SECTION = "Zwizwa";
 const char config_product[]      CONFIG_DATA_SECTION = "SLIP stub test";
 const char config_serial[]       CONFIG_DATA_SECTION = "2";
 const char config_firmware[]     CONFIG_DATA_SECTION = FIRMWARE;
-const char config_version[]      CONFIG_DATA_SECTION = BUILD;
 const char config_protocol[]     CONFIG_DATA_SECTION = "slip";
 
 struct gdbstub_config config CONFIG_HEADER_SECTION = {
