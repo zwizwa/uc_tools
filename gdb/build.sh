@@ -118,6 +118,21 @@ case "$TYPE" in
     elf)
         assert_vars ARCH LD MAP ELF O A
         . $UC_TOOLS/gdb/env.$ARCH.sh
+        # About versioining: I want incremental builds, and
+        # incremental uploads, and I want to _not_ upload when nothing
+        # changed.  This makes it difficult to include a generated
+        # version file in the dependencies of the elf file (did
+        # something change, or did just the version change?).  Instead
+        # it is easier to think of version tagging as something that
+        # happens at link time.  And re-linking only happens when an
+        # actual dependency changed.
+        if [ ! -z "$VERSION_LINK" ]; then
+            C_VERSION_LINK="$ELF.version_link.c"
+            O_VERSION_LINK="$ELF.version_link.o"
+            echo "const char version_link[] = \"$VERSION_LINK\";" >$C_VERSION_LINK
+            $GCC -o "$O_VERSION_LINK" -c "$C_VERSION_LINK" || exit 1
+        fi
+
         # Optionally link to parent elf file
         [ ! -z "$PARENT_ELF" ] && PARENT_ELF_LDFLAGS=-Wl,--just-symbols=$PARENT_ELF
         $GCC \
@@ -126,7 +141,7 @@ case "$TYPE" in
             -Wl,-Map=$MAP \
             $PARENT_ELF_LDFLAGS \
             -o $ELF \
-            $O $O_SYSTEM $A $LDLIBS
+            $O $O_SYSTEM $O_VERSION_LINK $A $LDLIBS 
         ;;
     bin)
         # Convert an ELF file to .bin in the most straighforward way.
