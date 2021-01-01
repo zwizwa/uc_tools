@@ -19,7 +19,11 @@
 
 struct tag_u32 {
     void *context;
+    /* Reply address for RPC calls. */
+    const uint32_t* from;  uint32_t nb_from;
+    /* Destination address + tags.  Can also contain data. */
     const uint32_t* args;  uint32_t nb_args;
+    /* Opaque payload, described by tags. */
     const uint8_t*  bytes; uint32_t nb_bytes;
 };
 
@@ -45,10 +49,9 @@ static inline int tag_u32_dispatch(tag_u32_handle_fn handler, void *context,
     }
     struct tag_u32 s = {
         .context = context,
-        .args = &a[0],
-        .nb_args = nb_a,
-        .bytes = buf + offset_b,
-        .nb_bytes = nb_b
+        .from = 0, .nb_from = 0,
+        .args = &a[0], .nb_args = nb_a,
+        .bytes = buf + offset_b, .nb_bytes = nb_b
     };
     return handler(&s);
 }

@@ -81,45 +81,42 @@ void synth_init(void) {
 }
 
 /* Ad-hoc multi-argument messages are not in the table. */
-int synth_handle_tag_u32(
-    void *context,
-    const uint32_t *arg,  uint32_t nb_args,
-    const uint8_t *bytes, uint32_t nb_bytes) {
+int synth_handle_tag_u32(const struct tag_u32 *s) {
 
-    if (nb_args < 1) return -1;
-    switch(arg[0]) {
+    if (s->nb_args < 1) return -1;
+    switch(s->args[0]) {
 
         /* Ad hoc commands that do not fit the simple parameter table
            structure. */
 
     case 100: { // MODE
         //  bp2 ! {send_packet, <<16#FFF50002:32, 100:32, 1:32}.
-        if (nb_args < 2) return -1;
-        if (arg[1]) { pdm_start(); }
-        else        { pdm_stop(); }
+        if (s->nb_args < 2) return -1;
+        if (s->args[1]) { pdm_start(); }
+        else            { pdm_stop(); }
         return 0;
     }
     case 101: { // SETPOINT
-        struct { uint32_t cmd; uint32_t chan; uint32_t val; } *a = (void*)arg;
-        if (nb_args < 3) return -1;
+        struct { uint32_t cmd; uint32_t chan; uint32_t val; } *a = (void*)s->args;
+        if (s->nb_args < 3) return -1;
         if (a->chan >= PDM_NB_CHANNELS) return -2;
         pdm_channel[a->chan].setpoint = pdm_safe_setpoint(a->val);
         // infof("setpoint[%d] = %x\n", a->chan, channel[a->chan].setpoint);
         return 0;
     }
     case 102: { // MEASURE
-        if (nb_args >  2) { return -3; }
-        if (nb_args == 2) {
-            pmeas_state.log_max = arg[1];
+        if (s->nb_args >  2) { return -3; }
+        if (s->nb_args == 2) {
+            pmeas_state.log_max = s->args[1];
             // infof("pmeas_state.log_max = %d\n", pmeas_state.log_max);
         }
-        if (nb_bytes) {
+        if (s->nb_bytes) {
             // Binary payload is the continuation.  The following
             // measurement result will be forwarded.
             //infof("measurement_wait queue: %d\n", nb_bytes);
             struct cbuf *b = &measurement_wait;
-            cbuf_put(b, nb_bytes);
-            cbuf_write(b, bytes, nb_bytes);
+            cbuf_put(b, s->nb_bytes);
+            cbuf_write(b, s->bytes, s->nb_bytes);
         }
         return 0;
     }
@@ -129,8 +126,8 @@ int synth_handle_tag_u32(
         // parameter.h supports the tag_u32 protocol
         return tag_u32_set_parameter(
             &parameter_info[0], ARRAY_SIZE(parameter_info),
-            arg, nb_args,
-            bytes, nb_bytes);
+            s->args, s->nb_args,
+            s->bytes, s->nb_bytes);
     }
 }
 
