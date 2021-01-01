@@ -2,13 +2,10 @@
 #include "mod_linux_host.c"
 void setup(void) {}
 void loop(void) {}
-int handle_tag_u32(
-    void *context,
-    const uint32_t *arg,  uint32_t nb_args,
-    const uint8_t *bytes, uint32_t nb_bytes) {
+int handle_tag_u32(const struct tag_u32 *s) {
 
-    for(int i=0; i<nb_args;  i++) { printf(" %08x", arg[i]);   }
-    for(int i=0; i<nb_bytes; i++) { printf(" %02x", bytes[i]); }
+    for(int i=0; i<s->nb_args;  i++) { printf(" %08x", s->args[i]);  }
+    for(int i=0; i<s->nb_bytes; i++) { printf(" %02x", s->bytes[i]); }
     printf("\n");
     return 0;
 }

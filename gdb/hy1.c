@@ -33,3 +33,19 @@ DEF_COMMAND(leds) { // r g b --
     ledstrip_send(frame);
 }
 
+int handle_tag_u32(const struct tag_u32 *s) {
+    if (s->nb_args == 2 && s->args[0] == 0) {
+        /* Discovery protocol. */
+        switch(s->args[1]) {
+        case 0:
+            return 0;
+        case 1:
+            return 0;
+        case 2:
+            return 0;
+        }
+    }
+    return -1;
+}
+
+

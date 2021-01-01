@@ -103,12 +103,8 @@ struct slipstub_buffers slipstub_buffers;
 /* slipstub calls this one for application tags.  We then patch
    through to command handler. */
 
-int handle_tag_u32(
-    void *context,
-    const uint32_t *arg,  uint32_t nb_args,
-    const uint8_t *bytes, uint32_t nb_bytes) {
-
-    return 0;
+int handle_tag_u32(const struct tag_u32 *s) {
+    return -1;
 }
 
 void handle_tag(struct slipstub *s, uint16_t tag, const struct pbuf *p) {

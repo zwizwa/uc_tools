@@ -33,3 +33,8 @@ instance_status_t app_init(instance_init_t *ctx) {
 }
 DEF_INSTANCE(app);
 
+int handle_tag_u32(const struct tag_u32 *s) {
+    return -1;
+}
+
+

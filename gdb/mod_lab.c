@@ -24,10 +24,7 @@ struct slipstub_buffers slipstub_buffers;
 #include "mod_console.c"
 
 /* Provided by main file. */
-int handle_tag_u32(
-    void *context,
-    const uint32_t *arg,  uint32_t nb_args,
-    const uint8_t *bytes, uint32_t nb_bytes);
+int handle_tag_u32(const struct tag_u32 *);
 void setup(void);
 void loop(void);
 
@@ -41,18 +38,15 @@ void loop(void);
    this should probably be embedded in tha TAG_U32 discovery protocol
 
 */
-int handle_command(
-    void *context,
-    const uint32_t *arg,  uint32_t nb_args,
-    const uint8_t *bytes, uint32_t nb_bytes) {
-    if (nb_bytes > 0) {
-        char command[nb_bytes+1];
-        memcpy(command, bytes, nb_bytes);
-        command[nb_bytes] = 0;
+int handle_command(const struct tag_u32 *s) {
+    if (s->nb_bytes > 0) {
+        char command[s->nb_bytes+1];
+        memcpy(command, s->bytes, s->nb_bytes);
+        command[s->nb_bytes] = 0;
         FOR_COMMAND(c) {
             if (!strcmp(command, (*c)->name)) {
-                for(uint32_t i=0; i<nb_args; i++) {
-                    command_stack_push(arg[i]);
+                for(uint32_t i=0; i<s->nb_args; i++) {
+                    command_stack_push(s->args[i]);
                 }
                 (*c)->run();
                 return 0;
@@ -61,14 +55,6 @@ int handle_command(
     }
     return -1;
 }
-int handle_tag_u32(
-    void *context,
-    const uint32_t *arg,  uint32_t nb_args,
-    const uint8_t *bytes, uint32_t nb_bytes) {
-    return -1;
-}
-
-
 void handle_tag(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
     //infof("tag %d\n", tag);
     switch(tag) {

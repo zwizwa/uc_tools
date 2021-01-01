@@ -12,10 +12,7 @@
 void loop(void);
 void setup(void);
 
-int handle_tag_u32(
-    void *context,
-    const uint32_t *arg,  uint32_t nb_args,
-    const uint8_t *bytes, uint32_t nb_bytes);
+int handle_tag_u32(const struct tag_u32*);
 
 struct port *port;
 
