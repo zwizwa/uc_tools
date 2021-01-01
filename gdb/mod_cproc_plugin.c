@@ -17,7 +17,7 @@ int handle_tag_u32(
 #include "mod_plugin.c"
 
 w cproc_input[CPROC_NB_INPUTS];
-void cproc_update(w *input);
+void cproc_update(w *input, w changed);
 
 int handle_tag_u32(
     void *context,
@@ -31,7 +31,7 @@ int handle_tag_u32(
         if (i < CPROC_NB_INPUTS) {
             // infof("cproc_input %d %d\n", i, v);
             cproc_input[i] = v;
-            cproc_update(cproc_input);
+            cproc_update(cproc_input, -1);
             return 0;
         }
     }
