@@ -31,19 +31,17 @@ int handle_tag_u32(
 void setup(void);
 void loop(void);
 
-/* Map TAG_U32 messages directly to commands.
-
-   This seems to be the least hassle default for experimenta code.
-   Let's try this for a while and see how it goes.  lab_board.erl now
-   supports commands like this:
+/* lab_board.erl now supports commands like this:
 
    hy1 ! {leds,[10,0,0]}.
 
    where the atom is the command, and the rest are the numbers passed
    on the stack before executing.
 
+   this should probably be embedded in tha TAG_U32 discovery protocol
+
 */
-int handle_tag_u32(
+int handle_command(
     void *context,
     const uint32_t *arg,  uint32_t nb_args,
     const uint8_t *bytes, uint32_t nb_bytes) {
@@ -63,15 +61,26 @@ int handle_tag_u32(
     }
     return -1;
 }
+int handle_tag_u32(
+    void *context,
+    const uint32_t *arg,  uint32_t nb_args,
+    const uint8_t *bytes, uint32_t nb_bytes) {
+    return -1;
+}
 
 
 void handle_tag(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
     //infof("tag %d\n", tag);
     switch(tag) {
+    case TAG_COMMAND: {
+        int rv = tag_u32_dispatch(handle_command, NULL, p->buf, p->count);
+        if (rv) { infof("handle_command returned %d\n", rv); }
+        break;
+    }
     case TAG_U32: {
         /* name ! {send_u32, [101, 1000000000, 1,2,3]}. */
         int rv = tag_u32_dispatch(handle_tag_u32, NULL, p->buf, p->count);
-        if (rv) { infof("tag_u32_dispatch returned %d\n", rv); }
+        if (rv) { infof("handle_tag_u32 returned %d\n", rv); }
         break;
     }
     case TAG_RESET: {

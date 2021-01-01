@@ -30,7 +30,8 @@ static inline int tag_u32_dispatch(tag_u32_handle_fn handler, void *context,
                                    const uint8_t *buf, uint32_t nb_buf) {
     if (nb_buf < 4) return TAG_U32_ERROR_SIZE;
     uint32_t tag = read_be(buf, 2);
-    if (tag != TAG_U32) return TAG_U32_ERROR_TAG;
+    // Note: this format is now also used for TAG_COMMAND, so don't check
+    // if (tag != TAG_U32) return TAG_U32_ERROR_TAG;
     uint32_t nb_a = read_be(buf+2, 2);
     uint32_t offset_b = 2 + 2 + 4 * nb_a;
     if (nb_buf < offset_b) return TAG_U32_ERROR_SIZE;

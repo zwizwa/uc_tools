@@ -26,7 +26,7 @@
 
 */
 
-#define TAG_PATCH       0xFFF1  // DAG patcher packet
+#define TAG_COMMAND     0xFFF1  // command.h Forth-style commands
 #define TAG_CSP         0xFFF2  // CSP packet
 #define TAG_EVENT       0xFFF3  // generic event, uint16_t subtag
 #define TAG_RESET       0xFFF4  // reset board
@@ -54,21 +54,21 @@
 */
 
 /* TAG_U32
-   This is a skeleton protocol with the following structure:
-   N, W0, ... WN, rest
-   N:    u16_be number of u32 arguments, high bit=endianness: 0=big
+   This is a skeleton "path based" message protocol with the following structure:
+   NR, NW, R_0, ..., R_NR-1, A_0, ... A_NA-1, rest
+   NR:   u8 number of u32 reply tags (0 for uni-directional messages, nonzero for RPC)
+   NA:   u8 number of u32 arguments (which encodes path + payload)
    Wx:   u32_be argument
    rest: opaque binary payload
 */
 
-/* TAG_PATCH
-   Patcher control RPC protocol
-   u16_be: subcommand:
-     - 0 = bind <proc_id> [<in_instance_id> ...] -> <instance_id>
-     - 1 = kill <instance_id>
-     - 2 = find <anme> -> <proc_id>
-   rest: arguments
-*/
+/* TAG_COMMAND
+
+   Same format as TAG_U32, but reserved for funneling commands and
+   arguments to command.h style debug commands.  The TAG_U32 are
+   loaded on the stack, then the byte payload is interpreted as a text
+   command and executed.   The NR is currently not used. */
+
 
 /* Reserved tags and ranges:
 
