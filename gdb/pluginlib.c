@@ -237,7 +237,11 @@ uint32_t plugin_handle_message(const uint8_t *buf, uint32_t len) {
             infof("TAG_U32 plugin has no handler\n");
             goto not_handled;
         }
-        if ((rv = tag_u32_dispatch(s->handle_tag_u32, NULL, buf, len))) {
+        if ((rv = tag_u32_dispatch(
+                 /* FIXME: should this just be global? */
+                 s->handle_tag_u32,
+                 NULL, //send_reply_tag_u32,
+                 NULL, buf, len))) {
             infof("TAG_U32 plugin returned %d\n", rv);
             goto not_handled;
         }

@@ -36,7 +36,10 @@ int main(int argc, char **argv) {
         else {
             /* Process TAG_U32 protocol. */
             if ((rv >=4 ) && (TAG_U32 == read_be(buf, 2))) {
-                tag_u32_dispatch(handle_tag_u32, NULL, buf, rv);
+                tag_u32_dispatch(
+                    handle_tag_u32,
+                    send_reply_tag_u32,
+                    NULL, buf, rv);
             }
             /* Ignore evertying else. */
             else {

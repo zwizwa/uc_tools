@@ -59,13 +59,19 @@ void handle_tag(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
     // infof("tag %d\n", tag);
     switch(tag) {
     case TAG_COMMAND: {
-        int rv = tag_u32_dispatch(handle_command, NULL, p->buf, p->count);
+        int rv = tag_u32_dispatch(
+            handle_command,
+            send_reply_tag_u32,
+            NULL, p->buf, p->count);
         if (rv) { infof("handle_command returned %d\n", rv); }
         break;
     }
     case TAG_U32: {
         /* name ! {send_u32, [101, 1000000000, 1,2,3]}. */
-        int rv = tag_u32_dispatch(handle_tag_u32, NULL, p->buf, p->count);
+        int rv = tag_u32_dispatch(
+            handle_tag_u32,
+            send_reply_tag_u32,
+            NULL, p->buf, p->count);
         if (rv) { infof("handle_tag_u32 returned %d\n", rv); }
         break;
     }

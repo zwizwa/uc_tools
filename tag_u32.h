@@ -4,6 +4,7 @@
 
 #include "packet_tags.h"
 #include "byteswap.h"
+#include "log.h"
 #include <stdint.h>
 
 /* What is a good simple protocol to send commands to a
@@ -17,6 +18,10 @@
    It doesn't seem appropriate to standardize that here.
 */
 
+struct tag_u32;
+typedef int (*tag_u32_handle_fn)(struct tag_u32 *);
+typedef void (*tag_u32_reply_fn)(const struct tag_u32 *, const struct tag_u32 *);
+
 struct tag_u32 {
     void *context;
     /* Reply address for RPC calls. */
@@ -25,16 +30,19 @@ struct tag_u32 {
     const uint32_t* args;  uint32_t nb_args;
     /* Opaque payload, described by tags. */
     const uint8_t*  bytes; uint32_t nb_bytes;
+    /* Reply sender.  This is for abstract RPC. */
+    tag_u32_reply_fn reply;
 };
 
-typedef int (*tag_u32_handle_fn)(struct tag_u32 *);
 
 #define TAG_U32_ERROR_BAD  -1  // Used as a generic "bad command" code
 #define TAG_U32_ERROR_SIZE -2  // Inconsistent size fields
 
 /* This allcates temp buffers for the decoded tags. It is assumed all
    temp buffers fit on the stack. */
-static inline int tag_u32_dispatch(tag_u32_handle_fn handler, void *context,
+static inline int tag_u32_dispatch(tag_u32_handle_fn handler,
+                                   tag_u32_reply_fn reply,
+                                   void *context,
                                    const uint8_t *buf, uint32_t nb_buf) {
     if (nb_buf < 4) return TAG_U32_ERROR_SIZE;
 
@@ -61,6 +69,7 @@ static inline int tag_u32_dispatch(tag_u32_handle_fn handler, void *context,
 
     struct tag_u32 s = {
         .context = context,
+        .reply = reply,
         .from = f, .nb_from = nb_f,
         .args = a, .nb_args = nb_a,
         .bytes = buf + offset_b, .nb_bytes = nb_b
@@ -68,14 +77,23 @@ static inline int tag_u32_dispatch(tag_u32_handle_fn handler, void *context,
     return handler(&s);
 }
 
-/* Wrapper around send_tag_u32() to send a message without binary
-   payload. */
+static inline void send_reply_tag_u32_maybe(
+    const struct tag_u32 *req, const struct tag_u32 *rpl) {
+    if (req->reply) {
+        //LOG("tag_u32_reply ok\n");
+        req->reply(req, rpl);
+    }
+    else {
+        LOG("tag_u32_reply not supported\n");
+    }
+}
+
 #define SEND_REPLY_TAG_U32(req, ...) {                          \
         uint32_t a[] = { __VA_ARGS__ };                         \
         const struct tag_u32 s = {                              \
             .args = a, .nb_args = sizeof(a)/sizeof(uint32_t),   \
         };                                                      \
-        send_reply_tag_u32(req, &s);                            \
+        send_reply_tag_u32_maybe(req, &s);                      \
 }
 
 /* This assumes reply_tag_u32 supports req==NULL to send a plain message. */
@@ -86,7 +104,7 @@ static inline int tag_u32_dispatch(tag_u32_handle_fn handler, void *context,
             .bytes = (const uint8_t*)string,                    \
             .nb_bytes = strlen(string)                          \
         };                                                      \
-        send_reply_tag_u32(req, &s);                            \
+        send_reply_tag_u32_maybe(req, &s);                      \
 }
 
 /* Note that send_tag_u32() which will have to be defined by the
