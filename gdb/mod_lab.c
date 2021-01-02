@@ -56,7 +56,7 @@ int handle_command(struct tag_u32 *s) {
     return -1;
 }
 void handle_tag(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
-    //infof("tag %d\n", tag);
+    // infof("tag %d\n", tag);
     switch(tag) {
     case TAG_COMMAND: {
         int rv = tag_u32_dispatch(handle_command, NULL, p->buf, p->count);

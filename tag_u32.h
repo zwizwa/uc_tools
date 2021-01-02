@@ -142,6 +142,7 @@ static inline void tag_u32_leave(struct tag_u32 *r) { tag_u32_shift(r, -1); }
 #define TAG_U32_CTRL_NB_NODES  0  /* Get nb of sub nodes at this node. */
 #define TAG_U32_CTRL_NODE_ID   1  /* Get node id by node list index. */
 #define TAG_U32_CTRL_ID_NAME   2  /* Map identifier to name */
+#define TAG_U32_CTRL_ID_TYPE   3  /* Map identifier to type */
 
 
 #endif

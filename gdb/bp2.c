@@ -27,24 +27,33 @@ void app_poll(void) {
         }
     }
 }
+void app_test(void) {
+    static uint32_t test_timer;
+    MS_PERIODIC(test_timer, 1000) {
+        infof("tick...\n");
+    }
+}
+
 instance_status_t app_init(instance_init_t *ctx) {
     INSTANCE_NEED(ctx, &console);
-    _service.add(app_poll);
+    //_service.add(app_poll);
+    //_service.add(app_test);
     return 0;
 }
 DEF_INSTANCE(app);
 
+#define REPLY_LOG(...) infof(__VA_ARGS__)
 
 #define REPLY_U32(req, val) {                   \
-        /* infof("REPLY_U32 %d\n", val); */     \
+        REPLY_LOG("REPLY_U32 %d\n", val);       \
         SEND_REPLY_TAG_U32(req, val);           \
         return 0;                               \
     }
 
-#define REPLY_CSTRING(req, str) {               \
-        /* infof("REPLY_U32 %s\n", str); */     \
-        SEND_REPLY_TAG_U32_CSTRING(req, str);        \
-        return 0;                               \
+#define REPLY_CSTRING(req, str) {                     \
+        REPLY_LOG("REPLY_U32 %s\n", str);             \
+        SEND_REPLY_TAG_U32_CSTRING(req, str);         \
+        return 0;                                     \
     }
 #define CASE_0 TAG_U32_MATCH_0
 #define CASE TAG_U32_MATCH
@@ -64,8 +73,80 @@ DEF_SYMBOL(def);
    - Each level should be discoverable.
 */
 
-int handle_tag_u32(struct tag_u32 *r) {
+
+struct entry {
+    const char *name;
+    const char *type;
+    int nb_args; // negative is unspecified
+    tag_u32_handle_fn handle;
+};
+
+
+#define REPLY_META(r, arr, nb_el,  index, field) \
+    if (index < nb_el) { REPLY_CSTRING(r, arr[index].field); } else { REPLY_CSTRING(r, "") }
+
+
+/* Generic dispatch of nodes and metadata based on metadata table. */
+int handle_tag_u32_map(struct tag_u32 *r, const struct entry *map, uint32_t nb_entries) {
+    if (r->nb_args >= 1) {
+        uint32_t i = r->args[0];
+        if (i < nb_entries) {
+            tag_u32_enter(r);
+            if ((map[i].nb_args < 0) || (r->nb_args >= map[i].nb_args)) {
+                map[i].handle(r);
+            }
+            tag_u32_leave(r);
+        }
+    }
+    /* Method metadata. */
+    CASE_0(r, TAG_U32_CTRL) {
+        tag_u32_enter(r);
+        CASE(r, TAG_U32_CTRL_ID_NAME, m, id) {
+            REPLY_META(r, map, nb_entries, m->id, name);
+        }
+        CASE(r, TAG_U32_CTRL_ID_TYPE, m, id) {
+            REPLY_META(r, map, nb_entries, m->id, type);
+        }
+        tag_u32_leave(r);
+    }
+    return -1;
 }
+
+/* r->nb_args is already guarded before calling these. */
+int handle_abc(struct tag_u32 *r) { REPLY_U32(r, r->args[0] + 1); }
+int handle_def(struct tag_u32 *r) { REPLY_U32(r, r->args[0] - 1); }
+
+int handle_tag_u32(struct tag_u32 *r) {
+    const struct entry map[] = {
+        {"abc","u32",1,handle_abc},
+        {"def","u32",1,handle_def},
+    };
+    return handle_tag_u32_map(r, map, ARRAY_SIZE(map));
+}
+
+
+
+
+
+#if 0
+int handle_tag_u32(struct tag_u32 *r) {
+    const char *tags[] = {"abc","def"};
+    CASE(r, 0, m, val) {
+        REPLY_U32(r, m->val+1);
+    }
+    CASE(r, 1, m, val) {
+        REPLY_U32(r, m->val-1);
+    }
+    CASE_0(r, TAG_U32_CTRL) {
+        tag_u32_enter(r);
+        CASE(r, TAG_U32_CTRL_ID_NAME, m, id) {
+            REPLY_CSTRING_ARR(r, tags, m->id);
+        }
+        tag_u32_leave(r);
+    }
+    return -1;
+}
+#endif
 
 #if 0
 /* FIXME: It's probably simpler to dump the symbol table by letting it
@@ -75,6 +156,7 @@ int handle_tag_u32(struct tag_u32 *r) {
 
 /* For actual use, use dedicated symbols. */
 int handle_tag_u32(struct tag_u32 *r) {
+
     CASE_0(r, SYM(abc)) {
         REPLY_U32(r, 123);
     }
