@@ -36,22 +36,22 @@ void app_test(void) {
 
 instance_status_t app_init(instance_init_t *ctx) {
     INSTANCE_NEED(ctx, &console);
-    //_service.add(app_poll);
+    _service.add(app_poll);
     //_service.add(app_test);
     return 0;
 }
 DEF_INSTANCE(app);
 
 /* These don't need arg checks: already guarded. */
-int handle_abc(struct tag_u32 *r) { SEND_REPLY_TAG_U32(r, r->args[0] + 1); return 0; }
-int handle_def(struct tag_u32 *r) { SEND_REPLY_TAG_U32(r, r->args[0] - 1); return 0; }
+int handle_abc(struct tag_u32 *req) { SEND_REPLY_TAG_U32(req, req->args[0] + 1); return 0; }
+int handle_def(struct tag_u32 *req) { SEND_REPLY_TAG_U32(req, req->args[0] - 1); return 0; }
 
-int handle_tag_u32(struct tag_u32 *r) {
+int handle_tag_u32(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
         {"abc","u32",1,handle_abc},
         {"def","u32",1,handle_def},
     };
-    return handle_tag_u32_map(r, map, ARRAY_SIZE(map));
+    return handle_tag_u32_map(req, map, ARRAY_SIZE(map));
 }
 
 

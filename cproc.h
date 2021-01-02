@@ -84,8 +84,8 @@
    data later. */
 #define DEF_PROC(_proc_name, _state_var, _config_var, _param_var, _input_var) \
     static inline void _proc_name##_update(                             \
-        const _proc_name##_config *_config_var,                         \
         _proc_name##_state *_state_var,                                 \
+        const _proc_name##_config *_config_var,                         \
         const _proc_name##_config *_param_var,                          \
         const _proc_name##_input *_input_var)                           \
 
