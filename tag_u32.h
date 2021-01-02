@@ -145,4 +145,14 @@ static inline void tag_u32_leave(struct tag_u32 *r) { tag_u32_shift(r, -1); }
 #define TAG_U32_CTRL_ID_TYPE   3  /* Map identifier to type */
 
 
+struct tag_u32_entry {
+    const char *name;
+    const char *type;
+    int nb_args; // negative is unspecified
+    tag_u32_handle_fn handle;
+};
+
+int handle_tag_u32_map(struct tag_u32 *r, const struct tag_u32_entry *map, uint32_t nb_entries);
+
+
 #endif
