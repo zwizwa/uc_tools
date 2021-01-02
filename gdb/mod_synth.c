@@ -81,7 +81,7 @@ void synth_init(void) {
 }
 
 /* Ad-hoc multi-argument messages are not in the table. */
-int synth_handle_tag_u32(const struct tag_u32 *s) {
+int synth_handle_tag_u32(struct tag_u32 *s) {
 
     if (s->nb_args < 1) return -1;
     switch(s->args[0]) {

@@ -35,6 +35,6 @@ DEF_COMMAND(leds) { // r g b --
 
 
 
-int handle_tag_u32(const struct tag_u32 *s) {
+int handle_tag_u32(struct tag_u32 *s) {
     return -1;
 }

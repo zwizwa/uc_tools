@@ -2,11 +2,15 @@
 #define CPROC_H
 
 /* Proof of concept C dataflow processor units.  This works in
-   conjunction with the epid / epid_app protocol used in exo_patch.
+   conjunction with the epid / epid_app protocol used in exo_patch,
+   and code generation from epid_cproc.
 
    API will likely change to accomodate all use cases.
 
    Basic concepts:
+
+   - provide a C language level macro PROC that can be used as code
+     gen target, but is also manually usable.
 
    - processors have state, input, parameters, configuration
 
@@ -18,10 +22,25 @@
 
    - const configuration is for specializing processors, e.g. bind to specific hw GPIO
 
-   - parameters allow behavior change without causing events.  this is
-     likely only useful in synchronous systems.
+   - dynamic parameters allow behavior change without causing events.
+     this is likely only useful in synchronous systems.
 
 */
+
+
+/* About static, dynamic parameters.
+
+   These could probably be unified, but for good C code generation
+   that will need some deeper abstraction, one that can split const
+   and param per instance and generates cproc.h "classes" from a
+   higher level specification.
+
+   For now this distinction is fixed.  It is used mostly for hardware
+   configuration.  If a different flavor is needed (e.g. moving from
+   const to dynamic) then just create another processor type.  This is
+   hard to design up front: actual use will show what is best.
+*/
+
 
 
 /* A-normal form for dataflow networks.
@@ -43,7 +62,10 @@
    - require all init to be zero
 
 */
-#define LET_COND(_subgraph_cond,_instance_name,_type_name,_config_ptr,_param_ptr,...) \
+
+/* This is essentially "let", which applies a parameterized (curried)
+   processor to a set of dataflow input signals. */
+#define PROC_COND(_subgraph_cond,_instance_name,_type_name,_config_ptr,_param_ptr,...) \
     static _type_name##_state _instance_name = {};                      \
     if (_subgraph_cond) {                                               \
         const  _type_name##_input _instance_name##_input = { __VA_ARGS__ }; \
@@ -51,7 +73,7 @@
     }
 
 /* Synchronous systems have subgraph condition disabled: full graph is executed every time. */
-#define LET(...) LET_COND(1, __VA_ARGS__)
+#define PROC(...) PROC_COND(1, __VA_ARGS__)
 
 
 #include <stdint.h>

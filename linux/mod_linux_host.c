@@ -12,7 +12,7 @@
 void loop(void);
 void setup(void);
 
-int handle_tag_u32(const struct tag_u32*);
+int handle_tag_u32(struct tag_u32*);
 
 struct port *port;
 

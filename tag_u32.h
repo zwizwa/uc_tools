@@ -27,7 +27,7 @@ struct tag_u32 {
     const uint8_t*  bytes; uint32_t nb_bytes;
 };
 
-typedef int (*tag_u32_handle_fn)(const struct tag_u32 *);
+typedef int (*tag_u32_handle_fn)(struct tag_u32 *);
 
 #define TAG_U32_ERROR_BAD  -1  // Used as a generic "bad command" code
 #define TAG_U32_ERROR_SIZE -2  // Inconsistent size fields
@@ -122,6 +122,15 @@ void send_reply_tag_u32(const struct tag_u32 *, const struct tag_u32 *);
 
 #define TAG_U32_SHIFT(r,n) \
     { .args = (r)->args+(n), .nb_args = (r)->nb_args-(n) }
+
+/* Imperative enter/leave for composing handlers without much memory
+   overhead. */
+static inline void tag_u32_shift(struct tag_u32 *r, int n) {
+    r->args += n;
+    r->nb_args -= n;
+}
+static inline void tag_u32_enter(struct tag_u32 *r) { tag_u32_shift(r, 1); }
+static inline void tag_u32_leave(struct tag_u32 *r) { tag_u32_shift(r, -1); }
 
 
 /* Control protocol, for metadata discovery. */

@@ -6,7 +6,7 @@
 
 /* This is requred for cproc modules: the Erlang code uses TAG_U32 to
    perform I/O. */
-int handle_tag_u32(const struct tag_u32 *);
+int handle_tag_u32(struct tag_u32 *);
 #define HANDLE_TAG_U32 handle_tag_u32
 
 #include "cproc.h"
@@ -16,7 +16,7 @@ int handle_tag_u32(const struct tag_u32 *);
 w cproc_input[CPROC_NB_INPUTS];
 void cproc_update(w *input, w changed);
 
-int handle_tag_u32(const struct tag_u32 *s) {
+int handle_tag_u32(struct tag_u32 *s) {
     if ((s->nb_args == 2) &&
         (s->nb_bytes == 0)) {
         uint32_t i = s->args[0];

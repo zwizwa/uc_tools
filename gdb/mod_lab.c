@@ -24,7 +24,7 @@ struct slipstub_buffers slipstub_buffers;
 #include "mod_console.c"
 
 /* Provided by main file. */
-int handle_tag_u32(const struct tag_u32 *);
+int handle_tag_u32(struct tag_u32 *);
 void setup(void);
 void loop(void);
 
@@ -38,7 +38,7 @@ void loop(void);
    this should probably be embedded in tha TAG_U32 discovery protocol
 
 */
-int handle_command(const struct tag_u32 *s) {
+int handle_command(struct tag_u32 *s) {
     if (s->nb_bytes > 0) {
         char command[s->nb_bytes+1];
         memcpy(command, s->bytes, s->nb_bytes);

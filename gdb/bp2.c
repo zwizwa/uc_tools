@@ -20,8 +20,8 @@ void app_poll(void) {
     static uint32_t app_timer;
     MS_PERIODIC(app_timer, 100) {
         uint32_t in = hw_gpio_read(IN);
-        LET(in_edge,       /*=*/ edge, NULL, NULL, .in = in);
-        LET(in_edge_count, /*=*/ acc,  NULL, NULL, .in = in_edge.out);
+        PROC(in_edge,       /*=*/ edge, NULL, NULL, .in = in);
+        PROC(in_edge_count, /*=*/ acc,  NULL, NULL, .in = in_edge.out);
         if (in_edge.out) {
             infof("count = %d\n", in_edge_count);
         }
@@ -56,8 +56,25 @@ DEF_INSTANCE(app);
 DEF_SYMBOL(abc);
 DEF_SYMBOL(def);
 
+/* Two modifications are necessary:
+
+   - The request "pointer" should be writeable, so we can push/pop
+     when decending into substructure.
+
+   - Each level should be discoverable.
+*/
+
+int handle_tag_u32(struct tag_u32 *r) {
+}
+
+#if 0
+/* FIXME: It's probably simpler to dump the symbol table by letting it
+   terminate on an empty string.  Only one call is necessary in that
+   case, but the tradeoff is that such a thing cannot be requested
+   without pingpong. */
+
 /* For actual use, use dedicated symbols. */
-int handle_tag_u32(const struct tag_u32 *r) {
+int handle_tag_u32(struct tag_u32 *r) {
     CASE_0(r, SYM(abc)) {
         REPLY_U32(r, 123);
     }
@@ -66,6 +83,8 @@ int handle_tag_u32(const struct tag_u32 *r) {
     }
 
     CASE_0(r, TAG_U32_CTRL) {
+        /* FIXME: create a "with" macro that descends into the tree by
+         * in-place updating of the input struct. */
         const struct tag_u32 r1 = TAG_U32_SHIFT(r, 1);
         /* Discovery protocol. */
         CASE_0(&r1, TAG_U32_CTRL_NB_NODES) {
@@ -82,12 +101,13 @@ int handle_tag_u32(const struct tag_u32 *r) {
     }
     return -1;
 }
+#endif
 
 
 /* Exploratory: command dictionary. */
 
 #if 0
-int handle_tag_u32(const struct tag_u32 *r) {
+int handle_tag_u32(struct tag_u32 *r) {
     //CASE_CMD_0(r, commands) {
     //}
 
