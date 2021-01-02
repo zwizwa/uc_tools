@@ -43,16 +43,32 @@ instance_status_t app_init(instance_init_t *ctx) {
 DEF_INSTANCE(app);
 
 /* These don't need arg checks: already guarded. */
-int handle_abc(struct tag_u32 *req) { SEND_REPLY_TAG_U32(req, req->args[0] + 1); return 0; }
-int handle_def(struct tag_u32 *req) { SEND_REPLY_TAG_U32(req, req->args[0] - 1); return 0; }
+int handle_a(struct tag_u32 *req) { SEND_REPLY_TAG_U32(req, req->args[0] + 1); return 0; }
+int handle_b(struct tag_u32 *req) { SEND_REPLY_TAG_U32(req, req->args[0] - 1); return 0; }
+int handle_d(struct tag_u32 *req) { SEND_REPLY_TAG_U32(req, req->args[0] + 1); return 0; }
+int handle_e(struct tag_u32 *req) { SEND_REPLY_TAG_U32(req, req->args[0] - 1); return 0; }
 
-int handle_tag_u32(struct tag_u32 *req) {
+int handle_sub(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
-        {"abc","u32",1,handle_abc},
-        {"def","u32",1,handle_def},
+        {"d","u32",1,handle_d},
+        {"e","u32",1,handle_e},
     };
     return handle_tag_u32_map(req, map, ARRAY_SIZE(map));
 }
+int handle_root(struct tag_u32 *req) {
+    const struct tag_u32_entry map[] = {
+        {"a","u32",1,handle_a},
+        {"b","u32",1,handle_b},
+        {"c","map",-1,handle_sub}
+    };
+    return handle_tag_u32_map(req, map, ARRAY_SIZE(map));
+}
+
+int handle_tag_u32(struct tag_u32 *req) {
+    return handle_root(req);
+}
+
+
 
 
 
