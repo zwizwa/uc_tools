@@ -44,17 +44,20 @@ DEF_COMMAND(leds) { // r g b --
 /* Don't worry about consistency checks at this point.  Assume the
    host and communication channel can be trusted. */
 
-#define TAG_U32_REPLY_U32(req, val) \
-    infof("TAG_U32_REPLY_U32 %d\n", val)
-#define TAG_U32_REPLY_CSTRING(req, str) \
-    infof("TAG_U32_REPLY_U32 %s\n", str)
+#define TAG_U32_REPLY_U32(req, val) {           \
+        infof("TAG_U32_REPLY_U32 %d\n", val);   \
+        REPLY_TAG_U32(req, val);                \
+    }
+
+#define TAG_U32_REPLY_CSTRING(req, str) {       \
+        infof("TAG_U32_REPLY_U32 %s\n", str);   \
+        REPLY_TAG_U32_CSTRING(req, str);        \
+    }
 
 int handle_tag_u32(const struct tag_u32 *r) {
 #if 1
     TAG_U32_MATCH_0(r, TAG_U32_CTRL) {
-        const struct tag_u32 r1 = {
-            .args = r->args+1, .nb_args = r->nb_args-1
-        };
+        const struct tag_u32 r1 = TAG_U32_SHIFT(r, 1);
         /* Discovery protocol. */
         TAG_U32_MATCH_0(&r1, TAG_U32_CTRL_NB_NODES) {
             TAG_U32_REPLY_U32(r, command_index_size());

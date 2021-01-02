@@ -70,12 +70,23 @@ static inline int tag_u32_dispatch(tag_u32_handle_fn handler, void *context,
 
 /* Wrapper around send_tag_u32() to send a message without binary
    payload. */
-#define SEND_TAG_U32(...) {                                     \
+#define REPLY_TAG_U32(req, ...) {                               \
         uint32_t a[] = { __VA_ARGS__ };                         \
         const struct tag_u32 s = {                              \
             .args = a, .nb_args = sizeof(a)/sizeof(uint32_t),   \
         };                                                      \
-        send_tag_u32(&s);                                       \
+        reply_tag_u32(req, &s);                                 \
+}
+
+/* This assumes reply_tag_u32 supports req==NULL to send a plain message. */
+#define SEND_TAG_U32(...) REPLY_TAG_U32(NULL, __VA_ARGS__)
+
+#define REPLY_TAG_U32_CSTRING(req, string) {                    \
+        const struct tag_u32 s = {                              \
+            .bytes = (const uint8_t*)string,                    \
+            .nb_bytes = strlen(string)                          \
+        };                                                      \
+        reply_tag_u32(req, &s);                                 \
 }
 
 /* Note that send_tag_u32() which will have to be defined by the
@@ -108,6 +119,8 @@ void send_tag_u32(const struct tag_u32 *);
 #define TAG_U32_MATCH_0(_req, _tag)                             \
     if (((_req)->nb_args >= 1) && ((_req)->args[0] == _tag))
 
+#define TAG_U32_SHIFT(r,n) \
+    { .args = (r)->args+(n), .nb_args = (r)->nb_args-(n) }
 
 
 
