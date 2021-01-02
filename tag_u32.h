@@ -29,28 +29,40 @@ struct tag_u32 {
 
 typedef int (*tag_u32_handle_fn)(const struct tag_u32 *);
 
-#define TAG_U32_ERROR_SIZE -1
-#define TAG_U32_ERROR_TAG  -2
+#define TAG_U32_ERROR_BAD  -1  // Used as a generic "bad command" code
+#define TAG_U32_ERROR_SIZE -2  // Inconsistent size fields
 
+/* This allcates temp buffers for the decoded tags. It is assumed all
+   temp buffers fit on the stack. */
 static inline int tag_u32_dispatch(tag_u32_handle_fn handler, void *context,
                                    const uint8_t *buf, uint32_t nb_buf) {
     if (nb_buf < 4) return TAG_U32_ERROR_SIZE;
-    // Note: this format is now also used for TAG_COMMAND, so don't check
+
+    // This format is now also used for TAG_COMMAND, so don't check
     // uint32_t tag = read_be(buf, 2);
     // if (tag != TAG_U32) return TAG_U32_ERROR_TAG;
-    uint32_t nb_a = read_be(buf+2, 2);
-    uint32_t offset_b = 2 + 2 + 4 * nb_a;
+
+    /* Check if size parameters make sense. */
+    uint32_t nb_f = buf[2];
+    uint32_t nb_a = buf[3];
+    uint32_t offset_b = 2 + 2 + 4 * (nb_f + nb_a);
     if (nb_buf < offset_b) return TAG_U32_ERROR_SIZE;
+
+    /* Everything after the tag vectors is opaque payload. */
     uint32_t nb_b = nb_buf - offset_b;
-    /* We need to assume this fits on the stack. */
-    uint32_t a[nb_a];
-    for (uint32_t i=i; i<nb_a; i++) {
-        a[i] = read_be(buf + 2 + 2 + 4 * i, 4);
-    }
+
+    /* Unpack "from" and "arg" tags, fill in index struct and delegate. */
+
+    const uint8_t *buf_f = buf   + 2 + 2;
+    const uint8_t *buf_a = buf_f + 4 * nb_f;
+
+    uint32_t f[nb_f];  read_be_u32_array(f, buf_f, nb_f);
+    uint32_t a[nb_a];  read_be_u32_array(a, buf_a, nb_a);
+
     struct tag_u32 s = {
         .context = context,
-        .from = 0, .nb_from = 0,
-        .args = &a[0], .nb_args = nb_a,
+        .from = f, .nb_from = nb_f,
+        .args = a, .nb_args = nb_a,
         .bytes = buf + offset_b, .nb_bytes = nb_b
     };
     return handler(&s);
@@ -60,7 +72,7 @@ static inline int tag_u32_dispatch(tag_u32_handle_fn handler, void *context,
    payload. */
 #define SEND_TAG_U32(...) {                                     \
         uint32_t a[] = { __VA_ARGS__ };                         \
-        struct tag_u32 s = {                                    \
+        const struct tag_u32 s = {                              \
             .args = a, .nb_args = sizeof(a)/sizeof(uint32_t),   \
         };                                                      \
         send_tag_u32(&s);                                       \
@@ -70,6 +82,34 @@ static inline int tag_u32_dispatch(tag_u32_handle_fn handler, void *context,
    firmware image.  See mod_send_tag_u32.c for an implementation that
    sends over SLIP. */
 void send_tag_u32(const struct tag_u32 *);
+
+
+/* Pattern matching macros.
+
+   Note that these just behave as if clauses, so will need to contain
+   a return or jump statement to break off a sequence of clauses.
+
+   Size comparison is >=, so this can be used to match the head of a
+   message.  Note that this does silently ignore arguments.  Maybe
+   make it explicit?
+*/
+
+/* This uses a C99 for clause to create a local binding environment.
+   To go through the loop only 1 times in case of a match, the pointer
+   is set to 0. */
+#define TAG_U32_MATCH(_req, _tag, _m,  ...)                     \
+    for(const struct { uint32_t __VA_ARGS__; } *_m =            \
+            (const void*)(&(_req)->args[1]);                    \
+        ((_req)->nb_args >= 1 + (sizeof(*_m)/4)) &&             \
+            (_tag == (_req)->args[0]) && _m;                    \
+        _m=0)
+
+/* This needs to be special-cased. */
+#define TAG_U32_MATCH_0(_req, _tag)                             \
+    if (((_req)->nb_args >= 1) && ((_req)->args[0] == _tag))
+
+
+
 
 
 #endif

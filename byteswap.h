@@ -43,6 +43,16 @@ static inline void write_be_32(uint8_t *buf, uint32_t word, uint32_t nb) {
         nb--;
     }
 }
+
+/* This is used so much it deserves its own specialized function. */
+static inline void read_be_u32_array(
+    uint32_t *dst, const uint8_t *src, uint32_t nb_el) {
+    for (uint32_t i=i; i<nb_el; i++) {
+        dst[i] = read_be_32(src + 4 * i, 4);
+    }
+}
+
+
 /* Array splices with embedded commas */
 #define U16_BE(t) ((t) >> 8), ((t) & 0xFF)
 #define U32_BE(t) U16_BE((t) >> 16), U16_BE((t) & 0xFFFF)

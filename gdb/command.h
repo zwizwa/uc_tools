@@ -22,6 +22,16 @@ struct command {
 extern const struct command const *_command_start;
 extern const struct command const *_command_endx;
 
+static inline uintptr_t command_index(const struct command * const* cmd) {
+    return cmd - &_command_start;
+}
+static inline const struct command * const* command_ref(uintptr_t index) {
+    return &_command_start + index;
+}
+static inline uintptr_t command_index_size(void) {
+    return &_command_endx - &_command_start;
+}
+
 #define FOR_COMMAND(c) \
     FOR_START_ENDX(&_command_start, &_command_endx, c)
 
