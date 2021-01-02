@@ -8,7 +8,7 @@
 #include "tag_u32.h"
 #include "cbuf.h"
 
-KEEP void reply_tag_u32(const struct tag_u32 *f, const struct tag_u32 *s) {
+KEEP void send_reply_tag_u32(const struct tag_u32 *f, const struct tag_u32 *s) {
     uint32_t total_nb_args = (f ? f->nb_from : 0) + s->nb_args;
 
     uint8_t hdr[] = {U16_BE(TAG_U32), 0, total_nb_args};
@@ -30,7 +30,7 @@ KEEP void reply_tag_u32(const struct tag_u32 *f, const struct tag_u32 *s) {
 }
 
 KEEP void send_tag_u32(const struct tag_u32 *s) {
-    reply_tag_u32(NULL, s);
+    send_reply_tag_u32(NULL, s);
 }
 
 

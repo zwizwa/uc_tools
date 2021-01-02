@@ -14,7 +14,7 @@
 #define KEEP
 #endif
 
-KEEP void reply_tag_u32(const struct tag_u32 *f, const struct tag_u32 *s) {
+KEEP void send_reply_tag_u32(const struct tag_u32 *f, const struct tag_u32 *s) {
     uint32_t tot_nb_args = (f ? f->nb_from : 0) + s->nb_args;
     uint32_t buf_size = 4 + 4 * tot_nb_args + s->nb_bytes;
     uint8_t buf[buf_size];
@@ -36,7 +36,7 @@ KEEP void reply_tag_u32(const struct tag_u32 *f, const struct tag_u32 *s) {
 }
 
 KEEP void send_tag_u32(const struct tag_u32 *s) {
-    reply_tag_u32(NULL, s);
+    send_reply_tag_u32(NULL, s);
 }
 
 #endif

@@ -51,7 +51,12 @@ SECTIONS
                 objects that were included in a firmware image by the
                 the compilation and linking processes, without having
                 to explicitly specify them.  This is currently used to
-                track debug commands. */
+                track protocol symbol<->id maps and debug commands. */
+
+                _symbol_start = .;                
+                KEEP (*(.symbol))
+                *(.symbol*)
+                _symbol_endx = .;                
 
                 _command_start = .;                
                 KEEP (*(.command))

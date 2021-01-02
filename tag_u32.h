@@ -70,29 +70,30 @@ static inline int tag_u32_dispatch(tag_u32_handle_fn handler, void *context,
 
 /* Wrapper around send_tag_u32() to send a message without binary
    payload. */
-#define REPLY_TAG_U32(req, ...) {                               \
+#define SEND_REPLY_TAG_U32(req, ...) {                          \
         uint32_t a[] = { __VA_ARGS__ };                         \
         const struct tag_u32 s = {                              \
             .args = a, .nb_args = sizeof(a)/sizeof(uint32_t),   \
         };                                                      \
-        reply_tag_u32(req, &s);                                 \
+        send_reply_tag_u32(req, &s);                            \
 }
 
 /* This assumes reply_tag_u32 supports req==NULL to send a plain message. */
-#define SEND_TAG_U32(...) REPLY_TAG_U32(NULL, __VA_ARGS__)
+#define SEND_TAG_U32(...) SEND_REPLY_TAG_U32(NULL, __VA_ARGS__)
 
-#define REPLY_TAG_U32_CSTRING(req, string) {                    \
+#define SEND_REPLY_TAG_U32_CSTRING(req, string) {               \
         const struct tag_u32 s = {                              \
             .bytes = (const uint8_t*)string,                    \
             .nb_bytes = strlen(string)                          \
         };                                                      \
-        reply_tag_u32(req, &s);                                 \
+        send_reply_tag_u32(req, &s);                            \
 }
 
 /* Note that send_tag_u32() which will have to be defined by the
    firmware image.  See mod_send_tag_u32.c for an implementation that
    sends over SLIP. */
 void send_tag_u32(const struct tag_u32 *);
+void send_reply_tag_u32(const struct tag_u32 *, const struct tag_u32 *);
 
 
 /* Pattern matching macros.
@@ -123,6 +124,15 @@ void send_tag_u32(const struct tag_u32 *);
     { .args = (r)->args+(n), .nb_args = (r)->nb_args-(n) }
 
 
+/* Control protocol, for metadata discovery. */
+
+/* Control tag is used for retrieving metadata for a particular node. */
+#define TAG_U32_CTRL 0xFFFFFFFF
+
+/* It has the following RPC requests defined as sub-tags: */
+#define TAG_U32_CTRL_NB_NODES  0  /* Get nb of sub nodes at this node. */
+#define TAG_U32_CTRL_NODE_ID   1  /* Get node id by node list index. */
+#define TAG_U32_CTRL_ID_NAME   2  /* Map identifier to name */
 
 
 #endif
