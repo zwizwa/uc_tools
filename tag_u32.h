@@ -38,44 +38,11 @@ struct tag_u32 {
 #define TAG_U32_ERROR_BAD  -1  // Used as a generic "bad command" code
 #define TAG_U32_ERROR_SIZE -2  // Inconsistent size fields
 
-/* This allcates temp buffers for the decoded tags. It is assumed all
-   temp buffers fit on the stack. */
-static inline int tag_u32_dispatch(tag_u32_handle_fn handler,
-                                   tag_u32_reply_fn reply,
-                                   void *context,
-                                   const uint8_t *buf, uint32_t nb_buf) {
-    if (nb_buf < 4) return TAG_U32_ERROR_SIZE;
 
-    // This format is now also used for TAG_COMMAND, so don't check
-    // uint32_t tag = read_be(buf, 2);
-    // if (tag != TAG_U32) return TAG_U32_ERROR_TAG;
-
-    /* Check if size parameters make sense. */
-    uint32_t nb_f = buf[2];
-    uint32_t nb_a = buf[3];
-    uint32_t offset_b = 2 + 2 + 4 * (nb_f + nb_a);
-    if (nb_buf < offset_b) return TAG_U32_ERROR_SIZE;
-
-    /* Everything after the tag vectors is opaque payload. */
-    uint32_t nb_b = nb_buf - offset_b;
-
-    /* Unpack "from" and "arg" tags, fill in index struct and delegate. */
-
-    const uint8_t *buf_f = buf   + 2 + 2;
-    const uint8_t *buf_a = buf_f + 4 * nb_f;
-
-    uint32_t f[nb_f];  read_be_u32_array(f, buf_f, nb_f);
-    uint32_t a[nb_a];  read_be_u32_array(a, buf_a, nb_a);
-
-    struct tag_u32 s = {
-        .context = context,
-        .reply = reply,
-        .from = f, .nb_from = nb_f,
-        .args = a, .nb_args = nb_a,
-        .bytes = buf + offset_b, .nb_bytes = nb_b
-    };
-    return handler(&s);
-}
+int tag_u32_dispatch(tag_u32_handle_fn handler,
+                     tag_u32_reply_fn reply,
+                     void *context,
+                     const uint8_t *buf, uint32_t nb_buf);
 
 static inline void send_reply_tag_u32_maybe(
     const struct tag_u32 *req, const struct tag_u32 *rpl) {
@@ -172,5 +139,7 @@ struct tag_u32_entry {
 
 int handle_tag_u32_map(struct tag_u32 *r, const struct tag_u32_entry *map, uint32_t nb_entries);
 
+#define HANDLE_TAG_U32_MAP(r, map) \
+    handle_tag_u32_map(r, map, ARRAY_SIZE(map))
 
 #endif

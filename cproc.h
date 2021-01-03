@@ -1,6 +1,19 @@
 #ifndef CPROC_H
 #define CPROC_H
 
+/* TL&DR : two tests for exo_patch
+   - C network generator, inlining these primitives
+   - mod_bpmodular: dynamic network generator, wrapping these primitives
+
+   It does not seem to be the right level of abstraction, unless the
+   idea is to use these in C, e.g. do manual composition in C.
+
+   Probably better to generate both cproc inlines and bpmodular
+   wrappers from a RAI-like or SM-like finer grained "naked state"
+   macro substrate.  C is just not a great language to express these
+   things...  */
+
+
 /* Proof of concept C dataflow processor units.  This works in
    conjunction with the epid / epid_app protocol used in exo_patch,
    and code generation from epid_cproc.

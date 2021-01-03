@@ -1,14 +1,45 @@
 #include "tag_u32.h"
 #include "infof.h"
 
-#define REPLY_LOG infof
+/* This allcates temp buffers for the decoded tags. It is assumed all
+   temp buffers fit on the stack. */
+int tag_u32_dispatch(tag_u32_handle_fn handler,
+                     tag_u32_reply_fn reply,
+                     void *context,
+                     const uint8_t *buf, uint32_t nb_buf) {
+    if (nb_buf < 4) return TAG_U32_ERROR_SIZE;
 
-#define TAG_U32_REPLY_META(r, arr, nb_el,  index, field) \
-    if (index < nb_el) { SEND_REPLY_TAG_U32_CSTRING(r, arr[index].field); } else { SEND_REPLY_TAG_U32_CSTRING(r, "") }
+    // This format is now also used for TAG_COMMAND, so don't check
+    // uint32_t tag = read_be(buf, 2);
+    // if (tag != TAG_U32) return TAG_U32_ERROR_TAG;
 
-/* FIXME: create a wrapper to guard enter/leave. */
+    /* Check if size parameters make sense. */
+    uint32_t nb_f = buf[2];
+    uint32_t nb_a = buf[3];
+    uint32_t offset_b = 2 + 2 + 4 * (nb_f + nb_a);
+    if (nb_buf < offset_b) return TAG_U32_ERROR_SIZE;
 
-/* FIXME: recurse into substructure. */
+    /* Everything after the tag vectors is opaque payload. */
+    uint32_t nb_b = nb_buf - offset_b;
+
+    /* Unpack "from" and "arg" tags, fill in index struct and delegate. */
+
+    const uint8_t *buf_f = buf   + 2 + 2;
+    const uint8_t *buf_a = buf_f + 4 * nb_f;
+
+    uint32_t f[nb_f];  read_be_u32_array(f, buf_f, nb_f);
+    uint32_t a[nb_a];  read_be_u32_array(a, buf_a, nb_a);
+
+    struct tag_u32 s = {
+        .context = context,
+        .reply = reply,
+        .from = f, .nb_from = nb_f,
+        .args = a, .nb_args = nb_a,
+        .bytes = buf + offset_b, .nb_bytes = nb_b
+    };
+    return handler(&s);
+}
+
 
 /* Generic dispatch of nodes and metadata based on metadata table. */
 int handle_tag_u32_map(struct tag_u32 *r, const struct tag_u32_entry *map, uint32_t nb_entries) {
@@ -25,17 +56,17 @@ int handle_tag_u32_map(struct tag_u32 *r, const struct tag_u32_entry *map, uint3
         return rv;
     }
     /* Serve metadata. */
-    TAG_U32_MATCH(r, TAG_U32_CTRL, m, cmd) {
-        tag_u32_enter(r);
-        TAG_U32_MATCH(r, TAG_U32_CTRL_ID_NAME, m, id) {
-            TAG_U32_REPLY_META(r, map, nb_entries, m->id, name);
-            return 0;
+    TAG_U32_MATCH(r, TAG_U32_CTRL, m, cmd, id) {
+        /* Empty string means not defined. */
+        const char *str = "";
+        if (m->id < nb_entries) {
+            switch(m->cmd) {
+            case TAG_U32_CTRL_ID_NAME: str = map[m->id].name; break;
+            case TAG_U32_CTRL_ID_TYPE: str = map[m->id].type; break;
+            }
         }
-        TAG_U32_MATCH(r, TAG_U32_CTRL_ID_TYPE, m, id) {
-            TAG_U32_REPLY_META(r, map, nb_entries, m->id, type);
-            return 0;
-        }
-        tag_u32_leave(r);
+        SEND_REPLY_TAG_U32_CSTRING(r, str);
+        return 0;
     }
     return -1;
 }
