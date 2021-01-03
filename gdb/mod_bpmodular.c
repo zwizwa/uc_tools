@@ -35,57 +35,84 @@ const char t_param[] = "param";
 
 #define ALLOC_NB_WORDS 1024
 struct alloc {
-    uint32_t offset;
+    uint32_t next;
     uint32_t buf[ALLOC_NB_WORDS];
 } alloc;
 typedef void (*tick_fn)(uint32_t *);
 
+/* Processor metadata. */
+struct inst;
 struct proc {
-    /* For access to instance over RPC, e.g. parameter get/set, dump */
+    /* For access to inst over RPC, e.g. parameter get/set, dump */
     tag_u32_handle_fn handle;
     /* DSP tick method. */
-    void (*tick)(uint32_t *w);
+    void (*tick)(struct inst *);
+    uint32_t nb_state;
 };
 
-/* Iterate over instances in the buffer.  There is no index other than
-   the size prefix, so this is also used to check if an instance
-   pointer is valid. */
-#define FOR_INSTANCE(slice) \
-    for(uint32_t *slice = alloc.buf; slice[0]; slice += slice[0])
+/* This is will be allocated in alloc.buf */
+struct inst {
+    uint32_t nb_words;
+    const struct proc *proc;
+    uint32_t state[];
+};
+
+struct inst *inst_first(void) {
+    if (!alloc.next) return 0;
+    return (void*)alloc.buf;
+}
+struct inst *inst_next(struct inst *i) {
+    uint32_t index = ((uint32_t*)i) - alloc.buf;
+    index += i->nb_words;
+    if (index >= alloc.next) return NULL;
+    return (void*)(&alloc.buf[index]);
+}
+#define FOR_INST(slice) \
+    for(struct inst *i = inst_first(); i; i = inst_next(i))
+
+/* External references are indices into alloc.buf, but they are not
+   necessarily correct, so just scan the insts, as we don't have
+   an inst index. */
+struct inst *node_to_inst(uint32_t node) {
+    struct inst *maybe_inst = (void*)&alloc.buf[node];
+    FOR_INST(i) {
+        if (maybe_inst == i) return i;
+    }
+    return 0;
+}
+
+/* This is ridiculously indirect. */
+static inline uint32_t inst_in(struct inst *i, int in_nb) {
+    uint32_t nb_state = i->proc->nb_state;
+    uint32_t *in = (void*)i->state[nb_state + in_nb];
+    return *in;
+}
+
 
 /* Run all DSP tick routines. */
 void tick(void) {
-    FOR_INSTANCE(slice) {
-        infof("slice %x\n", slice);
-        const struct proc *proc = (void*)slice[1];
-        proc->tick(&slice[2]);
+    FOR_INST(i) {
+        infof("inst %x\n", i);
+        i->proc->tick(i);
     }
-}
-
-int valid_instance(uint32_t inst) {
-    FOR_INSTANCE(slice) {
-        if (inst == slice - alloc.buf) return 1;
-    }
-    return 0;
 }
 
 /* Aside from being used as dataflow identifiers, the node references
    can also be used to access arbitrary RPC functionality,
    e.g. parameter data. */
-int handle_instance(struct tag_u32 *req) {
+int handle_inst(struct tag_u32 *req) {
     if (req->nb_args < 1) {
-        infof("bpmodular: handle_instance: missing arg\n");
+        infof("bpmodular: handle_inst: missing arg\n");
         return -1;
     }
     uint32_t node = req->args[0];
-    uint32_t inst = node-2;
-    if (!valid_instance(inst)) {
-        infof("bpmodular: %d is not a valid instance\n");
+    struct inst *inst = node_to_inst(node);
+    if (!inst) {
+        infof("bpmodular: %d is not a valid inst\n");
         return -1;
     }
-    const struct proc *proc = (void*)alloc.buf[inst+1];
     tag_u32_enter(req);
-    int rv = proc->handle(req);
+    int rv = inst->proc->handle(req);
     tag_u32_leave(req);
     return rv;
 }
@@ -98,25 +125,30 @@ int reply_1(struct tag_u32 *req, uint32_t rv) {
 int apply(struct tag_u32 *req,
           const struct proc *proc,
           uint32_t n_state, uint32_t n_in, const uint32_t *in) {
-    uint32_t node = -1;  // invalid
     uint32_t n = 1 /* count */ + 1 /* tick */ + n_state + n_in;
-    uint32_t *slice = alloc.buf + alloc.offset;
-    uint32_t new_offset = alloc.offset + n;
-    if (new_offset > ALLOC_NB_WORDS) return -1;
-    slice[0] = n;              // Size of this record, for skipping to next.
-    slice[1] = (uint32_t)proc; // Update routine
+    uint32_t node = alloc.next;
+    struct inst *inst = (void*)&alloc.buf[node];
+    uint32_t next = node + n;
+    if (next > ALLOC_NB_WORDS) {
+        infof("bpmodular: apply alloc failed\n");
+        return -1;
+    }
     // Init state.
-    memset(slice + 1 + 1, 0, n_state * sizeof(uint32_t));
-    // Input routing
+    memset(inst->state, 0, n_state * sizeof(uint32_t));
+    // Input connect
     for (int i=0; i<n_in; i++) {
-        if (in[i] >= ALLOC_NB_WORDS) goto abort;
-        slice[1 + 1 + n_state + i] = alloc.buf[in[i]];
+        struct inst *in_inst = node_to_inst(in[i]);
+        if (!in_inst) {
+            infof("bp_modular: bad input node %d %d\n", i, in[i]);
+            return -1;
+        }
+        inst->state[n_state + i] = (uint32_t)in_inst->state;
     }
     // Commit
-    alloc.offset = new_offset;
+    inst->nb_words = n;  // Size of this record, for skipping to next.
+    inst->proc = proc;   // Update routine
+    alloc.next = next;
     // Use the pointer to the state struct as node identifier.
-    node = (uint32_t)(slice + 2 - alloc.buf);
-  abort:
     return reply_1(req, node);
 }
 
@@ -152,18 +184,18 @@ int handle_param(struct tag_u32 *req) {
 
 /* Going to side-step parameterization for now and specialize
    everything.  Focus on dataflow inputs. */
-void tick_in_A0(uint32_t *w) {
+void tick_in_A0(struct inst *i) {
     infof("in_A0\n");
     const gpin_config c = { .port = GPIOA, .pin = 0 };
-    gpin_update((gpin_state *)w, &c, NULL, NULL);
+    gpin_update((gpin_state *)i->state, &c, NULL, NULL);
 }
-int handle_in_A0_instance(struct tag_u32 *req) {
+int handle_in_A0_inst(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }
 const struct proc in_A0 = {
-    .tick = tick_in_A0, .handle = handle_in_A0_instance
+    .tick = tick_in_A0, .handle = handle_in_A0_inst, .nb_state = 1,
 };
 int apply_in_A0(struct tag_u32 *req) {
     return apply(req, &in_A0, 1, 0, NULL);
@@ -177,18 +209,19 @@ int handle_in_A0_class(struct tag_u32 *req) {
 
 /* proc: edge */
 
-void tick_edge(uint32_t *w) {
+
+void tick_edge(struct inst *i) {
     infof("edge\n");
-    edge_input i = { .in = *w };
-    edge_update((edge_state *)w, NULL, NULL, &i);
+    edge_input in = { .in = inst_in(i, 0) };
+    edge_update((edge_state *)i->state, NULL, NULL, &in);
 }
-int handle_edge_instance(struct tag_u32 *req) {
+int handle_edge_inst(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }
 const struct proc edge = {
-    .tick = tick_edge, .handle = handle_edge_instance
+    .tick = tick_edge, .handle = handle_edge_inst, .nb_state = 1,
 };
 int apply_edge(struct tag_u32 *req) {
     return apply(req, &edge, 1, 1, req->args);
@@ -202,19 +235,19 @@ int handle_edge_class(struct tag_u32 *req) {
 
 /* proc: acc */
 
-void tick_acc(uint32_t *w) {
+void tick_acc(struct inst *i) {
     infof("acc\n");
-    acc_input i = { .in = *w };
-    acc_update((acc_state *)w, NULL, NULL, &i);
+    acc_input in = { .in = inst_in(i, 0) };
+    acc_update((acc_state *)i->state, NULL, NULL, &in);
 }
-int handle_acc_instance(struct tag_u32 *req) {
+int handle_acc_inst(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
         {"count",t_param,1,handle_param},
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }
 const struct proc acc = {
-    .tick = tick_acc, .handle = handle_acc_instance
+    .tick = tick_acc, .handle = handle_acc_inst, .nb_state = 1,
 };
 int apply_acc(struct tag_u32 *req) {
     return apply(req, &acc, 1, 1, req->args);
@@ -232,8 +265,7 @@ int handle_acc_class(struct tag_u32 *req) {
 
 /* Individual node deletion is not supported.  We do not have malloc(). */
 int handle_reset(struct tag_u32 *req) {
-    alloc.offset = 0;
-    alloc.buf[0] = 0;
+    alloc.next = 0;
     SEND_REPLY_TAG_U32(req, 0);
     return 0;
 }
@@ -246,9 +278,9 @@ int handle_tick(struct tag_u32 *req) {
 
 int handle_patch(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
-        {"reset",    t_cmd,0,handle_reset},
-        {"tick",     t_cmd,0,handle_tick},
-        {"instance", t_cmd,0,handle_instance},
+        {"reset", t_cmd,0,handle_reset},
+        {"tick",  t_cmd,0,handle_tick},
+        {"inst",  t_cmd,0,handle_inst},
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }
