@@ -1,39 +1,43 @@
 #ifndef CPROC_H
 #define CPROC_H
 
-/* TL&DR : two tests for exo_patch
-   - C network generator, inlining these primitives
-   - mod_bpmodular: dynamic network generator, wrapping these primitives
+/* C dataflow processing API + some processors.
 
-   It does not seem to be the right level of abstraction, unless the
-   idea is to use these in C, e.g. do manual composition in C.
+   Note that the idea here is mostly to define an API.  There are some
+   processors defined, but ultimately it will be simpler to generate
+   those from a more high level description.
 
-   Probably better to generate both cproc inlines and bpmodular
-   wrappers from a RAI-like or SM-like finer grained "naked state"
-   macro substrate.  C is just not a great language to express these
-   things...  */
+   This code works in conjunction with the epid_cproc.erl code
+   generator, which fits in the "universal patcher" framework: dynamic
+   and static patching of distributed dataflow networks.
 
+   There is a dynamic instantiator that re-uses the processor API
+   (e.g. replaces static PROC macro with dynamic instantiation and
+   connectivity).  See mod_bpmodular.c
 
-/* Proof of concept C dataflow processor units.  This works in
-   conjunction with the epid / epid_app protocol used in exo_patch,
-   and code generation from epid_cproc.
 
    API will likely change to accomodate all use cases.
 
    Basic concepts:
 
    - provide a C language level macro PROC that can be used as code
-     gen target, but is also manually usable.
+     generation target (compling abstract ANF to concrete C, as a
+     sequence of PROC binding statments)
 
-   - processors have state, input, parameters, configuration
+   - keep the API sane so it is also usable for manual coding.
 
-   - state is private to each instance
+   - processors have private state, a dataflow output, many dataflow
+     inputs, dynamic parameters, and static configuration.
 
    - input is synchronous (think constant sample rate), or evented
 
-   - support for subgraph execution, to implement evented systems. see LET_COND
+   - there is preliminary support for statically compiled subgraph
+     execution, e.g. to implement evented systems. see PROC_COND and
+     epid_cproc.erl
 
-   - const configuration is for specializing processors, e.g. bind to specific hw GPIO
+   - const configuration is for specializing processors, e.g. bind to
+     specific hw GPIO.  it seems necessary to distinguish this from
+     parameters.
 
    - dynamic parameters allow behavior change without causing events.
      this is likely only useful in synchronous systems.
@@ -41,38 +45,25 @@
 */
 
 
-/* About static, dynamic parameters.
-
-   These could probably be unified, but for good C code generation
-   that will need some deeper abstraction, one that can split const
-   and param per instance and generates cproc.h "classes" from a
-   higher level specification.
-
-   For now this distinction is fixed.  It is used mostly for hardware
-   configuration.  If a different flavor is needed (e.g. moving from
-   const to dynamic) then just create another processor type.  This is
-   hard to design up front: actual use will show what is best.
-*/
 
 
 
-/* A-normal form for dataflow networks.
+/* PROC implements A-normal form (ANF) for dataflow networks.
 
-   Currently thinking to keep this _really_ simple:
+   to keep this simple:
 
    - don't separate signal output and state output structs
 
    - require named inputs
 
-   - every instance has a const config type, which can be NULL
+   - every instance has an optional const config type, dynamic
+     parmeter type.
 
    - execution can be conditional, e.g. to implement evented systems
      as partial graph execution.
 
-
-   Revisit?
-
-   - require all init to be zero
+   - state variables in this implementation initialize to zero.  use a
+     separate parameter mechanism to initialize processors.
 
 */
 
@@ -85,16 +76,15 @@
         _type_name##_update(&_instance_name, _config_ptr, _param_ptr, &_instance_name##_input); \
     }
 
-/* Synchronous systems have subgraph condition disabled: full graph is executed every time. */
+/* Synchronous systems have subgraph condition disabled: full graph is
+   executed every time. */
 #define PROC(...) PROC_COND(1, __VA_ARGS__)
 
 
 #include <stdint.h>
 
-/* The convention for now is that all state can be initialized to
-   zero.  The update function follows the naming scheme in let.h All
-   definitions go through a macro, to be able to add some bookkeeping
-   data later. */
+/* All definitions go through a macro, to be able to add some
+   bookkeeping data later. */
 #define DEF_PROC(_proc_name, _state_var, _config_var, _param_var, _input_var) \
     static inline void _proc_name##_update(                             \
         _proc_name##_state *_state_var,                                 \
@@ -103,8 +93,9 @@
         const _proc_name##_input *_input_var)                           \
 
 
-/* To simplify interfacing, all integers are machine words.  This
-   should later be a parameter. */
+/* To simplify interfacing, all atomic values are machine words.  This
+   is a property of the individual processors, and is not essential
+   for the composition mechanism, i.e. the API. */
 typedef uint32_t w;
 
 /* The hello world of state machines: the accumulator.
