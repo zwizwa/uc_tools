@@ -31,7 +31,7 @@
 const char t_u32[] = "u32";
 const char t_map[] = "map";
 const char t_cmd[] = "cmd";
-const char t_param[] = "param";
+//const char t_param[] = "param";
 
 #define ALLOC_NB_WORDS 1024
 struct alloc {
@@ -163,6 +163,15 @@ int handle_inst(struct tag_u32 *req) {
 
 /* Parameter access.  This does not need metadata, as that can be
    gathered from the class handler. */
+
+/* For GIT history:
+
+   It seems much better to explictly define methods with a map instead
+   of handling it implicitly.  That way there is metadata, and we also
+   do not have to use pre-defined numeric identifiers.  Text can be
+   used instead. */
+
+#if 0
 int handle_param(struct tag_u32 *req) {
     if (req->nb_args < 1) {
         infof("bpmodular: handle_param: missing args %d\n", req->nb_args);
@@ -177,23 +186,44 @@ int handle_param(struct tag_u32 *req) {
     uint32_t cmd      = req->args[0];
     struct inst *i = node_to_inst(node);
 
-    switch(cmd) {
-    case 0: /* get */
+    TAG_U32_MATCH_0(req, 0) { /* get */
         return reply_1(req, i->state[param_nb]);
-    case 1: /* set */
-        if (req->nb_args >= 2) {
-            i->state[param_nb] = req->args[1];
-            return reply_1(req, 0);
-        }
-        else {
-            infof("bpmodular: handle_param: set missing arg\n");
-            return -1;
-        }
-    default:
-        infof("bpmodular: handle_param: bad command %d\n", cmd);
-        return -1;
     }
+    TAG_U32_MATCH(req, 1, m, value) { /* set */
+        i->state[param_nb] = req->args[1];
+        return reply_1(req, 0);
+    }
+    infof("bpmodular: handle_param: bad command %d, nb_args_%d\n",
+          cmd, req->nb_args);
+    return -1;
 }
+#else
+int handle_param_get(struct tag_u32 *req) {
+    uint32_t node     = req->args[-3];
+    uint32_t param_nb = req->args[-2];
+    struct inst *i = node_to_inst(node);
+    if (!i) { infof("handle_param_get: bad node %d\n", node); return -1; }
+    // FIXME: check param_nb
+    return reply_1(req, i->state[param_nb]);
+}
+int handle_param_set(struct tag_u32 *req) {
+    uint32_t node     = req->args[-3];
+    uint32_t param_nb = req->args[-2];
+    uint32_t val      = req->args[0];
+    struct inst *i = node_to_inst(node);
+    if (!i) { infof("handle_param_get: bad node %d\n", node); return -1; }
+    // FIXME: check param_nb
+    i->state[param_nb] = val;
+    return reply_1(req, 0);
+}
+int handle_param(struct tag_u32 *req) {
+    const struct tag_u32_entry map[] = {
+        {"get", t_cmd,0,handle_param_get},
+        {"set", t_cmd,0,handle_param_set},
+    };
+    return HANDLE_TAG_U32_MAP(req, map);
+}
+#endif
 
 
 /* proc: in_A0 */
@@ -207,7 +237,7 @@ void tick_in_A0(struct inst *i) {
 }
 int handle_in_A0_inst(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
-        {"level",t_param,1,handle_param},
+        {"level",t_map,1,handle_param},
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }
@@ -259,7 +289,7 @@ void tick_acc(struct inst *i) {
 }
 int handle_acc_inst(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
-        {"count",t_param,1,handle_param},
+        {"count",t_map,1,handle_param},
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }

@@ -139,7 +139,7 @@ static inline void log_str(const uint8_t *m, ssize_t len) {
 
 
 // FIXME: Only IPv4 For now
-static int same_addr(struct sockaddr_in *sa1, struct sockaddr_in *sa2) {
+static int __attribute__((unused)) same_addr(struct sockaddr_in *sa1, struct sockaddr_in *sa2) {
     uint8_t *a1 = (void*)&sa1->sin_addr;
     uint8_t *a2 = (void*)&sa2->sin_addr;
     int same = (sa1->sin_port == sa2->sin_port)
