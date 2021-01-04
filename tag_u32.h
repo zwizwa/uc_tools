@@ -66,13 +66,19 @@ static inline void send_reply_tag_u32_maybe(
 /* This assumes reply_tag_u32 supports req==NULL to send a plain message. */
 #define SEND_TAG_U32(...) SEND_REPLY_TAG_U32(NULL, __VA_ARGS__)
 
-#define SEND_REPLY_TAG_U32_CSTRING(req, string) {               \
-        const struct tag_u32 s = {                              \
-            .bytes = (const uint8_t*)string,                    \
-            .nb_bytes = strlen(string)                          \
-        };                                                      \
-        send_reply_tag_u32_maybe(req, &s);                      \
+
+static inline void send_reply_tag_u32_status_cstring(
+    const struct tag_u32 *req, uint32_t status, const char *string) {
+    const struct tag_u32 s = {
+        .args = &status, .nb_args = 1,
+        .bytes = (const uint8_t*)string,
+        .nb_bytes = strlen(string)
+    };
+    send_reply_tag_u32_maybe(req, &s);
 }
+
+
+
 
 /* Note that send_tag_u32() which will have to be defined by the
    firmware image.  See mod_send_tag_u32.c for an implementation that
@@ -124,10 +130,11 @@ static inline void tag_u32_leave(struct tag_u32 *r) { tag_u32_shift(r, -1); }
 #define TAG_U32_CTRL 0xFFFFFFFF
 
 /* It has the following RPC requests defined as sub-tags: */
-#define TAG_U32_CTRL_NB_NODES  0  /* Get nb of sub nodes at this node. */
-#define TAG_U32_CTRL_NODE_ID   1  /* Get node id by node list index. */
+//#define TAG_U32_CTRL_NB_NODES  0  /* Get nb of sub nodes at this node. */
+//#define TAG_U32_CTRL_NODE_ID   1  /* Get node id by node list index. */
 #define TAG_U32_CTRL_ID_NAME   2  /* Map identifier to name */
 #define TAG_U32_CTRL_ID_TYPE   3  /* Map identifier to type */
+#define TAG_U32_CTRL_NAME_ID   4  /* Map name to identifier. */
 
 
 struct tag_u32_entry {
