@@ -6,7 +6,6 @@
    Serves as a test application for patcher commands using the TAG_U32
    protocol.  Several simplifications are made:
    - all data and pointers are u32
-   - use raw pointers in protocol to avoid indexing boiler plate
 
    Note that this is just a toy example.  Later, generate cproc.h
    processors and the glue code instantiation, which is hand-coded
@@ -72,7 +71,14 @@ struct inst *inst_next(struct inst *i) {
 
 /* External references are indices into alloc.buf, but they are not
    necessarily correct, so just scan the insts, as we don't have
-   an inst index. */
+   an inst index.
+
+   FIXME: This is currently used in the parameter setter, so should
+   probably be replaced by a direct index mechanism.  A possible
+   solution is to allocate instances at the top of the buffer, and
+   allocate an instance index at the bottom.  This uses the same
+   amount of memory because the size field can be removed.
+*/
 struct inst *node_to_inst(uint32_t node) {
     struct inst *maybe_inst = (void*)&alloc.buf[node];
     FOR_INST(i) {
@@ -149,6 +155,8 @@ int handle_inst(struct tag_u32 *req) {
         infof("bpmodular: node %d is not a valid inst\n", 0);
         return -1;
     }
+    /* FIXME: Check parameter number as a guard for deeper behavior. */
+
     /* Enter, so the param directory is cwd. */
     tag_u32_enter(req);
     int rv = inst->proc->handle(req);
@@ -156,63 +164,33 @@ int handle_inst(struct tag_u32 *req) {
     return rv;
 }
 
-/* Generic handlers.  Note that if we keep the directory structure
-   uniform, some handlers can be implemented by grabbing context from
-   the higher up directories, i.e. indexing args with negative
-   numbers.  FIXME: Some guards should be implemented for that. */
+/* Generic handlers.  Some notes:
 
-/* Parameter access.  This does not need metadata, as that can be
-   gathered from the class handler. */
+   - If we keep the directory structure uniform, some handlers can be
+     implemented by grabbing context from the higher up directories,
+     i.e. indexing args with negative numbers.
 
-/* For GIT history:
+   - Parameter validation can be done up the stream.  E.g. we know
+     that the param handlers all go through handle_inst(), which
+     verifies the inst, so we can assume here that inst is correct.
 
-   It seems much better to explictly define methods with a map instead
-   of handling it implicitly.  That way there is metadata, and we also
-   do not have to use pre-defined numeric identifiers.  Text can be
-   used instead. */
-
-#if 0
-int handle_param(struct tag_u32 *req) {
-    if (req->nb_args < 1) {
-        infof("bpmodular: handle_param: missing args %d\n", req->nb_args);
-        return -1;
-    }
-    /* We went through 2 shift levels:
-       - handle_inst shifted to expose the directory at 0
-       - the directory shifted to bring us here.
-       We can still use those tags as context. */
-    uint32_t node     = req->args[-2];
-    uint32_t param_nb = req->args[-1];
-    uint32_t cmd      = req->args[0];
-    struct inst *i = node_to_inst(node);
-
-    TAG_U32_MATCH_0(req, 0) { /* get */
-        return reply_1(req, i->state[param_nb]);
-    }
-    TAG_U32_MATCH(req, 1, m, value) { /* set */
-        i->state[param_nb] = req->args[1];
-        return reply_1(req, 0);
-    }
-    infof("bpmodular: handle_param: bad command %d, nb_args_%d\n",
-          cmd, req->nb_args);
-    return -1;
-}
-#else
+   - It seems much better to explictly define methods with a map
+     instead of handling them implicitly using MATCH clauses (see git
+     history for handle_param).  That way there is metadata, and we
+     also do not have to use pre-defined numeric identifiers.  A
+     symbolic API can be used instead.
+*/
 int handle_param_get(struct tag_u32 *req) {
     uint32_t node     = req->args[-3];
     uint32_t param_nb = req->args[-2];
-    struct inst *i = node_to_inst(node);
-    if (!i) { infof("handle_param_get: bad node %d\n", node); return -1; }
-    // FIXME: check param_nb
+    struct inst *i    = node_to_inst(node);
     return reply_1(req, i->state[param_nb]);
 }
 int handle_param_set(struct tag_u32 *req) {
     uint32_t node     = req->args[-3];
     uint32_t param_nb = req->args[-2];
     uint32_t val      = req->args[0];
-    struct inst *i = node_to_inst(node);
-    if (!i) { infof("handle_param_get: bad node %d\n", node); return -1; }
-    // FIXME: check param_nb
+    struct inst *i    = node_to_inst(node);
     i->state[param_nb] = val;
     return reply_1(req, 0);
 }
@@ -223,7 +201,6 @@ int handle_param(struct tag_u32 *req) {
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }
-#endif
 
 
 /* proc: in_A0 */
