@@ -97,26 +97,6 @@ void tick(void) {
     }
 }
 
-/* Aside from being used as dataflow identifiers, the node references
-   can also be used to access arbitrary RPC functionality,
-   e.g. parameter data. */
-int handle_inst(struct tag_u32 *req) {
-    if (req->nb_args < 1) {
-        infof("bpmodular: handle_inst: missing arg\n");
-        return -1;
-    }
-    uint32_t node = req->args[0];
-    struct inst *inst = node_to_inst(node);
-    if (!inst) {
-        infof("bpmodular: %d is not a valid inst\n");
-        return -1;
-    }
-    tag_u32_enter(req);
-    int rv = inst->proc->handle(req);
-    tag_u32_leave(req);
-    return rv;
-}
-
 int reply_1(struct tag_u32 *req, uint32_t rv) {
     SEND_REPLY_TAG_U32(req, rv);
     return 0;
@@ -153,6 +133,28 @@ int apply(struct tag_u32 *req,
 }
 
 
+/* Aside from being used as dataflow identifiers, the node references
+   can also be used to access arbitrary RPC functionality,
+   e.g. parameter data. */
+
+/* 0:node 1:param 2:cmd 3... */
+int handle_inst(struct tag_u32 *req) {
+    if (req->nb_args < 1) {
+        infof("bpmodular: handle_inst: missing arg\n");
+        return -1;
+    }
+    uint32_t node = req->args[0];
+    struct inst *inst = node_to_inst(node);
+    if (!inst) {
+        infof("bpmodular: node %d is not a valid inst\n", 0);
+        return -1;
+    }
+    /* Enter, so the param directory is cwd. */
+    tag_u32_enter(req);
+    int rv = inst->proc->handle(req);
+    tag_u32_leave(req);
+    return rv;
+}
 
 /* Generic handlers.  Note that if we keep the directory structure
    uniform, some handlers can be implemented by grabbing context from
@@ -162,19 +164,33 @@ int apply(struct tag_u32 *req,
 /* Parameter access.  This does not need metadata, as that can be
    gathered from the class handler. */
 int handle_param(struct tag_u32 *req) {
-    uint32_t node     = req->args[0];
-    uint32_t param_nb = req->args[1];
-    uint32_t cmd      = req->args[2];
-    uint32_t *state   = &alloc.buf[node];  // FIXME: check bounds
+    if (req->nb_args < 1) {
+        infof("bpmodular: handle_param: missing args %d\n", req->nb_args);
+        return -1;
+    }
+    /* We went through 2 shift levels:
+       - handle_inst shifted to expose the directory at 0
+       - the directory shifted to bring us here.
+       We can still use those tags as context. */
+    uint32_t node     = req->args[-2];
+    uint32_t param_nb = req->args[-1];
+    uint32_t cmd      = req->args[0];
+    struct inst *i = node_to_inst(node);
+
     switch(cmd) {
     case 0: /* get */
-        return reply_1(req, state[param_nb]);
+        return reply_1(req, i->state[param_nb]);
     case 1: /* set */
-        if (req->nb_args >= 4) {
-            state[param_nb] = req->args[3];
+        if (req->nb_args >= 2) {
+            i->state[param_nb] = req->args[1];
+            return reply_1(req, 0);
         }
-        return reply_1(req, 0);
+        else {
+            infof("bpmodular: handle_param: set missing arg\n");
+            return -1;
+        }
     default:
+        infof("bpmodular: handle_param: bad command %d\n", cmd);
         return -1;
     }
 }
@@ -191,6 +207,7 @@ void tick_in_A0(struct inst *i) {
 }
 int handle_in_A0_inst(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
+        {"level",t_param,1,handle_param},
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }
