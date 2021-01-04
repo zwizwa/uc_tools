@@ -31,6 +31,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <stdint.h>
 #include <sys/types.h>
+#include <netinet/in.h>
 
 // Port read/write access and instantiation is abstract
 struct port;
@@ -42,11 +43,19 @@ typedef ssize_t (*port_pop_fn)(struct buf_port *p, uint8_t *buf, ssize_t len);
 struct port {
     int fd;              // main file descriptor
     int fd_out;          // optional, if different from main fd
+    short events;
     port_read_fn read;
     port_write_fn write;
     port_pop_fn pop;     // only for buffered ports
 };
+
+struct udp_port {
+    struct port p;
+    struct sockaddr_in peer;
+};
+
 struct port *port_open_tap(const char *dev);
+struct port *port_open_timerfd_stream(long ms);
 struct port *port_open_udp(uint16_t port);
 struct port *port_open_packetn_stream(uint32_t len_bytes, int fd, int fd_out);
 struct port *port_open_packetn_tty(uint32_t len_bytes, const char *dev);
