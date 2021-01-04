@@ -15,14 +15,6 @@
    macro substrate for that.
 */
 
-/* FIXME:
-
-   - each processor class should be a subdirectory with factory and
-     metadata methods.
-
-   - each instance should also be accessible via RPC.
-*/
-
 #include "hw_cproc_stm32f103.h"
 #include "balloci.h"
 
@@ -137,6 +129,7 @@ int handle_inst(struct tag_u32 *req) {
         return -1;
     }
     /* FIXME: Check parameter number as a guard for deeper behavior. */
+    /* FIXME: Implement the map api. */
 
     /* Enter, so the param directory is cwd. */
     tag_u32_enter(req);

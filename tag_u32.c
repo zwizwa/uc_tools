@@ -43,31 +43,9 @@ int tag_u32_dispatch(tag_u32_handle_fn handler,
 
 /* Generic dispatch of nodes and metadata based on metadata table. */
 
-/* Note that this is not easy to debug, so print error messages for
-   all cases that do not send a reply.  Currently there is no generic
-   error mechanism to send errors back using RPC.  Maybe that should
-   be added?  E.g at least make an ok/error distinction. */
-
-int handle_tag_u32_map(struct tag_u32 *r, const struct tag_u32_entry *map, uint32_t nb_entries) {
-    if (r->nb_args < 1) {
-        LOG("handle_tag_u32_map: missing arg\n");
-        return -1;
-    }
-    uint32_t i = r->args[0];
-    /* Delegate. */
-    if (i < nb_entries) {
-        tag_u32_enter(r);
-        int rv = -1;
-        if ((map[i].nb_args < 0) || (r->nb_args >= map[i].nb_args)) {
-            rv = map[i].handle(r);
-        }
-        else {
-            LOG("handle_tag_u32_map: nb_args = %d, expected %d\n",
-                r->nb_args, map[i].nb_args);
-        }
-        tag_u32_leave(r);
-        return rv;
-    }
+int handle_tag_u32_map_meta(struct tag_u32 *r,
+                            const struct tag_u32_entry *map,
+                            uint32_t nb_entries) {
     /* Serve metadata. */
     TAG_U32_MATCH(r, TAG_U32_CTRL, m, cmd, id) {
         const char *str = NULL;
@@ -103,3 +81,73 @@ int handle_tag_u32_map(struct tag_u32 *r, const struct tag_u32_entry *map, uint3
     LOG("handle_tag_u32_map: bad command %d\n", r->args[0]);
     return -1;
 }
+
+/* Abstract map reference.  Zero is ok, other is error code. */
+typedef int (*map_ref_fn)(void *, uint32_t index, struct tag_u32_entry *entry);
+
+int handle_tag_u32_map_ref_meta(struct tag_u32 *r,
+                                map_ref_fn map_ref, void *ctx) {
+    struct tag_u32_entry entry = {};
+
+    /* Serve metadata. */
+    TAG_U32_MATCH(r, TAG_U32_CTRL, m, cmd, id) {
+        const char *str = NULL;
+        int rv = map_ref(r, m->id, &entry);
+        if (rv) return rv;
+        switch(m->cmd) {
+        case TAG_U32_CTRL_ID_NAME: str = entry.name; break;
+        case TAG_U32_CTRL_ID_TYPE: str = entry.type; break;
+        }
+        if (str) {
+            send_reply_tag_u32_status_cstring(r, 0, str);
+        }
+        else {
+            SEND_REPLY_TAG_U32(r, -1);
+        }
+        return 0;
+    }
+    TAG_U32_MATCH(r, TAG_U32_CTRL, m, cmd) {
+        if (m->cmd == TAG_U32_CTRL_NAME_ID &&
+            r->nb_args == 2 &&
+            r->nb_bytes > 0) {
+            int rv = -1;
+            for (uint32_t i=0; !(rv = map_ref(r, i, &entry)); i++) {
+                if ((strlen(entry.name) == r->nb_bytes) &&
+                    (!memcmp(entry.name, r->bytes, r->nb_bytes))) {
+                    SEND_REPLY_TAG_U32(r, 0, i);
+                    return 0;
+                }
+            }
+            SEND_REPLY_TAG_U32(r, -1);
+            return 0;
+        }
+    }
+    LOG("handle_tag_u32_map: bad command %d\n", r->args[0]);
+    return -1;
+}
+
+
+int handle_tag_u32_map(struct tag_u32 *r,
+                       const struct tag_u32_entry *map, uint32_t nb_entries) {
+    if (r->nb_args < 1) {
+        LOG("handle_tag_u32_map: missing arg\n");
+        return -1;
+    }
+    uint32_t i = r->args[0];
+    /* Delegate. */
+    if (i < nb_entries) {
+        tag_u32_enter(r);
+        int rv = -1;
+        if ((map[i].nb_args < 0) || (r->nb_args >= map[i].nb_args)) {
+            rv = map[i].handle(r);
+        }
+        else {
+            LOG("handle_tag_u32_map: nb_args = %d, expected %d\n",
+                r->nb_args, map[i].nb_args);
+        }
+        tag_u32_leave(r);
+        return rv;
+    }
+    return handle_tag_u32_map_meta(r, map, nb_entries);
+}
+
