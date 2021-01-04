@@ -24,6 +24,7 @@
 */
 
 #include "hw_cproc_stm32f103.h"
+#include "balloci.h"
 
 /* The types describe what interface can be used to access information
    below this node. */
@@ -33,10 +34,9 @@ const char t_cmd[] = "cmd";
 //const char t_param[] = "param";
 
 #define ALLOC_NB_WORDS 1024
-struct alloc {
-    uint32_t next;
-    uint32_t buf[ALLOC_NB_WORDS];
-} alloc;
+uint32_t alloc_buf[ALLOC_NB_WORDS];
+struct balloci alloc = { .buf = alloc_buf, .size = ARRAY_SIZE(alloc_buf) };
+
 typedef void (*tick_fn)(uint32_t *);
 
 /* Processor metadata. */
@@ -51,23 +51,10 @@ struct proc {
 
 /* This is will be allocated in alloc.buf */
 struct inst {
-    uint32_t nb_words;
     const struct proc *proc;
     uint32_t state[];
 };
 
-struct inst *inst_first(void) {
-    if (!alloc.next) return 0;
-    return (void*)alloc.buf;
-}
-struct inst *inst_next(struct inst *i) {
-    uint32_t index = ((uint32_t*)i) - alloc.buf;
-    index += i->nb_words;
-    if (index >= alloc.next) return NULL;
-    return (void*)(&alloc.buf[index]);
-}
-#define FOR_INST(slice) \
-    for(struct inst *i = inst_first(); i; i = inst_next(i))
 
 /* External references are indices into alloc.buf, but they are not
    necessarily correct, so just scan the insts, as we don't have
@@ -80,11 +67,7 @@ struct inst *inst_next(struct inst *i) {
    amount of memory because the size field can be removed.
 */
 struct inst *node_to_inst(uint32_t node) {
-    struct inst *maybe_inst = (void*)&alloc.buf[node];
-    FOR_INST(i) {
-        if (maybe_inst == i) return i;
-    }
-    return 0;
+    return (struct inst*)balloci_index(&alloc, node);
 }
 
 /* This is ridiculously indirect. */
@@ -97,7 +80,8 @@ static inline uint32_t inst_in(struct inst *i, int in_nb) {
 
 /* Run all DSP tick routines. */
 void tick(void) {
-    FOR_INST(i) {
+    for (uint32_t node = 0; node < alloc.count; node++) {
+        struct inst *i = node_to_inst(node);
         infof("inst %x\n", i);
         i->proc->tick(i);
     }
@@ -111,14 +95,15 @@ int reply_1(struct tag_u32 *req, uint32_t rv) {
 int apply(struct tag_u32 *req,
           const struct proc *proc,
           uint32_t n_state, uint32_t n_in, const uint32_t *in) {
-    uint32_t n = 1 /* count */ + 1 /* tick */ + n_state + n_in;
-    uint32_t node = alloc.next;
-    struct inst *inst = (void*)&alloc.buf[node];
-    uint32_t next = node + n;
-    if (next > ALLOC_NB_WORDS) {
-        infof("bpmodular: apply alloc failed\n");
+    uint32_t nb_words = 1 /* tick */ + n_state + n_in;
+    uint32_t node = -1;
+    struct inst *inst = (struct inst *)balloci_alloc(&alloc, nb_words, &node);
+    if (!inst) {
+        infof("bpmodular: alloc failed\n");
         return -1;
     }
+    // Processor class info
+    inst->proc = proc;
     // Init state.
     memset(inst->state, 0, n_state * sizeof(uint32_t));
     // Input connect
@@ -130,10 +115,6 @@ int apply(struct tag_u32 *req,
         }
         inst->state[n_state + i] = (uint32_t)in_inst->state;
     }
-    // Commit
-    inst->nb_words = n;  // Size of this record, for skipping to next.
-    inst->proc = proc;   // Update routine
-    alloc.next = next;
     // Use the pointer to the state struct as node identifier.
     return reply_1(req, node);
 }
@@ -289,7 +270,7 @@ int handle_acc_class(struct tag_u32 *req) {
 
 /* Individual node deletion is not supported.  We do not have malloc(). */
 int handle_reset(struct tag_u32 *req) {
-    alloc.next = 0;
+    balloci_clear(&alloc);
     SEND_REPLY_TAG_U32(req, 0);
     return 0;
 }

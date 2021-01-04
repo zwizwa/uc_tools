@@ -40,7 +40,7 @@ static inline uint32_t *balloci_index(struct balloci *b, uint32_t index) {
 }
 static inline uint32_t *balloci_alloc(struct balloci *b, uint32_t nb_words, uint32_t *index) {
     uint32_t room = balloci_room(b);
-    LOG("room = %d\n", room);
+    // LOG("room = %d\n", room);
     if (nb_words > room) return 0;
     uint32_t offset = balloci_next(b);
     if (index) *index = b->count;
