@@ -39,6 +39,7 @@ struct proc {
     /* DSP tick method. */
     void (*tick)(struct inst *);
     uint32_t nb_state;
+    const char *name;
 };
 
 /* This is will be allocated in alloc.buf */
@@ -116,16 +117,36 @@ int apply(struct tag_u32 *req,
    can also be used to access arbitrary RPC functionality,
    e.g. parameter data. */
 
+struct inst_map_ref {
+    char inst_name[8];
+};
+int inst_map_ref(struct inst_map_ref *mr, uint32_t index, struct tag_u32_entry *entry) {
+    struct inst *i = node_to_inst(index);
+    if (!i) return -1;
+    // There is no sprintf... fix this.
+    mr->inst_name[0] = 'i';
+    mr->inst_name[1] = index + '0';
+    mr->inst_name[2] = 0;
+    const struct tag_u32_entry e = { .name = mr->inst_name, .type = i->proc->name };
+    *entry = e;
+    return 0;
+}
+
 /* 0:node 1:param 2:cmd 3... */
 int handle_inst(struct tag_u32 *req) {
     if (req->nb_args < 1) {
         infof("bpmodular: handle_inst: missing arg\n");
         return -1;
     }
+    if (req->args[0] == TAG_U32_CTRL) {
+        /* Dynamically generated instance map. */
+        struct inst_map_ref mr = {};
+        return handle_tag_u32_map_ref_meta(req, (map_ref_fn)inst_map_ref, &mr);
+    }
     uint32_t node = req->args[0];
     struct inst *inst = node_to_inst(node);
     if (!inst) {
-        infof("bpmodular: node %d is not a valid inst\n", 0);
+        infof("bpmodular: bad node %d\n", node);
         return -1;
     }
     /* FIXME: Check parameter number as a guard for deeper behavior. */
@@ -193,7 +214,7 @@ int handle_in_A0_inst(struct tag_u32 *req) {
     return HANDLE_TAG_U32_MAP(req, map);
 }
 const struct proc in_A0 = {
-    .tick = tick_in_A0, .handle = handle_in_A0_inst, .nb_state = 1,
+    .tick = tick_in_A0, .handle = handle_in_A0_inst, .nb_state = 1, .name = "in_A0"
 };
 int apply_in_A0(struct tag_u32 *req) {
     return apply(req, &in_A0, 1, 0, NULL);
@@ -219,7 +240,7 @@ int handle_edge_inst(struct tag_u32 *req) {
     return HANDLE_TAG_U32_MAP(req, map);
 }
 const struct proc edge = {
-    .tick = tick_edge, .handle = handle_edge_inst, .nb_state = 1,
+    .tick = tick_edge, .handle = handle_edge_inst, .nb_state = 1, .name = "edge"
 };
 int apply_edge(struct tag_u32 *req) {
     return apply(req, &edge, 1, 1, req->args);
@@ -245,7 +266,7 @@ int handle_acc_inst(struct tag_u32 *req) {
     return HANDLE_TAG_U32_MAP(req, map);
 }
 const struct proc acc = {
-    .tick = tick_acc, .handle = handle_acc_inst, .nb_state = 1,
+    .tick = tick_acc, .handle = handle_acc_inst, .nb_state = 1, .name = "acc"
 };
 int apply_acc(struct tag_u32 *req) {
     return apply(req, &acc, 1, 1, req->args);

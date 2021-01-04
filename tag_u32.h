@@ -146,6 +146,10 @@ struct tag_u32_entry {
 
 int handle_tag_u32_map(struct tag_u32 *r, const struct tag_u32_entry *map, uint32_t nb_entries);
 
+/* Abstract map access. */
+typedef int (*map_ref_fn)(void *, uint32_t index, struct tag_u32_entry *entry);
+int handle_tag_u32_map_ref_meta(struct tag_u32 *r, map_ref_fn map_ref, void *ctx);
+
 #define HANDLE_TAG_U32_MAP(r, map) \
     handle_tag_u32_map(r, map, ARRAY_SIZE(map))
 

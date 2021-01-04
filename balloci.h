@@ -35,7 +35,7 @@ static inline uint32_t balloci_room(struct balloci *b) {
 }
 /* Returns NULL when the reference is invalid. */
 static inline uint32_t *balloci_index(struct balloci *b, uint32_t index) {
-    if (index > b->count) return 0;
+    if (index >= b->count) return 0;
     return &b->buf[*balloci_offset(b, index)];
 }
 static inline uint32_t *balloci_alloc(struct balloci *b, uint32_t nb_words, uint32_t *index) {
