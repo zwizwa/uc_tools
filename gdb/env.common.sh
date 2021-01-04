@@ -32,8 +32,10 @@ CPPFLAGS_COMMON="\
 CFLAGS_ERROR=-Werror
 # CFLAGS_ERROR=
 
+# Note: to see which gnu extensions are used, set -std=c99
+
 CFLAGS_COMMON=" \
--std=c99 \
+-std=gnu99 \
 -fno-common \
 -ffunction-sections \
 -fdata-sections \

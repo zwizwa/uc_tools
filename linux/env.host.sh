@@ -12,7 +12,7 @@ CFLAGS=" \
 -I$UC_TOOLS/linux \
 -I$UC_TOOLS/ \
 -I$LIBOPENCM3/include \
--std=c99 \
+-std=gnu99 \
 -fno-common \
 -ffunction-sections \
 -fdata-sections \

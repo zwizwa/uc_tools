@@ -161,4 +161,7 @@ int kill(pid_t pid, int sig);
     typ *par_ptr = v_fld_ptr - OFFSETOF(typ,fld); \
     par_ptr; })
 
+#define NB_ARGS(...)  (sizeof((const char *[]){#__VA_ARGS__})/sizeof(int))
+
+
 #endif
