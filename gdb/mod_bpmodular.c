@@ -104,6 +104,7 @@ int apply(struct tag_u32 *req,
         struct inst *in_inst = node_to_inst(in[i]);
         if (!in_inst) {
             infof("bp_modular: bad input node %d %d\n", i, in[i]);
+            balloci_drop(&alloc);
             return -1;
         }
         inst->state[n_state + i] = (uint32_t)in_inst->state;
@@ -297,24 +298,24 @@ int handle_tick(struct tag_u32 *req) {
 
 int handle_patch(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
-        {"reset", t_cmd,0,handle_reset},
-        {"tick",  t_cmd,0,handle_tick},
-        {"inst",  t_cmd,0,handle_inst},
+        {"reset", t_cmd, 0, handle_reset},
+        {"tick",  t_cmd, 0, handle_tick},
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }
 int handle_class(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
-        {"in_A0",t_map,0,handle_in_A0_class},
-        {"edge", t_map,0,handle_edge_class},
-        {"acc",  t_map,0,handle_acc_class},
+        {"in_A0", t_map, 0, handle_in_A0_class},
+        {"edge",  t_map, 0, handle_edge_class},
+        {"acc",   t_map, 0, handle_acc_class},
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }
 int handle_root(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
-        {"patch",t_map,-1,handle_patch},
-        {"class",t_map,-1,handle_class},
+        {"patch", t_map, -1, handle_patch},
+        {"class", t_map, -1, handle_class},
+        {"inst",  t_map, 0, handle_inst},
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }
