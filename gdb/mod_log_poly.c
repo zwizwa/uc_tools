@@ -2,7 +2,7 @@
 #define MOD_LOG_POLY
 
 #include "macros.h"
-#include "stdarg.h"
+#include <stdarg.h>
 
 /* A hack to implement polymorphic variadic arguments.
 
@@ -22,9 +22,6 @@ static inline void log_poly_w(uintptr_t w) {
     }
 }
 
-/* Use C varargs, with a sentinel. */
-#include <stdarg.h>
-
 #define LOG_POLY_END 0x08FFFFFF
 
 void log_poly_impl(const char *postfix, ...) {
@@ -43,6 +40,3 @@ typedef void (*log_poly_t)(const char *, ...);
 
 
 #endif
-
-//#define print(...)   log_poly("",   LOG_POLY_ARGS(__VA_ARGS__))
-//#define println(...) log_poly("\n", LOG_POLY_ARGS(__VA_ARGS__))
