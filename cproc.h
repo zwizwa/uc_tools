@@ -45,7 +45,7 @@
 */
 
 
-
+#include "metastruct.h"
 
 
 /* PROC implements A-normal form (ANF) for dataflow networks.
@@ -72,7 +72,7 @@
 #define PROC_COND(_subgraph_cond,_instance_name,_type_name,_config_ptr,_param_ptr,...) \
     static _type_name##_state _instance_name = {};                      \
     if (_subgraph_cond) {                                               \
-        const  _type_name##_input _instance_name##_input = { __VA_ARGS__ }; \
+        const _type_name##_input _instance_name##_input = { __VA_ARGS__ }; \
         _type_name##_update(&_instance_name, _config_ptr, _param_ptr, &_instance_name##_input); \
     }
 
@@ -83,14 +83,43 @@
 
 #include <stdint.h>
 
+
 /* All definitions go through a macro, to be able to add some
    bookkeeping data later. */
 #define DEF_PROC(_proc_name, _state_var, _config_var, _param_var, _input_var) \
+    DEF_PROC_STRUCTS(_proc_name)                                        \
     static inline void _proc_name##_update(                             \
         _proc_name##_state *_state_var,                                 \
         const _proc_name##_config *_config_var,                         \
-        const _proc_name##_config *_param_var,                          \
-        const _proc_name##_input *_input_var)                           \
+        const _proc_name##_param *_param_var,                    \
+        const _proc_name##_input *_input_var)                    \
+
+/* Datatypes are specified in a collection of macros, to make it
+   easier to generate wrappers. */
+#define DEF_PROC_STRUCTS(name) \
+    STRUCT_DEF(name##_state, for_##name##_state); \
+    STRUCT_DEF(name##_input, for_##name##_input); \
+    STRUCT_DEF(name##_param, for_##name##_param); \
+    STRUCT_CONST_DEF(name##_config, for_##name##_config); \
+
+
+/* The struct field macros can also be reified to metadata. */
+struct proc_meta {
+    const char *name;
+    const struct metastruct_struct state, input, param, config;
+};
+#define DEF_PROC_META(_name)                                  \
+    METASTRUCT_DEF(_name##_state,  for_##_name##_state);      \
+    METASTRUCT_DEF(_name##_input,  for_##_name##_input);      \
+    METASTRUCT_DEF(_name##_param,  for_##_name##_param);      \
+    METASTRUCT_DEF(_name##_config, for_##_name##_config);     \
+    const struct proc_meta _name##_meta = {                   \
+        .name   = #_name,                                    \
+        .state  = METASTRUCT_STRUCT(_name##_state),          \
+        .input  = METASTRUCT_STRUCT(_name##_input),          \
+        .param  = METASTRUCT_STRUCT(_name##_param),          \
+        .config = METASTRUCT_STRUCT(_name##_config),         \
+    }
 
 
 /* To simplify interfacing, all atomic values are machine words.  This
@@ -102,19 +131,23 @@ typedef uint32_t w;
    The convention is to call the output "out".
    If there are more outputs, then use a struct.
    All other fields are supposed to be hidden state. */
-typedef struct { w out; } acc_state;
-typedef struct { w in;  } acc_input;
-typedef void acc_config;
-typedef void acc_param;
+#define for_acc_state(m) m(w,out)
+#define for_acc_input(m) m(w,in)
+#define for_acc_config(m)
+#define for_acc_param(m)
+//DEF_PROC_STRUCTS(acc)
+
 DEF_PROC(acc, s, c, p, i) {
     s->out += i->in;
 } __attribute__((always_inline))
 
 /* Edge detector. */
-typedef struct { w out; w last; } edge_state ;
-typedef struct { w in;          } edge_input;
-typedef void edge_config;
-typedef void edge_param;
+#define for_edge_state(m) m(w,out) m(w,last)
+#define for_edge_input(m) m(w,in)
+#define for_edge_config(m)
+#define for_edge_param(m)
+
+//DEF_STRUCTS(edge)
 DEF_PROC(edge, s, c, p, i) {
     s->out = (i->in != s->last);
     s->last = i->in;

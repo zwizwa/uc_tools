@@ -5,18 +5,18 @@
 #include "cproc.h"
 #include "hw_stm32f103.h"
 
-typedef struct { w out; } gpin_state;
-typedef struct { } gpin_input;
-typedef struct { uint32_t port, pin; } gpin_config;
-typedef void gpin_param;
+#define for_gpin_state(m) m(w,out)
+#define for_gpin_input(m)
+#define for_gpin_config(m) m(uint32_t, port) m(uint32_t, pin)
+#define for_gpin_param(m)
 DEF_PROC(gpin, s, c, p, i) {
     s->out = hw_gpio_read(c->port, c->pin);
 } __attribute__((always_inline))
 
-typedef struct { } gpout_state;
-typedef struct { w in; } gpout_input;
-typedef struct { uint32_t port, pin; } gpout_config;
-typedef void gpin_param;
+#define for_gpout_state(m)
+#define for_gpout_input(m) m(w, in)
+#define for_gpout_config(m) m(uint32_t, port) m(uint32_t, pin)
+#define for_gpout_param(m)
 DEF_PROC(gpout, s, c, p, i) {
     hw_gpio_write(c->port, c->pin, i->in);
 } __attribute__((always_inline))

@@ -38,8 +38,7 @@ struct proc {
     tag_u32_handle_fn handle;
     /* DSP tick method. */
     void (*tick)(struct inst *);
-    uint32_t nb_state;
-    const char *name;
+    const struct proc_meta *meta;
 };
 
 /* This is will be allocated in alloc.buf */
@@ -65,7 +64,7 @@ struct inst *node_to_inst(uint32_t node) {
 
 /* This is ridiculously indirect. */
 static inline uint32_t inst_in(struct inst *i, int in_nb) {
-    uint32_t nb_state = i->proc->nb_state;
+    uint32_t nb_state = i->proc->meta->state.nb_fields;
     uint32_t *in = (void*)i->state[nb_state + in_nb];
     return *in;
 }
@@ -128,7 +127,8 @@ int inst_map_ref(struct inst_map_ref *mr, uint32_t index, struct tag_u32_entry *
     mr->inst_name[0] = 'i';
     mr->inst_name[1] = index + '0';
     mr->inst_name[2] = 0;
-    const struct tag_u32_entry e = { .name = mr->inst_name, .type = i->proc->name };
+    const struct tag_u32_entry e = {
+        .name = mr->inst_name, .type = i->proc->meta->name };
     *entry = e;
     return 0;
 }
@@ -214,8 +214,11 @@ int handle_in_A0_inst(struct tag_u32 *req) {
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }
+DEF_PROC_META(gpin);
 const struct proc in_A0 = {
-    .tick = tick_in_A0, .handle = handle_in_A0_inst, .nb_state = 1, .name = "in_A0"
+    .tick = tick_in_A0,
+    .handle = handle_in_A0_inst,
+    .meta = &gpin_meta,
 };
 int apply_in_A0(struct tag_u32 *req) {
     return apply(req, &in_A0, 1, 0, NULL);
@@ -229,6 +232,7 @@ int handle_in_A0_class(struct tag_u32 *req) {
 
 /* proc: edge */
 
+DEF_PROC_META(edge);
 
 void tick_edge(struct inst *i) {
     infof("edge\n");
@@ -241,7 +245,9 @@ int handle_edge_inst(struct tag_u32 *req) {
     return HANDLE_TAG_U32_MAP(req, map);
 }
 const struct proc edge = {
-    .tick = tick_edge, .handle = handle_edge_inst, .nb_state = 1, .name = "edge"
+    .tick = tick_edge,
+    .handle = handle_edge_inst,
+    .meta = &edge_meta,
 };
 int apply_edge(struct tag_u32 *req) {
     return apply(req, &edge, 1, 1, req->args);
@@ -266,8 +272,11 @@ int handle_acc_inst(struct tag_u32 *req) {
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }
+DEF_PROC_META(acc);
 const struct proc acc = {
-    .tick = tick_acc, .handle = handle_acc_inst, .nb_state = 1, .name = "acc"
+    .tick = tick_acc,
+    .handle = handle_acc_inst,
+    .meta = &acc_meta,
 };
 int apply_acc(struct tag_u32 *req) {
     return apply(req, &acc, 1, 1, req->args);

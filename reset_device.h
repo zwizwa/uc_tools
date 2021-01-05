@@ -24,5 +24,7 @@ static inline void reset_device(void) {
     // continue.
 }
 
+
+
 #endif
 
