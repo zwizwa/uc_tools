@@ -198,6 +198,8 @@ int handle_param(struct tag_u32 *req) {
     return HANDLE_TAG_U32_MAP(req, map);
 }
 
+/* FIXME: almost everything can be handled from the metastruct, except
+ * for tick which instantiates consts. */
 
 /* proc: in_A0 */
 
@@ -320,11 +322,63 @@ int handle_class(struct tag_u32 *req) {
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }
+
+const struct proc *proc[] = {&in_A0, &edge, &acc};
+
+int handle_apply(struct tag_u32 *req) {
+    uint32_t index = req->args[-1];
+    const struct proc *p = proc[index];
+    return apply(req, p,
+                 p->meta->state.nb_fields,
+                 p->meta->input.nb_fields,
+                 req->args);
+}
+
+
+int handle_class_ops(struct tag_u32 *req) {
+    const struct tag_u32_entry map[] = {
+        {"apply", t_cmd, -1, handle_apply}
+    };
+    return HANDLE_TAG_U32_MAP(req, map);
+}
+
+struct class_map_ref {
+};
+int class_map_ref(struct class_map_ref *mr,
+                  uint32_t index, struct tag_u32_entry *entry) {
+    if (index >= ARRAY_SIZE(proc)) return -1;
+    const struct proc *p = proc[index];
+    const struct tag_u32_entry e = {
+        .name = p->meta->name, .type = t_map, .handle = handle_class_ops
+    };
+    *entry = e;
+    return 0;
+}
+int handle_class_dir(struct tag_u32 *req) {
+    if (req->nb_args < 1) {
+        infof("bpmodular: handle_class_dir: missing arg\n");
+        return -1;
+    }
+    if (req->args[0] == TAG_U32_CTRL) {
+        /* Dynamically generated instance map. */
+        struct class_map_ref mr = {};
+        return handle_tag_u32_map_ref_meta(req, (map_ref_fn)class_map_ref, &mr);
+    }
+    else {
+        tag_u32_enter(req);
+        int rv = handle_class_ops(req);
+        tag_u32_leave(req);
+        return rv;
+    }
+}
+
+
 int handle_root(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
         {"patch", t_map, -1, handle_patch},
-        {"class", t_map, -1, handle_class},
+        {"class0", t_map, -1, handle_class},
         {"inst",  t_map, 0, handle_inst},
+        {"class", t_map, -1, handle_class_dir},
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }
