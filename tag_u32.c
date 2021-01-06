@@ -46,6 +46,24 @@ int tag_u32_dispatch(tag_u32_handle_fn handler,
    avoid having to create large arrays for dynamically generated
    maps. */
 
+static inline int tag_u32_do_map_ref(
+    map_ref_fn map_ref, uint32_t index,
+    struct tag_u32 *r, void *ctx,
+    struct tag_u32_entry *entry) {
+
+    /* Modify the path to reflect the path structure of the actual
+       directory that this is providing information about, i.e. hiding
+       the control command from map_ref. */
+    uint32_t cmd     = r->args[0];
+    uint32_t nb_args = r->nb_args;
+    r->args[0] = index;
+    r->nb_args = 1;
+    int rv = map_ref(r, ctx, entry);
+    r->args[0] = cmd;
+    r->nb_args = nb_args;
+    return rv;
+}
+
 
 int handle_tag_u32_map_ref_meta(struct tag_u32 *r,
                                 map_ref_fn map_ref, void *ctx) {
@@ -54,7 +72,7 @@ int handle_tag_u32_map_ref_meta(struct tag_u32 *r,
     /* Serve metadata. */
     TAG_U32_MATCH(r, TAG_U32_CTRL, m, cmd, id) {
         const char *str = NULL;
-        int rv = map_ref(r, ctx, m->id, &entry);
+        int rv = tag_u32_do_map_ref(map_ref, m->id, r, ctx, &entry);
         if (!rv) {
             switch(m->cmd) {
             case TAG_U32_CTRL_ID_NAME: str = entry.name; break;
@@ -74,7 +92,10 @@ int handle_tag_u32_map_ref_meta(struct tag_u32 *r,
             r->nb_args == 2 &&
             r->nb_bytes > 0) {
             int rv = -1;
-            for (uint32_t i=0; !(rv = map_ref(r, ctx, i, &entry)); i++) {
+            for (uint32_t i=0;
+                 !(rv = tag_u32_do_map_ref(
+                       map_ref, i, r, ctx, &entry));
+                 i++) {
                 if ((strlen(entry.name) == r->nb_bytes) &&
                     (!memcmp(entry.name, r->bytes, r->nb_bytes))) {
                     SEND_REPLY_TAG_U32(r, 0, i);
@@ -97,10 +118,10 @@ struct tag_u32_map_ref {
 };
 int tag_u32_map_ref(
     struct tag_u32 *r, void *ctx,
-    uint32_t index, struct tag_u32_entry *entry) {
+    struct tag_u32_entry *entry) {
 
     struct tag_u32_map_ref *mr = ctx;
-
+    uint32_t index = r->args[0];
     if (index >= mr->nb_entries) return -1;
     *entry = mr->map[index];
     return 0;

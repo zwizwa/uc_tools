@@ -24,12 +24,18 @@ typedef void (*tag_u32_reply_fn)(const struct tag_u32 *, const struct tag_u32 *)
 
 struct tag_u32 {
     void *context;
+
     /* Reply address for RPC calls. */
     const uint32_t* from;  uint32_t nb_from;
-    /* Destination address + tags.  Can also contain data. */
-    const uint32_t* args;  uint32_t nb_args;
+
+    /* Destination address + tags.  Can also contain data.  Note that
+       this one is not const: it is allowed to modify the path
+       in-place, i.e. treating it as a stack. */
+    uint32_t* args;  uint32_t nb_args;
+
     /* Opaque payload, described by tags. */
     const uint8_t*  bytes; uint32_t nb_bytes;
+
     /* Reply sender.  This is for abstract RPC. */
     tag_u32_reply_fn reply;
 };
@@ -111,6 +117,15 @@ void send_reply_tag_u32(const struct tag_u32 *, const struct tag_u32 *);
 #define TAG_U32_MATCH_0(_req, _tag)                             \
     if (((_req)->nb_args >= 1) && ((_req)->args[0] == _tag))
 
+/* Similar, but do not match, just destructure the array into a struct
+   at offset.  Guards need to come before this.  This is so
+   convenient...  If there is anything you take home, it should be
+   this one! */
+#define TAG_U32_UNPACK(_req, _offset, _m, ...)                  \
+    for(const struct { uint32_t __VA_ARGS__; } *_m =            \
+            (const void*)(&(_req)->args[_offset]); _m; _m=0)
+
+
 #define TAG_U32_SHIFT(r,n) \
     { .args = (r)->args+(n), .nb_args = (r)->nb_args-(n) }
 
@@ -144,11 +159,14 @@ struct tag_u32_entry {
     tag_u32_handle_fn handle;
 };
 
-int handle_tag_u32_map(struct tag_u32 *r, const struct tag_u32_entry *map, uint32_t nb_entries);
+int handle_tag_u32_map(struct tag_u32 *r,
+                       const struct tag_u32_entry *map, uint32_t nb_entries);
 
 /* Abstract map access. */
-typedef int (*map_ref_fn)(struct tag_u32 *r, void *, uint32_t index, struct tag_u32_entry *entry);
-int handle_tag_u32_map_ref_meta(struct tag_u32 *r, map_ref_fn map_ref, void *ctx);
+typedef int (*map_ref_fn)(struct tag_u32 *r, void *,
+                          struct tag_u32_entry *entry);
+int handle_tag_u32_map_ref_meta(struct tag_u32 *r,
+                                map_ref_fn map_ref, void *ctx);
 
 #define HANDLE_TAG_U32_MAP(r, map) \
     handle_tag_u32_map(r, map, ARRAY_SIZE(map))

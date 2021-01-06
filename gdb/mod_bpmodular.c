@@ -158,73 +158,76 @@ int map_dynamic(struct tag_u32 *req,
      also do not have to use pre-defined numeric identifiers.  A
      symbolic API can be used instead.
 */
+
+/* Note that m->node and m->param_nb are only guarded upstream for
+   directory access.  Anything else gets passed down here, where we
+   need to do final validation. */
+
 int handle_param_get(struct tag_u32 *req) {
-    uint32_t node     = req->args[-4];
-    uint32_t param_struct = req->args[-3]; // PARAM/STATE
-    uint32_t param_nb = req->args[-2];
-    struct inst *i    = node_to_inst(node);
-    infof("node=%d, p/s=%d, nb=%d\n",
-          node, param_struct, param_nb);
-    if (PARAM == param_struct &&
-        (param_nb < i->proc->meta->param.nb_fields)) {
-        // FIXME: params are currently not stored!
-        return reply_1(req, 0);
-    }
-    if (STATE == param_struct &&
-        (param_nb < i->proc->meta->state.nb_fields)) {
-        return reply_1(req, i->state[param_nb]);
+    TAG_U32_UNPACK(req, -4, m, node, kind, param_nb, cmd) {
+        struct inst *i = node_to_inst(m->node);
+        infof("node=%d, kind=%d, nb=%d\n",
+              m->node, m->kind, m->param_nb);
+        if (PARAM == m->kind &&
+            (m->param_nb < i->proc->meta->param.nb_fields)) {
+            // FIXME: params are currently not stored!
+            return reply_1(req, 0);
+        }
+        if (STATE == m->kind &&
+            (m->param_nb < i->proc->meta->state.nb_fields)) {
+            return reply_1(req, i->state[m->param_nb]);
+        }
     }
     return -1;
 }
+
 int handle_param_set(struct tag_u32 *req) {
-    uint32_t node         = req->args[-4];
-    uint32_t param_struct = req->args[-3]; // PARAM/STATE
-    uint32_t param_nb     = req->args[-2];
-    // [-1] cmd
-    uint32_t val          = req->args[0];
-    struct inst *i        = node_to_inst(node);
-    infof("node=%d, p/s=%d, nb=%d, val=%d\n",
-          node, param_struct, param_nb, val);
-    if (PARAM == param_struct &&
-        (param_nb < i->proc->meta->param.nb_fields)) {
-        // FIXME: params are currently not stored!
-        return reply_1(req, 0);
-    }
-    if (STATE == param_struct &&
-        (param_nb < i->proc->meta->state.nb_fields)) {
-        i->state[param_nb] = val;
-        return reply_1(req, 0);
+    TAG_U32_UNPACK(req, -4, m, node, kind, param_nb, cmd, val) {
+        struct inst *i = node_to_inst(m->node);
+        if (!i) return -1; // (1)
+        infof("node=%d, kind=%d, nb=%d, val=%d\n",
+              m->node, m->kind, m->param_nb, m->val);
+        if (PARAM == m->kind &&
+            (m->param_nb < i->proc->meta->param.nb_fields)) { // (1)
+            // FIXME: params are currently not stored!
+            return reply_1(req, 0);
+        }
+        if (STATE == m->kind &&
+            (m->param_nb < i->proc->meta->state.nb_fields)) { // (1)
+            i->state[m->param_nb] = m->val;
+            return reply_1(req, 0);
+        }
     }
     return -1;
 }
 int handle_param(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
         {"get", t_cmd,0,handle_param_get},
-        {"set", t_cmd,0,handle_param_set},
+        {"set", t_cmd,1,handle_param_set},
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }
 
 int map_param_entry(struct tag_u32 *req, void *ctx,
-                    uint32_t index, struct tag_u32_entry *entry) {
-    if (index > 10) return -1;
-    uint32_t node         = req->args[-2];
-    uint32_t param_struct = req->args[-1]; // PARAM/STATE
-    struct inst *i = node_to_inst(node);
-    if (!i) return -1;
-    const struct metastruct_struct *m = NULL;
-    switch(param_struct) {
-    case PARAM: m = &i->proc->meta->param; break;
-    case STATE: m = &i->proc->meta->state; break;
-    default: return -1;
+                    struct tag_u32_entry *entry) {
+    TAG_U32_UNPACK(req, -2, m, node, kind, param_nb) {
+        struct inst *i = node_to_inst(m->node);
+        if (!i) return -1;
+        const struct metastruct_struct *ms = NULL;
+        switch(m->kind) {
+        case PARAM: ms = &i->proc->meta->param; break;
+        case STATE: ms = &i->proc->meta->state; break;
+        default: return -1;
+        }
+        if (m->param_nb >= ms->nb_fields) return -1;
+        const struct tag_u32_entry e = {
+            .name = ms->fields[m->param_nb].name,
+            .type = t_map,
+        };
+        *entry = e;
+        return 0;
     }
-    if (index >= m->nb_fields) return -1;
-    const struct tag_u32_entry e = {
-        .name = m->fields[index].name,
-        .type = t_map,
-    };
-    *entry = e;
-    return 0;
+    return -1;
 }
 int map_param(struct tag_u32 *req) {
     return map_dynamic(req, handle_param, map_param_entry, NULL);
@@ -246,8 +249,9 @@ struct map_inst_entry {
     char inst_name[8];
 };
 int map_inst_entry(struct tag_u32 *r, void *ctx,
-                 uint32_t index, struct tag_u32_entry *entry) {
+                   struct tag_u32_entry *entry) {
     struct map_inst_entry *tmp = ctx;
+    uint32_t index = r->args[0];
     struct inst *i = node_to_inst(index);
     if (!i) return -1;
     // There is no sprintf... fix this.
