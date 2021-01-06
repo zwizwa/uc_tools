@@ -119,19 +119,41 @@ static inline void is31fl3738_page(struct is31fl3738 *s, uint8_t page) {
 static void is31fl3738_init(struct is31fl3738 *s) {
     is31fl3738_page(s, IS31FL3738_CMD_LEDCTL);
     if(s->status) goto error;
+        // Each LED has 4 bits on and off state
+#if 0 // original code
     IS31FL3738_WRITE(
         s, 0x00,
         0xff, 0x03, 0xff, 0x03,   /* SW1 */
         0xff, 0x03, 0xff, 0x03,   /* SW2 */
         0xff, 0x03, 0xff, 0x03,   /* SW3 */
         0xff, 0x03, 0xff, 0x03,   /* SW4 */
-        0xff, 0x03, 0xff, 0x03);  /* SW5 */
+        0xff, 0x03, 0xff, 0x03    /* SW5 */
+        );
+    IS31FL3738_WRITE(
+        s, 0x00,
+        0x01, 0xFF);              /* normal operation, set GCC to 0xFF */
     is31fl3738_page(s, IS31FL3738_CMD_FUNC);
     if(s->status) goto error;
     IS31FL3738_WRITE(
         s, 0x00,
-        0x01, 0x80);             /* normal operation, set GCC to 128 */
+        0x01, 0x80);              /* normal operation, set GCC to 0xFF */
     if(s->status) goto error;
+#else // uvc
+    IS31FL3738_WRITE(
+        s, 0x00,
+        0xff, 0xff, 0xff, 0xff,   /* SW1 */
+        0xff, 0xff, 0xff, 0xff,   /* SW2 */
+        0xff, 0xff, 0xff, 0xff,   /* SW3 */
+        0x00, 0x00, 0x00, 0x00,   /* SW4 */
+        0x00, 0x00, 0x00, 0x00    /* SW5 */
+        );
+    is31fl3738_page(s, IS31FL3738_CMD_FUNC);
+    if(s->status) goto error;
+    IS31FL3738_WRITE(
+        s, 0x00,
+        0x01, 0xFF);              /* normal operation, set GCC to 0xFF */
+    if(s->status) goto error;
+#endif
     is31fl3738_page(
         s, IS31FL3738_CMD_PWM);   /* switch to PWM page access */
     if(s->status) goto error;
