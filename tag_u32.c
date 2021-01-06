@@ -1,6 +1,12 @@
 #include "tag_u32.h"
 #include "infof.h"
 
+int tag_u32_reply_bad_map_ref(struct tag_u32 *req) {
+    send_reply_tag_u32_status_cstring(req, 1, "bad_map_ref");
+    return 0;
+}
+
+
 /* This allcates temp buffers for the decoded tags. It is assumed all
    temp buffers fit on the stack. */
 int tag_u32_dispatch(tag_u32_handle_fn handler,
@@ -83,7 +89,7 @@ int handle_tag_u32_map_ref_meta(struct tag_u32 *r,
             send_reply_tag_u32_status_cstring(r, 0, str);
         }
         else {
-            SEND_REPLY_TAG_U32(r, -1);
+            SEND_REPLY_TAG_U32(r, 1);
         }
         return 0;
     }
@@ -102,12 +108,12 @@ int handle_tag_u32_map_ref_meta(struct tag_u32 *r,
                     return 0;
                 }
             }
-            SEND_REPLY_TAG_U32(r, -1);
+            SEND_REPLY_TAG_U32(r, 1);
             return 0;
         }
     }
-    LOG("handle_tag_u32_map: bad command %d\n", r->args[0]);
-    return -1;
+    send_reply_tag_u32_status_cstring(r, 1, "bad_comand");
+    return 0;
 }
 
 

@@ -131,6 +131,9 @@ int map_dynamic(struct tag_u32 *req,
         return handle_tag_u32_map_ref_meta(req, fn, ctx);
     }
     else {
+        /* Note that unlike metadata, the direct index path does not
+           check for invalid dynamic indices.  Those need to be
+           checked in the leaf handlers. */
         tag_u32_enter(req);
         int rv = sub(req);
         tag_u32_leave(req);
@@ -138,6 +141,11 @@ int map_dynamic(struct tag_u32 *req,
     }
 }
 
+int reply_bad_ref(struct tag_u32 *req) {
+    infof("bpmodular: bad_ref\n");
+    send_reply_tag_u32_status_cstring(req, 1, "bad_ref");
+    return 0;
+}
 
 #define PARAM 0
 #define STATE 1
@@ -161,11 +169,17 @@ int map_dynamic(struct tag_u32 *req,
 
 /* Note that m->node and m->param_nb are only guarded upstream for
    directory access.  Anything else gets passed down here, where we
-   need to do final validation. */
+   need to do final validation.
+
+   De map_ref metadata methods should return -1 for a bad reference:
+   that is not an error.  However for direct path access, a bad
+   reference is an error, and for that a generic handler reply_bad_ref() is
+   used. */
 
 int handle_param_get(struct tag_u32 *req) {
     TAG_U32_UNPACK(req, -4, m, node, kind, param_nb, cmd) {
         struct inst *i = node_to_inst(m->node);
+        if (!i) return reply_bad_ref(req);
         infof("node=%d, kind=%d, nb=%d\n",
               m->node, m->kind, m->param_nb);
         if (PARAM == m->kind &&
@@ -178,27 +192,27 @@ int handle_param_get(struct tag_u32 *req) {
             return reply_1(req, i->state[m->param_nb]);
         }
     }
-    return -1;
+    return reply_bad_ref(req);
 }
 
 int handle_param_set(struct tag_u32 *req) {
     TAG_U32_UNPACK(req, -4, m, node, kind, param_nb, cmd, val) {
         struct inst *i = node_to_inst(m->node);
-        if (!i) return -1; // (1)
+        if (!i) return reply_bad_ref(req);
         infof("node=%d, kind=%d, nb=%d, val=%d\n",
               m->node, m->kind, m->param_nb, m->val);
         if (PARAM == m->kind &&
-            (m->param_nb < i->proc->meta->param.nb_fields)) { // (1)
+            (m->param_nb < i->proc->meta->param.nb_fields)) {
             // FIXME: params are currently not stored!
             return reply_1(req, 0);
         }
         if (STATE == m->kind &&
-            (m->param_nb < i->proc->meta->state.nb_fields)) { // (1)
+            (m->param_nb < i->proc->meta->state.nb_fields)) {
             i->state[m->param_nb] = m->val;
             return reply_1(req, 0);
         }
     }
-    return -1;
+    return reply_bad_ref(req);
 }
 int handle_param(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
@@ -319,7 +333,8 @@ int handle_class_ops(struct tag_u32 *req) {
 
 /* class map */
 int map_class_entry(struct tag_u32 *r, void *_mr,
-                    uint32_t index, struct tag_u32_entry *entry) {
+                    struct tag_u32_entry *entry) {
+    uint32_t index = r->args[0];
     if (index >= ARRAY_SIZE(proc)) return -1;
     const struct proc *p = proc[index];
     const struct tag_u32_entry e = {
