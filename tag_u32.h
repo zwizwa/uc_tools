@@ -140,14 +140,14 @@ static inline void tag_u32_leave(struct tag_u32 *r) { tag_u32_shift(r, -1); }
 struct tag_u32_entry {
     const char *name;
     const char *type;
-    int nb_args; // negative is unspecified
+    uint32_t nb_args; // minimal nb args for substructure
     tag_u32_handle_fn handle;
 };
 
 int handle_tag_u32_map(struct tag_u32 *r, const struct tag_u32_entry *map, uint32_t nb_entries);
 
 /* Abstract map access. */
-typedef int (*map_ref_fn)(void *, uint32_t index, struct tag_u32_entry *entry);
+typedef int (*map_ref_fn)(struct tag_u32 *r, void *, uint32_t index, struct tag_u32_entry *entry);
 int handle_tag_u32_map_ref_meta(struct tag_u32 *r, map_ref_fn map_ref, void *ctx);
 
 #define HANDLE_TAG_U32_MAP(r, map) \

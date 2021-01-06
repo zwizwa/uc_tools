@@ -34,8 +34,6 @@ typedef void (*tick_fn)(uint32_t *);
 /* Processor metadata. */
 struct inst;
 struct proc {
-    /* For access to inst over RPC, e.g. parameter get/set, dump */
-    tag_u32_handle_fn handle;
     /* DSP tick method. */
     void (*tick)(struct inst *);
     const struct proc_meta *meta;
@@ -112,53 +110,37 @@ int apply(struct tag_u32 *req,
     return reply_1(req, node);
 }
 
-
-/* Aside from being used as dataflow identifiers, the node references
-   can also be used to access arbitrary RPC functionality,
-   e.g. parameter data. */
-
-struct inst_map_ref {
-    char inst_name[8];
-};
-int inst_map_ref(struct inst_map_ref *mr, uint32_t index, struct tag_u32_entry *entry) {
-    struct inst *i = node_to_inst(index);
-    if (!i) return -1;
-    // There is no sprintf... fix this.
-    mr->inst_name[0] = 'i';
-    mr->inst_name[1] = index + '0';
-    mr->inst_name[2] = 0;
-    const struct tag_u32_entry e = {
-        .name = mr->inst_name, .type = i->proc->meta->name };
-    *entry = e;
-    return 0;
+static inline uint32_t **inputs(struct inst *i) {
+    const struct proc_meta *m = i->proc->meta;
+    return (uint32_t**)&i->state[m->state.nb_fields];
 }
 
-/* 0:node 1:param 2:cmd 3... */
-int handle_inst(struct tag_u32 *req) {
+
+/* Dynamic directory with identical substructure, i.e. a dynamic list
+   of objects that all behave the same.  Not that in many cases, the
+   path contains all the context information that is necessary. */
+int map_dynamic(struct tag_u32 *req,
+                tag_u32_handle_fn sub,
+                map_ref_fn fn, void *ctx) {
     if (req->nb_args < 1) {
-        infof("bpmodular: handle_inst: missing arg\n");
+        infof("bpmodular: map_generic: missing arg\n");
         return -1;
     }
     if (req->args[0] == TAG_U32_CTRL) {
         /* Dynamically generated instance map. */
-        struct inst_map_ref mr = {};
-        return handle_tag_u32_map_ref_meta(req, (map_ref_fn)inst_map_ref, &mr);
+        return handle_tag_u32_map_ref_meta(req, fn, ctx);
     }
-    uint32_t node = req->args[0];
-    struct inst *inst = node_to_inst(node);
-    if (!inst) {
-        infof("bpmodular: bad node %d\n", node);
-        return -1;
+    else {
+        tag_u32_enter(req);
+        int rv = sub(req);
+        tag_u32_leave(req);
+        return rv;
     }
-    /* FIXME: Check parameter number as a guard for deeper behavior. */
-    /* FIXME: Implement the map api. */
-
-    /* Enter, so the param directory is cwd. */
-    tag_u32_enter(req);
-    int rv = inst->proc->handle(req);
-    tag_u32_leave(req);
-    return rv;
 }
+
+
+#define PARAM 0
+#define STATE 1
 
 /* Generic handlers.  Some notes:
 
@@ -167,7 +149,7 @@ int handle_inst(struct tag_u32 *req) {
      i.e. indexing args with negative numbers.
 
    - Parameter validation can be done up the stream.  E.g. we know
-     that the param handlers all go through handle_inst(), which
+     that the param handlers all go through map_inst(), which
      verifies the inst, so we can assume here that inst is correct.
 
    - It seems much better to explictly define methods with a map
@@ -177,18 +159,43 @@ int handle_inst(struct tag_u32 *req) {
      symbolic API can be used instead.
 */
 int handle_param_get(struct tag_u32 *req) {
-    uint32_t node     = req->args[-3];
+    uint32_t node     = req->args[-4];
+    uint32_t param_struct = req->args[-3]; // PARAM/STATE
     uint32_t param_nb = req->args[-2];
     struct inst *i    = node_to_inst(node);
-    return reply_1(req, i->state[param_nb]);
+    infof("node=%d, p/s=%d, nb=%d\n",
+          node, param_struct, param_nb);
+    if (PARAM == param_struct &&
+        (param_nb < i->proc->meta->param.nb_fields)) {
+        // FIXME: params are currently not stored!
+        return reply_1(req, 0);
+    }
+    if (STATE == param_struct &&
+        (param_nb < i->proc->meta->state.nb_fields)) {
+        return reply_1(req, i->state[param_nb]);
+    }
+    return -1;
 }
 int handle_param_set(struct tag_u32 *req) {
-    uint32_t node     = req->args[-3];
-    uint32_t param_nb = req->args[-2];
-    uint32_t val      = req->args[0];
-    struct inst *i    = node_to_inst(node);
-    i->state[param_nb] = val;
-    return reply_1(req, 0);
+    uint32_t node         = req->args[-4];
+    uint32_t param_struct = req->args[-3]; // PARAM/STATE
+    uint32_t param_nb     = req->args[-2];
+    // [-1] cmd
+    uint32_t val          = req->args[0];
+    struct inst *i        = node_to_inst(node);
+    infof("node=%d, p/s=%d, nb=%d, val=%d\n",
+          node, param_struct, param_nb, val);
+    if (PARAM == param_struct &&
+        (param_nb < i->proc->meta->param.nb_fields)) {
+        // FIXME: params are currently not stored!
+        return reply_1(req, 0);
+    }
+    if (STATE == param_struct &&
+        (param_nb < i->proc->meta->state.nb_fields)) {
+        i->state[param_nb] = val;
+        return reply_1(req, 0);
+    }
+    return -1;
 }
 int handle_param(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
@@ -198,97 +205,71 @@ int handle_param(struct tag_u32 *req) {
     return HANDLE_TAG_U32_MAP(req, map);
 }
 
-/* FIXME: almost everything can be handled from the metastruct, except
- * for tick which instantiates consts. */
-
-/* proc: in_A0 */
-
-/* Going to side-step parameterization for now and specialize
-   everything.  Focus on dataflow inputs. */
-void tick_in_A0(struct inst *i) {
-    infof("in_A0\n");
-    const gpin_config c = { .port = GPIOA, .pin = 0 };
-    gpin_update((gpin_state *)i->state, &c, NULL, NULL);
+int map_param_entry(struct tag_u32 *req, void *ctx,
+                    uint32_t index, struct tag_u32_entry *entry) {
+    if (index > 10) return -1;
+    uint32_t node         = req->args[-2];
+    uint32_t param_struct = req->args[-1]; // PARAM/STATE
+    struct inst *i = node_to_inst(node);
+    if (!i) return -1;
+    const struct metastruct_struct *m = NULL;
+    switch(param_struct) {
+    case PARAM: m = &i->proc->meta->param; break;
+    case STATE: m = &i->proc->meta->state; break;
+    default: return -1;
+    }
+    if (index >= m->nb_fields) return -1;
+    const struct tag_u32_entry e = {
+        .name = m->fields[index].name,
+        .type = t_map,
+    };
+    *entry = e;
+    return 0;
 }
-int handle_in_A0_inst(struct tag_u32 *req) {
+int map_param(struct tag_u32 *req) {
+    return map_dynamic(req, handle_param, map_param_entry, NULL);
+}
+
+int map_inst_ops(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
-        {"level",t_map,1,handle_param},
+        [PARAM] = {"param", t_map, 0, map_param},
+        [STATE] = {"state", t_map, 0, map_param},
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }
-DEF_PROC_META(gpin);
-const struct proc in_A0 = {
-    .tick = tick_in_A0,
-    .handle = handle_in_A0_inst,
-    .meta = &gpin_meta,
+
+/* Aside from being used as dataflow identifiers, the node references
+   can also be used to access arbitrary RPC functionality,
+   e.g. parameter data. */
+
+struct map_inst_entry {
+    char inst_name[8];
 };
-int apply_in_A0(struct tag_u32 *req) {
-    return apply(req, &in_A0, 1, 0, NULL);
-}
-int handle_in_A0_class(struct tag_u32 *req) {
-    const struct tag_u32_entry map[] = {
-        {"apply",t_cmd,0,apply_in_A0},
+int map_inst_entry(struct tag_u32 *r, void *ctx,
+                 uint32_t index, struct tag_u32_entry *entry) {
+    struct map_inst_entry *tmp = ctx;
+    struct inst *i = node_to_inst(index);
+    if (!i) return -1;
+    // There is no sprintf... fix this.
+    tmp->inst_name[0] = 'i';
+    tmp->inst_name[1] = index + '0';
+    tmp->inst_name[2] = 0;
+    const struct tag_u32_entry e = {
+        .name = tmp->inst_name,
+        .type = t_map
     };
-    return HANDLE_TAG_U32_MAP(req, map);
+    *entry = e;
+    return 0;
+}
+int map_inst(struct tag_u32 *req) {
+    struct map_inst_entry tmp = {};
+    return map_dynamic(req, map_inst_ops, map_inst_entry, &tmp);
 }
 
-/* proc: edge */
 
-DEF_PROC_META(edge);
+#include "mod_bpmodular_procs.c"
 
-void tick_edge(struct inst *i) {
-    infof("edge\n");
-    edge_input in = { .in = inst_in(i, 0) };
-    edge_update((edge_state *)i->state, NULL, NULL, &in);
-}
-int handle_edge_inst(struct tag_u32 *req) {
-    const struct tag_u32_entry map[] = {
-    };
-    return HANDLE_TAG_U32_MAP(req, map);
-}
-const struct proc edge = {
-    .tick = tick_edge,
-    .handle = handle_edge_inst,
-    .meta = &edge_meta,
-};
-int apply_edge(struct tag_u32 *req) {
-    return apply(req, &edge, 1, 1, req->args);
-}
-int handle_edge_class(struct tag_u32 *req) {
-    const struct tag_u32_entry map[] = {
-        {"apply",t_cmd,0,apply_edge},
-    };
-    return HANDLE_TAG_U32_MAP(req, map);
-}
 
-/* proc: acc */
-
-void tick_acc(struct inst *i) {
-    infof("acc\n");
-    acc_input in = { .in = inst_in(i, 0) };
-    acc_update((acc_state *)i->state, NULL, NULL, &in);
-}
-int handle_acc_inst(struct tag_u32 *req) {
-    const struct tag_u32_entry map[] = {
-        {"count",t_map,1,handle_param},
-    };
-    return HANDLE_TAG_U32_MAP(req, map);
-}
-DEF_PROC_META(acc);
-const struct proc acc = {
-    .tick = tick_acc,
-    .handle = handle_acc_inst,
-    .meta = &acc_meta,
-};
-int apply_acc(struct tag_u32 *req) {
-    return apply(req, &acc, 1, 1, req->args);
-}
-int handle_acc_class(struct tag_u32 *req) {
-    const struct tag_u32_entry map[] = {
-        {"apply",t_cmd,0,apply_acc},
-    };
-    return HANDLE_TAG_U32_MAP(req, map);
-}
 
 
 
@@ -306,25 +287,17 @@ int handle_tick(struct tag_u32 *req) {
     SEND_REPLY_TAG_U32(req, 0);
     return 0;
 }
-
-int handle_patch(struct tag_u32 *req) {
+int map_patch(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
         {"reset", t_cmd, 0, handle_reset},
         {"tick",  t_cmd, 0, handle_tick},
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }
-int handle_class(struct tag_u32 *req) {
-    const struct tag_u32_entry map[] = {
-        {"in_A0", t_map, 0, handle_in_A0_class},
-        {"edge",  t_map, 0, handle_edge_class},
-        {"acc",   t_map, 0, handle_acc_class},
-    };
-    return HANDLE_TAG_U32_MAP(req, map);
-}
 
-const struct proc *proc[] = {&in_A0, &edge, &acc};
 
+
+/* class ops map + handlers. */
 int handle_apply(struct tag_u32 *req) {
     uint32_t index = req->args[-1];
     const struct proc *p = proc[index];
@@ -333,59 +306,43 @@ int handle_apply(struct tag_u32 *req) {
                  p->meta->input.nb_fields,
                  req->args);
 }
-
-
 int handle_class_ops(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
-        {"apply", t_cmd, -1, handle_apply}
+        {"apply", t_cmd, 0, handle_apply}
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }
 
-struct class_map_ref {
-};
-int class_map_ref(struct class_map_ref *mr,
-                  uint32_t index, struct tag_u32_entry *entry) {
+/* class map */
+int map_class_entry(struct tag_u32 *r, void *_mr,
+                    uint32_t index, struct tag_u32_entry *entry) {
     if (index >= ARRAY_SIZE(proc)) return -1;
     const struct proc *p = proc[index];
     const struct tag_u32_entry e = {
-        .name = p->meta->name, .type = t_map, .handle = handle_class_ops
+        .name = p->meta->name,
+        .type = t_map,
+        .handle = handle_class_ops
     };
     *entry = e;
     return 0;
 }
-int handle_class_dir(struct tag_u32 *req) {
-    if (req->nb_args < 1) {
-        infof("bpmodular: handle_class_dir: missing arg\n");
-        return -1;
-    }
-    if (req->args[0] == TAG_U32_CTRL) {
-        /* Dynamically generated instance map. */
-        struct class_map_ref mr = {};
-        return handle_tag_u32_map_ref_meta(req, (map_ref_fn)class_map_ref, &mr);
-    }
-    else {
-        tag_u32_enter(req);
-        int rv = handle_class_ops(req);
-        tag_u32_leave(req);
-        return rv;
-    }
+int map_class(struct tag_u32 *req) {
+    return map_dynamic(req, handle_class_ops, map_class_entry, NULL);
 }
 
-
-int handle_root(struct tag_u32 *req) {
+/* root map */
+int map_root(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
-        {"patch", t_map, -1, handle_patch},
-        {"class0", t_map, -1, handle_class},
-        {"inst",  t_map, 0, handle_inst},
-        {"class", t_map, -1, handle_class_dir},
+        {"patch", t_map, 0, map_patch},
+        {"inst",  t_map, 0, map_inst},
+        {"class", t_map, 0, map_class},
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }
 
 /* Protocol handler entry point. */
 int handle_tag_u32(struct tag_u32 *req) {
-    return handle_root(req);
+    return map_root(req);
 }
 
 #endif

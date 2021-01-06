@@ -54,7 +54,7 @@ int handle_tag_u32_map_ref_meta(struct tag_u32 *r,
     /* Serve metadata. */
     TAG_U32_MATCH(r, TAG_U32_CTRL, m, cmd, id) {
         const char *str = NULL;
-        int rv = map_ref(ctx, m->id, &entry);
+        int rv = map_ref(r, ctx, m->id, &entry);
         if (!rv) {
             switch(m->cmd) {
             case TAG_U32_CTRL_ID_NAME: str = entry.name; break;
@@ -74,7 +74,7 @@ int handle_tag_u32_map_ref_meta(struct tag_u32 *r,
             r->nb_args == 2 &&
             r->nb_bytes > 0) {
             int rv = -1;
-            for (uint32_t i=0; !(rv = map_ref(ctx, i, &entry)); i++) {
+            for (uint32_t i=0; !(rv = map_ref(r, ctx, i, &entry)); i++) {
                 if ((strlen(entry.name) == r->nb_bytes) &&
                     (!memcmp(entry.name, r->bytes, r->nb_bytes))) {
                     SEND_REPLY_TAG_U32(r, 0, i);
@@ -95,7 +95,12 @@ struct tag_u32_map_ref {
     const struct tag_u32_entry *map;
     uint32_t nb_entries;
 };
-int tag_u32_map_ref(struct tag_u32_map_ref *mr, uint32_t index, struct tag_u32_entry *entry) {
+int tag_u32_map_ref(
+    struct tag_u32 *r, void *ctx,
+    uint32_t index, struct tag_u32_entry *entry) {
+
+    struct tag_u32_map_ref *mr = ctx;
+
     if (index >= mr->nb_entries) return -1;
     *entry = mr->map[index];
     return 0;
@@ -104,7 +109,7 @@ int handle_tag_u32_map_meta(struct tag_u32 *r,
                             const struct tag_u32_entry *map,
                             uint32_t nb_entries) {
     struct tag_u32_map_ref mr = { .map = map, .nb_entries = nb_entries };
-    return handle_tag_u32_map_ref_meta(r, (map_ref_fn)tag_u32_map_ref, &mr);
+    return handle_tag_u32_map_ref_meta(r, tag_u32_map_ref, &mr);
 }
 
 int handle_tag_u32_map(struct tag_u32 *r,
@@ -118,7 +123,7 @@ int handle_tag_u32_map(struct tag_u32 *r,
     if (i < nb_entries) {
         tag_u32_enter(r);
         int rv = -1;
-        if ((map[i].nb_args < 0) || (r->nb_args >= map[i].nb_args)) {
+        if (r->nb_args >= map[i].nb_args) {
             rv = map[i].handle(r);
         }
         else {
