@@ -89,8 +89,8 @@ int apply(struct tag_u32 *req,
     uint32_t node = -1;
     struct inst *inst = (struct inst *)balloci_alloc(&alloc, nb_words, &node);
     if (!inst) {
-        infof("bpmodular: alloc failed\n");
-        return -1;
+        send_reply_tag_u32_status_cstring(req, 1, "alloc_fail");
+        return 0;
     }
     // Processor class info
     inst->proc = proc;
@@ -98,11 +98,12 @@ int apply(struct tag_u32 *req,
     memset(inst->state, 0, n_state * sizeof(uint32_t));
     // Input connect
     for (int i=0; i<n_in; i++) {
+        infof("input %d %d\n", i, in[i]);
         struct inst *in_inst = node_to_inst(in[i]);
         if (!in_inst) {
-            infof("bp_modular: bad input node %d %d\n", i, in[i]);
+            send_reply_tag_u32_status_cstring(req, 1, "bad_node");
             balloci_drop(&alloc);
-            return -1;
+            return 0;
         }
         inst->state[n_state + i] = (uint32_t)in_inst->state;
     }
@@ -155,10 +156,6 @@ int reply_bad_ref(struct tag_u32 *req) {
    - If we keep the directory structure uniform, some handlers can be
      implemented by grabbing context from the higher up directories,
      i.e. indexing args with negative numbers.
-
-   - Parameter validation can be done up the stream.  E.g. we know
-     that the param handlers all go through map_inst(), which
-     verifies the inst, so we can assume here that inst is correct.
 
    - It seems much better to explictly define methods with a map
      instead of handling them implicitly using MATCH clauses (see git
@@ -317,8 +314,11 @@ int map_patch(struct tag_u32 *req) {
 
 /* class ops map + handlers. */
 int handle_apply(struct tag_u32 *req) {
-    uint32_t index = req->args[-1];
+    uint32_t index = req->args[-2];
+    if (index >= ARRAY_SIZE(proc)) return reply_bad_ref(req);
     const struct proc *p = proc[index];
+    if (req->nb_args != p->meta->input.nb_fields) return reply_bad_ref(req);
+    infof("apply %s\n", p->meta->name);
     return apply(req, p,
                  p->meta->state.nb_fields,
                  p->meta->input.nb_fields,
