@@ -161,6 +161,11 @@ case "$TYPE" in
         # $OBJDUMP -d $ELF
         $OBJCOPY -O binary $ELF $BIN
         ;;
+    hex)
+        assert_vars ARCH ELF HEX
+        . $UC_TOOLS/gdb/env.$ARCH.sh
+        $OBJCOPY -O ihex $ELF $HEX
+        ;;
     fw)
         # Note that this has changed.  We map ELF to ELF, instead of
         # BIN to BIN.  It is more trouble than it's worth to keep

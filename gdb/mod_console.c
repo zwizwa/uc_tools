@@ -128,9 +128,20 @@ void forth_sub(void) {
 void forth_print(void) {
     infof("%x\n", command_stack_pop());
 }
+void forth_fetch(void) {
+    uint32_t* addr = (void*)command_stack_pop();
+    command_stack_push(*addr);
+}
+void forth_store(void) {
+    uint32_t* addr = (void*)command_stack_pop();
+    uint32_t val = command_stack_pop();
+    *addr = val;
+}
 COMMAND_REGISTER_NAMED("+", forth_add);
 COMMAND_REGISTER_NAMED("-", forth_sub);
 COMMAND_REGISTER_NAMED("p", forth_print);
+COMMAND_REGISTER_NAMED("@", forth_fetch);
+COMMAND_REGISTER_NAMED("!", forth_store);
 
 
 /* Don't use the name 'words' here.  Pick something that people expect. */
