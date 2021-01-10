@@ -43,7 +43,15 @@ int tag_u32_dispatch(tag_u32_handle_fn handler,
         .args = a, .nb_args = nb_a,
         .bytes = buf + offset_b, .nb_bytes = nb_b
     };
-    return handler(&s);
+    int rv = handler(&s);
+    if (rv && 1)  {
+        infof("tag_u32_dispatch rv=%d, path:", rv);
+        for(uint32_t i=0; i<nb_a; i++) {
+            infof(" %d",a[i]);
+        }
+        infof("\n");
+    }
+    return rv;
 }
 
 
@@ -79,13 +87,15 @@ int handle_tag_u32_map_ref_meta(struct tag_u32 *r,
     TAG_U32_MATCH(r, TAG_U32_CTRL, m, cmd, id) {
         const char *str = NULL;
         int rv = tag_u32_do_map_ref(map_ref, m->id, r, ctx, &entry);
+        /* !rv means the entry is valid.
+           Note that the string might still be NULL, for unnamed nodes. */
         if (!rv) {
             switch(m->cmd) {
             case TAG_U32_CTRL_ID_NAME: str = entry.name; break;
             case TAG_U32_CTRL_ID_TYPE: str = entry.type; break;
             }
         }
-        if (str) {
+        if (!rv) {
             send_reply_tag_u32_status_cstring(r, 0, str);
         }
         else {
@@ -161,5 +171,43 @@ int handle_tag_u32_map(struct tag_u32 *r,
         return rv;
     }
     return handle_tag_u32_map_meta(r, map, nb_entries);
+}
+
+/* Dynamic directory with identical substructure, i.e. a dynamic list
+   of objects that all behave the same.  Not that in many cases, the
+   path contains all the context information that is necessary and
+   upper paths can be used. */
+/* Still exploring this abstraction...
+   See mod_bpmodular.c and hy1.c for examples. */
+int handle_tag_u32_map_dynamic(struct tag_u32 *req,
+                tag_u32_handle_fn sub,
+                map_ref_fn fn, void *ctx) {
+    if (req->nb_args < 1) {
+        LOG("handle_tag_u32_map_dynamic: missing arg\n");
+        return -1;
+    }
+    if (req->args[0] == TAG_U32_CTRL) {
+        /* Dynamically generated instance map. */
+        return handle_tag_u32_map_ref_meta(req, fn, ctx);
+    }
+    else {
+        /* Note that unlike metadata, the direct index path does not
+           check for invalid dynamic indices.  Those need to be
+           checked in the leaf handlers. */
+        tag_u32_enter(req);
+        int rv = sub(req);
+        tag_u32_leave(req);
+        return rv;
+    }
+}
+
+void send_reply_tag_u32_status_cstring(
+    const struct tag_u32 *req, uint32_t status, const char *string) {
+    const struct tag_u32 s = {
+        .args = &status, .nb_args = 1,
+        .bytes = string ? (const uint8_t*)string : 0,
+        .nb_bytes = string ? strlen(string) : 0
+    };
+    send_reply_tag_u32_maybe(req, &s);
 }
 

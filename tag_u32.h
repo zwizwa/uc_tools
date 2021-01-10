@@ -18,6 +18,22 @@
    It doesn't seem appropriate to standardize that here.
 */
 
+/* This works really well.  Why?
+
+   I'm using it mostly in Erlang.  At the Erlang side, it provides a
+   way to map into a particular nested datastrcuture: a list of
+   symbols and numbers.  This is good enough to represent almost
+   everything, and it is very easy to write a small wrapper that
+   bridges some more complicated data structure into a linear path.
+   I.e. it captures hierarchical objects at the Erlang side well.
+
+   At the same time, it captures hierarchical object at the C side
+   also very well, in a way that symbol handling is easily abstracted,
+   and that pattern matching can also be implemented at the C side.
+*/
+
+
+
 struct tag_u32;
 typedef int (*tag_u32_handle_fn)(struct tag_u32 *);
 typedef void (*tag_u32_reply_fn)(const struct tag_u32 *, const struct tag_u32 *);
@@ -73,15 +89,8 @@ static inline void send_reply_tag_u32_maybe(
 #define SEND_TAG_U32(...) SEND_REPLY_TAG_U32(NULL, __VA_ARGS__)
 
 
-static inline void send_reply_tag_u32_status_cstring(
-    const struct tag_u32 *req, uint32_t status, const char *string) {
-    const struct tag_u32 s = {
-        .args = &status, .nb_args = 1,
-        .bytes = (const uint8_t*)string,
-        .nb_bytes = strlen(string)
-    };
-    send_reply_tag_u32_maybe(req, &s);
-}
+void send_reply_tag_u32_status_cstring(
+    const struct tag_u32 *req, uint32_t status, const char *string);
 
 
 
@@ -168,7 +177,16 @@ typedef int (*map_ref_fn)(struct tag_u32 *r, void *,
 int handle_tag_u32_map_ref_meta(struct tag_u32 *r,
                                 map_ref_fn map_ref, void *ctx);
 
+/* Abstraction around handle_tag_u32_map_ref_meta.  See code comments. */
+int handle_tag_u32_map_dynamic(struct tag_u32 *req,
+                tag_u32_handle_fn sub,
+                map_ref_fn fn, void *ctx);
+
+
 #define HANDLE_TAG_U32_MAP(r, map) \
     handle_tag_u32_map(r, map, ARRAY_SIZE(map))
+
+
+
 
 #endif

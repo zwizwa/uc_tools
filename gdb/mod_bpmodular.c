@@ -117,30 +117,6 @@ static inline uint32_t **inputs(struct inst *i) {
 }
 
 
-/* Dynamic directory with identical substructure, i.e. a dynamic list
-   of objects that all behave the same.  Not that in many cases, the
-   path contains all the context information that is necessary. */
-int map_dynamic(struct tag_u32 *req,
-                tag_u32_handle_fn sub,
-                map_ref_fn fn, void *ctx) {
-    if (req->nb_args < 1) {
-        infof("bpmodular: map_generic: missing arg\n");
-        return -1;
-    }
-    if (req->args[0] == TAG_U32_CTRL) {
-        /* Dynamically generated instance map. */
-        return handle_tag_u32_map_ref_meta(req, fn, ctx);
-    }
-    else {
-        /* Note that unlike metadata, the direct index path does not
-           check for invalid dynamic indices.  Those need to be
-           checked in the leaf handlers. */
-        tag_u32_enter(req);
-        int rv = sub(req);
-        tag_u32_leave(req);
-        return rv;
-    }
-}
 
 int reply_bad_ref(struct tag_u32 *req) {
     infof("bpmodular: bad_ref\n");
@@ -241,7 +217,7 @@ int map_param_entry(struct tag_u32 *req, void *ctx,
     return -1;
 }
 int map_param(struct tag_u32 *req) {
-    return map_dynamic(req, handle_param, map_param_entry, NULL);
+    return handle_tag_u32_map_dynamic(req, handle_param, map_param_entry, NULL);
 }
 
 int map_inst_ops(struct tag_u32 *req) {
@@ -278,7 +254,7 @@ int map_inst_entry(struct tag_u32 *r, void *ctx,
 }
 int map_inst(struct tag_u32 *req) {
     struct map_inst_entry tmp = {};
-    return map_dynamic(req, map_inst_ops, map_inst_entry, &tmp);
+    return handle_tag_u32_map_dynamic(req, map_inst_ops, map_inst_entry, &tmp);
 }
 
 
@@ -346,7 +322,7 @@ int map_class_entry(struct tag_u32 *r, void *_mr,
     return 0;
 }
 int map_class(struct tag_u32 *req) {
-    return map_dynamic(req, handle_class_ops, map_class_entry, NULL);
+    return handle_tag_u32_map_dynamic(req, handle_class_ops, map_class_entry, NULL);
 }
 
 /* root map */
