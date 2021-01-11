@@ -232,29 +232,20 @@ int map_inst_ops(struct tag_u32 *req) {
    can also be used to access arbitrary RPC functionality,
    e.g. parameter data. */
 
-struct map_inst_entry {
-    char inst_name[8];
-};
-int map_inst_entry(struct tag_u32 *r, void *ctx,
+int map_inst_entry(struct tag_u32 *r, void *no_ctx,
                    struct tag_u32_entry *entry) {
-    struct map_inst_entry *tmp = ctx;
     uint32_t index = r->args[0];
     struct inst *i = node_to_inst(index);
     if (!i) return -1;
-    // There is no sprintf... fix this.
-    tmp->inst_name[0] = 'i';
-    tmp->inst_name[1] = index + '0';
-    tmp->inst_name[2] = 0;
     const struct tag_u32_entry e = {
-        .name = tmp->inst_name,
+        .name = 0, // unnamed, use node index instead
         .type = t_map
     };
     *entry = e;
     return 0;
 }
 int map_inst(struct tag_u32 *req) {
-    struct map_inst_entry tmp = {};
-    return handle_tag_u32_map_dynamic(req, map_inst_ops, map_inst_entry, &tmp);
+    return handle_tag_u32_map_dynamic(req, map_inst_ops, map_inst_entry, NULL);
 }
 
 
