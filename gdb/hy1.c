@@ -7,6 +7,7 @@
 */
 
 #define LEDSTRIP_NB_LEDS 32
+#define FOR_LEDS(i) for(int i=0;i<LEDSTRIP_NB_LEDS;i++)
 #define PRODUCT "hy1"
 
 #include "mod_lab.c"
@@ -23,6 +24,9 @@ DEF_INSTANCE(app);
 
 
 struct grb frame[LEDSTRIP_NB_LEDS];
+static inline void set_rgb(struct grb *grb, uint8_t r, uint8_t g, uint8_t b) {
+    grb->r = r; grb->g = g; grb->b = b;
+}
 
 DEF_COMMAND(leds) { // r g b --
     struct grb grb;
@@ -50,10 +54,7 @@ int reply_ok(struct tag_u32 *req) {
 int handle_led_set(struct tag_u32 *req) {
     TAG_U32_UNPACK(req, -2, m, led_nb, _set_cmd, r, g, b) {
         if (m->led_nb >= LEDSTRIP_NB_LEDS) return -1;
-        struct grb *led = &frame[m->led_nb];
-        led->r = m->r;
-        led->g = m->g;
-        led->b = m->b;
+        set_rgb(&frame[m->led_nb], m->r, m->g, m->b);
         ledstrip_send(frame);
         return reply_ok(req);
     }
@@ -61,7 +62,7 @@ int handle_led_set(struct tag_u32 *req) {
 }
 int map_led_op(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
-        {"set", t_cmd, 3, handle_led_set},
+        {"set",      t_cmd, 3, handle_led_set},
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }
@@ -82,10 +83,41 @@ int map_led(struct tag_u32 *req) {
     return handle_tag_u32_map_dynamic(req, map_led_op, map_led_entry, NULL);
 }
 
+void ledstrip_progress(uint32_t scale0, uint32_t value) {
+    /* Don't allow division by zero. */
+    uint32_t scale = scale0 >= 1 ? scale0 : 1;
+    /* 0 maps to 0, value == scale maps to LEDSTRIP_NB_LEDS */
+    uint32_t cutoff = (value * ARRAY_SIZE(frame)) / scale;
+
+    // Ignore scale for now
+    struct grb red   = { .r = 10 };
+    struct grb green = { .g = 10 };
+    FOR_ARRAY(frame, led) {
+        if (led - frame < cutoff) {
+            *led = green;
+        }
+        else {
+            *led = red;
+        }
+    }
+    ledstrip_send(frame);
+}
+
+int handle_led_progress(struct tag_u32 *req) {
+    /* Scale comes first to make currying easier. */
+    TAG_U32_UNPACK(req, 0, m, scale, value) {
+        ledstrip_progress(m->scale, m->value);
+        return reply_ok(req);
+    }
+    return -1;
+}
+
+
 /* root map */
 int map_root(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
-        {"led", t_map, 0, map_led},
+        {"led",      t_map, 0, map_led},
+        {"progress", t_cmd, 2, handle_led_progress},
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }

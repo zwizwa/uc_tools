@@ -18,6 +18,12 @@
 */
 #define HW_I2C_TRIES 100000  // FIXME: Map this to absolute time
 
+/* For protothread wrapping. */
+#ifndef HW_I2C_WHILE
+#define HW_I2C_WHILE while
+#endif
+
+
 struct hw_i2c {
     uint32_t rcc;
     uint32_t i2c;
@@ -70,7 +76,7 @@ static inline uint32_t hw_i2c_transmit(
 
     uint32_t sr;
 
-    while ((I2C_SR2(c.i2c) & I2C_SR2_BUSY)) {
+    HW_I2C_WHILE ((I2C_SR2(c.i2c) & I2C_SR2_BUSY)) {
         if (!tries--) {
             sr = 0x30000;
             goto error;
@@ -81,7 +87,7 @@ static inline uint32_t hw_i2c_transmit(
     I2C_CR1(c.i2c) |= I2C_CR1_START;
 
     /* Wait for master mode selected */
-    while (!((I2C_SR1(c.i2c) & I2C_SR1_SB) &
+    HW_I2C_WHILE (!((I2C_SR1(c.i2c) & I2C_SR1_SB) &
              (I2C_SR2(c.i2c) & (I2C_SR2_MSL | I2C_SR2_BUSY)))) {
         if (!tries--) {
             sr = 0x30001;
@@ -93,7 +99,7 @@ static inline uint32_t hw_i2c_transmit(
     I2C_DR(c.i2c) = (uint8_t)((slave << 1) | I2C_WRITE);
 
     /* Wait for address bit done or error. */
-    while(!(sr = I2C_SR1(c.i2c))) {
+    HW_I2C_WHILE(!(sr = I2C_SR1(c.i2c))) {
         if (!tries--) {
             sr = 0x30002;
             goto error;
@@ -107,7 +113,7 @@ static inline uint32_t hw_i2c_transmit(
     if (hdr) {
         for (size_t i = 0; i < hdr_len; i++) {
             I2C_DR(c.i2c) = hdr[i];
-            while (!(sr = I2C_SR1(c.i2c))) {
+            HW_I2C_WHILE (!(sr = I2C_SR1(c.i2c))) {
                 if (!tries--) {
                     sr = 0x30003;
                     goto error;
@@ -119,7 +125,7 @@ static inline uint32_t hw_i2c_transmit(
     if (data) {
         for (size_t i = 0; i < data_len; i++) {
             I2C_DR(c.i2c) = data[i];
-            while (!(sr = I2C_SR1(c.i2c))) {
+            HW_I2C_WHILE (!(sr = I2C_SR1(c.i2c))) {
                 if (!tries--) {
                     sr = 0x30004;
                     goto error;
@@ -143,14 +149,14 @@ static inline uint32_t hw_i2c_receive(
 
     uint32_t sr;
 
-    //while ((I2C_SR2(c.i2c) & I2C_SR2_BUSY));
+    //HW_I2C_WHILE ((I2C_SR2(c.i2c) & I2C_SR2_BUSY));
 
 
     /* Send start */
     I2C_CR1(c.i2c) |= I2C_CR1_START;
 
     /* Wait for master mode selected */
-    while (!((I2C_SR1(c.i2c) & I2C_SR1_SB) &
+    HW_I2C_WHILE (!((I2C_SR1(c.i2c) & I2C_SR1_SB) &
              (I2C_SR2(c.i2c) & (I2C_SR2_MSL | I2C_SR2_BUSY)))) {
         if (!tries--) {
             sr = 0x30011;
@@ -165,7 +171,7 @@ static inline uint32_t hw_i2c_receive(
     I2C_CR1(c.i2c) |= I2C_CR1_ACK;
 
     /* Wait for address bit done or error. */
-    while(!(sr = I2C_SR1(c.i2c))) {
+    HW_I2C_WHILE(!(sr = I2C_SR1(c.i2c))) {
         if (!tries--) {
             sr = 0x30012;
             goto error;
@@ -185,7 +191,7 @@ static inline uint32_t hw_i2c_receive(
             I2C_CR1(c.i2c) &= ~I2C_CR1_ACK;
         }
 
-        while (!(sr = I2C_SR1(c.i2c))) {
+        HW_I2C_WHILE (!(sr = I2C_SR1(c.i2c))) {
             if (!tries--) {
                 sr = 0x30013;
                 goto error;
