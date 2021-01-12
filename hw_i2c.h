@@ -62,6 +62,11 @@ static inline void hw_i2c_setup(struct hw_i2c c) {
     i2c_peripheral_enable(c.i2c);
 }
 
+static inline void hw_i2c_unblock(struct hw_i2c c) {
+    // FIXME: Not yet implemented.  Send out 16 clocks to unblock any
+    // device that might be holding the bus, e.g. due to reset during
+    // a transaction.
+}
 
 
 
