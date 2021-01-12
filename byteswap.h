@@ -98,6 +98,8 @@ struct byteswap_field {
 
 CT_ASSERT_STRUCT_SIZE(byteswap_field, 2);
 
+#include "log.h"
+
 /* Fields is null-terminated (len==0 and swap is ingored).  That is
    more memory effcient and much more convenient for code generators.
    If buffer is NULL then this is run for side effect only, which is
@@ -108,6 +110,10 @@ static inline uint32_t byteswap_fields(const struct byteswap_field *fields, void
     for(uint32_t i=0; fields->len; i++,fields++) {
         if (fields->swap) {
             if (buf0) byteswap_swap(buf, fields->len);
+            //LOG("swapping field %d, len=%d\n", i, fields->len);
+        }
+        else {
+            //LOG("not swapping field %d, len=%d\n", i, fields->len);
         }
         buf += fields->len;
     }
