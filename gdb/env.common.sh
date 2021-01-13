@@ -34,8 +34,10 @@ CFLAGS_ERROR=-Werror
 
 # Note: to see which gnu extensions are used, set -std=c99
 
+# -std=gnu99
+
 CFLAGS_COMMON=" \
--std=gnu99 \
+-std=c99 \
 -fno-common \
 -ffunction-sections \
 -fdata-sections \

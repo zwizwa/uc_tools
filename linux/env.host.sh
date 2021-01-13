@@ -8,11 +8,13 @@
 # CFLAGS_ERROR=-Werror
 CFLAGS_ERROR=
 
+# -std=gnu99
+
 CFLAGS=" \
+-std=c99 \
 -I$UC_TOOLS/linux \
 -I$UC_TOOLS/ \
 -I$LIBOPENCM3/include \
--std=gnu99 \
 -fno-common \
 -ffunction-sections \
 -fdata-sections \
