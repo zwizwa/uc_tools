@@ -179,6 +179,11 @@ int handle_tag_u32_map(struct tag_u32 *r,
    upper paths can be used. */
 /* Still exploring this abstraction...
    See mod_bpmodular.c and hy1.c for examples. */
+
+/* FIXME: This does not support nb_arg checking as is done in the
+   static maps.  Maybe just not do it at all?  Because that's quite
+   confusing. */
+
 int handle_tag_u32_map_dynamic(struct tag_u32 *req,
                 tag_u32_handle_fn sub,
                 map_ref_fn fn, void *ctx) {

@@ -1,11 +1,18 @@
 #ifndef TAG_U32_H
 #define TAG_U32_H
 
-
 #include "packet_tags.h"
 #include "byteswap.h"
 #include "log.h"
 #include <stdint.h>
+
+/* TL&DR
+
+   Use a list representation to represent object hierarchy (paths),
+   and method call substructure (arguments).
+
+   Make it simple to use symbolic names. */
+
 
 /* What is a good simple protocol to send commands to a
    microcontroller that is programmed in C?  Usually, protocol
