@@ -117,11 +117,6 @@ void start(void) {
 #define PRODUCT "Trampoline"
 #endif
 
-/* See uc_tools/gdb/build.sh for more information. */
-#ifndef VERSION
-#define VERSION "current"
-#endif
-
 
 /* Note that config variables of the trampoline are never updated,
    e.g. the USB strings do not refer to one of the two firmware
