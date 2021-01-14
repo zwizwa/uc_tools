@@ -161,6 +161,12 @@ case "$TYPE" in
         # $OBJDUMP -d $ELF
         $OBJCOPY -O binary $ELF $BIN
         ;;
+    dasm)
+        assert_vars ARCH ELF DASM
+        . $UC_TOOLS/gdb/env.$ARCH.sh
+        rm -f $DASM
+        $OBJDUMP -d $ELF >$DASM
+        ;;
     hex)
         assert_vars ARCH ELF HEX
         . $UC_TOOLS/gdb/env.$ARCH.sh

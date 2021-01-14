@@ -99,6 +99,18 @@ static inline char *mini_strcpy(char *dst, const char *src) {
     while(*src) { *dst++ = *src++; }
     return dst;
 }
+static inline void *mini_memcpy(void *dest, const void *src, uintptr_t n) {
+    uint8_t *d = dest;
+    const uint8_t *s = src;
+    for (uintptr_t i=0; i<n; i++) { *d++ = *s++; };
+    return dest;
+}
+static inline void *mini_memset(void *s, int c, uintptr_t n) {
+    uint8_t *p = s;
+    for (uintptr_t i=0; i<n; i++) { *p++ = c; };
+    return s;
+}
+
 
 /* Round to the next power of two. */
 static inline uint32_t aligned_block(uint32_t log2, uint32_t val) {
