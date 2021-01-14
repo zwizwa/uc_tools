@@ -8,6 +8,9 @@
 #include "tag_u32.h"
 #include "cbuf.h"
 
+/* Note that KEEP is necessary for the plugin host, as the host will
+   provide this to the plugin, but does not use it. */
+
 KEEP void send_reply_tag_u32(const struct tag_u32 *f, const struct tag_u32 *s) {
     uint32_t total_nb_args = (f ? f->nb_from : 0) + s->nb_args;
 

@@ -1,6 +1,8 @@
 #ifndef MOD_MAP_FORTH
 #define MOD_MAP_FORTH
 
+#include "command.h"
+
 /* Provide a TAG_U32 directory structure for Forth commands.
    Commands are invoked as:
    - args[0]   = nb_args to pop as reply
