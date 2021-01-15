@@ -1,11 +1,4 @@
-/* FIXME: This is a new pattern, necessary to parameterize the body of
-   a function against some macros.  Currently I have to move fast to
-   get something going, but clean this up a bit!
-
-   The main reason to put it in a separate file is that the code is
-   too long to move it into a macro, so use #include to inline the
-   code.
-*/
+// See comment ns_i2c_transmit.h
 
 
     //HW_I2C_WHILE ((I2C_SR2(c.i2c) & I2C_SR2_BUSY));

@@ -23,11 +23,31 @@ KEEP void info_clear(void) {
 KEEP uint32_t info_bytes() {
     return info_write_next - info_read_next;
 }
+
+/* This is a quick hack to implement log levels.  Two variables are
+   used.  infof_level_threshold sets the global log level, which gates
+   info_putchar_inner.  infof_level_current sets the threshold of the
+   current logging context, which is modified by statements that
+   support level-based logging, and is put back to 0 after the extent
+   of the log call.
+
+   Practically, too much needs to change to implement the threshold as
+   context that is passed down the calls. The info mechanism was
+   already non-reentrant, so this seems ok as a temporary hack.
+   FIXME: Evaluate this later.
+*/
+
+/* Zero means default behavior: log everything. */
+uint32_t infof_level_threshold = 0;
+uint32_t infof_level_current = 0;
+
 uint32_t info_overflow_errors = 0;
 KEEP int info_putchar_inner(int c) {
 #if 0 // A quick way to turn off logging
     return 0;
 #else
+    if (infof_level_threshold > infof_level_current) return 0;
+
     uint32_t room = INFO_SIZE - (info_write_next - info_read_next);
     if (room == 0) return 0;  // drop character and don't overflow the buffer
     if (room == 1) c = '?';   // when almost full, write some kind of indicator

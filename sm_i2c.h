@@ -31,7 +31,7 @@ uint32_t sm_i2c_transmit_init(struct sm_i2c *s, struct hw_i2c c) {
 }
 uint32_t sm_i2c_transmit_tick(struct sm_i2c *s, struct hw_i2c c) {
 #define S (&(s->transmit))
-#include "hw_i2c_transmit_body.h"
+#include "ns_i2c_transmit.h"
 #undef S
 }
 
