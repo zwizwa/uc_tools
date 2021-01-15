@@ -72,18 +72,37 @@ static inline void hw_i2c_unblock(struct hw_i2c c) {
 
 /* Note that many protocols need a header, so we allow for that. */
 
+/* Use a single struct for all operations.  This makes it a bit easier to use. */
+
+struct hw_i2c_state {
+    uint32_t tries; // retry counter
+    uint32_t sr; // status register or ad-hoc status code
+    uint32_t i; // loop counter
+};
+#if 0
+static inline uint32_t hw_i2c_timeout(struct hw_i2c_state *s) {
+    if (!s->tries--) {
+        s->sr = 0x30000;
+    }
+    else {
+        s->sr = 0;
+    }
+}
+#endif
+
 static inline uint32_t hw_i2c_transmit(
     struct hw_i2c c, uint32_t slave,
     const uint8_t *hdr, uint32_t hdr_len,
     const uint8_t *data, uint32_t data_len) {
 
-    uint32_t tries = HW_I2C_TRIES;
-
-    uint32_t sr;
+    struct hw_i2c_state _s = {
+        .tries = HW_I2C_TRIES
+    };
+    struct hw_i2c_state *s = &_s;
 
     HW_I2C_WHILE ((I2C_SR2(c.i2c) & I2C_SR2_BUSY)) {
-        if (!tries--) {
-            sr = 0x30000;
+        if (!s->tries--) {
+            s->sr = 0x30000;
             goto error;
         }
     }
@@ -94,8 +113,8 @@ static inline uint32_t hw_i2c_transmit(
     /* Wait for master mode selected */
     HW_I2C_WHILE (!((I2C_SR1(c.i2c) & I2C_SR1_SB) &
              (I2C_SR2(c.i2c) & (I2C_SR2_MSL | I2C_SR2_BUSY)))) {
-        if (!tries--) {
-            sr = 0x30001;
+        if (!s->tries--) {
+            s->sr = 0x30001;
             goto error;
         }
     }
@@ -104,46 +123,46 @@ static inline uint32_t hw_i2c_transmit(
     I2C_DR(c.i2c) = (uint8_t)((slave << 1) | I2C_WRITE);
 
     /* Wait for address bit done or error. */
-    HW_I2C_WHILE(!(sr = I2C_SR1(c.i2c))) {
-        if (!tries--) {
-            sr = 0x30002;
+    HW_I2C_WHILE(!(s->sr = I2C_SR1(c.i2c))) {
+        if (!s->tries--) {
+            s->sr = 0x30002;
             goto error;
         }
     }
-    if (!(sr & I2C_SR1_ADDR)) goto error;
+    if (!(s->sr & I2C_SR1_ADDR)) goto error;
 
     /* Clearing ADDR condition sequence. */
     (void)I2C_SR2(c.i2c);
 
     if (hdr) {
-        for (size_t i = 0; i < hdr_len; i++) {
-            I2C_DR(c.i2c) = hdr[i];
-            HW_I2C_WHILE (!(sr = I2C_SR1(c.i2c))) {
-                if (!tries--) {
-                    sr = 0x30003;
+        for (s->i = 0; s->i < hdr_len; s->i++) {
+            I2C_DR(c.i2c) = hdr[s->i];
+            HW_I2C_WHILE (!(s->sr = I2C_SR1(c.i2c))) {
+                if (!s->tries--) {
+                    s->sr = 0x30003;
                     goto error;
                 }
             }
-            if (!(sr | I2C_SR1_BTF)) goto error;
+            if (!(s->sr | I2C_SR1_BTF)) goto error;
         }
     }
     if (data) {
-        for (size_t i = 0; i < data_len; i++) {
-            I2C_DR(c.i2c) = data[i];
-            HW_I2C_WHILE (!(sr = I2C_SR1(c.i2c))) {
-                if (!tries--) {
-                    sr = 0x30004;
+        for (s->i = 0; s->i < data_len; s->i++) {
+            I2C_DR(c.i2c) = data[s->i];
+            HW_I2C_WHILE (!(s->sr = I2C_SR1(c.i2c))) {
+                if (!s->tries--) {
+                    s->sr = 0x30004;
                     goto error;
                 }
             }
-            if (!(sr | I2C_SR1_BTF)) goto error;
+            if (!(s->sr | I2C_SR1_BTF)) goto error;
         }
     }
     return 0;
 
   error:
-    LOG("i2c transmit error: %x\n", sr);
-    return sr;
+    LOG("i2c transmit error: %x\n", s->sr);
+    return s->sr;
 }
 static inline uint32_t hw_i2c_receive(
     struct hw_i2c c, uint32_t slave,
