@@ -71,13 +71,23 @@ static inline void hw_i2c_unblock(struct hw_i2c c) {
 
 
 /* Note that many protocols need a header, so we allow for that. */
-
-/* Use a single struct for all operations.  This makes it a bit easier to use. */
-
-struct hw_i2c_state {
+struct hw_i2c_transmit_state {
     uint32_t tries; // retry counter
     uint32_t sr; // status register or ad-hoc status code
     uint32_t i; // loop counter
+    uint8_t slave; // slave address
+
+    const uint8_t *hdr;  uint32_t hdr_len;
+    const uint8_t *data; uint32_t data_len;
+};
+struct hw_i2c_receive_state {
+    uint32_t tries; // retry counter
+    uint32_t sr; // status register or ad-hoc status code
+    uint32_t i; // loop counter
+    uint8_t slave; // slave address
+
+    uint8_t *hdr;  uint32_t hdr_len;
+    uint8_t *data; uint32_t data_len;
 };
 #if 0
 static inline uint32_t hw_i2c_timeout(struct hw_i2c_state *s) {
@@ -90,15 +100,8 @@ static inline uint32_t hw_i2c_timeout(struct hw_i2c_state *s) {
 }
 #endif
 
-static inline uint32_t hw_i2c_transmit(
-    struct hw_i2c c, uint32_t slave,
-    const uint8_t *hdr, uint32_t hdr_len,
-    const uint8_t *data, uint32_t data_len) {
 
-    struct hw_i2c_state _s = {
-        .tries = HW_I2C_TRIES
-    };
-    struct hw_i2c_state *s = &_s;
+static inline uint32_t hw_i2c_transmit_(struct hw_i2c_transmit_state *s, struct hw_i2c c) {
 
     HW_I2C_WHILE ((I2C_SR2(c.i2c) & I2C_SR2_BUSY)) {
         if (!s->tries--) {
@@ -120,7 +123,7 @@ static inline uint32_t hw_i2c_transmit(
     }
 
     /* Send 7bit address */
-    I2C_DR(c.i2c) = (uint8_t)((slave << 1) | I2C_WRITE);
+    I2C_DR(c.i2c) = (uint8_t)((s->slave << 1) | I2C_WRITE);
 
     /* Wait for address bit done or error. */
     HW_I2C_WHILE(!(s->sr = I2C_SR1(c.i2c))) {
@@ -134,9 +137,9 @@ static inline uint32_t hw_i2c_transmit(
     /* Clearing ADDR condition sequence. */
     (void)I2C_SR2(c.i2c);
 
-    if (hdr) {
-        for (s->i = 0; s->i < hdr_len; s->i++) {
-            I2C_DR(c.i2c) = hdr[s->i];
+    if (s->hdr) {
+        for (s->i = 0; s->i <s-> hdr_len; s->i++) {
+            I2C_DR(c.i2c) = s->hdr[s->i];
             HW_I2C_WHILE (!(s->sr = I2C_SR1(c.i2c))) {
                 if (!s->tries--) {
                     s->sr = 0x30003;
@@ -146,9 +149,9 @@ static inline uint32_t hw_i2c_transmit(
             if (!(s->sr | I2C_SR1_BTF)) goto error;
         }
     }
-    if (data) {
-        for (s->i = 0; s->i < data_len; s->i++) {
-            I2C_DR(c.i2c) = data[s->i];
+    if (s->data) {
+        for (s->i = 0; s->i < s->data_len; s->i++) {
+            I2C_DR(c.i2c) = s->data[s->i];
             HW_I2C_WHILE (!(s->sr = I2C_SR1(c.i2c))) {
                 if (!s->tries--) {
                     s->sr = 0x30004;
@@ -164,14 +167,27 @@ static inline uint32_t hw_i2c_transmit(
     LOG("i2c transmit error: %x\n", s->sr);
     return s->sr;
 }
-static inline uint32_t hw_i2c_receive(
+static inline uint32_t hw_i2c_transmit(
     struct hw_i2c c, uint32_t slave,
-    uint8_t *data, uint32_t len) {
+    const uint8_t *hdr, uint32_t hdr_len,
+    const uint8_t *data, uint32_t data_len) {
 
-    uint32_t tries = HW_I2C_TRIES;
+    /* Note that we have to convert from const to non-const here to be
+       able to reuse the same state struct for read and write, which
+       is very convenient.  Access is read-only for write, so this is
+       ok. */
+    struct hw_i2c_transmit_state s = {
+        .tries = HW_I2C_TRIES,
+        .slave = slave,
+        .hdr   = hdr,  .hdr_len  = hdr_len,
+        .data  = data, .data_len = data_len,
+    };
+    return hw_i2c_transmit_(&s, c);
+}
 
 
-    uint32_t sr;
+
+static inline uint32_t hw_i2c_receive_(struct hw_i2c_receive_state *s, struct hw_i2c c) {
 
     //HW_I2C_WHILE ((I2C_SR2(c.i2c) & I2C_SR2_BUSY));
 
@@ -182,56 +198,72 @@ static inline uint32_t hw_i2c_receive(
     /* Wait for master mode selected */
     HW_I2C_WHILE (!((I2C_SR1(c.i2c) & I2C_SR1_SB) &
              (I2C_SR2(c.i2c) & (I2C_SR2_MSL | I2C_SR2_BUSY)))) {
-        if (!tries--) {
-            sr = 0x30011;
+        if (!s->tries--) {
+            s->sr = 0x30011;
             goto error;
         }
     }
 
     /* Send 7bit address */
-    I2C_DR(c.i2c) = (uint8_t)((slave << 1) | I2C_READ);
+    I2C_DR(c.i2c) = (uint8_t)((s->slave << 1) | I2C_READ);
 
     /* Enable ack */
     I2C_CR1(c.i2c) |= I2C_CR1_ACK;
 
     /* Wait for address bit done or error. */
-    HW_I2C_WHILE(!(sr = I2C_SR1(c.i2c))) {
-        if (!tries--) {
-            sr = 0x30012;
+    HW_I2C_WHILE(!(s->sr = I2C_SR1(c.i2c))) {
+        if (!s->tries--) {
+            s->sr = 0x30012;
             goto error;
         }
     }
-    if (!(sr & I2C_SR1_ADDR)) {
-        infof("i2c receive error waiting for addr: SR1=%x\n", sr);
-        return sr;
+    if (!(s->sr & I2C_SR1_ADDR)) {
+        infof("i2c receive error waiting for addr: SR1=%x\n", s->sr);
+        return s->sr;
     }
 
     /* Clearing ADDR condition sequence. */
     (void)I2C_SR2(c.i2c);
 
-    for (size_t i = 0; i < len; ++i) {
-        if (i == len-1) {
+    for (s->i = 0; s->i < s->data_len; ++(s->i)) {
+        if (s->i == s->data_len-1) {
             /* Disable ack */
             I2C_CR1(c.i2c) &= ~I2C_CR1_ACK;
         }
 
-        HW_I2C_WHILE (!(sr = I2C_SR1(c.i2c))) {
-            if (!tries--) {
-                sr = 0x30013;
+        HW_I2C_WHILE (!(s->sr = I2C_SR1(c.i2c))) {
+            if (!s->tries--) {
+                s->sr = 0x30013;
                 goto error;
             }
         }
         if (!(I2C_SR1(c.i2c) & I2C_SR1_RxNE)) {
-            infof("i2c receive data byte %d: SR1=%x\n", i, sr);
+            infof("i2c receive data byte %d: SR1=%x\n", s->i, s->sr);
         }
-        data[i] = I2C_DR(c.i2c) & 0xff;
+        s->data[s->i] = I2C_DR(c.i2c) & 0xff;
     }
 
     return 0;
 error:
-    infof("i2c receive error: SR1=%x\n", sr);
-    return sr;
+    infof("i2c receive error: SR1=%x\n", s->sr);
+    return s->sr;
 
+}
+
+static inline uint32_t hw_i2c_receive(
+    struct hw_i2c c, uint32_t slave,
+    uint8_t *data, uint32_t data_len) {
+
+    /* Note that we have to convert from const to non-const here to be
+       able to reuse the same state struct for read and write, which
+       is very convenient.  Access is read-only for write, so this is
+       ok. */
+    struct hw_i2c_receive_state s = {
+        .tries = HW_I2C_TRIES,
+        .slave = slave,
+        .data  = data, .data_len = data_len,
+    };
+    return hw_i2c_receive_(&s, c);
 }
 
 static inline void hw_i2c_stop(struct hw_i2c c) {
