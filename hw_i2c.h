@@ -102,7 +102,9 @@ static inline uint32_t hw_i2c_timeout(struct hw_i2c_state *s) {
 
 
 static inline uint32_t hw_i2c_transmit_(struct hw_i2c_transmit_state *s, struct hw_i2c c) {
+#define S s
 #include "hw_i2c_transmit_body.h"
+#undef S
 }
 
 
@@ -127,7 +129,9 @@ static inline uint32_t hw_i2c_transmit(
 
 
 static inline uint32_t hw_i2c_receive_(struct hw_i2c_receive_state *s, struct hw_i2c c) {
+#define S s
 #include "hw_i2c_receive_body.h"
+#undef S
 }
 
 static inline uint32_t hw_i2c_receive(

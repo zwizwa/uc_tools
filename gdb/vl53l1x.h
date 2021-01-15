@@ -309,4 +309,24 @@ static inline int vl53l1x_begin(struct vl53l1x *s) {
     return vl53l1x_init(s);
 }
 
+
+/* For non-blocking operation, we provide abstraction around command
+   generation for measurement commands.  These are exposed as array
+   initializers that can then be used by a generic non-blocking i2c
+   transfer mechanism.
+*/
+#define VL5311X_WR_U8(reg, val) { U16_BE(reg), val }
+#define VL5311X_RD_U16(reg)     { U16_BE(reg) }
+
+/* Write, Stop. */
+#define VL5311X_CLEAR_INTERRUPT()      VL5311X_WR_U8(SYSTEM__MODE_START, 0x40)
+#define VL5311X_STOP_RANGING()         VL5311X_WR_U8(SYSTEM__MODE_START, 0x00)
+#define VL5311X_START_RANGING()        VL5311X_WR_U8(SYSTEM__MODE_START, 0x40)
+
+/* Write, Stop, Read, Stop.  2 bytes big endian are returned. */
+#define VL5311X_CHECK_FOR_DATA_READY() VL5311X_RD16(VL53L1_IDENTIFICATION__MODEL_ID)
+#define VL5311X_GET_DISTANCE()         VL5311X_RD16(VL53L1_RESULT__FINAL_CROSSTALK_CORRECTED_RANGE_MM_SD)
+#define VL5311X_GET_SENSOR_ID()        VL5311X_RD16(VL53L1_IDENTIFICATION__MODEL_ID)
+
+
 #endif
