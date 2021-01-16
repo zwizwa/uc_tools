@@ -270,6 +270,19 @@ struct sm_const_buf {
 typedef uint32_t (*sm_tick_fn)(void*);
 
 
+/* Wait for condition or until nb_tries counter expired.
+   Returns the value of the condition.
+
+   This implements a pattern in hw_i2c.h
+   See also SM_WAIT_CC_TIMEOUT in cycle_counter.h
+
+   If the polling frequency is known this can be used as a wall-clock timeout.
+*/
+#define SM_WAIT_COUNT(s, nb_tries, condition) ({                        \
+            int _condition;                                             \
+            SM_WAIT(s, (_condition = (condition)) || (0 == (--(nb_tries)))); \
+            _condition; })
+
 #endif
 
 

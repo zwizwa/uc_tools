@@ -5,15 +5,17 @@
    'B7 SDA
    'B6 SCL */
 
-/* Code is structured as an sm.h protothread.  Blocking wrappers are
- * provided. */
-
+/* Code is structured as an sm.h protothread.
+   Blocking wrappers are provided. */
+#include "sm.h"
 
 // FIXME: make this a parameter
 
 #include "log.h"
 #include "hw_stm32f103.h"
 #include <libopencm3/stm32/i2c.h>
+
+
 
 /* This is code from i2c_common_v1 inlined.  There was a bug not
    checking AF, so I no longer trust it was tested well.
@@ -98,12 +100,14 @@ struct hw_i2c_control_state {
 };
 
 struct hw_i2c_transmit_state {
+    void *next; // sm.h resume point
     struct hw_i2c_control_state ctrl;
     uint8_t slave; // slave address
     const uint8_t *hdr;  uint32_t hdr_len;
     const uint8_t *data; uint32_t data_len;
 };
 struct hw_i2c_receive_state {
+    void *next; // sm.h resume point
     struct hw_i2c_control_state ctrl;
     uint8_t slave; // slave address
     uint8_t *hdr;  uint32_t hdr_len;
@@ -133,6 +137,9 @@ static inline uint32_t hw_i2c_timeout(struct hw_i2c_state *s) {
     }
 
 static inline uint32_t hw_i2c_transmit_(struct hw_i2c_transmit_state *s, struct hw_i2c c) {
+
+    //SM_RESUME(sm);
+
     HW_I2C_WHILE(s, (I2C_SR2(c.i2c) & I2C_SR2_BUSY), 0x30000);
 
     /* send start */
