@@ -5,6 +5,9 @@
    'B7 SDA
    'B6 SCL */
 
+/* Code is structured as an sm.h protothread.  Blocking wrappers are
+ * provided. */
+
 
 // FIXME: make this a parameter
 
@@ -71,21 +74,22 @@ static inline void hw_i2c_unblock(struct hw_i2c c) {
 
 
 /* Note that many protocols need a header, so we allow for that. */
-struct hw_i2c_transmit_state {
+
+struct hw_i2c_control_state {
     uint32_t tries; // retry counter
     uint32_t sr; // status register or ad-hoc status code
     uint32_t i; // loop counter
-    uint8_t slave; // slave address
+};
 
+struct hw_i2c_transmit_state {
+    struct hw_i2c_control_state ctrl;
+    uint8_t slave; // slave address
     const uint8_t *hdr;  uint32_t hdr_len;
     const uint8_t *data; uint32_t data_len;
 };
 struct hw_i2c_receive_state {
-    uint32_t tries; // retry counter
-    uint32_t sr; // status register or ad-hoc status code
-    uint32_t i; // loop counter
+    struct hw_i2c_control_state ctrl;
     uint8_t slave; // slave address
-
     uint8_t *hdr;  uint32_t hdr_len;
     uint8_t *data; uint32_t data_len;
 };
@@ -100,11 +104,53 @@ static inline uint32_t hw_i2c_timeout(struct hw_i2c_state *s) {
 }
 #endif
 
+#define HW_I2C_WHILE_TRIES(condition, status_code)      \
+    HW_I2C_WHILE (condition) {                          \
+        if (!s->ctrl.tries--) {                         \
+            s->ctrl.sr = status_code;                   \
+            goto error;                                 \
+        }                                               \
+    }
 
 static inline uint32_t hw_i2c_transmit_(struct hw_i2c_transmit_state *s, struct hw_i2c c) {
-#define S s
-#include "ns_i2c_transmit.h"
-#undef S
+    HW_I2C_WHILE_TRIES ((I2C_SR2(c.i2c) & I2C_SR2_BUSY), 0x30000);
+
+    /* send start */
+    I2C_CR1(c.i2c) |= I2C_CR1_START;
+
+    /* Wait for master mode selected */
+    HW_I2C_WHILE_TRIES (!((I2C_SR1(c.i2c) & I2C_SR1_SB) &
+                          (I2C_SR2(c.i2c) & (I2C_SR2_MSL | I2C_SR2_BUSY))), 0x30001);
+
+    /* Send 7bit address */
+    I2C_DR(c.i2c) = (uint8_t)((s->slave << 1) | I2C_WRITE);
+
+    /* Wait for address bit done or error. */
+    HW_I2C_WHILE_TRIES(!(s->ctrl.sr = I2C_SR1(c.i2c)), 0x30002);
+    if (!(s->ctrl.sr & I2C_SR1_ADDR)) goto error;
+
+    /* Clearing ADDR condition sequence. */
+    (void)I2C_SR2(c.i2c);
+
+    if (s->hdr) {
+        for (s->ctrl.i = 0; s->ctrl.i <s->hdr_len; s->ctrl.i++) {
+            I2C_DR(c.i2c) = s->hdr[s->ctrl.i];
+            HW_I2C_WHILE_TRIES (!(s->ctrl.sr = I2C_SR1(c.i2c)), 0x30003);
+            if (!(s->ctrl.sr | I2C_SR1_BTF)) goto error;
+        }
+    }
+    if (s->data) {
+        for (s->ctrl.i = 0; s->ctrl.i < s->data_len; s->ctrl.i++) {
+            I2C_DR(c.i2c) = s->data[s->ctrl.i];
+            HW_I2C_WHILE_TRIES (!(s->ctrl.sr = I2C_SR1(c.i2c)), 0x30004);
+            if (!(s->ctrl.sr | I2C_SR1_BTF)) goto error;
+        }
+    }
+    return 0;
+
+  error:
+    LOG("i2c transmit error: %x\n", s->ctrl.sr);
+    return s->ctrl.sr;
 }
 
 
@@ -118,7 +164,9 @@ static inline uint32_t hw_i2c_transmit(
        is very convenient.  Access is read-only for write, so this is
        ok. */
     struct hw_i2c_transmit_state s = {
-        .tries = HW_I2C_TRIES,
+        .ctrl = {
+            .tries = HW_I2C_TRIES,
+        },
         .slave = slave,
         .hdr   = hdr,  .hdr_len  = hdr_len,
         .data  = data, .data_len = data_len,
@@ -129,9 +177,50 @@ static inline uint32_t hw_i2c_transmit(
 
 
 static inline uint32_t hw_i2c_receive_(struct hw_i2c_receive_state *s, struct hw_i2c c) {
-#define S s
-#include "ns_i2c_receive.h"
-#undef S
+    //HW_I2C_WHILE ((I2C_SR2(c.i2c) & I2C_SR2_BUSY));
+
+
+    /* Send start */
+    I2C_CR1(c.i2c) |= I2C_CR1_START;
+
+    /* Wait for master mode selected */
+    HW_I2C_WHILE_TRIES (!((I2C_SR1(c.i2c) & I2C_SR1_SB) &
+                          (I2C_SR2(c.i2c) & (I2C_SR2_MSL | I2C_SR2_BUSY))), 0x30011);
+
+    /* Send 7bit address */
+    I2C_DR(c.i2c) = (uint8_t)((s->slave << 1) | I2C_READ);
+
+    /* Enable ack */
+    I2C_CR1(c.i2c) |= I2C_CR1_ACK;
+
+    /* Wait for address bit done or error. */
+    HW_I2C_WHILE_TRIES(!(s->ctrl.sr = I2C_SR1(c.i2c)), 0x30012);
+
+    if (!(s->ctrl.sr & I2C_SR1_ADDR)) {
+        infof("i2c receive error waiting for addr: SR1=%x\n", s->ctrl.sr);
+        return s->ctrl.sr;
+    }
+
+    /* Clearing ADDR condition sequence. */
+    (void)I2C_SR2(c.i2c);
+
+    for (s->ctrl.i = 0; s->ctrl.i < s->data_len; ++(s->ctrl.i)) {
+        if (s->ctrl.i == s->data_len-1) {
+            /* Disable ack */
+            I2C_CR1(c.i2c) &= ~I2C_CR1_ACK;
+        }
+
+        HW_I2C_WHILE_TRIES (!(s->ctrl.sr = I2C_SR1(c.i2c)), 0x30013);
+        if (!(I2C_SR1(c.i2c) & I2C_SR1_RxNE)) {
+            infof("i2c receive data byte %d: SR1=%x\n", s->ctrl.i, s->ctrl.sr);
+        }
+        s->data[s->ctrl.i] = I2C_DR(c.i2c) & 0xff;
+    }
+
+    return 0;
+error:
+    infof("i2c receive error: SR1=%x\n", s->ctrl.sr);
+    return s->ctrl.sr;
 }
 
 static inline uint32_t hw_i2c_receive(
@@ -143,7 +232,9 @@ static inline uint32_t hw_i2c_receive(
        is very convenient.  Access is read-only for write, so this is
        ok. */
     struct hw_i2c_receive_state s = {
-        .tries = HW_I2C_TRIES,
+        .ctrl = {
+            .tries = HW_I2C_TRIES,
+        },
         .slave = slave,
         .data  = data, .data_len = data_len,
     };
