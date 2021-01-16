@@ -278,7 +278,7 @@ typedef uint32_t (*sm_tick_fn)(void*);
 
    If the polling frequency is known this can be used as a wall-clock timeout.
 */
-#define SM_WAIT_COUNT(s, nb_tries, condition) ({                        \
+#define SM_WAIT_COUNT(s, condition, nb_tries) ({                        \
             int _condition;                                             \
             SM_WAIT(s, (_condition = (condition)) || (0 == (--(nb_tries)))); \
             _condition; })

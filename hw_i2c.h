@@ -126,8 +126,10 @@ static inline uint32_t hw_i2c_timeout(struct hw_i2c_state *s) {
 
 
 
-/* Blocking operation with timeout. */
 
+#if 0
+/* Old, blocking operation.  Keep this here for a while, make sure we
+   can easily revert to the old implementation. */
 #define HW_I2C_WHILE(s, condition, status_code)         \
     while (condition) {                                 \
         if (!s->ctrl.tries--) {                         \
@@ -135,10 +137,20 @@ static inline uint32_t hw_i2c_timeout(struct hw_i2c_state *s) {
             goto error;                                 \
         }                                               \
     }
+#else
+/* New, sm.h based tick method. */
+#define HW_I2C_WHILE(s, condition, status_code)                 \
+    if (!SM_WAIT_COUNT(s, !(condition), s->ctrl.tries)) {       \
+        s->ctrl.sr = status_code;                               \
+        goto error;                                             \
+    }
+#endif
 
-static inline uint32_t hw_i2c_transmit_(struct hw_i2c_transmit_state *s, struct hw_i2c c) {
 
-    //SM_RESUME(sm);
+
+static inline uint32_t hw_i2c_transmit_tick(struct hw_i2c_transmit_state *s, struct hw_i2c c) {
+
+    SM_RESUME(s);
 
     HW_I2C_WHILE(s, (I2C_SR2(c.i2c) & I2C_SR2_BUSY), 0x30000);
 
@@ -173,6 +185,7 @@ static inline uint32_t hw_i2c_transmit_(struct hw_i2c_transmit_state *s, struct 
             if (!(s->ctrl.sr | I2C_SR1_BTF)) goto error;
         }
     }
+    s->ctrl.sr = 0;
     return 0;
 
   error:
@@ -198,12 +211,15 @@ static inline uint32_t hw_i2c_transmit(
         .hdr   = hdr,  .hdr_len  = hdr_len,
         .data  = data, .data_len = data_len,
     };
-    return hw_i2c_transmit_(&s, c);
+    while (SM_WAITING == hw_i2c_transmit_tick(&s, c));
+    return s.ctrl.sr;
 }
 
 
 
-static inline uint32_t hw_i2c_receive_(struct hw_i2c_receive_state *s, struct hw_i2c c) {
+static inline uint32_t hw_i2c_receive_tick(struct hw_i2c_receive_state *s, struct hw_i2c c) {
+    SM_RESUME(s);
+
     //HW_I2C_WHILE ((I2C_SR2(c.i2c) & I2C_SR2_BUSY));
 
 
@@ -243,7 +259,7 @@ static inline uint32_t hw_i2c_receive_(struct hw_i2c_receive_state *s, struct hw
         }
         s->data[s->ctrl.i] = I2C_DR(c.i2c) & 0xff;
     }
-
+    s->ctrl.sr = 0;
     return 0;
 error:
     infof("i2c receive error: SR1=%x\n", s->ctrl.sr);
@@ -265,7 +281,8 @@ static inline uint32_t hw_i2c_receive(
         .slave = slave,
         .data  = data, .data_len = data_len,
     };
-    return hw_i2c_receive_(&s, c);
+    while (SM_WAITING == hw_i2c_receive_tick(&s, c));
+    return s.ctrl.sr;
 }
 
 static inline void hw_i2c_stop(struct hw_i2c c) {
