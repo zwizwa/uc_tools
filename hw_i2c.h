@@ -126,6 +126,11 @@ static inline uint32_t hw_i2c_timeout(struct hw_i2c_state *s) {
 
 
 
+static inline void hw_i2c_stop(struct hw_i2c c) {
+    I2C_CR1(c.i2c) |= I2C_CR1_STOP;
+}
+
+
 
 #if 0
 /* Old, blocking operation.  Keep this here for a while, make sure we
@@ -146,9 +151,25 @@ static inline uint32_t hw_i2c_timeout(struct hw_i2c_state *s) {
     }
 #endif
 
+// TRANSMIT, NON BLOCKING
 
+static inline void hw_i2c_transmit_init(
+    struct hw_i2c c,
+    struct hw_i2c_transmit_state *s,
+    uint32_t slave,
+    const uint8_t *hdr, uint32_t hdr_len,
+    const uint8_t *data, uint32_t data_len) {
 
-static inline uint32_t hw_i2c_transmit_tick(struct hw_i2c_transmit_state *s, struct hw_i2c c) {
+    memset(s,0,sizeof(*s));
+    s->ctrl.tries = HW_I2C_TRIES;
+    s->slave = slave;
+    s->hdr = hdr;
+    s->hdr_len = hdr_len;
+    s->data = data;
+    s->data_len = data_len;
+}
+
+static inline uint32_t hw_i2c_transmit_tick(struct hw_i2c c, struct hw_i2c_transmit_state *s) {
 
     SM_RESUME(s);
 
@@ -193,36 +214,24 @@ static inline uint32_t hw_i2c_transmit_tick(struct hw_i2c_transmit_state *s, str
     return s->ctrl.sr;
 }
 
-static inline void hw_i2c_transmit_init(
-    struct hw_i2c_transmit_state *s,
-    struct hw_i2c c, uint32_t slave,
-    const uint8_t *hdr, uint32_t hdr_len,
-    const uint8_t *data, uint32_t data_len) {
+
+
+// RECEIVE, NON BLOCKING
+
+static inline void hw_i2c_receive_init(
+    struct hw_i2c c,
+    struct hw_i2c_receive_state *s,
+    uint32_t slave,
+    uint8_t *data, uint32_t data_len) {
 
     memset(s,0,sizeof(*s));
     s->ctrl.tries = HW_I2C_TRIES;
     s->slave = slave;
-    s->hdr = hdr;
-    s->hdr_len = hdr_len;
     s->data = data;
     s->data_len = data_len;
 }
 
-
-static inline uint32_t hw_i2c_transmit(
-    struct hw_i2c c, uint32_t slave,
-    const uint8_t *hdr, uint32_t hdr_len,
-    const uint8_t *data, uint32_t data_len) {
-
-    struct hw_i2c_transmit_state s;
-    hw_i2c_transmit_init(&s, c, slave, hdr, hdr_len, data, data_len);
-    while (SM_WAITING == hw_i2c_transmit_tick(&s, c));
-    return s.ctrl.sr;
-}
-
-
-
-static inline uint32_t hw_i2c_receive_tick(struct hw_i2c_receive_state *s, struct hw_i2c c) {
+static inline uint32_t hw_i2c_receive_tick(struct hw_i2c c, struct hw_i2c_receive_state *s) {
     SM_RESUME(s);
 
     //HW_I2C_WHILE ((I2C_SR2(c.i2c) & I2C_SR2_BUSY));
@@ -271,15 +280,19 @@ error:
     return s->ctrl.sr;
 }
 
-static inline void hw_i2c_receive_init(
-    struct hw_i2c_receive_state *s,
+
+
+// BLOCKING WRAPPERS
+
+static inline uint32_t hw_i2c_transmit(
     struct hw_i2c c, uint32_t slave,
-    uint8_t *data, uint32_t data_len) {
-    memset(s,0,sizeof(*s));
-    s->ctrl.tries = HW_I2C_TRIES;
-    s->slave = slave;
-    s->data = data;
-    s->data_len = data_len;
+    const uint8_t *hdr, uint32_t hdr_len,
+    const uint8_t *data, uint32_t data_len) {
+
+    struct hw_i2c_transmit_state s;
+    hw_i2c_transmit_init(c, &s, slave, hdr, hdr_len, data, data_len);
+    while (SM_WAITING == hw_i2c_transmit_tick(c, &s));
+    return s.ctrl.sr;
 }
 
 static inline uint32_t hw_i2c_receive(
@@ -287,14 +300,11 @@ static inline uint32_t hw_i2c_receive(
     uint8_t *data, uint32_t data_len) {
 
     struct hw_i2c_receive_state s;
-    hw_i2c_receive_init(&s, c, slave, data, data_len);
-    while (SM_WAITING == hw_i2c_receive_tick(&s, c));
+    hw_i2c_receive_init(c, &s,  slave, data, data_len);
+    while (SM_WAITING == hw_i2c_receive_tick(c, &s));
     return s.ctrl.sr;
 }
 
-static inline void hw_i2c_stop(struct hw_i2c c) {
-    I2C_CR1(c.i2c) |= I2C_CR1_STOP;
-}
 
 
 
