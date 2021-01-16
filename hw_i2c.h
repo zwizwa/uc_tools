@@ -193,24 +193,29 @@ static inline uint32_t hw_i2c_transmit_tick(struct hw_i2c_transmit_state *s, str
     return s->ctrl.sr;
 }
 
+static inline void hw_i2c_transmit_init(
+    struct hw_i2c_transmit_state *s,
+    struct hw_i2c c, uint32_t slave,
+    const uint8_t *hdr, uint32_t hdr_len,
+    const uint8_t *data, uint32_t data_len) {
+
+    memset(s,0,sizeof(*s));
+    s->ctrl.tries = HW_I2C_TRIES;
+    s->slave = slave;
+    s->hdr = hdr;
+    s->hdr_len = hdr_len;
+    s->data = data;
+    s->data_len = data_len;
+}
+
 
 static inline uint32_t hw_i2c_transmit(
     struct hw_i2c c, uint32_t slave,
     const uint8_t *hdr, uint32_t hdr_len,
     const uint8_t *data, uint32_t data_len) {
 
-    /* Note that we have to convert from const to non-const here to be
-       able to reuse the same state struct for read and write, which
-       is very convenient.  Access is read-only for write, so this is
-       ok. */
-    struct hw_i2c_transmit_state s = {
-        .ctrl = {
-            .tries = HW_I2C_TRIES,
-        },
-        .slave = slave,
-        .hdr   = hdr,  .hdr_len  = hdr_len,
-        .data  = data, .data_len = data_len,
-    };
+    struct hw_i2c_transmit_state s;
+    hw_i2c_transmit_init(&s, c, slave, hdr, hdr_len, data, data_len);
     while (SM_WAITING == hw_i2c_transmit_tick(&s, c));
     return s.ctrl.sr;
 }
@@ -266,21 +271,23 @@ error:
     return s->ctrl.sr;
 }
 
+static inline void hw_i2c_receive_init(
+    struct hw_i2c_receive_state *s,
+    struct hw_i2c c, uint32_t slave,
+    uint8_t *data, uint32_t data_len) {
+    memset(s,0,sizeof(*s));
+    s->ctrl.tries = HW_I2C_TRIES;
+    s->slave = slave;
+    s->data = data;
+    s->data_len = data_len;
+}
+
 static inline uint32_t hw_i2c_receive(
     struct hw_i2c c, uint32_t slave,
     uint8_t *data, uint32_t data_len) {
 
-    /* Note that we have to convert from const to non-const here to be
-       able to reuse the same state struct for read and write, which
-       is very convenient.  Access is read-only for write, so this is
-       ok. */
-    struct hw_i2c_receive_state s = {
-        .ctrl = {
-            .tries = HW_I2C_TRIES,
-        },
-        .slave = slave,
-        .data  = data, .data_len = data_len,
-    };
+    struct hw_i2c_receive_state s;
+    hw_i2c_receive_init(&s, c, slave, data, data_len);
     while (SM_WAITING == hw_i2c_receive_tick(&s, c));
     return s.ctrl.sr;
 }
