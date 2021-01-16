@@ -21,11 +21,6 @@
 */
 #define HW_I2C_TRIES 100000  // FIXME: Map this to absolute time
 
-/* For protothread wrapping. */
-#ifndef HW_I2C_WHILE
-#define HW_I2C_WHILE while
-#endif
-
 
 struct hw_i2c {
     uint32_t rcc;
@@ -38,14 +33,14 @@ struct hw_i2c {
 
 // FIXME: Name the error codes.  For now they are ad-hoc.
 
-static inline void hw_i2c_setup(struct hw_i2c c) {
+static inline void hw_i2c_setup_swjenable(struct hw_i2c c, uint32_t swjenable) {
 
     rcc_periph_clock_enable(c.rcc);
     i2c_reset(c.i2c);
 
-    gpio_primary_remap(0, AFIO_MAPR_I2C1_REMAP);
-
-
+    /* Note that swjenable is necesary here, because that register is
+       write-only, so we cannot rely on read,modify,write. */
+    gpio_primary_remap(swjenable, AFIO_MAPR_I2C1_REMAP);
 
     /* pin debug */
     //hw_gpio_config(c.gpio, c.sda, HW_GPIO_CONFIG_OUTPUT);
@@ -53,6 +48,26 @@ static inline void hw_i2c_setup(struct hw_i2c c) {
 
     // FIXME: make this configurable to use external resistors?
     // Might not be necessary to disable pull if internal pull is weak.
+
+#if 0
+    // FIXME: doesn't seem to work. revisit.  I'm still getting errors
+    // where the bus is being pulled down and I don't know who.
+
+    /* Unblock bus devices by toggling clock at startup.
+       https://www.i2c-bus.org/i2c-primer/analysing-obscure-problems/blocked-bus/
+    */
+    uint32_t nb_clocks = 16;
+    uint32_t half_period_us = 10;
+    hw_gpio_high(c.gpio, c.scl); // pull direction
+    hw_gpio_high(c.gpio, c.sda); // pull direction
+    for (int i=0; i<nb_clocks; i++) {
+        hw_busywait_us(half_period_us);
+        hw_gpio_low(c.gpio, c.scl);
+        hw_busywait_us(half_period_us);
+        hw_gpio_high(c.gpio, c.scl);
+    }
+#endif
+
     hw_gpio_high(c.gpio, c.scl); // pull direction
     hw_gpio_high(c.gpio, c.sda); // pull direction
     hw_gpio_config(c.gpio, c.scl, HW_GPIO_CONFIG_ALTFN_OPEN_DRAIN);
@@ -65,11 +80,12 @@ static inline void hw_i2c_setup(struct hw_i2c c) {
     i2c_peripheral_enable(c.i2c);
 }
 
-static inline void hw_i2c_unblock(struct hw_i2c c) {
-    // FIXME: Not yet implemented.  Send out 16 clocks to unblock any
-    // device that might be holding the bus, e.g. due to reset during
-    // a transaction.
+static inline void hw_i2c_setup(struct hw_i2c c) {
+    /* FIXME: THIS RESETS JTAG/SWD PINS! */
+    uint32_t swjenable = 0;
+    hw_i2c_setup_swjenable(c, swjenable);
 }
+
 
 
 
@@ -104,8 +120,12 @@ static inline uint32_t hw_i2c_timeout(struct hw_i2c_state *s) {
 }
 #endif
 
-#define HW_I2C_WHILE_TRIES(condition, status_code)      \
-    HW_I2C_WHILE (condition) {                          \
+
+
+/* Blocking operation with timeout. */
+
+#define HW_I2C_WHILE(s, condition, status_code)         \
+    while (condition) {                                 \
         if (!s->ctrl.tries--) {                         \
             s->ctrl.sr = status_code;                   \
             goto error;                                 \
@@ -113,20 +133,20 @@ static inline uint32_t hw_i2c_timeout(struct hw_i2c_state *s) {
     }
 
 static inline uint32_t hw_i2c_transmit_(struct hw_i2c_transmit_state *s, struct hw_i2c c) {
-    HW_I2C_WHILE_TRIES ((I2C_SR2(c.i2c) & I2C_SR2_BUSY), 0x30000);
+    HW_I2C_WHILE(s, (I2C_SR2(c.i2c) & I2C_SR2_BUSY), 0x30000);
 
     /* send start */
     I2C_CR1(c.i2c) |= I2C_CR1_START;
 
     /* Wait for master mode selected */
-    HW_I2C_WHILE_TRIES (!((I2C_SR1(c.i2c) & I2C_SR1_SB) &
-                          (I2C_SR2(c.i2c) & (I2C_SR2_MSL | I2C_SR2_BUSY))), 0x30001);
+    HW_I2C_WHILE(s, !((I2C_SR1(c.i2c) & I2C_SR1_SB) &
+                      (I2C_SR2(c.i2c) & (I2C_SR2_MSL | I2C_SR2_BUSY))), 0x30001);
 
     /* Send 7bit address */
     I2C_DR(c.i2c) = (uint8_t)((s->slave << 1) | I2C_WRITE);
 
     /* Wait for address bit done or error. */
-    HW_I2C_WHILE_TRIES(!(s->ctrl.sr = I2C_SR1(c.i2c)), 0x30002);
+    HW_I2C_WHILE(s, !(s->ctrl.sr = I2C_SR1(c.i2c)), 0x30002);
     if (!(s->ctrl.sr & I2C_SR1_ADDR)) goto error;
 
     /* Clearing ADDR condition sequence. */
@@ -135,14 +155,14 @@ static inline uint32_t hw_i2c_transmit_(struct hw_i2c_transmit_state *s, struct 
     if (s->hdr) {
         for (s->ctrl.i = 0; s->ctrl.i <s->hdr_len; s->ctrl.i++) {
             I2C_DR(c.i2c) = s->hdr[s->ctrl.i];
-            HW_I2C_WHILE_TRIES (!(s->ctrl.sr = I2C_SR1(c.i2c)), 0x30003);
+            HW_I2C_WHILE(s, !(s->ctrl.sr = I2C_SR1(c.i2c)), 0x30003);
             if (!(s->ctrl.sr | I2C_SR1_BTF)) goto error;
         }
     }
     if (s->data) {
         for (s->ctrl.i = 0; s->ctrl.i < s->data_len; s->ctrl.i++) {
             I2C_DR(c.i2c) = s->data[s->ctrl.i];
-            HW_I2C_WHILE_TRIES (!(s->ctrl.sr = I2C_SR1(c.i2c)), 0x30004);
+            HW_I2C_WHILE(s, !(s->ctrl.sr = I2C_SR1(c.i2c)), 0x30004);
             if (!(s->ctrl.sr | I2C_SR1_BTF)) goto error;
         }
     }
@@ -184,8 +204,8 @@ static inline uint32_t hw_i2c_receive_(struct hw_i2c_receive_state *s, struct hw
     I2C_CR1(c.i2c) |= I2C_CR1_START;
 
     /* Wait for master mode selected */
-    HW_I2C_WHILE_TRIES (!((I2C_SR1(c.i2c) & I2C_SR1_SB) &
-                          (I2C_SR2(c.i2c) & (I2C_SR2_MSL | I2C_SR2_BUSY))), 0x30011);
+    HW_I2C_WHILE(s, !((I2C_SR1(c.i2c) & I2C_SR1_SB) &
+                      (I2C_SR2(c.i2c) & (I2C_SR2_MSL | I2C_SR2_BUSY))), 0x30011);
 
     /* Send 7bit address */
     I2C_DR(c.i2c) = (uint8_t)((s->slave << 1) | I2C_READ);
@@ -194,7 +214,7 @@ static inline uint32_t hw_i2c_receive_(struct hw_i2c_receive_state *s, struct hw
     I2C_CR1(c.i2c) |= I2C_CR1_ACK;
 
     /* Wait for address bit done or error. */
-    HW_I2C_WHILE_TRIES(!(s->ctrl.sr = I2C_SR1(c.i2c)), 0x30012);
+    HW_I2C_WHILE(s, !(s->ctrl.sr = I2C_SR1(c.i2c)), 0x30012);
 
     if (!(s->ctrl.sr & I2C_SR1_ADDR)) {
         infof("i2c receive error waiting for addr: SR1=%x\n", s->ctrl.sr);
@@ -210,7 +230,7 @@ static inline uint32_t hw_i2c_receive_(struct hw_i2c_receive_state *s, struct hw
             I2C_CR1(c.i2c) &= ~I2C_CR1_ACK;
         }
 
-        HW_I2C_WHILE_TRIES (!(s->ctrl.sr = I2C_SR1(c.i2c)), 0x30013);
+        HW_I2C_WHILE(s, !(s->ctrl.sr = I2C_SR1(c.i2c)), 0x30013);
         if (!(I2C_SR1(c.i2c) & I2C_SR1_RxNE)) {
             infof("i2c receive data byte %d: SR1=%x\n", s->ctrl.i, s->ctrl.sr);
         }
