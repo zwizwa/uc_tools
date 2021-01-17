@@ -153,12 +153,18 @@ static inline void vl53l1x_wr_u32(struct vl53l1x *s, uint16_t i, uint32_t v) { v
 static inline uint16_t vl53l1x_get_sensor_id (struct vl53l1x *s) { return vl53l1x_rd_u16(s, VL53L1_IDENTIFICATION__MODEL_ID); }
 static inline uint16_t vl53l1x_get_distance  (struct vl53l1x *s) { return vl53l1x_rd_u16(s, VL53L1_RESULT__FINAL_CROSSTALK_CORRECTED_RANGE_MM_SD0); }
 
+static inline uint8_t vl53l1x_tio_hv_status_to_data_ready(uint8_t status) {
+    return (status & 1) ^ (1^VL53L1X_INTERRUPT_POLARITY);
+}
+
 static inline uint8_t vl53l1x_check_for_data_ready(struct vl53l1x *s) {
     /* Driver assumes the input polarity is known at compile time.
        The original ST driver queries the chip fir this, which seems
        silly. */
-    return (vl53l1x_rd_u8(s, GPIO__TIO_HV_STATUS) & 1) ^ (1^VL53L1X_INTERRUPT_POLARITY);
+    return vl53l1x_tio_hv_status_to_data_ready(vl53l1x_rd_u8(s, GPIO__TIO_HV_STATUS));
 }
+
+
 
 static inline void vl53l1x_clear_interrupt(struct vl53l1x *s) { vl53l1x_wr_u8 (s, SYSTEM__INTERRUPT_CLEAR, 1); }
 static inline void vl53l1x_start_ranging  (struct vl53l1x *s) { vl53l1x_wr_u8 (s, SYSTEM__MODE_START, 0x40); }
@@ -318,6 +324,8 @@ static inline int vl53l1x_begin(struct vl53l1x *s) {
    Actually, it's much simpler to just write the init wrappers and
    create a generic machine for WR_U8 and RD_U16.
 */
+#if 0
+
 #define VL5311X_WR_U8(reg, val) { U16_BE(reg), val }
 #define VL5311X_RD_U16(reg)     { U16_BE(reg) }
 
@@ -331,12 +339,84 @@ static inline int vl53l1x_begin(struct vl53l1x *s) {
 #define VL5311X_GET_DISTANCE()         VL5311X_RD16(VL53L1_RESULT__FINAL_CROSSTALK_CORRECTED_RANGE_MM_SD)
 #define VL5311X_GET_SENSOR_ID()        VL5311X_RD16(VL53L1_IDENTIFICATION__MODEL_ID)
 
+#endif
 
 
 
-/* For non-blocking operation, it is simpler to just use plain buffers
-   and let upstream handle the send/receive.  This could do both
-   polling and dma. */
+/* I've been looking for a while to properly abstract I2C commands on
+   top of the sm.h protothreads.  The simplest I could come up with is
+   to write the protothread by hand using SM_SUB calls, and then
+   source-transforming it to these macros.  That then points to using
+   a namespace prefix (ns) to identify the C functions that implement
+   the i2c protothread operations:
+
+   ns##_transmit_init
+   ns##_transmit_tick
+   ns##_receive_init
+   ns##_receive_tick
+
+   In addition to the non-blocking call:
+
+   ns##_stop
+
+   This also requires s->sub.ns##_transmit and s->sub.ns##_receive to
+   be defined, and also a buffer at a->buf.
+
+   I realize this is all a bit contrived and not easy to
+   understand. All this is better with an example, but the idea is
+   sound in that it is still based on composition.  Just not function
+   composition.  The principles are:
+
+   - uc_tools defines inline functions that are then instantiated,
+     bound to a fixed bus.
+
+   - those functions are then passed into these macros to expand to a
+     couple of SM_SUB invokations of the transmit and receive state
+     machines.
+
+
+   Note that it is possible to write a composite state machine
+   instead.  That is probably a more readable way to do this.  And the
+   macros can be instantiated into such a generic rpc machine.  I just
+   don't have time for that right now.
+
+*/
+
+#define VL51L1X_TRANSMIT(_s,_ns,_size) {                                \
+        SM_SUB(_s, _ns##_transmit, VL51L1X_I2C_ADDR, _s->buf, _size, 0, 0); \
+        _ns##_stop();                                                   \
+    }
+
+#define VL51L1X_RECEIVE(_s,_ns,_size) {                                 \
+        SM_SUB(_s, _ns##_receive, VL51L1X_I2C_ADDR, _s->buf, _size);    \
+        _ns##_stop();                                                   \
+    }
+#define VL51L1X_RECEIVE_UINT(_s,_ns,_nb_bytes) ({       \
+            VL51L1X_RECEIVE(_s,_ns,2);                  \
+            read_be_32(_s->buf, _nb_bytes);             \
+        })
+
+#define VL5311X_RD_U16(_s,_ns,_reg) ({                                  \
+            uint32_t _n = vl53l1x_packet_rd_u16(_s->buf, _reg);         \
+            VL51L1X_TRANSMIT(_s, _ns, _n);                              \
+            VL51L1X_RECEIVE_UINT(_s, _ns, 2);                           \
+        })
+
+#define VL5311X_WR_U8(_s, _ns, reg, val) ({                             \
+            uint32_t _n = vl53l1x_packet_wr_u8(_s->buf, SYSTEM__MODE_START, 0x40); \
+            VL51L1X_TRANSMIT(_s, _ns, _n);                              \
+
+
+#define VL5311X_CLEAR_INTERRUPT(_s, _ns) VL5311X_WR_U8(_s, _ns, SYSTEM__INTERRUPT_CLEAR, 1)
+#define VL5311X_START_RANGING(_s, _ns)   VL5311X_WR_U8(_s, _ns, SYSTEM__MODE_START, 0x40)
+#define VL5311X_STOP_RANGING(_s, _ns)    VL5311X_WR_U8(_s, _ns, SYSTEM__MODE_START, 0x00)
+
+#define VL51L1X_GET_SENSOR_ID(_s, _ns)   VL5311X_RD_U16(_s, _ns, VL53L1_IDENTIFICATION__MODEL_ID)
+#define VL51L1X_GET_DISTANCE(_s, _ns)    VL5311X_RD_U16(_s, _ns, VL53L1_RESULT__FINAL_CROSSTALK_CORRECTED_RANGE_MM_SD0)
+
+
+/* These are used in the macros above.  Making this into functions
+   gives the compiler some wiggleroom wrt. inlining or not. */
 static inline uint32_t vl53l1x_packet_wr_u8(uint8_t *buf, uint16_t reg, uint8_t val) {
     buf[0] = reg >> 8; buf[1] = reg;
     buf[2] = val;
@@ -350,9 +430,6 @@ static inline uint32_t vl53l1x_packet_wr_u16(uint8_t *buf, uint16_t reg, uint16_
 static inline uint32_t vl53l1x_packet_rd_u16(uint8_t *buf, uint16_t reg) {
     buf[0] = reg >> 8; buf[1] = reg;
     return 2;
-}
-static inline uint32_t vl53l1x_packet_get_sensor_id(uint8_t *buf) {
-    return vl53l1x_packet_rd_u16(buf, VL53L1_IDENTIFICATION__MODEL_ID);
 }
 
 
