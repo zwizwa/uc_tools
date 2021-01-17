@@ -314,6 +314,9 @@ static inline int vl53l1x_begin(struct vl53l1x *s) {
    generation for measurement commands.  These are exposed as array
    initializers that can then be used by a generic non-blocking i2c
    transfer mechanism.
+
+   Actually, it's much simpler to just write the init wrappers and
+   create a generic machine for WR_U8 and RD_U16.
 */
 #define VL5311X_WR_U8(reg, val) { U16_BE(reg), val }
 #define VL5311X_RD_U16(reg)     { U16_BE(reg) }
@@ -327,6 +330,30 @@ static inline int vl53l1x_begin(struct vl53l1x *s) {
 #define VL5311X_CHECK_FOR_DATA_READY() VL5311X_RD16(VL53L1_IDENTIFICATION__MODEL_ID)
 #define VL5311X_GET_DISTANCE()         VL5311X_RD16(VL53L1_RESULT__FINAL_CROSSTALK_CORRECTED_RANGE_MM_SD)
 #define VL5311X_GET_SENSOR_ID()        VL5311X_RD16(VL53L1_IDENTIFICATION__MODEL_ID)
+
+
+
+
+/* For non-blocking operation, it is simpler to just use plain buffers
+   and let upstream handle the send/receive.  This could do both
+   polling and dma. */
+static inline uint32_t vl53l1x_packet_wr_u8(uint8_t *buf, uint16_t reg, uint8_t val) {
+    buf[0] = reg >> 8; buf[1] = reg;
+    buf[2] = val;
+    return 3;
+}
+static inline uint32_t vl53l1x_packet_wr_u16(uint8_t *buf, uint16_t reg, uint16_t val) {
+    buf[0] = reg >> 8; buf[1] = reg;
+    buf[2] = val >> 8; buf[3] = val;
+    return 4;
+}
+static inline uint32_t vl53l1x_packet_rd_u16(uint8_t *buf, uint16_t reg) {
+    buf[0] = reg >> 8; buf[1] = reg;
+    return 2;
+}
+static inline uint32_t vl53l1x_packet_get_sensor_id(uint8_t *buf) {
+    return vl53l1x_packet_rd_u16(buf, VL53L1_IDENTIFICATION__MODEL_ID);
+}
 
 
 #endif
