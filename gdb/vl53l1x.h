@@ -396,23 +396,28 @@ static inline int vl53l1x_begin(struct vl53l1x *s) {
             read_be_32(_s->buf, _nb_bytes);             \
         })
 
-#define VL5311X_RD_U16(_s,_ns,_reg) ({                                  \
-            uint32_t _n = vl53l1x_packet_rd_u16(_s->buf, _reg);         \
+#define VL53L1X_RD_UINT(_s,_ns,_reg,_nb_bytes) ({                       \
+            uint32_t _n = vl53l1x_packet_rd(_s->buf, _reg);             \
             VL51L1X_TRANSMIT(_s, _ns, _n);                              \
-            VL51L1X_RECEIVE_UINT(_s, _ns, 2);                           \
+            VL51L1X_RECEIVE_UINT(_s, _ns, _nb_bytes);                   \
         })
 
-#define VL5311X_WR_U8(_s, _ns, reg, val) ({                             \
+#define VL53L1X_WR_U8(_s, _ns, reg, val) ({                             \
             uint32_t _n = vl53l1x_packet_wr_u8(_s->buf, SYSTEM__MODE_START, 0x40); \
             VL51L1X_TRANSMIT(_s, _ns, _n);                              \
+        })
 
 
-#define VL5311X_CLEAR_INTERRUPT(_s, _ns) VL5311X_WR_U8(_s, _ns, SYSTEM__INTERRUPT_CLEAR, 1)
-#define VL5311X_START_RANGING(_s, _ns)   VL5311X_WR_U8(_s, _ns, SYSTEM__MODE_START, 0x40)
-#define VL5311X_STOP_RANGING(_s, _ns)    VL5311X_WR_U8(_s, _ns, SYSTEM__MODE_START, 0x00)
+#define VL53L1X_CLEAR_INTERRUPT(_s, _ns) VL53L1X_WR_U8(_s, _ns, SYSTEM__INTERRUPT_CLEAR, 1)
+#define VL53L1X_START_RANGING(_s, _ns)   VL53L1X_WR_U8(_s, _ns, SYSTEM__MODE_START, 0x40)
+#define VL53L1X_STOP_RANGING(_s, _ns)    VL53L1X_WR_U8(_s, _ns, SYSTEM__MODE_START, 0x00)
 
-#define VL51L1X_GET_SENSOR_ID(_s, _ns)   VL5311X_RD_U16(_s, _ns, VL53L1_IDENTIFICATION__MODEL_ID)
-#define VL51L1X_GET_DISTANCE(_s, _ns)    VL5311X_RD_U16(_s, _ns, VL53L1_RESULT__FINAL_CROSSTALK_CORRECTED_RANGE_MM_SD0)
+#define VL51L1X_GET_SENSOR_ID(_s, _ns)   VL53L1X_RD_UINT(_s, _ns, VL53L1_IDENTIFICATION__MODEL_ID, 2)
+#define VL51L1X_GET_DISTANCE(_s, _ns)    VL53L1X_RD_UINT(_s, _ns, VL53L1_RESULT__FINAL_CROSSTALK_CORRECTED_RANGE_MM_SD0, 2)
+
+#define VL51L1X_CHECK_FOR_DATA_READY(_s, _ns) \
+    vl53l1x_tio_hv_status_to_data_ready(VL53L1X_RD_UINT(_s, _ns, GPIO__TIO_HV_STATUS, 1))
+
 
 
 /* These are used in the macros above.  Making this into functions
@@ -427,7 +432,7 @@ static inline uint32_t vl53l1x_packet_wr_u16(uint8_t *buf, uint16_t reg, uint16_
     buf[2] = val >> 8; buf[3] = val;
     return 4;
 }
-static inline uint32_t vl53l1x_packet_rd_u16(uint8_t *buf, uint16_t reg) {
+static inline uint32_t vl53l1x_packet_rd(uint8_t *buf, uint16_t reg) {
     buf[0] = reg >> 8; buf[1] = reg;
     return 2;
 }
