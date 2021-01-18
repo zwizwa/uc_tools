@@ -100,15 +100,15 @@ struct hw_i2c_control_state {
 };
 
 struct hw_i2c_transmit_state {
-    void *next; // sm.h resume point
     struct hw_i2c_control_state ctrl;
+    void *next; // sm.h resume point
     uint8_t slave; // slave address
     const uint8_t *hdr;  uint32_t hdr_len;
     const uint8_t *data; uint32_t data_len;
 };
 struct hw_i2c_receive_state {
-    void *next; // sm.h resume point
     struct hw_i2c_control_state ctrl;
+    void *next; // sm.h resume point
     uint8_t slave; // slave address
     uint8_t *hdr;  uint32_t hdr_len;
     uint8_t *data; uint32_t data_len;

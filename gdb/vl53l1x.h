@@ -316,31 +316,6 @@ static inline int vl53l1x_begin(struct vl53l1x *s) {
 }
 
 
-/* For non-blocking operation, we provide abstraction around command
-   generation for measurement commands.  These are exposed as array
-   initializers that can then be used by a generic non-blocking i2c
-   transfer mechanism.
-
-   Actually, it's much simpler to just write the init wrappers and
-   create a generic machine for WR_U8 and RD_U16.
-*/
-#if 0
-
-#define VL5311X_WR_U8(reg, val) { U16_BE(reg), val }
-#define VL5311X_RD_U16(reg)     { U16_BE(reg) }
-
-/* Write, Stop. */
-#define VL5311X_CLEAR_INTERRUPT()      VL5311X_WR_U8(SYSTEM__MODE_START, 0x40)
-#define VL5311X_STOP_RANGING()         VL5311X_WR_U8(SYSTEM__MODE_START, 0x00)
-#define VL5311X_START_RANGING()        VL5311X_WR_U8(SYSTEM__MODE_START, 0x40)
-
-/* Write, Stop, Read, Stop.  2 bytes big endian are returned. */
-#define VL5311X_CHECK_FOR_DATA_READY() VL5311X_RD16(VL53L1_IDENTIFICATION__MODEL_ID)
-#define VL5311X_GET_DISTANCE()         VL5311X_RD16(VL53L1_RESULT__FINAL_CROSSTALK_CORRECTED_RANGE_MM_SD)
-#define VL5311X_GET_SENSOR_ID()        VL5311X_RD16(VL53L1_IDENTIFICATION__MODEL_ID)
-
-#endif
-
 
 
 /* I've been looking for a while to properly abstract I2C commands on
@@ -380,7 +355,10 @@ static inline int vl53l1x_begin(struct vl53l1x *s) {
    macros can be instantiated into such a generic rpc machine.  I just
    don't have time for that right now.
 
+   Note that SM_SUB uses abort as error handling, meaning next is set
+   to &&halt, and the error code is propagated up the chain.
 */
+
 
 #define VL51L1X_TRANSMIT(_s,_ns,_size) {                                \
         SM_SUB(_s, _ns##_transmit, VL51L1X_I2C_ADDR, _s->buf, _size, 0, 0); \
