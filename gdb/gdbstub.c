@@ -155,10 +155,36 @@ static int32_t cmd_xfer_memory_map_read(struct gdbstub *stub,
         return rsp_E(rpl, 00);                                      \
     }
 
+/* Put a trace of the commands in RAM.  This places the log in the
+   application memory, so this will not work when the application is
+   active.  That is ok, because in most cases, flashing will not work
+   anyway when the application is active. */
+
+/* This was added to track down a bug.  The issue is that once a
+   binary goes over a certain size, something goes wrong resulting in
+   Flash memory corruption.  When enabling this logging, it appears
+   that the flash erase function is called twice, and the first flash
+   write function is called twice as well. */
+#define RAM_TRACE 0
+#if RAM_TRACE
+// Make some room by including smaller versions of libc functions
+#include "mod_libc.c"
+volatile uint32_t *ram_trace_next = (uint32_t*)0x20002000;
+void ram_trace(uint32_t word) {
+    *ram_trace_next++ = word;
+    *ram_trace_next = 0x55555555;
+}
+#endif
+
 static int32_t cmd_flash_erase(struct gdbstub *stub, const uint8_t *b, uint32_t l) {
     uint32_t addr, size;
     TRY(take_hex(&b, &l, &addr) ||
         take_hex(&b, &l, &size));
+#if RAM_TRACE
+    ram_trace(1);
+    ram_trace(addr);
+    ram_trace(size);
+#endif
     CHECK_ADDR(stub->rpl, addr);
     flash_erase(addr, size);
     return rsp_OK(stub->rpl);
@@ -166,6 +192,10 @@ static int32_t cmd_flash_erase(struct gdbstub *stub, const uint8_t *b, uint32_t 
 static int32_t cmd_flash_write(struct gdbstub *stub, const uint8_t *b, uint32_t l) {
     uint32_t addr;
     TRY(take_hex(&b, &l, &addr));
+#if RAM_TRACE
+    ram_trace(2);
+    ram_trace(addr);
+#endif
     CHECK_ADDR(stub->rpl, addr);
     flash_write(addr, b, l);
     return rsp_OK(stub->rpl);
