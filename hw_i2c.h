@@ -35,23 +35,10 @@ struct hw_i2c {
 
 // FIXME: Name the error codes.  For now they are ad-hoc.
 
-static inline void hw_i2c_setup_swjenable(struct hw_i2c c, uint32_t swjenable) {
+int hw_i2c_sda(struct hw_i2c c) { return hw_gpio_read(c.gpio, c.sda); }
+int hw_i2c_scl(struct hw_i2c c) { return hw_gpio_read(c.gpio, c.scl); }
 
-    rcc_periph_clock_enable(c.rcc);
-    i2c_reset(c.i2c);
-
-    /* Note that swjenable is necesary here, because that register is
-       write-only, so we cannot rely on read,modify,write. */
-    gpio_primary_remap(swjenable, AFIO_MAPR_I2C1_REMAP);
-
-    /* pin debug */
-    //hw_gpio_config(c.gpio, c.sda, HW_GPIO_CONFIG_OUTPUT);
-    //hw_gpio_low(c.gpio, c.sda); // pull direction
-
-    // FIXME: make this configurable to use external resistors?
-    // Might not be necessary to disable pull if internal pull is weak.
-
-#if 0
+static inline void hw_i2c_unblock(struct hw_i2c c) {
     // FIXME: doesn't seem to work. revisit.  I'm still getting errors
     // where the bus is being pulled down and I don't know who.
 
@@ -68,7 +55,24 @@ static inline void hw_i2c_setup_swjenable(struct hw_i2c c, uint32_t swjenable) {
         hw_busywait_us(half_period_us);
         hw_gpio_high(c.gpio, c.scl);
     }
-#endif
+}
+
+static inline void hw_i2c_setup_swjenable(struct hw_i2c c, uint32_t swjenable) {
+
+    rcc_periph_clock_enable(c.rcc);
+    i2c_reset(c.i2c);
+
+    /* Note that swjenable is necesary here, because that register is
+       write-only, so we cannot rely on read,modify,write. */
+    gpio_primary_remap(swjenable, AFIO_MAPR_I2C1_REMAP);
+
+    /* pin debug */
+    //hw_gpio_config(c.gpio, c.sda, HW_GPIO_CONFIG_OUTPUT);
+    //hw_gpio_low(c.gpio, c.sda); // pull direction
+
+    // FIXME: make this configurable to use external resistors?
+    // Might not be necessary to disable pull if internal pull is weak.
+
 
     hw_gpio_high(c.gpio, c.scl); // pull direction
     hw_gpio_high(c.gpio, c.sda); // pull direction
