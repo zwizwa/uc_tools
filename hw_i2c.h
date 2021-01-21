@@ -131,23 +131,27 @@ static inline void hw_i2c_stop(struct hw_i2c c) {
 }
 
 
+#define HW_I2C_ERROR(s, status_code) {                          \
+        s->ctrl.sr = status_code;                               \
+        goto error;                                             \
+    }
+
+
 
 #if 0
 /* Old, blocking operation.  Keep this here for a while, make sure we
    can easily revert to the old implementation. */
-#define HW_I2C_WHILE(s, condition, status_code)         \
-    while (condition) {                                 \
-        if (!s->ctrl.tries--) {                         \
-            s->ctrl.sr = status_code;                   \
-            goto error;                                 \
-        }                                               \
+#define HW_I2C_WHILE(s, condition, status_code)                 \
+    while (condition) {                                         \
+        if (!s->ctrl.tries--) { HW_I2c_ERROR(s, status_code); } \
     }
+                                  }
+
 #else
 /* New, sm.h based tick method. */
 #define HW_I2C_WHILE(s, condition, status_code)                 \
     if (!SM_WAIT_COUNT(s, !(condition), s->ctrl.tries)) {       \
-        s->ctrl.sr = status_code;                               \
-        goto error;                                             \
+        HW_I2C_ERROR(s, status_code);                           \
     }
 #endif
 
@@ -172,6 +176,8 @@ static inline void hw_i2c_transmit_init(
 static inline uint32_t hw_i2c_transmit_tick(struct hw_i2c c, struct hw_i2c_transmit_state *s) {
 
     SM_RESUME(s);
+
+    //if (I2C_SR2(c.i2c) & I2C_SR2_BUSY) HW_I2C_ERROR(s, 0x30000);
 
     HW_I2C_WHILE(s, (I2C_SR2(c.i2c) & I2C_SR2_BUSY), 0x30000);
 
