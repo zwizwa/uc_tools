@@ -44,11 +44,15 @@ case "$TYPE" in
         rm -f "$ELF"
 
         [ -z "$GCC" ] && . $UC_TOOLS/linux/env.$ARCH.sh
-        # The LD name is fake. Use linker's defaults.
-        if [ $(basename "$LD") != dynamic.$ARCH.ld ]; then
-            echo "Only dynamic linking: ARCH=$ARCH LD=$LD"
-            exit 1
-        fi
+        # For linux applications we do not use linker scripts.
+        # Dynamic linking is the default.  FIXME: This no longer
+        # insists on the "dynamic" name, such that link type can still
+        # be used as a tag to e.g. provide different linker parameters
+        # in the build system.
+        # if [ $(basename "$LD") != dynamic.$ARCH.ld ]; then
+        #     echo "Only dynamic linking: ARCH=$ARCH LD=$LD"
+        #     exit 1
+        # fi
         $GCC $LDFLAGS -Wl,-Map=$MAP -o $ELF $O $O_SYSTEM $A $LDLIBS
         ;;
     so)

@@ -1,5 +1,6 @@
 #include "tag_u32.h"
-#include "infof.h"
+#include "log.h"
+//#include "infof.h"
 
 int tag_u32_reply_bad_map_ref(struct tag_u32 *req) {
     send_reply_tag_u32_status_cstring(req, 1, "bad_map_ref");
@@ -45,11 +46,11 @@ int tag_u32_dispatch(tag_u32_handle_fn handler,
     };
     int rv = handler(&s);
     if (rv && 1)  {
-        infof("tag_u32_dispatch rv=%d, path:", rv);
+        LOG("tag_u32_dispatch rv=%d, path:", rv);
         for(uint32_t i=0; i<nb_a; i++) {
-            infof(" %d",a[i]);
+            LOG(" %d",a[i]);
         }
-        infof("\n");
+        LOG("\n");
     }
     return rv;
 }
