@@ -14,6 +14,11 @@ int tag_u32_dispatch(tag_u32_handle_fn handler,
                      tag_u32_reply_fn reply,
                      void *context,
                      const uint8_t *buf, uint32_t nb_buf) {
+
+    if (0) {
+        LOG("packet: "); for(uint32_t i=0; i<nb_buf; i++) { LOG(" %02x", buf[i]); } LOG("\n");
+    }
+
     if (nb_buf < 4) return TAG_U32_ERROR_SIZE;
 
     // This format is now also used for TAG_COMMAND, so don't check
@@ -23,7 +28,7 @@ int tag_u32_dispatch(tag_u32_handle_fn handler,
     /* Check if size parameters make sense. */
     uint32_t nb_f = buf[2];
     uint32_t nb_a = buf[3];
-    uint32_t offset_b = 2 + 2 + 4 * (nb_f + nb_a);
+    uint32_t offset_b = 2 + 1 + 1 + 4 * (nb_f + nb_a);
     if (nb_buf < offset_b) return TAG_U32_ERROR_SIZE;
 
     /* Everything after the tag vectors is opaque payload. */
@@ -36,6 +41,11 @@ int tag_u32_dispatch(tag_u32_handle_fn handler,
 
     uint32_t f[nb_f];  read_be_u32_array(f, buf_f, nb_f);
     uint32_t a[nb_a];  read_be_u32_array(a, buf_a, nb_a);
+
+    if (0) {
+        LOG("from:"); for(uint32_t i=0;i<nb_f; i++) { LOG(" %08x", f[i]); } LOG("\n");
+        LOG("args:"); for(uint32_t i=0;i<nb_a; i++) { LOG(" %08x", a[i]); } LOG("\n");
+    }
 
     struct tag_u32 s = {
         .context = context,

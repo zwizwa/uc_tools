@@ -24,6 +24,7 @@ KEEP void send_reply_tag_u32(const struct tag_u32 *f, const struct tag_u32 *s) {
     buf[n] = tot_nb_args;         n+=1;
     if (f) {
         for (uint32_t i=0; i<f->nb_from; i++) {
+            //LOG("from %08x %d\n", f->from[i], i);
             write_be(buf+n, f->from[i], 4); n+=4;
         }
     }
@@ -32,6 +33,9 @@ KEEP void send_reply_tag_u32(const struct tag_u32 *f, const struct tag_u32 *s) {
     }
     memcpy(buf+n, s->bytes, s->nb_bytes); n+=s->nb_bytes;
     ASSERT(n == buf_size);
+
+    //for(uint32_t i=0; i<buf_size; i++) { LOG(" %02x", buf[i]); } LOG("\n");
+
     SEND_TAG_U32_BUF_WRITE(port, buf, buf_size);
 }
 

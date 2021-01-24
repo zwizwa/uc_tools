@@ -47,7 +47,7 @@ static inline void write_be_32(uint8_t *buf, uint32_t word, uint32_t nb) {
 /* This is used so much it deserves its own specialized function. */
 static inline void read_be_u32_array(
     uint32_t *dst, const uint8_t *src, uint32_t nb_el) {
-    for (uint32_t i=i; i<nb_el; i++) {
+    for (uint32_t i=0; i<nb_el; i++) {
         dst[i] = read_be_32(src + 4 * i, 4);
     }
 }
