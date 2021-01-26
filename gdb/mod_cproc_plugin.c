@@ -16,6 +16,7 @@ int handle_tag_u32(struct tag_u32 *);
 w cproc_input[CPROC_NB_INPUTS];
 void cproc_update(w *input, w changed);
 
+/* FIXME: This doesn't implement tag_u32 yet. */
 int handle_tag_u32(struct tag_u32 *s) {
     if ((s->nb_args == 2) &&
         (s->nb_bytes == 0)) {

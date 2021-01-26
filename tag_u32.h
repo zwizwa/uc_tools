@@ -8,35 +8,49 @@
 
 /* TL&DR
 
-   Use a list representation to represent object hierarchy (paths),
-   and method call substructure (arguments).
+   Use a list representation to represent _both_ object hierarchy
+   (paths), and method call substructure (method names, arguments,
+   type tags for binary payload).
 
    Make it simple to use symbolic names. */
 
 
-/* What is a good simple protocol to send commands to a
-   microcontroller that is programmed in C?  Usually, protocol
-   constraints are imposed externally, but I've found that in 99% of
-   ad-hoc cases, all I want is an array of u32 values plus some opaque
-   payload.  This maps to C function calls in the most straightforward
-   way.  TAG_U32 is reserved in packet_tags.h
+/* This protocol arose after a search for a good compromise protocol:
 
-   For RPC, the continuation can be embedded in the binary payload.
-   It doesn't seem appropriate to standardize that here.
-*/
+   - easy to implement in C with minimial code and memory requirements
 
-/* This works really well.  Why?
+   - fast to dispatch in C
 
-   I'm using it mostly in Erlang.  At the Erlang side, it provides a
-   way to map into a particular nested datastrcuture: a list of
-   symbols and numbers.  This is good enough to represent almost
-   everything, and it is very easy to write a small wrapper that
-   bridges some more complicated data structure into a linear path.
-   I.e. it captures hierarchical objects at the Erlang side well.
+   - has both a binary and a C level API
 
-   At the same time, it captures hierarchical object at the C side
-   also very well, in a way that symbol handling is easily abstracted,
-   and that pattern matching can also be implemented at the C side.
+   - self-describing, i.e. including metadata
+
+   - hierarchical: able to describe arbitrary substructure
+
+   - easy to integrate with pattern matching (destructuring) in a
+     language like Erlang.
+
+   - easy to map to existing hierarchical data formats that use nested
+     tree structures based on symbolic dictionarys (symbol to thing)
+     and arrays/lists, e.g. XML, JSON, ...
+
+   The main trick is to not insist on messages as trees, but to split
+   the problem up into two layers:
+
+   - messages as tree nodes  (paths + payloads)
+
+   - reliance on transactions spanning multiple tree node messages to
+     describe trees
+
+   In short, this protocol can be used to implement the "zipper" tree
+   traversal pattern, which allows trees to be implemented as
+   iterations over trees, removing the need for explicit tree data
+   structure representation at the microcontroller end.
+
+   The protocol is structured as unidirectional messaging in the first
+   place, with an RPC extension that uses the same structure for reply
+   messages, i.e. by providing a prefix path for RPC replies.
+
 */
 
 

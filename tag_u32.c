@@ -2,11 +2,7 @@
 #include "log.h"
 //#include "infof.h"
 
-int tag_u32_reply_bad_map_ref(struct tag_u32 *req) {
-    send_reply_tag_u32_status_cstring(req, 1, "bad_map_ref");
-    return 0;
-}
-
+/* MAIN DISPATCH */
 
 /* This allcates temp buffers for the decoded tags. It is assumed all
    temp buffers fit on the stack. */
@@ -66,6 +62,12 @@ int tag_u32_dispatch(tag_u32_handle_fn handler,
 }
 
 
+/* MAPS */
+
+int tag_u32_reply_bad_map_ref(struct tag_u32 *req) {
+    send_reply_tag_u32_status_cstring(req, 1, "bad_map_ref");
+    return 0;
+}
 
 /* The main map handler is implemented with abstract map reference, to
    avoid having to create large arrays for dynamically generated
@@ -88,7 +90,6 @@ static inline int tag_u32_do_map_ref(
     r->nb_args = nb_args;
     return rv;
 }
-
 
 int handle_tag_u32_map_ref_meta(struct tag_u32 *r,
                                 map_ref_fn map_ref, void *ctx) {
@@ -136,7 +137,6 @@ int handle_tag_u32_map_ref_meta(struct tag_u32 *r,
     send_reply_tag_u32_status_cstring(r, 1, "bad_comand");
     return 0;
 }
-
 
 /* This is a wrapper for a concrete array. */
 struct tag_u32_map_ref {
@@ -217,6 +217,8 @@ int handle_tag_u32_map_dynamic(struct tag_u32 *req,
     }
 }
 
+/* TOOLS */
+
 void send_reply_tag_u32_status_cstring(
     const struct tag_u32 *req, uint32_t status, const char *string) {
     const struct tag_u32 s = {
@@ -227,3 +229,14 @@ void send_reply_tag_u32_status_cstring(
     send_reply_tag_u32_maybe(req, &s);
 }
 
+
+
+/* HIGH LEVEL PROTOCOL */
+
+/* The main idea of the tag_u32 protocol is to provide low level
+   messaging that can then be used to create application-specific tree
+   structures.  However, it is useful to define some standard tree
+   layouts, e.g. schemas. */
+
+
+/* Some standard "objects" that can serve as an example. */
