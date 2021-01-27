@@ -38,6 +38,10 @@ static inline void hw_i2c_reset(uint32_t i2c) {
     case I2C2: hw_rcc_periph_reset_pulse(RST_I2C2); break;
     }
 }
+static inline void hw_i2c_set_swrst(uint32_t i2c, int val) {
+    if (val) I2C_CR1(i2c) |=  I2C_CR1_SWRST;
+    else     I2C_CR1(i2c) &= ~I2C_CR1_SWRST;
+}
 static inline void hw_i2c_peripheral_disable(uint32_t i2c)        { I2C_CR1(i2c) &= ~I2C_CR1_PE; }
 static inline void hw_i2c_peripheral_enable(uint32_t i2c)         { I2C_CR1(i2c) |=  I2C_CR1_PE; }
 static inline void hw_i2c_set_fast_mode(uint32_t i2c)             { I2C_CCR(i2c) |=  I2C_CCR_FS; }
@@ -94,8 +98,8 @@ struct hw_i2c {
 
 // FIXME: Name the error codes.  For now they are ad-hoc.
 
-int hw_i2c_sda(struct hw_i2c c) { return hw_gpio_read(c.gpio, c.sda); }
-int hw_i2c_scl(struct hw_i2c c) { return hw_gpio_read(c.gpio, c.scl); }
+int hw_i2c_read_sda(struct hw_i2c c) { return hw_gpio_read(c.gpio, c.sda); }
+int hw_i2c_read_scl(struct hw_i2c c) { return hw_gpio_read(c.gpio, c.scl); }
 
 static inline void hw_i2c_unblock(struct hw_i2c c) {
     // FIXME: doesn't seem to work. revisit.  I'm still getting errors
@@ -120,6 +124,12 @@ static inline void hw_i2c_setup_swjenable(struct hw_i2c c, uint32_t swjenable) {
 
     rcc_periph_clock_enable(c.rcc);
     hw_i2c_reset(c.i2c);
+#if 0
+    /* FIXME: I don't know what I'm doing... */
+    hw_i2c_set_swrst(c.i2c, 1);
+    hw_busywait_ms(1);
+    hw_i2c_set_swrst(c.i2c, 0);
+#endif
 
     /* Note that swjenable is necesary here, because that register is
        write-only, so we cannot rely on read,modify,write. */
@@ -236,6 +246,15 @@ static inline void hw_i2c_transmit_init(
     s->data_len = data_len;
 }
 
+/*
+Error codes:
+0003xxxx timeouts, see code for location
+0000xxxx SR1
+
+Common codes:
+00030000 bus busy timout at start of transmit
+00000400 RxNE data register not empty
+*/
 static inline uint32_t hw_i2c_transmit_tick(struct hw_i2c c, struct hw_i2c_transmit_state *s) {
 
     SM_RESUME(s);
