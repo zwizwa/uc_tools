@@ -13,8 +13,67 @@
 
 #include "log.h"
 #include "hw_stm32f103.h"
+
+/* Note that there are two versions of the i2c header. The file for
+   STM32F1 is libopencm3/stm32/f1/i2c.h which includes
+   libopencm3/stm32/common/i2c_common_v1.h
+
+   This seems to be related to the specific chips.  Following the
+   includes I find:
+
+   i2c v1: f1, f2, f4, l1
+   i2c v2: f0, f3, f7, g0, l0, l4
+
+*/
+
 #include <libopencm3/stm32/i2c.h>
 
+/* For debugging, I'm going to inline a couple of these functions so
+   the register interaction is more clear.  These are all copied from
+   libopencm3/lib/stm32/common/i2c_common_v1.c and prefixed with hw_
+*/
+static inline void hw_i2c_reset(uint32_t i2c) {
+    switch (i2c) {
+    case I2C1: hw_rcc_periph_reset_pulse(RST_I2C1); break;
+    case I2C2: hw_rcc_periph_reset_pulse(RST_I2C2); break;
+    }
+}
+static inline void hw_i2c_peripheral_disable(uint32_t i2c)        { I2C_CR1(i2c) &= ~I2C_CR1_PE; }
+static inline void hw_i2c_peripheral_enable(uint32_t i2c)         { I2C_CR1(i2c) |=  I2C_CR1_PE; }
+static inline void hw_i2c_set_fast_mode(uint32_t i2c)             { I2C_CCR(i2c) |=  I2C_CCR_FS; }
+static inline void hw_i2c_set_standard_mode(uint32_t i2c)         { I2C_CCR(i2c) &= ~I2C_CCR_FS; }
+static inline void hw_i2c_set_trise(uint32_t i2c, uint16_t trise) { I2C_TRISE(i2c) = trise;      }
+static inline void hw_i2c_set_clock_frequency(uint32_t i2c, uint8_t freq) {
+    uint16_t reg16;
+    reg16 = I2C_CR2(i2c) & 0xffc0; /* Clear bits [5:0]. */
+    reg16 |= freq;
+    I2C_CR2(i2c) = reg16;
+}
+static inline void hw_i2c_set_ccr(uint32_t i2c, uint16_t freq) {
+    uint16_t reg16;
+    reg16 = I2C_CCR(i2c) & 0xf000; /* Clear bits [11:0]. */
+    reg16 |= freq;
+    I2C_CCR(i2c) = reg16;
+}
+static inline void hw_i2c_set_speed(uint32_t i2c, enum i2c_speeds speed, uint32_t clock_megahz) {
+    hw_i2c_set_clock_frequency(i2c, clock_megahz);
+    switch(speed) {
+    case i2c_speed_fm_400k:
+        hw_i2c_set_fast_mode(i2c);
+        hw_i2c_set_ccr(i2c, clock_megahz * 5 / 6);
+        hw_i2c_set_trise(i2c, clock_megahz + 1);
+        break;
+    default:
+        /* fall back to standard mode */
+    case i2c_speed_sm_100k:
+        hw_i2c_set_standard_mode(i2c);
+        /* x Mhz / (100kHz * 2) */
+        hw_i2c_set_ccr(i2c, clock_megahz * 5);
+        /* Sm mode, (100kHz) freqMhz + 1 */
+        hw_i2c_set_trise(i2c, clock_megahz + 1);
+        break;
+    }
+}
 
 
 /* This is code from i2c_common_v1 inlined.  There was a bug not
@@ -60,7 +119,7 @@ static inline void hw_i2c_unblock(struct hw_i2c c) {
 static inline void hw_i2c_setup_swjenable(struct hw_i2c c, uint32_t swjenable) {
 
     rcc_periph_clock_enable(c.rcc);
-    i2c_reset(c.i2c);
+    hw_i2c_reset(c.i2c);
 
     /* Note that swjenable is necesary here, because that register is
        write-only, so we cannot rely on read,modify,write. */
@@ -80,10 +139,10 @@ static inline void hw_i2c_setup_swjenable(struct hw_i2c c, uint32_t swjenable) {
     hw_gpio_config(c.gpio, c.sda, HW_GPIO_CONFIG_ALTFN_OPEN_DRAIN);
 
 
-    i2c_peripheral_disable(c.i2c);
+    hw_i2c_peripheral_disable(c.i2c);
     //i2c_enable_interrupt(c.i2c, I2C_CR2_ITEVTEN);
-    i2c_set_speed(c.i2c, c.speed, 72);
-    i2c_peripheral_enable(c.i2c);
+    hw_i2c_set_speed(c.i2c, c.speed, 72);
+    hw_i2c_peripheral_enable(c.i2c);
 }
 
 static inline void hw_i2c_setup(struct hw_i2c c) {
