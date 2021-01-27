@@ -110,9 +110,19 @@ static inline void send_reply_tag_u32_maybe(
 #define SEND_TAG_U32(...) SEND_REPLY_TAG_U32(NULL, __VA_ARGS__)
 
 
+/* Some wrappers around send_reply_tag_u32_maybe() for often used
+ * reply patterns. */
+
+void send_reply_tag_u32_status(
+    const struct tag_u32 *req, uint32_t status,
+    const uint8_t *bytes, uint32_t nb_bytes);
+
 void send_reply_tag_u32_status_cstring(
     const struct tag_u32 *req, uint32_t status, const char *string);
 
+void send_reply_tag_u32_ok(const struct tag_u32 *req);
+
+void send_reply_tag_u32_ok_u32(const struct tag_u32 *req, uint32_t val);
 
 
 

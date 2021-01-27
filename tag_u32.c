@@ -219,14 +219,37 @@ int handle_tag_u32_map_dynamic(struct tag_u32 *req,
 
 /* TOOLS */
 
-void send_reply_tag_u32_status_cstring(
-    const struct tag_u32 *req, uint32_t status, const char *string) {
+void send_reply_tag_u32_status(
+    const struct tag_u32 *req, uint32_t status,
+    const uint8_t *bytes, uint32_t nb_bytes) {
     const struct tag_u32 s = {
         .args = &status, .nb_args = 1,
-        .bytes = string ? (const uint8_t*)string : 0,
-        .nb_bytes = string ? strlen(string) : 0
+        .bytes = bytes, .nb_bytes = nb_bytes
     };
     send_reply_tag_u32_maybe(req, &s);
+}
+
+void send_reply_tag_u32_status_cstring(
+    const struct tag_u32 *req, uint32_t status, const char *string) {
+    send_reply_tag_u32_status(
+        req, status,
+        /* Allow string to be NULL for convenience. */
+        string ? (const uint8_t *)string : 0,
+        string ? strlen(string) : 0);
+}
+void send_reply_tag_u32_ok(const struct tag_u32 *req) {
+    send_reply_tag_u32_status(req, 0, 0, 0);
+}
+/* Encode a uint32_t in the bytes section.
+
+   Note that it could just as well be sent as a tag, but to keep
+   uniformity it seems to be better to use the bytes section for
+   atomic payloads. */
+
+void send_reply_tag_u32_ok_u32(const struct tag_u32 *req, uint32_t val) {
+    uint8_t buf[4];
+    write_be_32(buf, val, sizeof(buf));
+    send_reply_tag_u32_status(req, 0, buf, sizeof(buf));
 }
 
 
@@ -236,7 +259,11 @@ void send_reply_tag_u32_status_cstring(
 /* The main idea of the tag_u32 protocol is to provide low level
    messaging that can then be used to create application-specific tree
    structures.  However, it is useful to define some standard tree
-   layouts, e.g. schemas. */
+   layouts, e.g. schemas.
+
+   For now, refer to mod_bpmodular.c and mod_jack_tags.c
+
+*/
 
 
 /* Some standard "objects" that can serve as an example. */
