@@ -32,6 +32,9 @@
    the register interaction is more clear.  These are all copied from
    libopencm3/lib/stm32/common/i2c_common_v1.c and prefixed with hw_
 */
+static inline void hw_rcc_periph_clock_enable(enum rcc_periph_clken clken) {
+    _RCC_REG(clken) |= _RCC_BIT(clken);
+}
 static inline void hw_i2c_reset(uint32_t i2c) {
     switch (i2c) {
     case I2C1: hw_rcc_periph_reset_pulse(RST_I2C1); break;
@@ -89,6 +92,7 @@ static inline void hw_i2c_set_speed(uint32_t i2c, enum i2c_speeds speed, uint32_
 
 struct hw_i2c {
     uint32_t rcc;
+    uint32_t rst;
     uint32_t i2c;
     uint32_t gpio;
     uint32_t scl;
@@ -120,10 +124,19 @@ static inline void hw_i2c_unblock(struct hw_i2c c) {
     }
 }
 
+/* To allow checking the bus during peripheral reset. */
+static inline void hw_i2c_reset_check(struct hw_i2c c, void (*check)(void)) {
+    hw_rcc_periph_off(c.rst);
+    hw_busywait(10);
+    check();
+    hw_rcc_periph_on(c.rst);
+}
+
 static inline void hw_i2c_setup_swjenable(struct hw_i2c c, uint32_t swjenable) {
 
-    rcc_periph_clock_enable(c.rcc);
+    hw_rcc_periph_clock_enable(c.rcc);
     hw_i2c_reset(c.i2c);
+
 #if 0
     /* FIXME: I don't know what I'm doing... */
     hw_i2c_set_swrst(c.i2c, 1);
