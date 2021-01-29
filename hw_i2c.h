@@ -14,6 +14,8 @@
 #include "log.h"
 #include "hw_stm32f103.h"
 
+#include "slice.h"
+
 /* Note that there are two versions of the i2c header. The file for
    STM32F1 is libopencm3/stm32/f1/i2c.h which includes
    libopencm3/stm32/common/i2c_common_v1.h
@@ -188,16 +190,15 @@ struct hw_i2c_control_state {
 struct hw_i2c_transmit_state {
     struct hw_i2c_control_state ctrl;
     void *next; // sm.h resume point
+    const_slice_uint8_t hdr;
+    const_slice_uint8_t data;
     uint8_t slave; // slave address
-    const uint8_t *hdr;  uint32_t hdr_len;
-    const uint8_t *data; uint32_t data_len;
 };
 struct hw_i2c_receive_state {
     struct hw_i2c_control_state ctrl;
     void *next; // sm.h resume point
+    slice_uint8_t data;
     uint8_t slave; // slave address
-    uint8_t *hdr;  uint32_t hdr_len;
-    uint8_t *data; uint32_t data_len;
 };
 #if 0
 static inline uint32_t hw_i2c_timeout(struct hw_i2c_state *s) {
@@ -253,10 +254,10 @@ static inline void hw_i2c_transmit_init(
     memset(s,0,sizeof(*s));
     s->ctrl.tries = HW_I2C_TRIES;
     s->slave = slave;
-    s->hdr = hdr;
-    s->hdr_len = hdr_len;
-    s->data = data;
-    s->data_len = data_len;
+    s->hdr.buf = hdr;
+    s->hdr.len = hdr_len;
+    s->data.buf = data;
+    s->data.len = data_len;
 }
 
 /*
@@ -268,45 +269,66 @@ Common codes:
 00030000 bus busy timout at start of transmit
 00000400 RxNE data register not empty
 */
+
+/* Note that all macros that cross suspension points could also go
+   into sub-machines.  For now, keep them as macros.  They are simpler
+   to refactor at this point due to the presence of 'error' label. */
+
+#define HW_I2C_TRANSMIT_START(_c, _s, _addr, _error_base) {             \
+        HW_I2C_WHILE(_s, (I2C_SR2(_c.i2c) & I2C_SR2_BUSY), _error_base + 0x00); \
+        /* send start */                                                \
+        I2C_CR1(_c.i2c) |= I2C_CR1_START;                               \
+        /* Wait for master mode selected */                             \
+        HW_I2C_WHILE(_s, !((I2C_SR1(_c.i2c) & I2C_SR1_SB) &             \
+                           (I2C_SR2(_c.i2c) & (I2C_SR2_MSL | I2C_SR2_BUSY))), _error_base + 0x01); \
+        /* Send 7bit address */                                         \
+        I2C_DR(_c.i2c) = (uint8_t)((_addr << 1) | I2C_WRITE);           \
+        /* Wait for address bit done or error. */                       \
+        HW_I2C_WHILE(_s, !(_s->ctrl.sr = I2C_SR1(_c.i2c)), _error_base + 0x02); \
+        if (!(_s->ctrl.sr & I2C_SR1_ADDR)) goto error;                  \
+        /* Clearing ADDR condition sequence. */                         \
+        (void)I2C_SR2(_c.i2c);                                          \
+    }
+
+#define HW_I2C_TRANSMIT_BYTE(_c, _s, _byte, _error_code) {              \
+        I2C_DR(_c.i2c) = _byte;                                         \
+        HW_I2C_WHILE(_s, !(_s->ctrl.sr = I2C_SR1(_c.i2c)), _error_code); \
+        if (!(_s->ctrl.sr | I2C_SR1_BTF)) goto error;                   \
+    }
+
+/* Assumes the length of _buf is in _buf##_len.  Maybe put both in a struct? */
+#define HW_I2C_TRANSMIT_SLICE(_c, _s, _slice, _error_code)              \
+        if (_slice.buf) {                                               \
+            for (_s->ctrl.i = 0; _s->ctrl.i < _slice.len; _s->ctrl.i++) { \
+                HW_I2C_TRANSMIT_BYTE(_c, _s, _slice.buf[s->ctrl.i], _error_code); \
+            }                                                           \
+        }
+
+#define HW_I2C_RECEIVE_START(_c, _s, _addr, _error_base) {              \
+        /* Send start */                                                \
+        I2C_CR1(_c.i2c) |= I2C_CR1_START;                               \
+        /* Wait for master mode selected */                             \
+        HW_I2C_WHILE(_s, !((I2C_SR1(_c.i2c) & I2C_SR1_SB) &             \
+                           (I2C_SR2(_c.i2c) & (I2C_SR2_MSL | I2C_SR2_BUSY))), 0x30011); \
+        /* Send 7bit address */                                         \
+        I2C_DR(_c.i2c) = (uint8_t)((_addr << 1) | I2C_READ);            \
+        /* Enable ack */                                                \
+        I2C_CR1(_c.i2c) |= I2C_CR1_ACK;                                 \
+        /* Wait for address bit done or error. */                       \
+        HW_I2C_WHILE(_s, !(_s->ctrl.sr = I2C_SR1(_c.i2c)), 0x30012);    \
+        if (!(_s->ctrl.sr & I2C_SR1_ADDR)) {                            \
+            infof("i2c receive error waiting for addr: SR1=%x\n", _s->ctrl.sr); \
+            return _s->ctrl.sr;                                         \
+        }                                                               \
+        /* Clearing ADDR condition sequence. */                         \
+        (void)I2C_SR2(_c.i2c);                                          \
+    }
+
 static inline uint32_t hw_i2c_transmit_tick(struct hw_i2c c, struct hw_i2c_transmit_state *s) {
-
     SM_RESUME(s);
-
-    //if (I2C_SR2(c.i2c) & I2C_SR2_BUSY) HW_I2C_ERROR(s, 0x30000);
-
-    HW_I2C_WHILE(s, (I2C_SR2(c.i2c) & I2C_SR2_BUSY), 0x30000);
-
-    /* send start */
-    I2C_CR1(c.i2c) |= I2C_CR1_START;
-
-    /* Wait for master mode selected */
-    HW_I2C_WHILE(s, !((I2C_SR1(c.i2c) & I2C_SR1_SB) &
-                      (I2C_SR2(c.i2c) & (I2C_SR2_MSL | I2C_SR2_BUSY))), 0x30001);
-
-    /* Send 7bit address */
-    I2C_DR(c.i2c) = (uint8_t)((s->slave << 1) | I2C_WRITE);
-
-    /* Wait for address bit done or error. */
-    HW_I2C_WHILE(s, !(s->ctrl.sr = I2C_SR1(c.i2c)), 0x30002);
-    if (!(s->ctrl.sr & I2C_SR1_ADDR)) goto error;
-
-    /* Clearing ADDR condition sequence. */
-    (void)I2C_SR2(c.i2c);
-
-    if (s->hdr) {
-        for (s->ctrl.i = 0; s->ctrl.i <s->hdr_len; s->ctrl.i++) {
-            I2C_DR(c.i2c) = s->hdr[s->ctrl.i];
-            HW_I2C_WHILE(s, !(s->ctrl.sr = I2C_SR1(c.i2c)), 0x30003);
-            if (!(s->ctrl.sr | I2C_SR1_BTF)) goto error;
-        }
-    }
-    if (s->data) {
-        for (s->ctrl.i = 0; s->ctrl.i < s->data_len; s->ctrl.i++) {
-            I2C_DR(c.i2c) = s->data[s->ctrl.i];
-            HW_I2C_WHILE(s, !(s->ctrl.sr = I2C_SR1(c.i2c)), 0x30004);
-            if (!(s->ctrl.sr | I2C_SR1_BTF)) goto error;
-        }
-    }
+    HW_I2C_TRANSMIT_START(c, s, s->slave, 0x30000);
+    HW_I2C_TRANSMIT_SLICE(c, s, s->hdr,   0x30003);
+    HW_I2C_TRANSMIT_SLICE(c, s, s->data,  0x30004);
     s->ctrl.sr = 0;
     return 0;
 
@@ -328,42 +350,15 @@ static inline void hw_i2c_receive_init(
     memset(s,0,sizeof(*s));
     s->ctrl.tries = HW_I2C_TRIES;
     s->slave = slave;
-    s->data = data;
-    s->data_len = data_len;
+    s->data.buf = data;
+    s->data.len = data_len;
 }
 
 static inline uint32_t hw_i2c_receive_tick(struct hw_i2c c, struct hw_i2c_receive_state *s) {
     SM_RESUME(s);
-
-    //HW_I2C_WHILE ((I2C_SR2(c.i2c) & I2C_SR2_BUSY));
-
-
-    /* Send start */
-    I2C_CR1(c.i2c) |= I2C_CR1_START;
-
-    /* Wait for master mode selected */
-    HW_I2C_WHILE(s, !((I2C_SR1(c.i2c) & I2C_SR1_SB) &
-                      (I2C_SR2(c.i2c) & (I2C_SR2_MSL | I2C_SR2_BUSY))), 0x30011);
-
-    /* Send 7bit address */
-    I2C_DR(c.i2c) = (uint8_t)((s->slave << 1) | I2C_READ);
-
-    /* Enable ack */
-    I2C_CR1(c.i2c) |= I2C_CR1_ACK;
-
-    /* Wait for address bit done or error. */
-    HW_I2C_WHILE(s, !(s->ctrl.sr = I2C_SR1(c.i2c)), 0x30012);
-
-    if (!(s->ctrl.sr & I2C_SR1_ADDR)) {
-        infof("i2c receive error waiting for addr: SR1=%x\n", s->ctrl.sr);
-        return s->ctrl.sr;
-    }
-
-    /* Clearing ADDR condition sequence. */
-    (void)I2C_SR2(c.i2c);
-
-    for (s->ctrl.i = 0; s->ctrl.i < s->data_len; ++(s->ctrl.i)) {
-        if (s->ctrl.i == s->data_len-1) {
+    HW_I2C_RECEIVE_START(c, s, s->slave, 0x30000);
+    for (s->ctrl.i = 0; s->ctrl.i < s->data.len; ++(s->ctrl.i)) {
+        if (s->ctrl.i == s->data.len-1) {
             /* Disable ack */
             I2C_CR1(c.i2c) &= ~I2C_CR1_ACK;
         }
@@ -372,7 +367,7 @@ static inline uint32_t hw_i2c_receive_tick(struct hw_i2c c, struct hw_i2c_receiv
         if (!(I2C_SR1(c.i2c) & I2C_SR1_RxNE)) {
             infof("i2c receive data byte %d: SR1=%x\n", s->ctrl.i, s->ctrl.sr);
         }
-        s->data[s->ctrl.i] = I2C_DR(c.i2c) & 0xff;
+        s->data.buf[s->ctrl.i] = I2C_DR(c.i2c) & 0xff;
     }
     s->ctrl.sr = 0;
     return 0;
