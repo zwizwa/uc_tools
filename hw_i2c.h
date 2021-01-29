@@ -296,7 +296,7 @@ Common codes:
         if (!(_s->ctrl.sr | I2C_SR1_BTF)) goto error;                   \
     }
 
-/* Assumes the length of _buf is in _buf##_len.  Maybe put both in a struct? */
+/* Slice can be empty. */
 #define HW_I2C_TRANSMIT_SLICE(_c, _s, _slice, _error_code)              \
         if (_slice.buf) {                                               \
             for (_s->ctrl.i = 0; _s->ctrl.i < _slice.len; _s->ctrl.i++) { \
@@ -323,6 +323,20 @@ Common codes:
         /* Clearing ADDR condition sequence. */                         \
         (void)I2C_SR2(_c.i2c);                                          \
     }
+
+#define HW_I2C_RECEIVE_SLICE(_c, _s, _slice, _error_code)               \
+    for (_s->ctrl.i = 0; _s->ctrl.i < _s->data.len; ++(_s->ctrl.i)) {   \
+        if (_s->ctrl.i == _s->data.len-1) {                             \
+            /* Disable ack */                                           \
+            I2C_CR1(_c.i2c) &= ~I2C_CR1_ACK;                            \
+        }                                                               \
+        HW_I2C_WHILE(_s, !(_s->ctrl.sr = I2C_SR1(_c.i2c)), 0x30013);    \
+        if (!(I2C_SR1(_c.i2c) & I2C_SR1_RxNE)) {                        \
+            infof("i2c receive data byte %d: SR1=%x\n", _s->ctrl.i, _s->ctrl.sr); \
+        }                                                               \
+        _s->data.buf[_s->ctrl.i] = I2C_DR(_c.i2c) & 0xff;               \
+    }
+
 
 static inline uint32_t hw_i2c_transmit_tick(struct hw_i2c c, struct hw_i2c_transmit_state *s) {
     SM_RESUME(s);
@@ -357,18 +371,7 @@ static inline void hw_i2c_receive_init(
 static inline uint32_t hw_i2c_receive_tick(struct hw_i2c c, struct hw_i2c_receive_state *s) {
     SM_RESUME(s);
     HW_I2C_RECEIVE_START(c, s, s->slave, 0x30000);
-    for (s->ctrl.i = 0; s->ctrl.i < s->data.len; ++(s->ctrl.i)) {
-        if (s->ctrl.i == s->data.len-1) {
-            /* Disable ack */
-            I2C_CR1(c.i2c) &= ~I2C_CR1_ACK;
-        }
-
-        HW_I2C_WHILE(s, !(s->ctrl.sr = I2C_SR1(c.i2c)), 0x30013);
-        if (!(I2C_SR1(c.i2c) & I2C_SR1_RxNE)) {
-            infof("i2c receive data byte %d: SR1=%x\n", s->ctrl.i, s->ctrl.sr);
-        }
-        s->data.buf[s->ctrl.i] = I2C_DR(c.i2c) & 0xff;
-    }
+    HW_I2C_RECEIVE_SLICE(c, s, s->data,  0x30013);
     s->ctrl.sr = 0;
     return 0;
 error:
