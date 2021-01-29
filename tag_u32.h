@@ -181,15 +181,33 @@ static inline void tag_u32_leave(struct tag_u32 *r) { tag_u32_shift(r, -1); }
 
 /* Control protocol, for metadata discovery. */
 
-/* Control tag is used for retrieving metadata for a particular node. */
+/* Control tag is used for retrieving metadata for a particular node.
+
+   While it would be more efficient in LEB128 encoding to make this 0,
+   there are two reasons why it is not 0.
+
+   - In practice, most directory structures will map to C arrays.  If
+     the control tag would be 0, this would mean that the first real
+     entry in a map would be at 1.  We do not want to introduce
+     1-based indexing horror from the start.
+
+   - If it's not 0, and we want to allow 0 to n-1 array indices, the
+     most generic tag to pick is 0xFFFFFFFF.
+
+   - Even in LEB128 where 0xFFFFFFFF requires 5 bytes to encode, the
+     inefficiency isn't a big problem because it is only needed when
+     bootstrapping the protocol dictionary, which in most cases can
+     even be cached at compile time (e.g. caller can obtain the
+     callee's dictionary through other means, e.g. some kind of
+     version string that then can resolve to a precompiled dictionary
+     in a database somewhere.)
+*/
 #define TAG_U32_CTRL 0xFFFFFFFF
 
 /* It has the following RPC requests defined as sub-tags: */
-//#define TAG_U32_CTRL_NB_NODES  0  /* Get nb of sub nodes at this node. */
-//#define TAG_U32_CTRL_NODE_ID   1  /* Get node id by node list index. */
-#define TAG_U32_CTRL_ID_NAME   2  /* Map identifier to name */
-#define TAG_U32_CTRL_ID_TYPE   3  /* Map identifier to type */
-#define TAG_U32_CTRL_NAME_ID   4  /* Map name to identifier. */
+#define TAG_U32_CTRL_ID_NAME   0  /* Map identifier to name */
+#define TAG_U32_CTRL_ID_TYPE   1  /* Map identifier to type */
+#define TAG_U32_CTRL_NAME_ID   2  /* Map name to identifier. */
 
 
 struct tag_u32_entry {
