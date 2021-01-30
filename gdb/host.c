@@ -56,7 +56,9 @@ void HW_TIM_ISR(TIM_AUDIO)(void) {
 uint8_t packet_in_buf[1024 + 64];
 struct pbuf packet_in;
 
-uint8_t slip_out_buf[16];
+// Why was this so small?  That makes very little sense.
+// uint8_t slip_out_buf[16];
+uint8_t slip_out_buf[1024];
 struct cbuf slip_out;
 
 void app_write_byte(struct slip_write_state *s, uint8_t byte) {
@@ -139,6 +141,7 @@ const struct gdbstub_io app_io = {
     .write = app_write,
 };
 
+/* Provide this function for the plugin. */
 #define SEND_TAG_U32_CBUF &slip_out
 #include "mod_send_tag_u32_slip.c"
 
@@ -162,7 +165,7 @@ void start(void) {
     hw_clockgen_arm(C_AUDIO);
     hw_clockgen_trigger(C_AUDIO);
 #endif
-
+    /* Note that the plugin has full control over the gdbstub poll loop. */
 }
 
 #ifndef PRODUCT

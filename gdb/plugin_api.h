@@ -39,16 +39,15 @@ struct plugin_service {
     /* 4 */   gdbstub_fn_stop  stop;  // If nonzero, needs to be called before code is reloaded.
     /* 5 */   void *load_addr;        // Where this is supposed to go.
     /* 6 */   void *endx_addr;        // End of image.
-    /* 7 */   tag_u32_handle_fn handle_tag_u32; // (A)
-//  /* 8 */   uint8_t sha256[32];     // Hash of host elf this was linked against (B)
+    /* 7 */   tag_u32_handle_fn tag_u32_handle; // (A)
+    /* 8 */   tag_u32_reply_fn  tag_u32_reply;
+
 
     /* (A) The TAG_U32 handler is specialized.  It appears to be very
            convenient to put the parser and delegation mechanism at
            the host end, e.g. have the host handle some TAG_U32
            messages and have the plugin handle the rest.
 
-       (B) This isn't very useful yet.  It needs some nasty 2-pass
-           mechanisms in the build system to make it work.
     */
 };
 

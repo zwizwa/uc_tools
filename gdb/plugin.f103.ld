@@ -1,6 +1,6 @@
 MEMORY {
         rom (rx)  : ORIGIN = 0x08004C00, LENGTH = 0xFFFFFFFF
-        ram (rwx) : ORIGIN = 0x200028b0, LENGTH = 0xFFFFFFFF
+        ram (rwx) : ORIGIN = 0x20002ca0, LENGTH = 0xFFFFFFFF
 }
 INCLUDE uc_tools/gdb/stm32f1.ld
 SECTIONS {

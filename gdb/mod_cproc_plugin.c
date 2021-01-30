@@ -9,6 +9,10 @@
 int handle_tag_u32(struct tag_u32 *);
 #define HANDLE_TAG_U32 handle_tag_u32
 
+/* FIXME: If there are polling loops this needs to disable those. */
+void plugin_stop(void) {
+}
+
 #include "cproc.h"
 #include "hw_cproc_stm32f103.h"
 #include "mod_plugin.c"
