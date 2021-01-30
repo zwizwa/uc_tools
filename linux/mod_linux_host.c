@@ -18,7 +18,7 @@ struct port *port;
 #define SEND_TAG_U32_BUF_WRITE(...) port->write(port, __VA_ARGS__)
 
 #include <stdarg.h>
-#include "mod_send_tag_u32_pbuf.c"
+#include "mod_send_tag_u32.c"
 
 int main(int argc, char **argv) {
     const char *spec = "-:4";
