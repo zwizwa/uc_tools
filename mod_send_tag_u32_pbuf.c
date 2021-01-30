@@ -3,7 +3,7 @@
 
 /* Raw buffer writer. */
 #ifndef SEND_TAG_U32_BUF_WRITE
-#define SEND_TAG_U32_BUF_WRITE(...) port->write(__VA_ARGS__)
+#error need SEND_TAG_U32_BUF_WRITE
 #endif
 
 #include "tag_u32.h"
@@ -36,7 +36,7 @@ KEEP void send_reply_tag_u32(const struct tag_u32 *f, const struct tag_u32 *s) {
 
     //for(uint32_t i=0; i<buf_size; i++) { LOG(" %02x", buf[i]); } LOG("\n");
 
-    SEND_TAG_U32_BUF_WRITE(port, buf, buf_size);
+    SEND_TAG_U32_BUF_WRITE(buf, buf_size);
 }
 
 KEEP void send_tag_u32(const struct tag_u32 *s) {

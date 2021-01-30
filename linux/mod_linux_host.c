@@ -15,6 +15,7 @@ void setup(void);
 int handle_tag_u32(struct tag_u32*);
 
 struct port *port;
+#define SEND_TAG_U32_BUF_WRITE(...) port->write(port, __VA_ARGS__)
 
 #include <stdarg.h>
 #include "mod_send_tag_u32_pbuf.c"
