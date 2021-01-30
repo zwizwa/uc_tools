@@ -4,15 +4,24 @@
 /* A protothread for handling command stream I/O.
    Focus is on TAG_U32, to be able to support large payloads.
 
-   Part of the head is implemented.  This turns out to be quite
-   difficult to do without core language support for writing
-   protothreads / async functions.  And even with language support, it
-   would infect everything.
+   Part of the receiver is implemented.  No transmitter.
 
-   The conclusion I'm reaching is that if this sort of streaming is
-   necessary for the application, then there are probably large memory
-   resources in the first place, and it is likely more appropriate to
-   use an OS.
+   This turns out to be quite clumsy for the obvious reason that it
+   doesn't compose well, and their special composition mechanism
+   infects everything.  It's probably ok to have reasonable complexity
+   when only the larger payloads are streamed.  Those are going to be
+   rare and can be special-cased.
+
+   The same problem happens for the transmitter: the tx buffer
+   callback would need to delegate to writer machines, and there will
+   need to be a queue of these + their memory needs to be managed.
+
+   None of this is simple. The tipping point where OS stacks start to
+   pay of isn't very far.
+
+   So when does it make sense to use this approach?
+   I can't really say.
+
 
 */
 
@@ -125,7 +134,9 @@ sm_status_t sm_tags_tick(struct sm_tags *s) {
                 }
                 else {
                     sm_tags_dispatch_tag_u32(s, 0);
-                    /* FIXME: Write the data to the sink. */
+                    /* FIXME: The dispatcher will have provided us
+                       with a sink (a continuation).  We need to feed
+                       that with data. */
                 }
             }
             break;
