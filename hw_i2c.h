@@ -128,21 +128,30 @@ static inline void hw_i2c_unblock(struct hw_i2c c) {
 
 /* To allow checking the bus during peripheral reset. */
 static inline void hw_i2c_reset_check(struct hw_i2c c, void (*check)(void)) {
+    hw_gpio_config(c.gpio, c.scl, HW_GPIO_CONFIG_INPUT);
+    hw_gpio_config(c.gpio, c.sda, HW_GPIO_CONFIG_INPUT);
+    check();
     hw_rcc_periph_off(c.rst);
-    hw_busywait(10);
+    hw_busywait_us(10);
     check();
     hw_rcc_periph_on(c.rst);
+    hw_busywait_us(10);
 }
 
 static inline void hw_i2c_setup_swjenable(struct hw_i2c c, uint32_t swjenable) {
 
-    hw_rcc_periph_clock_enable(c.rcc);
-    hw_i2c_reset(c.i2c);
+    hw_gpio_high(c.gpio, c.scl); // pull direction
+    hw_gpio_high(c.gpio, c.sda); // pull direction
+    hw_gpio_config(c.gpio, c.scl, HW_GPIO_CONFIG_INPUT);
+    hw_gpio_config(c.gpio, c.sda, HW_GPIO_CONFIG_INPUT);
 
+    hw_rcc_periph_clock_enable(c.rcc);
 #if 0
+    hw_i2c_reset(c.i2c);
+#else
     /* FIXME: I don't know what I'm doing... */
     hw_i2c_set_swrst(c.i2c, 1);
-    hw_busywait_ms(1);
+    hw_busywait_us(10);
     hw_i2c_set_swrst(c.i2c, 0);
 #endif
 
@@ -158,16 +167,16 @@ static inline void hw_i2c_setup_swjenable(struct hw_i2c c, uint32_t swjenable) {
     // Might not be necessary to disable pull if internal pull is weak.
 
 
-    hw_gpio_high(c.gpio, c.scl); // pull direction
-    hw_gpio_high(c.gpio, c.sda); // pull direction
-    hw_gpio_config(c.gpio, c.scl, HW_GPIO_CONFIG_ALTFN_OPEN_DRAIN);
-    hw_gpio_config(c.gpio, c.sda, HW_GPIO_CONFIG_ALTFN_OPEN_DRAIN);
 
 
     hw_i2c_peripheral_disable(c.i2c);
     //i2c_enable_interrupt(c.i2c, I2C_CR2_ITEVTEN);
     hw_i2c_set_speed(c.i2c, c.speed, 72);
     hw_i2c_peripheral_enable(c.i2c);
+
+    hw_gpio_config(c.gpio, c.scl, HW_GPIO_CONFIG_ALTFN_OPEN_DRAIN);
+    hw_gpio_config(c.gpio, c.sda, HW_GPIO_CONFIG_ALTFN_OPEN_DRAIN);
+
 }
 
 static inline void hw_i2c_setup(struct hw_i2c c) {
@@ -210,7 +219,6 @@ static inline uint32_t hw_i2c_timeout(struct hw_i2c_state *s) {
     }
 }
 #endif
-
 
 
 static inline void hw_i2c_stop(struct hw_i2c c) {
@@ -260,14 +268,20 @@ static inline void hw_i2c_transmit_init(
     s->data.len = data_len;
 }
 
+
+#define HW_I2C_TAG_MASK        0xFFFF0000
+#define HW_I2C_TAG_SR1_UNKNOWN 0x00010000
+#define HW_I2C_TAG_HANDLED     0x00020000
+
 /*
 Error codes:
 0003xxxx timeouts, see code for location
+0001xxxx handled errors
 0000xxxx SR1
 
 Common codes:
 00030000 bus busy timout at start of transmit
-00000400 RxNE data register not empty
+00000400 AF acknowledge failure
 */
 
 /* Note that all macros that cross suspension points could also go
@@ -285,7 +299,18 @@ Common codes:
         I2C_DR(_c.i2c) = (uint8_t)((_addr << 1) | I2C_WRITE);           \
         /* Wait for address bit done or error. */                       \
         HW_I2C_WHILE(_s, !(_s->ctrl.sr = I2C_SR1(_c.i2c)), _error_base + 0x02); \
-        if (!(_s->ctrl.sr & I2C_SR1_ADDR)) goto error;                  \
+        if (!(_s->ctrl.sr & I2C_SR1_ADDR)) {                            \
+            if (_s->ctrl.sr & I2C_SR1_AF) {                             \
+                /* Acknowledge failure. */                              \
+                I2C_SR1(_c.i2c) &= ~I2C_SR1_AF;                         \
+                _s->ctrl.sr |= HW_I2C_TAG_HANDLED;                      \
+                hw_i2c_stop(_c);                                        \
+            }                                                           \
+            else {                                                      \
+                _s->ctrl.sr |= HW_I2C_TAG_SR1_UNKNOWN;                  \
+            }                                                           \
+            goto error;                                                 \
+        }                                                               \
         /* Clearing ADDR condition sequence. */                         \
         (void)I2C_SR2(_c.i2c);                                          \
     }
