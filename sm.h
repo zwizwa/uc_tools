@@ -155,7 +155,16 @@ typedef uint32_t sm_status_t;
 
 */
 
-/* Optionally abort on error. */
+/* Optionally abort on error.
+   Note that the error is returned only once.
+   Subsequent calls return SM_HALTED. */
+
+#define SM_ERROR_HALT(sm,err) do {              \
+        sm->next = &&halt;                      \
+        return err;                             \
+    } while(0)
+
+
 #define _SM_WAIT_TICK(sm,label,tick,abort) ({   \
         uint32_t rv;                            \
       label:                                    \
@@ -168,8 +177,7 @@ typedef uint32_t sm_status_t;
             return rv;                          \
         default:                                \
             if (abort) {                        \
-                sm->next = &&halt;              \
-                return rv;                      \
+                SM_ERROR_HALT(sm, rv);          \
             }                                   \
             else break;                         \
         }                                       \
