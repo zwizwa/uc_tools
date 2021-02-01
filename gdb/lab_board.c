@@ -36,7 +36,6 @@
 #include "reset_device.h"
 
 
-
 /* Buffering.
 
    There is plenty of space, so use it.  Below is the general
@@ -242,6 +241,11 @@ static void poll_uart1_tx(void) {
     hw_usart1_send(fc & 0xFF);
 }
 
+static void poll_watchdog(void) {
+    iwdg_reset();
+}
+
+
 static uint32_t slip_read(uint8_t *buf, uint32_t room) {
 
     /* Flush old */
@@ -311,7 +315,10 @@ void start(void) {
 
     _service.add(poll_uart1_tx);
     _service.add(poll_timebase);
+    _service.add(poll_watchdog);
 
+    iwdg_set_period_ms(1000);
+    iwdg_start();
 
     infof("lab_board.c\n\n");
     //infof("_eflash = 0x%08x\n", &_eflash);

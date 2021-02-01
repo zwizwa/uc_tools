@@ -87,9 +87,13 @@ int tag_u32_dispatch(tag_u32_handle_fn handler,
                      void *context,
                      const uint8_t *buf, uint32_t nb_buf);
 
+/* If the sender does not send a from address, we do not send a reply.
+   This allows the sender to do sequencing on high-latency links,
+   e.g. queueing up a bunch of messages and only requesting a reply
+   for the last one. */
 static inline void send_reply_tag_u32_maybe(
     const struct tag_u32 *req, const struct tag_u32 *rpl) {
-    if (req->reply) {
+    if (req->nb_from && req->reply) {
         //LOG("tag_u32_reply ok\n");
         req->reply(req, rpl);
     }
