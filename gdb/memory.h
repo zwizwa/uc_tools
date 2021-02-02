@@ -33,7 +33,7 @@ static inline void hw_flash_erase_page(uint32_t page_address) {
     hw_flash_wait_for_last_operation();
     FLASH_CR &= ~FLASH_CR_PER;
 }
-static inline void hw_flash_lock(void) {
+ inline void hw_flash_lock(void) {
     //__asm__ volatile("cpsid if\n");
     FLASH_CR |= FLASH_CR_LOCK;
 }
@@ -136,6 +136,13 @@ static inline int32_t hw_flash_write_and_erase(
     hw_flash_lock();
     return rv;
 }
+
+/* Macros for protothread variant.
+   This is just a dumb translation. */
+
+#define HW_FLASH_WAIT_FOR_LAST_OPERATION(sm) \
+    SM_WHILE(sm, (hw_flash_get_status_flags() & FLASH_SR_BSY) == FLASH_SR_BSY)
+
 
 
 #else // defined (STM32F1)

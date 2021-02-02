@@ -119,6 +119,13 @@ typedef uint32_t sm_status_t;
       }} while (0)
 #define SM_WAIT(sm,condition)                   \
     _SM_WAIT(sm,GENSYM(label_),condition)
+
+/* inverted. */
+#define SM_WHILE(sm,ncond) \
+    SM_WAIT(sm,!(cond))
+
+
+
 #define _SM_HALT(sm, halt_loop)                 \
   do {                                          \
   halt_loop:                                    \
