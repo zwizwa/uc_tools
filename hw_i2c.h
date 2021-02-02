@@ -270,8 +270,8 @@ static inline void hw_i2c_transmit_init(
 
 
 #define HW_I2C_TAG_MASK        0xFFFF0000
-#define HW_I2C_TAG_SR1_UNKNOWN 0x00010000
-#define HW_I2C_TAG_HANDLED     0x00020000
+#define HW_I2C_TAG_SR1_UNKNOWN 0x00000000
+#define HW_I2C_TAG_HANDLED     0x00010000
 
 /*
 Error codes:
@@ -288,6 +288,27 @@ Common codes:
    into sub-machines.  For now, keep them as macros.  They are simpler
    to refactor at this point due to the presence of 'error' label. */
 
+/* Error condition handling can be split into a function.  We want to
+   indicate two things upstream: was there an error, and did it get
+   handled such that i2c is in a good state again to do a new
+   transaction. */
+void hw_i2c_handle_sr1(const struct hw_i2c c, struct hw_i2c_control_state *ctrl) {
+    if (ctrl->sr & I2C_SR1_AF) {
+        /* Acknowledge failure. */
+        I2C_SR1(c.i2c) &= ~I2C_SR1_AF;
+        ctrl->sr |= HW_I2C_TAG_HANDLED;
+        hw_i2c_stop(c);
+    }
+}
+/* I'm having trouble doing soft reset after transaction error.  This
+   handles all conditions that need to be cleared in software. */
+void hw_i2c_soft_reset(const struct hw_i2c c) {
+    if (I2C_SR2(c.i2c) & I2C_SR2_BUSY) {
+        hw_i2c_stop(c);
+    }
+    I2C_SR1(c.i2c) = 0;
+}
+
 #define HW_I2C_TRANSMIT_START(_c, _s, _addr, _error_base) {             \
         HW_I2C_WHILE(_s, (I2C_SR2(_c.i2c) & I2C_SR2_BUSY), _error_base + 0x00); \
         /* send start */                                                \
@@ -300,15 +321,7 @@ Common codes:
         /* Wait for address bit done or error. */                       \
         HW_I2C_WHILE(_s, !(_s->ctrl.sr = I2C_SR1(_c.i2c)), _error_base + 0x02); \
         if (!(_s->ctrl.sr & I2C_SR1_ADDR)) {                            \
-            if (_s->ctrl.sr & I2C_SR1_AF) {                             \
-                /* Acknowledge failure. */                              \
-                I2C_SR1(_c.i2c) &= ~I2C_SR1_AF;                         \
-                _s->ctrl.sr |= HW_I2C_TAG_HANDLED;                      \
-                hw_i2c_stop(_c);                                        \
-            }                                                           \
-            else {                                                      \
-                _s->ctrl.sr |= HW_I2C_TAG_SR1_UNKNOWN;                  \
-            }                                                           \
+            hw_i2c_handle_sr1(_c, &_s->ctrl);                           \
             goto error;                                                 \
         }                                                               \
         /* Clearing ADDR condition sequence. */                         \
