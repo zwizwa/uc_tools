@@ -20,9 +20,9 @@ int timer(struct tag_u32 *req) {
 }
 int plugin_tag_u32(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
-        {"crash",  "cmd", 0, crash},
-        {"echo",   "cmd", 1, echo},
-        {"timer",  "cmd", 0, timer},
+        {"crash",  "cmd", crash},
+        {"echo",   "cmd", echo, 1},
+        {"timer",  "cmd", timer},
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }

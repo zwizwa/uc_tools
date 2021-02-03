@@ -189,8 +189,8 @@ int handle_param_set(struct tag_u32 *req) {
 }
 int handle_param(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
-        {"get", t_cmd,0,handle_param_get},
-        {"set", t_cmd,1,handle_param_set},
+        {"get", t_cmd, handle_param_get},
+        {"set", t_cmd, handle_param_set, 1},
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }
@@ -222,8 +222,8 @@ int map_param(struct tag_u32 *req) {
 
 int map_inst_ops(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
-        [PARAM] = {"param", t_map, 0, map_param},
-        [STATE] = {"state", t_map, 0, map_param},
+        [PARAM] = {"param", t_map, map_param},
+        [STATE] = {"state", t_map, map_param},
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }
@@ -271,8 +271,8 @@ int handle_tick(struct tag_u32 *req) {
 }
 int map_patch(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
-        {"reset", t_cmd, 0, handle_reset},
-        {"tick",  t_cmd, 0, handle_tick},
+        {"reset", t_cmd, handle_reset},
+        {"tick",  t_cmd, handle_tick},
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }
@@ -293,7 +293,7 @@ int handle_apply(struct tag_u32 *req) {
 }
 int handle_class_ops(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
-        {"apply", t_cmd, 0, handle_apply}
+        {"apply", t_cmd, handle_apply}
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }
@@ -319,9 +319,9 @@ int map_class(struct tag_u32 *req) {
 /* root map */
 int map_root(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
-        {"patch", t_map, 0, map_patch},
-        {"inst",  t_map, 0, map_inst},
-        {"class", t_map, 0, map_class},
+        {"patch", t_map, map_patch},
+        {"inst",  t_map, map_inst},
+        {"class", t_map, map_class},
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }

@@ -217,8 +217,8 @@ static inline void tag_u32_leave(struct tag_u32 *r) { tag_u32_shift(r, -1); }
 struct tag_u32_entry {
     const char *name;
     const char *type;
-    uint32_t nb_args; // minimal nb args for substructure
     tag_u32_handle_fn handle;
+    uint32_t nb_args; // minimal nb args for substructure
 };
 
 int handle_tag_u32_map(struct tag_u32 *r,
@@ -238,6 +238,17 @@ int handle_tag_u32_map_dynamic(struct tag_u32 *req,
 
 #define HANDLE_TAG_U32_MAP(r, map) \
     handle_tag_u32_map(r, map, ARRAY_SIZE(map))
+
+
+#define DEF_TAG_U32_MAP_HANDLE(fun_name, map_name)      \
+    int fun_name(struct tag_u32 *req) {                 \
+        return HANDLE_TAG_U32_MAP(req, map_name);       \
+    }
+
+#define DEF_TAG_U32_CONST_MAP_HANDLE(fun_name, ...)                     \
+    const struct tag_u32_entry fun_name##_map[] = { __VA_ARGS__ };      \
+    DEF_TAG_U32_MAP_HANDLE(fun_name, fun_name##_map)                    \
+
 
 
 
