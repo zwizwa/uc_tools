@@ -93,12 +93,14 @@ int tag_u32_dispatch(tag_u32_handle_fn handler,
    for the last one. */
 static inline void send_reply_tag_u32_maybe(
     const struct tag_u32 *req, const struct tag_u32 *rpl) {
-    if (req->nb_from && req->reply) {
-        //LOG("tag_u32_reply ok\n");
-        req->reply(req, rpl);
-    }
-    else {
-        LOG("tag_u32_reply not supported\n");
+    if (req->nb_from) {
+        if (req->reply) {
+            //LOG("tag_u32_reply ok\n");
+            req->reply(req, rpl);
+        }
+        else {
+            LOG("tag_u32_reply not supported\n");
+        }
     }
 }
 
