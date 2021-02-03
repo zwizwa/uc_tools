@@ -4,7 +4,7 @@
 
 /* MAIN DISPATCH */
 
-/* This allcates temp buffers for the decoded tags. It is assumed all
+/* This allocates temp buffers for the decoded tags. It is assumed all
    temp buffers fit on the stack. */
 int tag_u32_dispatch(tag_u32_handle_fn handler,
                      tag_u32_reply_fn reply,
@@ -51,13 +51,15 @@ int tag_u32_dispatch(tag_u32_handle_fn handler,
         .bytes = buf + offset_b, .nb_bytes = nb_b
     };
     int rv = handler(&s);
-    if (rv && 1)  {
+#if 1
+    if (rv)  {
         LOG("tag_u32_dispatch rv=%d, path:", rv);
         for(uint32_t i=0; i<nb_a; i++) {
             LOG(" %d",a[i]);
         }
         LOG("\n");
     }
+#endif
     return rv;
 }
 
@@ -97,23 +99,26 @@ int handle_tag_u32_map_ref_meta(struct tag_u32 *r,
 
     /* Serve metadata. */
     TAG_U32_MATCH(r, TAG_U32_CTRL, m, cmd, id) {
-        const char *str = NULL;
         int rv = tag_u32_do_map_ref(map_ref, m->id, r, ctx, &entry);
-        /* !rv means the entry is valid.
-           Note that the string might still be NULL, for unnamed nodes. */
-        if (!rv) {
-            switch(m->cmd) {
-            case TAG_U32_CTRL_ID_NAME: str = entry.name; break;
-            case TAG_U32_CTRL_ID_TYPE: str = entry.type; break;
+        if (rv) {
+            return tag_u32_reply_bad_map_ref(r);
+        }
+        switch(m->cmd) {
+        case TAG_U32_CTRL_ID_NAME:
+            /* String is possibly NULL, which indicates this is an
+               unnamed node. */
+            send_reply_tag_u32_status_cstring(r, 0, entry.name);
+            return 0;
+        case TAG_U32_CTRL_ID_TYPE:
+            /* Type can never be NULL */
+            if (!entry.type) {
+                return tag_u32_reply_bad_map_ref(r);
+            }
+            else {
+                send_reply_tag_u32_status_cstring(r, 0, entry.type);
+                return 0;
             }
         }
-        if (!rv) {
-            send_reply_tag_u32_status_cstring(r, 0, str);
-        }
-        else {
-            SEND_REPLY_TAG_U32(r, 1);
-        }
-        return 0;
     }
     TAG_U32_MATCH(r, TAG_U32_CTRL, m, cmd) {
         if (m->cmd == TAG_U32_CTRL_NAME_ID &&
@@ -130,8 +135,7 @@ int handle_tag_u32_map_ref_meta(struct tag_u32 *r,
                     return 0;
                 }
             }
-            SEND_REPLY_TAG_U32(r, 1);
-            return 0;
+            return tag_u32_reply_bad_map_ref(r);
         }
     }
     send_reply_tag_u32_status_cstring(r, 1, "bad_comand");

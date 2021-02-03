@@ -35,6 +35,7 @@ void app_test(void) {
 }
 
 instance_status_t app_init(instance_init_t *ctx) {
+    infof("product: %s\n", PRODUCT);
     INSTANCE_NEED(ctx, &console);
     _service.add(app_poll);
     //_service.add(app_test);
@@ -72,7 +73,13 @@ int handle_root(struct tag_u32 *req) {
 }
 
 int handle_tag_u32(struct tag_u32 *req) {
-    return handle_root(req);
+    int rv = handle_root(req);
+    if (rv) {
+        infof("bp2: handle_tag_u32 returned %d\n", rv);
+        /* Always send a reply when there is a from address. */
+        send_reply_tag_u32_status_cstring(req, 1, "bad_ref");
+    }
+    return 0;
 }
 #endif
 

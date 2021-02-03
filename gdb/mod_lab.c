@@ -73,7 +73,7 @@ void handle_tag(struct slipstub *s, uint16_t tag, const struct pbuf *p) {
             send_reply_tag_u32,
             NULL, p->buf, p->count);
         if (rv) {
-            infof("handle_tag_u32 returned %d\n", rv);
+            infof("mod_lab: handle_tag_u32 returned %d\n", rv);
         }
         break;
     }

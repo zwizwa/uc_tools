@@ -26,6 +26,7 @@
 
 */
 
+#define TAG_LEB128      0xFFF0  // see leb128.erl
 #define TAG_COMMAND     0xFFF1  // command.h Forth-style commands
 #define TAG_CSP         0xFFF2  // CSP packet
 #define TAG_EVENT       0xFFF3  // generic event, uint16_t subtag

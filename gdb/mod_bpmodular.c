@@ -328,7 +328,12 @@ int map_root(struct tag_u32 *req) {
 
 /* Protocol handler entry point. */
 int handle_tag_u32(struct tag_u32 *req) {
-    return map_root(req);
+    int rv = map_root(req);
+    if (rv) {
+        /* Always send a reply when there is a from address. */
+        send_reply_tag_u32_status_cstring(req, 1, "bad_ref");
+    }
+    return 0;
 }
 
 #endif
