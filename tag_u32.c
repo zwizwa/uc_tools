@@ -176,7 +176,14 @@ int handle_tag_u32_map(struct tag_u32 *r,
         tag_u32_enter(r);
         int rv = -1;
         if (r->nb_args >= map[i].nb_args) {
-            rv = map[i].handle(r);
+            tag_u32_handle_fn handle = map[i].handle;
+            /* If there is no handler, this means the map is virtual. */
+            if (handle) {
+                rv = handle(r);
+            }
+            else {
+                rv = tag_u32_reply_bad_map_ref(r);
+            }
         }
         else {
             LOG("handle_tag_u32_map: nb_args = %d, expected %d\n",
