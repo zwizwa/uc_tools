@@ -62,7 +62,7 @@ int handle_led_set(struct tag_u32 *req) {
 }
 int map_led_op(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
-        {"set",      t_cmd, 3, handle_led_set},
+        {"set", t_cmd, handle_led_set, 3},
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }
@@ -117,9 +117,9 @@ int handle_led_progress(struct tag_u32 *req) {
 /* root map */
 int map_root(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
-        {"led",      t_map, 0, map_led},
-        {"progress", t_cmd, 2, handle_led_progress},
-        {"forth",    t_map, 0, map_forth},
+        {"led",      t_map, map_led},
+        {"progress", t_cmd, handle_led_progress, 2},
+        {"forth",    t_map, map_forth},
     };
     return HANDLE_TAG_U32_MAP(req, map);
 }
