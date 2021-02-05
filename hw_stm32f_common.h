@@ -98,7 +98,7 @@ INLINE void hw_busywait(uint32_t nb_loops) {
    for 72MHz CPU frequency.  It is not clear how to compute that
    number from what is described in the datasheet. */
 INLINE void hw_busywait_us(uint32_t us) { hw_busywait(HW_LOOPS_PER_US * us); }
-INLINE void hw_busywait_ms(uint32_t ms) { while(ms--) hw_busywait_us(1); }
+INLINE void hw_busywait_ms(uint32_t ms) { while(ms--) hw_busywait_us(1000); }
 
 
 

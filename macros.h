@@ -72,6 +72,9 @@ int kill(pid_t pid, int sig);
 #define FOR_ARRAY(_array,_el) \
     for(__typeof__(&_array[0]) _el = &_array[0]; _el < &_array[ARRAY_SIZE(_array)]; _el++)
 
+#define FOR_ARRAY_INDEX(_array,_i) \
+    for(uintptr_t _i = 0; _i < ARRAY_SIZE(_array); _i++)
+
 /* The second one works for a pointer to a null terminated array.
    This could be an array of pointers, or an array of integers.
    Doesn't matter, as long as the terminator evaluates to false. */
