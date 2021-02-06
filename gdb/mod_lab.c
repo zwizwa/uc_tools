@@ -100,6 +100,10 @@ void start(void) {
     /* FIXME: This assumes it's GPIOA */
     rcc_periph_clock_enable(RCC_GPIOA | RCC_GPIOB | RCC_AFIO);
 
+    /* This is fairly new. Won't display properly for old bootloaders. */
+    //infof("stack_lo %x\n", _service.stack_lo);
+    //infof("stack_hi %x\n", _service.stack_hi);
+
     enable_cycle_counter();
 
     /* Use framwork for handling incoming USB SLIP commands. */

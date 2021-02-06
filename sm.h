@@ -126,13 +126,20 @@ typedef uint32_t sm_status_t;
 
 
 
-#define _SM_HALT(sm, halt_loop)                 \
+#define _SM_HALT_STATUS(sm, halt_loop, rv)      \
   do {                                          \
   halt_loop:                                    \
     sm->next = &&halt_loop;                     \
-    return SM_HALTED; } while(0)
+    return rv; } while(0)
+
+#define SM_HALT_STATUS(sm,status)               \
+    _SM_HALT_STATUS(sm,GENSYM(label_),status)
+
 #define SM_HALT(sm)                             \
-    _SM_HALT(sm,GENSYM(label_))
+    SM_HALT_STATUS(sm,SM_HALTED)
+
+
+
 
 /* cooperative scheduling yield point.
    If you need this, you're on the wrong track! */
@@ -166,15 +173,15 @@ typedef uint32_t sm_status_t;
    Note that the error is returned only once.
    Subsequent calls return SM_HALTED. */
 
-#define SM_ERROR_HALT(sm,err) do {              \
-        sm->next = &&halt;                      \
-        return err;                             \
-    } while(0)
 
 
-/* This will always compile the abort label, which is not good for
+/* This will always compiles the abort label, which is not good for
    guaranteeing that a machine won't halt.  A separate
-   SM_WAIT_TICK_CATCH is provided that does not abort. */
+   SM_WAIT_TICK_CATCH is provided that does not have the label.  In
+   general, after using this for a while: don't use abort=1.  It's too
+   opaque.  SM syntax is already cumbersome, so don't make it worse by
+   introducing "smart" control flow.  Use explicit error checking
+   instead. */
 
 #define _SM_WAIT_TICK(sm,label,tick,abort) ({   \
         uint32_t rv;                            \
@@ -188,7 +195,8 @@ typedef uint32_t sm_status_t;
             return rv;                          \
         default:                                \
             if (abort) {                        \
-                SM_ERROR_HALT(sm, rv);          \
+                sm->next = &&halt;              \
+                return rv;                      \
             }                                   \
             else break;                         \
         }                                       \

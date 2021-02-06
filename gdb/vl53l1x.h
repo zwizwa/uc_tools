@@ -360,15 +360,25 @@ static inline int vl53l1x_begin(struct vl53l1x *s) {
 */
 
 
+/* Regarding error handling: It is assumed that _ns##_transmit,
+   _receive leave the I2C device in a good state.  We use the 'error'
+   label to allow explicit handling of errors inside of the machine
+   that these macros are used in. */
+
 #define VL51L1X_TRANSMIT(_s,_ns,_size) {                                \
-        SM_SUB(_s, _ns##_transmit, VL51L1X_I2C_ADDR, _s->buf, _size, 0, 0); \
+        sm_status_t rv =                                                \
+            SM_SUB_CATCH(_s, _ns##_transmit,                            \
+                         VL51L1X_I2C_ADDR, _s->buf, _size, 0, 0);       \
         _ns##_stop();                                                   \
-    }
+        if (rv) goto error; }
 
 #define VL51L1X_RECEIVE(_s,_ns,_size) {                                 \
-        SM_SUB(_s, _ns##_receive, VL51L1X_I2C_ADDR, _s->buf, _size);    \
+        sm_status_t rv =                                                \
+            SM_SUB_CATCH(_s, _ns##_receive,                             \
+                         VL51L1X_I2C_ADDR, _s->buf, _size);             \
         _ns##_stop();                                                   \
-    }
+        if (rv) goto error; }
+
 #define VL51L1X_RECEIVE_UINT(_s,_ns,_nb_bytes) ({       \
             VL51L1X_RECEIVE(_s,_ns,2);                  \
             read_be_32(_s->buf, _nb_bytes);             \

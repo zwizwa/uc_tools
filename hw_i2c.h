@@ -382,10 +382,9 @@ static inline uint32_t hw_i2c_transmit_tick(struct hw_i2c c, struct hw_i2c_trans
     HW_I2C_TRANSMIT_SLICE(c, s, s->hdr,   0x30003);
     HW_I2C_TRANSMIT_SLICE(c, s, s->data,  0x30004);
     s->ctrl.sr = 0;
-  halt:
     SM_HALT(s);
   error:
-    SM_ERROR_HALT(s, s->ctrl.sr);
+    SM_HALT_STATUS(s, s->ctrl.sr);
 }
 
 
@@ -410,10 +409,9 @@ static inline uint32_t hw_i2c_receive_tick(struct hw_i2c c, struct hw_i2c_receiv
     HW_I2C_RECEIVE_START(c, s, s->slave, 0x30000);
     HW_I2C_RECEIVE_SLICE(c, s, s->data,  0x30013);
     s->ctrl.sr = 0;
-  halt:
     SM_HALT(s);
   error:
-    SM_ERROR_HALT(s, s->ctrl.sr);
+    SM_HALT_STATUS(s, s->ctrl.sr);
 }
 
 
