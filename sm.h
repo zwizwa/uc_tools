@@ -172,6 +172,10 @@ typedef uint32_t sm_status_t;
     } while(0)
 
 
+/* This will always compile the abort label, which is not good for
+   guaranteeing that a machine won't halt.  A separate
+   SM_WAIT_TICK_CATCH is provided that does not abort. */
+
 #define _SM_WAIT_TICK(sm,label,tick,abort) ({   \
         uint32_t rv;                            \
       label:                                    \
@@ -193,6 +197,21 @@ typedef uint32_t sm_status_t;
 #define SM_WAIT_TICK(sm,tick,abort)             \
     _SM_WAIT_TICK(sm,GENSYM(label_),tick,abort)
 
+
+#define _SM_WAIT_TICK_CATCH(sm,label,tick) ({   \
+        uint32_t rv;                            \
+      label:                                    \
+        rv = tick;                              \
+        if (SM_WAITING == rv) {                 \
+            sm->next = &&label;                 \
+            return rv;                          \
+        }                                       \
+        rv;})
+
+#define SM_WAIT_TICK_CATCH(sm,tick)    \
+    _SM_WAIT_TICK_CATCH(sm,GENSYM(label_),tick)
+
+
 /* Using SM_WAIT_TICK, provide a convenience routine that initializes
    a state machine with standard naming convention and runs it to
    completion or error. */
@@ -203,7 +222,8 @@ typedef uint32_t sm_status_t;
 /* Same, but don't abort on error, returning error value instead. */
 #define SM_CALL_CATCH(sm,name,state,...) ({     \
     name##_init(state, __VA_ARGS__);            \
-    SM_WAIT_TICK(sm,name##_tick(state),0); })
+    SM_WAIT_TICK_CATCH(sm,name##_tick(state)); })
+//
 
 /* SM_SUB is like SM_CALL, with the convention that the state for a
    sub machine is stored in a union meber "sub" in the parent's state
