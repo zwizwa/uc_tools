@@ -125,5 +125,11 @@ static inline int cycle_counter_wait_timeout(struct cycle_counter_interval *cci)
             SM_WAIT(s, ((var=0),cycle_counter_wait_timeout(interval)) || (var = sm_read(chan))) ; \
             (interval)->diff; })
 
+/* Basic sleep using just a timestamp state. */
+#define SM_CC_SLEEP(_s, _timestamp, _diff_cycles) {                     \
+        _timestamp = cycle_counter();                                   \
+        SM_WAIT(_s, (cycle_counter() - _timestamp) > _diff_cycles);     \
+    }
+
 
 #endif
