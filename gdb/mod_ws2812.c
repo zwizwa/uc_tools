@@ -98,9 +98,11 @@ int ledstrip_dma_done(void) {
     hw_spi_ack(LEDSTRIP_C_SPI);
     return 1;
 }
-volatile uint32_t spi1_count;
-void spi1_isr(void) {
-    spi1_count++;
+volatile uint32_t dma_count;
+// it's not spi1_isr!
+void dma1_channel3_isr(void) {
+    hw_spi_ack(LEDSTRIP_C_SPI);
+    dma_count++;
 }
 
 struct ledstrip_config {

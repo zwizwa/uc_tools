@@ -105,6 +105,11 @@ void start(void) {
     /* Use framwork for handling incoming USB SLIP commands. */
     slipstub_init(handle_tag);
 
+    /* It's just so much better developing with a watchdog enabled... */
+    iwdg_set_period_ms(1000);
+    iwdg_start();
+    _service.add(iwdg_reset);
+
     instance_need_top(32, &app);
 }
 void stop(void) {
