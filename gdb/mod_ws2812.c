@@ -67,9 +67,13 @@ void ledstrip_send(const struct grb *grb) {
             ledstrip_dma_buf,
             (const uint8_t*)grb,
             LEDSTRIP_NB_LEDS * 24);
-    //infof("ledstrip_send %d %d\n", dma_bytes, sizeof(ledstrip_dma_buf));
+    // infof("ledstrip_send %d %d\n", dma_bytes, sizeof(ledstrip_dma_buf));
     /* reset peripheral and start dma. */
-    hw_spi_reset(LEDSTRIP_C_SPI);
+    static int had_reset;
+
+    /* FIXME: The reset glitches the data line, so we reset only once.
+       Solve this properly.  Easy enough to diagnose on the ring board. */
+    if (!(had_reset++)) hw_spi_reset(LEDSTRIP_C_SPI);
     hw_spi_start(LEDSTRIP_C_SPI, ledstrip_dma_buf, dma_bytes);
 }
 
@@ -87,7 +91,7 @@ void ledstrip_send_gen(struct grb (*grb_gen)(void*, int led_nb), void *ctx, int 
         }
     }
     uint32_t dma_bytes = bitbuf_flush(&dst);
-    //infof("ledstrip_send %d %d\n", dma_bytes, sizeof(ledstrip_dma_buf));
+    //infof("ledstrip_send_gen %d %d\n", dma_bytes, sizeof(ledstrip_dma_buf));
     /* reset peripheral and start dma. */
     hw_spi_reset(LEDSTRIP_C_SPI);
     hw_spi_start(LEDSTRIP_C_SPI, ledstrip_dma_buf, dma_bytes);
