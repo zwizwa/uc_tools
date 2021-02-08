@@ -47,12 +47,18 @@ int kill(pid_t pid, int sig);
 // #include "infof.h"
 // int infof(const char *fmt, ...);
 #define LOG(...) infof(__VA_ARGS__)
-#endif
-/* This should be implemented in the main C file of firmware.  Find a
-   good way to do this.  For now, this is just to make current
-   refactoring step compile. */
+#endif // __linux__
+
+/* In bare metal microcontroller context there is no universal way to
+   handle this so we take the following approach: implement abort a
+   halt, by performing an endless loop.  This will trigger the
+   watchdog timer. */
+static inline void abort_busyloop(void) {
+  loop:
+    goto loop;
+}
 #ifndef ABORT
-#define ABORT for(;;)
+#define ABORT abort_busyloop()
 #endif
 
 #endif

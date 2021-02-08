@@ -5,8 +5,8 @@
 [ -z "$UC_TOOLS" ] && UC_TOOLS=..
 [ -z "$GCC" ] && GCC=gcc
 
-# CFLAGS_ERROR=-Werror
-CFLAGS_ERROR=
+CFLAGS_ERROR=-Werror
+# CFLAGS_ERROR=
 
 # -std=gnu99
 
