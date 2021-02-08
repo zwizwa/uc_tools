@@ -324,7 +324,7 @@ static void fd_open_tty(int *pfd, const char *dev) {
     *pfd = fd;
 }
 static void handle_signal(int sig) {
-    LOG("SIGNAL %d\n", sig);
+    LOG("packet_bridge: SIGNAL %d\n", sig);
     exit(1);
 }
 static void fd_open_command(int *in_fd, int *out_fd, const char **argv) {
