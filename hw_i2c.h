@@ -292,7 +292,7 @@ Common codes:
    indicate two things upstream: was there an error, and did it get
    handled such that i2c is in a good state again to do a new
    transaction. */
-void hw_i2c_handle_sr1(const struct hw_i2c c, struct hw_i2c_control_state *ctrl) {
+static inline void hw_i2c_handle_sr1(const struct hw_i2c c, struct hw_i2c_control_state *ctrl) {
     if (ctrl->sr & I2C_SR1_AF) {
         /* Acknowledge failure. */
         I2C_SR1(c.i2c) &= ~I2C_SR1_AF;
@@ -302,19 +302,24 @@ void hw_i2c_handle_sr1(const struct hw_i2c c, struct hw_i2c_control_state *ctrl)
 }
 /* I'm having trouble doing soft reset after transaction error.  This
    handles all conditions that need to be cleared in software. */
-void hw_i2c_soft_reset(const struct hw_i2c c) {
+static inline void hw_i2c_soft_reset(const struct hw_i2c c) {
     if (I2C_SR2(c.i2c) & I2C_SR2_BUSY) {
         hw_i2c_stop(c);
     }
     I2C_SR1(c.i2c) = 0;
 }
 
+static inline int hw_i2c_busy(const struct hw_i2c c) {
+    return !!(I2C_SR2(c.i2c) & I2C_SR2_BUSY);
+}
+
+
 #define HW_I2C_TRANSMIT_START(_c, _s, _addr, _error_base) {             \
         HW_I2C_WHILE(_s, (I2C_SR2(_c.i2c) & I2C_SR2_BUSY), _error_base + 0x00); \
         /* send start */                                                \
         I2C_CR1(_c.i2c) |= I2C_CR1_START;                               \
         /* Wait for master mode selected */                             \
-        HW_I2C_WHILE(_s, !((I2C_SR1(_c.i2c) & I2C_SR1_SB) &             \
+        HW_I2C_WHILE(_s, !((I2C_SR1(_c.i2c) & I2C_SR1_SB) &&            \
                            (I2C_SR2(_c.i2c) & (I2C_SR2_MSL | I2C_SR2_BUSY))), _error_base + 0x01); \
         /* Send 7bit address */                                         \
         I2C_DR(_c.i2c) = (uint8_t)((_addr << 1) | I2C_WRITE);           \
@@ -346,7 +351,7 @@ void hw_i2c_soft_reset(const struct hw_i2c c) {
         /* Send start */                                                \
         I2C_CR1(_c.i2c) |= I2C_CR1_START;                               \
         /* Wait for master mode selected */                             \
-        HW_I2C_WHILE(_s, !((I2C_SR1(_c.i2c) & I2C_SR1_SB) &             \
+        HW_I2C_WHILE(_s, !((I2C_SR1(_c.i2c) & I2C_SR1_SB) &&            \
                            (I2C_SR2(_c.i2c) & (I2C_SR2_MSL | I2C_SR2_BUSY))), 0x30011); \
         /* Send 7bit address */                                         \
         I2C_DR(_c.i2c) = (uint8_t)((_addr << 1) | I2C_READ);            \
