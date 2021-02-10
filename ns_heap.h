@@ -97,6 +97,9 @@ INLINE void NS(_replace_top)(NS(_heap_t) *h, NS(_element_t) e) {
            guaranteed to exist.  */
     }
 }
+INLINE uintptr_t NS(_nb)(NS(_heap_t) *h) {
+    return h->nb;
+}
 INLINE NS(_element_t) NS(_peek)(NS(_heap_t) *h) {
     return h->arr[0];
 }

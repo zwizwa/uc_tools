@@ -27,6 +27,8 @@
 #define FWSTREAM_ERR_CTRL_SIZE 4
 #define FWSTREAM_ERR_CTRL_CRC 5
 #define FWSTREAM_ERR_FW_CRC 6
+#define FWSTREAM_ERR_NOT_WRITTEN 7
+#define FWSTREAM_ERR_BAD_REPORT 8
 
 struct fwstream;
 
@@ -162,8 +164,11 @@ fwstream_push(struct fwstream *s, uintptr_t chunk_nb, const uint8_t *chunk_data)
             s->checksum_acc =
                 s->checksum_inc(written, endx - start, s->checksum_acc);
         }
+        return 0;
     }
-    return 0;
+    else {
+        return FWSTREAM_ERR_NOT_WRITTEN;
+    }
 }
 
 #endif

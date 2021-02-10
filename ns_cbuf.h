@@ -145,9 +145,10 @@ static inline uint32_t NS(_read)(NS(_queue_t) *b, NS(_element_t) *buf, uint32_t 
     return len;
 }
 static inline NS(_oob_element_t) NS(_get)(NS(_queue_t) *b) {
-    NS(_element_t) element;
+    NS(_element_t) none = NS(_oob_element_none)();
+    NS(_element_t) element = none;
     if (1 == NS(_read)(b, &element, 1)) { return element; }
-    else return NS(_oob_element_none)();
+    else return none;
 }
 static inline void NS(_put)(NS(_queue_t) *b, NS(_element_t) element) {
     NS(_write)(b, &element, 1);

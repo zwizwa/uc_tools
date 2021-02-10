@@ -141,16 +141,18 @@ void test3(void) {
     /* Sequence expiration times. */
     swtimer_element_t next;
     while(swtimer_next(&t, &next)) {
-        LOG("expire %x\n", next.time);
+        LOG("expire %x\n", next.time_abs);
     }
+    uint16_t now = next.time_abs;
+    swtimer_shift(&t, now);
     /* We're at D now, so D,E come before 1 and C */
-    swtimer_schedule(&t, 0xCFFF,0);
-    swtimer_schedule(&t, 0xD001,0);
-    swtimer_schedule(&t, 0x1000,0);
-    swtimer_schedule(&t, 0xE000,0);
-    swtimer_schedule(&t, 0xD000,0);
+    swtimer_schedule(&t, 0xCFFF-now,0);
+    swtimer_schedule(&t, 0xD001-now,0);
+    swtimer_schedule(&t, 0x1000-now,0);
+    swtimer_schedule(&t, 0xE000-now,0);
+    swtimer_schedule(&t, 0xD000-now,0);
     while(swtimer_next(&t, &next)) {
-        LOG("expire %x\n", next.time);
+        LOG("expire %x\n", next.time_abs);
     }
 }
 

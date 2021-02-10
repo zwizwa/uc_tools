@@ -71,10 +71,10 @@ static void poll_event(void) {
 
         switch(token) {
         case HW_EVENT_TIMEOUT: {
-            infof("timeout %x %d\n", timer_last.time, timer_last.tag);
+            infof("timeout %x %d\n", timer_last.time_abs, timer_last.tag);
             swtimer_element_t next;
             if (swtimer_next(&timer, &next)) {
-                uint16_t diff = next.time - timer_last.time;
+                uint16_t diff = next.time_abs - timer_last.time_abs;
                 timer_last = next;
                 hw_delay_arm(C_TIM, diff);
                 hw_delay_trigger(C_TIM);
