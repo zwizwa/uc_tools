@@ -213,6 +213,7 @@ struct gdbstub_config {
 
 /* Indices for uint32_t array overlayed on top of config block.  For
    use in preparing binary firmware images.  See bin2fw.c */
+#define GDBSTUB_CONFIG_INDEX_VERSION      9
 #define GDBSTUB_CONFIG_INDEX_FLASH_START 15
 #define GDBSTUB_CONFIG_INDEX_FLASH_ENDX  16
 

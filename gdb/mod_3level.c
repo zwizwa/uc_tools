@@ -74,10 +74,10 @@ void token_tick(swtimer_element_t e) {
 
 /* 1.b Timer interrupt. */
 
-/* FIXME: How to ensure timing stays on a perfect grid?  We should
-   probably use the actual time instead of the logical time.  Or is it
-   already on a perfect grid?  Read datasheet again... */
-
+/* _arm sets period and counter register, then _trigger sets CEN.
+   Will the timer keep updating on the same prescaler grid?  I would
+   like to keep to keep it on a perfect grid so handle times do not
+   cause jitter.. */
 
 void HW_TIM_ISR(TIM)(void) {
     hw_delay_ack(C_TIM);
