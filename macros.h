@@ -28,7 +28,7 @@
 
 /* Uncomment this to disable trap.
    It seems to be a bad idea to enable this by default.  Why? */
-// #define TRAP
+//#define TRAP
 
 #ifndef TRAP
 int kill(pid_t pid, int sig);

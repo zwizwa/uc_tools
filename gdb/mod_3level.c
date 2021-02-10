@@ -74,10 +74,14 @@ void token_tick(swtimer_element_t e) {
 
 /* 1.b Timer interrupt. */
 
-/* _arm sets period and counter register, then _trigger sets CEN.
-   Will the timer keep updating on the same prescaler grid?  I would
-   like to keep to keep it on a perfect grid so handle times do not
-   cause jitter.. */
+/* _ack disables counter, _arm sets period and counter register, then
+   _trigger enables counter.  Will the timer keep updating on the same
+   prescaler grid?  I would like to keep to keep it on a perfect grid
+   so handle times do not cause jitter..
+
+   FIXME: It seems that a better approach is to let the counter
+   auto-reset, but only update the period register?
+*/
 
 void HW_TIM_ISR(TIM)(void) {
     hw_delay_ack(C_TIM);

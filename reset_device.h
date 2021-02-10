@@ -4,7 +4,7 @@
 #include "base.h"
 #include "libopencm3/stm32/f1/iwdg.h"
 
-static inline void reset_device(void) {
+static inline void reset_device_ms(int ms) {
     // Disengage the USB speed pullup connected to A12 (D+) to signal
     // host that we're no longer there.
     hw_gpio_config(GPIOB,5,HW_GPIO_CONFIG_INPUT);
@@ -14,14 +14,14 @@ static inline void reset_device(void) {
     // I think it only resets the core, not the peripherals.
 
     // The simplest way I found is to use the watchdog timer.
-    // Start it with its default 512 milliseconds timeout.  That
-    // also gives some unplug/replug delay.
+    iwdg_set_period_ms(ms);
     iwdg_start();
 
-    // Sit here for a bit to allow it to restart.
-    hw_busywait_ms(3000);
-    // If that doesn't happen for some reason we will at least
-    // continue.
+    // Sit here until it restarts.
+    for(;;) { volatile int i = 0; (void)i; }
+}
+static inline void reset_device(void) {
+    reset_device_ms(1000);
 }
 
 

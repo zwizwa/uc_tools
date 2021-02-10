@@ -428,7 +428,19 @@ static ssize_t pop_read(port_pop_fn pop,
         }
     }
     if (rv == 0) {
-        ERROR("eof\n");
+        /* Note that errors can be configured to generate SIGTRAP,
+           which will core dump if enabled.  Not all EOF conditions
+           are errors in that sense.  It's hard to distinguish here,
+           but let's assume that EOF at a packet boundary is ok and
+           just means application is done. */
+        if (p->count) {
+            ERROR("eof, p->count=%d\n", p->count);
+        }
+        else {
+            // LOG("eof\n");
+            exit(0);
+        }
+
     }
     ASSERT(rv > 0);
     p->count += rv;
@@ -693,7 +705,7 @@ static ssize_t sys_read(struct port *p, uint8_t *buf, ssize_t len) {
     ssize_t rlen;
     ASSERT_ERRNO(rlen = read(p->fd, buf, len));
     if (rlen == 0) {
-        ERROR("eof\n");
+        ERROR("sys_read() eof\n");
     }
     return rlen;
 }
