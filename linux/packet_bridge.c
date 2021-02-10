@@ -979,7 +979,13 @@ void packet_loop(packet_handle_fn handle,
                     }
                 }
                 else if (pfd[i].revents) {
-                    /* Anything else is an error, e.g. POLLHUP */
+                    if (pfd[i].revents == POLLHUP) {
+                        /* Client closed its end of the pipe.  We
+                           can't tell if this is good or bad, so just
+                           exit. */
+                        exit(0);
+                    }
+                    /* Anything else is unexpected and will dump core. */
                     ERROR("port %d: revents=0x%x\n", i, pfd[i].revents);
                 }
             }
