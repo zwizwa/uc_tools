@@ -60,12 +60,15 @@ struct swtimer timer = { .nb = 0, .arr = timer_elements };
 
 /* 1. TOKEN LEVEL */
 
-/* 1.a Syncrhonous update method. */
-void token_tick(swtimer_element_t now) {
+/* 1.a Synchronous update method. */
+void token_tick(swtimer_element_t e) {
     /* Here we can communicate with the app... */
-    cbuf_put(&mbox_app, now.tag);
+    cbuf_put(&mbox_app, e.tag);
     /* ... and schedule new timeouts. */
-    //swtimer_schedule(&timer, 0x1000, now.tag+10);
+    static int again;
+    if (again++ < 10) {
+        swtimer_schedule(&timer, 0x1000, e.tag+10);
+    }
 
 }
 
@@ -75,37 +78,28 @@ void token_tick(swtimer_element_t now) {
    probably use the actual time instead of the logical time.  Or is it
    already on a perfect grid?  Read datasheet again... */
 
+
 void HW_TIM_ISR(TIM)(void) {
-    /* Perform bookkeeping first: acknowledge interrupt, save the
-       current event for processing, and advance the software
-       timer. */
     hw_delay_ack(C_TIM);
+    swtimer_element_t e;
 
-    /* Pop the timer.  There is guaranteed to be a single entry here,
-       since the only way we can trigger an interrupt is from
-       inspecting a timer heap with at least one element. */
-    swtimer_element_t now;
-    for (;;) {
-        now = swtimer_pop(&timer);
+  pop:
+    /* Top of the heap is the event we're currently handling. */
+    ASSERT(swtimer_nb(&timer));
+    e = swtimer_pop(&timer);
 
-        /* Reset the time base.  This is necessary because token_tick()
-           might insert new events.  */
-        swtimer_shift(&timer, now.time_abs);
+    /* Reset the logical time base before passing it to token_tick(),
+       because it might insert new relative timeout events. */
+    swtimer_shift(&timer, e.time_abs);
+    token_tick(e);
 
-        /* Then pass the event to the token processor. */
-        token_tick(now);
-
-        /* If the next event is not now, set the hardware timer,
-           otherwise keep handling. */
-        if (swtimer_nb(&timer)) {
-            swtimer_element_t next = swtimer_peek(&timer);
-            uint16_t diff = next.time_abs - timer.now_abs;
-            if (diff) {
-                hw_delay_arm(C_TIM, diff);
-                hw_delay_trigger(C_TIM);
-                return;
-            }
-        }
+    /* If the next event is at the same logical instance, handle it.
+       Otherwise set the hardware timer to resume. */
+    if (swtimer_nb(&timer)) {
+        uint16_t diff = swtimer_diff(&timer);
+        if (!diff) goto pop;
+        hw_delay_arm(C_TIM, diff);
+        hw_delay_trigger(C_TIM);
     }
 }
 /* 1.b Software interrupt. */
@@ -136,8 +130,11 @@ void init_3level(void) {
     }
 
     hw_delay_init(C_TIM, 0xFFFF, 1 /*enable interrupt*/);
-    hw_delay_arm(C_TIM, 1); /* timeout needs to be >0 */
-    hw_delay_trigger(C_TIM);
+    if (swtimer_nb(&timer)) {
+        /* +1 because we can't set a delay of 0. */
+        hw_delay_arm(C_TIM, 1 + swtimer_diff(&timer));
+        hw_delay_trigger(C_TIM);
+    }
 
     _service.add(poll_mbox_app);
 

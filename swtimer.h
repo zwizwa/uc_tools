@@ -47,6 +47,13 @@ static inline void swtimer_schedule(swtimer_heap_t *h,
     return swtimer_insert(h, e);
 }
 
+/* Precondition: at least one element in the heap. */
+static inline uint16_t swtimer_diff(swtimer_heap_t *h) {
+    swtimer_element_t next = swtimer_peek(h);
+    uint16_t diff = next.time_abs - h->now_abs;
+    return diff;
+}
+
 /* To cancel a timer, it might be simplest to set a bit in a flag
    register that will drop the software event when the hardware timer
    expires.  Resetting the hardware timer is something that needs a
