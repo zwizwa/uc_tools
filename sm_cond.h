@@ -92,9 +92,12 @@
    interact with timers directly. */
 
 /* Represent this as composite type to make sure the C type checker
-   can catch the difference betwen relative and absolute time. */
+   can catch the difference betwen relative and absolute time.  This
+   is a little inconvenient but I bet will save a lot of headache... */
 typedef union { uint32_t abs; } sm_time_abs_t;
 typedef union { int32_t  rel; } sm_time_rel_t;
+#define SM_TIME_REL_MAX 0x7FFFFFFFUL
+
 
 struct sm_context {
     /* Time takes a central role.  We can compute it once and pass it
@@ -112,8 +115,12 @@ struct sm_context {
 
 };
 sm_time_rel_t sm_time_diff(sm_time_abs_t later, sm_time_abs_t sooner) {
-    sm_time_rel_t diff = { .rel = later.abs = sooner.abs };
-    return diff;
+    sm_time_rel_t dt = { .rel = later.abs - sooner.abs };
+    return dt;
+}
+sm_time_abs_t sm_time_offset(sm_time_abs_t time, uint32_t offset) {
+    sm_time_abs_t t = { .abs = time.abs + offset };
+    return t;
 }
 
 /* This is what it is all about: when evaluating a timer, schedule a
@@ -146,7 +153,6 @@ int sm_timer_elapsed(struct sm_context *c, sm_time_abs_t timeout) {
         return 0;
     }
 }
-
 
 
 #endif
