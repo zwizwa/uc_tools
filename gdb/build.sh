@@ -150,6 +150,10 @@ case "$TYPE" in
             $PARENT_ELF_LDFLAGS \
             -o $ELF \
             $O $O_SYSTEM $O_VERSION_LINK $A $LDLIBS 
+
+        # Remove the generated version_link.c file.  It gets in the
+        # way for code searches.
+        rm -f "$C_VERSION_LINK"
         ;;
     bin)
         # Convert an ELF file to .bin in the most straighforward way.
