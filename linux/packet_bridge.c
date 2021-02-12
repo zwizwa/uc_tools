@@ -434,7 +434,8 @@ static ssize_t pop_read(port_pop_fn pop,
            but let's assume that EOF at a packet boundary is ok and
            just means application is done. */
         if (p->count) {
-            ERROR("eof, p->count=%d\n", p->count);
+            const char *spec = p->p.spec ? p->p.spec : "uknown";
+            ERROR("%s: eof, p->count=%d\n", spec, p->count);
         }
         else {
             // LOG("eof\n");
@@ -1092,7 +1093,7 @@ static void strtok_argv(char *tok, const char *delim,
 }
 
 
-struct port *port_open(const char *spec_ro) {
+struct port *port_open_(const char *spec_ro) {
     char spec[strlen(spec_ro)+1];
     strcpy(spec, spec_ro);
 
@@ -1260,6 +1261,16 @@ struct port *port_open(const char *spec_ro) {
 
     ERROR("unknown type %s\n", tok);
 }
+
+struct port *port_open(const char *spec_ro) {
+    struct port *p = port_open_(spec_ro);
+    /* This is used for logging. */
+    char *spec = malloc(strlen(spec_ro) + 1);
+    strcpy(spec, spec_ro);
+    p->spec = spec;
+    return p;
+}
+
 
 
 /***** 7. DEFAULT MAIN */

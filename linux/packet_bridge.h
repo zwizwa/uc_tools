@@ -47,6 +47,7 @@ struct port {
     port_read_fn read;
     port_write_fn write;
     port_pop_fn pop;     // only for buffered ports
+    const char *spec;
 };
 
 struct udp_port {

@@ -48,6 +48,8 @@ int main(void) {
         ctx.retry.rel = SM_TIME_REL_MAX;
         sm_status_t status;
         if (SM_WAITING != (status = test_tick(&s))) break;
+        /* This is a good place to check if there are _any_ wakeup
+           events at all. */
         sleep_ms(ctx.retry.rel);
         ctx.now.abs += ctx.retry.rel;
     }
