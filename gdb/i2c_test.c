@@ -16,7 +16,7 @@ void app_poll(void) {
 
 instance_status_t app_init(instance_init_t *ctx) {
     infof("product: %s\n", PRODUCT);
-    INSTANCE_NEED(ctx, &console);
+    INSTANCE_NEED(ctx, &console, &i2c_tester);
     _service.add(app_poll);
     return 0;
 }

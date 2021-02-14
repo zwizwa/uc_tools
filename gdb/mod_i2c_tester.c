@@ -18,6 +18,7 @@
 /* 1. GENERIC */
 
 #include "hw_stm32f103.h"
+#include "cycle_counter.h"
 
 #define SCL GPIOB,8
 #define SDA GPIOB,9
@@ -33,7 +34,7 @@
 struct i2c_tester_config {
     uint32_t us;
     uint8_t addr, stretch, d;
-} i2c_tester = {
+} i2c_tester_state = {
     .us = I2C_TESTER_PERIOD_US,
     .stretch = 1,
     .addr = 96,
@@ -73,7 +74,7 @@ static inline void pin_set(uint32_t gpio, uint32_t pin, uint32_t val) {
 
 void delay() {
     /* Wait for 1/2 I2C clock period.  At 10kHz this is 50us. */
-    hw_busywait_us(i2c_tester.us);
+    hw_busywait_us(i2c_tester_state.us);
 }
 void ndelay(int n) {
     while(n--) delay();
@@ -88,7 +89,7 @@ static inline int scl_read(void) { return hw_gpio_read(SCL); }
 
 void wait_stretch(void) {
     // PRE: SCL released
-    if (i2c_tester.stretch) while (!scl_read());
+    if (i2c_tester_state.stretch) while (!scl_read());
 }
 
 void scl_1(void) {
@@ -182,7 +183,7 @@ int info_recv_byte(int ack) {
 KEEP void eeprom_write() {
     send_start();
 
-    info_send_byte(i2c_tester.addr << 1 | I2C_W);
+    info_send_byte(i2c_tester_state.addr << 1 | I2C_W);
     info_send_byte(1);
 
     send_stop();
@@ -191,9 +192,9 @@ KEEP void eeprom_write() {
 KEEP void eeprom_read() {
     send_start();
 
-    info_send_byte(i2c_tester.addr << 1 | I2C_R);
+    info_send_byte(i2c_tester_state.addr << 1 | I2C_R);
 
-    ndelay(i2c_tester.d);
+    ndelay(i2c_tester_state.d);
 
     info_recv_byte(1);
 
@@ -205,12 +206,12 @@ KEEP void eeprom_write_read() {
 
     send_start();
 
-    info_send_byte(i2c_tester.addr << 1 | I2C_W);
+    info_send_byte(i2c_tester_state.addr << 1 | I2C_W);
     info_send_byte(1);
 
     send_start();
 
-    send_byte(i2c_tester.addr << 1 | I2C_R);
+    send_byte(i2c_tester_state.addr << 1 | I2C_R);
 
     info_recv_byte(0);
     info_recv_byte(0);
@@ -230,17 +231,49 @@ KEEP void eeprom_write_read() {
    state change.
 */
 
+// 3.1 TIM
+// See mod_3level.c for inspiration
+// Note that I2C slave is synchronouse, so timer is likely not necessary.
+
+#define TICKS_PER_US 100
+
+const struct hw_delay hw_tim[] = {
+//          rcc       irq            tim   psc
+//-------------------------------------------------------
+    [3] = { RCC_TIM3, NVIC_TIM3_IRQ, TIM3, 72*TICKS_PER_US },
+};
+#define TIM 3
+#define C_TIM hw_tim[TIM]
+void HW_TIM_ISR(TIM)(void) {
+    hw_delay_ack(C_TIM);
+    // uint16 diff = 123;
+    //hw_delay_arm(C_TIM, diff);
+    //hw_delay_trigger(C_TIM);
+
+}
+void i2c_tester_tim_init(void) {
+    hw_delay_init(C_TIM, 0xFFFF, 1 /*enable interrupt*/);
+    hw_delay_arm(C_TIM, 1);
+    hw_delay_trigger(C_TIM);
+}
+
+
+
+// 3.2 EXTI
+
 // This extends hw_exti_ack() for multi-event setup.
 // FIXME: Comment why both EMR nd PR are written.
 static inline void hw_exti_do_ack(uint32_t pin) {
     *hw_bitband(&EXTI_EMR, pin) = 0; // rmw
     EXTI_PR = 1 << pin; // w
 }
+static uint32_t isr_count;
 void exti9_5_isr(void) {
     /* We just need to be woken up on change, so it's ok if this
        handles a simultaneous change on 8 and 9.  */
     hw_exti_do_ack(8);
     hw_exti_do_ack(9);
+    isr_count++;
     // FIXME: poll the machine
 }
 // This extends hw_exti_arm() for multi-event setup.
@@ -260,6 +293,22 @@ void i2c_tester_exti_init(void) {
     hw_exti_do_arm(GPIOB, 8, EXTI_TRIGGER_BOTH);
     hw_exti_do_arm(GPIOB, 9, EXTI_TRIGGER_BOTH);
 }
+
+void i2c_tester_poll(void) {
+    static uint32_t timer;
+    MS_PERIODIC(timer, 1000) {
+        infof("%d\n", isr_count);
+    }
+}
+instance_status_t i2c_tester_init(instance_init_t *ctx) {
+    rcc_periph_clock_enable(RCC_GPIOA | RCC_GPIOB | RCC_AFIO);
+    enable_cycle_counter();
+    i2c_tester_exti_init();
+    _service.add(i2c_tester_poll);
+    return 0;
+}
+DEF_INSTANCE(i2c_tester);
+
 
 
 
@@ -293,24 +342,24 @@ KEEP void i2c_tester_command_write(const uint8_t *buf, uint32_t len) {
             eeprom_read();
             break;
         case '[':
-            if (i2c_tester.us>1) i2c_tester.us--;
-            infof("us=%d", i2c_tester.us);
+            if (i2c_tester_state.us>1) i2c_tester_state.us--;
+            infof("us=%d", i2c_tester_state.us);
             break;
         case ']':
-            i2c_tester.us++;
-            infof("us=%d", i2c_tester.us);
+            i2c_tester_state.us++;
+            infof("us=%d", i2c_tester_state.us);
             break;
         case '+':
-            i2c_tester.d++;
-            infof("d=%d", i2c_tester.d);
+            i2c_tester_state.d++;
+            infof("d=%d", i2c_tester_state.d);
             break;
         case '-':
-            if(i2c_tester.d) i2c_tester.d--;
-            infof("d=%d", i2c_tester.d);
+            if(i2c_tester_state.d) i2c_tester_state.d--;
+            infof("d=%d", i2c_tester_state.d);
             break;
         case 's':
-            i2c_tester.stretch=!i2c_tester.stretch;
-            infof("stretch=%d", i2c_tester.stretch);
+            i2c_tester_state.stretch=!i2c_tester_state.stretch;
+            infof("stretch=%d", i2c_tester_state.stretch);
             break;
         }
         infof("\r\n");
@@ -324,12 +373,5 @@ int map_i2c_tester(struct tag_u32 *req) {
     return HANDLE_TAG_U32_MAP(req, map);
 }
 
-void i2c_tester_init(void) {
-    /* IO init */
-    rcc_periph_clock_enable(RCC_GPIOA | RCC_AFIO);
-    rcc_periph_clock_enable(RCC_GPIOB);
-
-
-}
 
 #endif
