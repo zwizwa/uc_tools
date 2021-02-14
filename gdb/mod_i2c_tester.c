@@ -19,6 +19,8 @@
 
 #include "hw_stm32f103.h"
 #include "cycle_counter.h"
+#include "cbuf.h"
+#include <stdint.h>
 
 #define SCL GPIOB,8
 #define SDA GPIOB,9
@@ -30,6 +32,10 @@
 #ifndef I2C_TESTER_PERIOD_US
 #define I2C_TESTER_PERIOD_US 50
 #endif
+
+struct cbuf i2c_tester_mbox; uint8_t i2c_tester_mbox_buf[64];
+
+
 
 struct i2c_tester_config {
     uint32_t us;
@@ -231,6 +237,74 @@ KEEP void eeprom_write_read() {
    state change.
 */
 
+// 3.0 Abstract machine
+
+#include "sm.h"
+#define I2C_TRACK_SCL (1<<1)
+#define I2C_TRACK_SDA (1<<0)
+
+#define I2C_TRACK_WAIT_C1D1_IDLE(s)  SM_WAIT(s,   s->bus == 0b11)
+#define I2C_TRACK_WAIT_C1D0_START(s) SM_WAIT(s,   s->bus == 0b10)
+#define I2C_TRACK_WAIT_C1Dx_HI(s)    SM_WAIT(s,   s->bus &  0b10)
+#define I2C_TRACK_WAIT_C0Dx_LO(s)    SM_WAIT(s, !(s->bus &  0b10))
+
+struct i2c_track {
+    void *next;
+    uint32_t bus;
+    uint32_t clock;
+    uint32_t sreg;
+};
+struct i2c_track i2c_track;
+void i2c_track_init(struct i2c_track *s) {
+    memset(s,0,sizeof(*s));
+}
+// CD -> CD
+// 11    10  start
+// 10    11  stop
+// 1_    0_  write edge
+// 0_    1_  read edge
+
+// Machine, in the abstract:
+// wait start
+// wait read edge, read x 8
+// wait write edge, write ack
+//
+// so machine can just wait on a condition (DC combo), we don't
+// need to track history, that is implicit in state machine.
+
+// (1) STOP condition.
+
+uint32_t i2c_track_tick(struct i2c_track *s) {
+    SM_RESUME(s);
+    for(;;) {
+        I2C_TRACK_WAIT_C1D1_IDLE(s);
+        I2C_TRACK_WAIT_C1D0_START(s);
+
+        I2C_TRACK_WAIT_C0Dx_LO(s); // write edge
+
+        for(;;) {
+
+            // data byte
+            for(s->clock = 0; s->clock < 8; s->clock++) {
+                I2C_TRACK_WAIT_C1Dx_HI(s); // read edge
+                // sda must be stable until write edge
+                s->sreg = (s->bus & 1) | (s->sreg << 1);
+
+                // (1) STOP condition
+
+                I2C_TRACK_WAIT_C0Dx_LO(s); // write edge
+            }
+            cbuf_put(&i2c_tester_mbox, s->sreg & 0xFF);
+            // ack
+            I2C_TRACK_WAIT_C1Dx_HI(s); // read edge
+            I2C_TRACK_WAIT_C0Dx_LO(s); // write edge
+        }
+
+    }
+}
+
+
+
 // 3.1 TIM
 // See mod_3level.c for inspiration
 // Note that I2C slave is synchronouse, so timer is likely not necessary.
@@ -274,7 +348,11 @@ void exti9_5_isr(void) {
     hw_exti_do_ack(8);
     hw_exti_do_ack(9);
     isr_count++;
-    // FIXME: poll the machine
+    i2c_track.bus = (scl_read() << 1) | sda_read();
+    i2c_track_tick(&i2c_track);
+
+
+
 }
 // This extends hw_exti_arm() for multi-event setup.
 static inline void hw_exti_do_arm(uint32_t gpio, uint32_t pin, uint32_t trigger) {
@@ -295,12 +373,26 @@ void i2c_tester_exti_init(void) {
 }
 
 void i2c_tester_poll(void) {
+    while(cbuf_bytes(&i2c_tester_mbox)) {
+        uint8_t token = cbuf_get(&i2c_tester_mbox);
+        (void)token;
+        //infof("%d\n", token);
+    }
+#if 1
+    static uint32_t count_handled;
     static uint32_t timer;
     MS_PERIODIC(timer, 1000) {
-        infof("%d\n", isr_count);
+        uint32_t count = isr_count;
+        int32_t new_count = count - count_handled;
+        if (new_count) {
+            infof("%d %d\n", new_count, count);
+        }
+        count_handled = count;
     }
+#endif
 }
 instance_status_t i2c_tester_init(instance_init_t *ctx) {
+    CBUF_INIT(i2c_tester_mbox);
     rcc_periph_clock_enable(RCC_GPIOA | RCC_GPIOB | RCC_AFIO);
     enable_cycle_counter();
     i2c_tester_exti_init();
