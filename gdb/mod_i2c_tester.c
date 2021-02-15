@@ -37,14 +37,15 @@
 #define I2C_R 1
 #define I2C_W 0
 
-/* By default, run it slow. */
+/* Half a clock period.  By default, run it slow. */
 #ifndef I2C_TESTER_PERIOD_US
-#define I2C_TESTER_PERIOD_US 50
+#define I2C_TESTER_PERIOD_US 500
 #endif
 
 struct cbuf i2c_tester_mbox; uint8_t i2c_tester_mbox_buf[64];
 
 
+#define I2C_DEBUG_SPACING 1
 
 struct i2c_tester_config {
     uint32_t us;
@@ -127,7 +128,30 @@ void i2c_write_scl_1(void) {
 
    Busyloop bitbanged for convenience. */
 
+void i2c_deblock(void) {
+    int i;
+    int sda = sda_read();
+    int scl = scl_read();
+    if (!(sda && scl)) {
+        //infof("\nWARNING: sda=%d, scl=%d\n", sda, scl);
+    }
+    for(i=0; i<16; i++) {
+        int sda1 = sda_read();
+        int scl1 = scl_read();
+        if (sda1 && scl1) break;
+
+        i2c_write_scl(0); i2c_delay();
+        i2c_write_scl(1); i2c_delay();  // no stretch
+    }
+    if (i) {
+        //infof("\nWARNING: deblock clocks=%d\n", i);
+        infof(" (%d,%d,%d)", sda,scl,i);
+    }
+}
+
 void i2c_start(void) {
+    i2c_deblock();
+
     // PRE:
     // - idle:   SDA=1,SCL=1
     // - repeat: SDA=?,SCL=0
@@ -140,8 +164,9 @@ void i2c_start(void) {
     i2c_write_scl(0);  i2c_delay();
     // POST: SDA=0, SCL=0
 }
+
 void send_bit(int val) {
-    // PRE: SDA=1, SCL=0
+    // PRE: SDA=?, SCL=0
     i2c_write_sda(val); i2c_delay();  // set + propagate
     i2c_write_scl_1();  i2c_delay();  // set + wait read
     i2c_write_scl(0);
@@ -157,18 +182,37 @@ int recv_bit(void) {
     return val;
     // POST: SDA=1, SCL=0
 }
+void i2c_check_busy(const char *tag) {
+    if (sda_read()) {
+        infof("\nWARNING: %s: SDA=0\n", tag);
+    }
+    if (scl_read()) {
+        infof("\nWARNING: %s: SCL=0\n", tag);
+    }
+}
+
+
+
 void i2c_stop(void) {
     // PRE: SDA=?, SCL=0
     i2c_write_sda(0);  i2c_delay();
     i2c_write_scl_1(); i2c_delay();
     // STOP transition = SDA 0->1 while SCL=1
     i2c_write_sda(1);  i2c_delay();
-    // POST: SDA=1, SCL=1
+    // POST: SDA=1, SCL=1  (unless held by slave)
+
+    // FIXME: STOP isn't implemented correctly.  This shouldn't be
+    // necessary in a working implementation.  Only deblock before
+    // start.
+    i2c_deblock();
 }
 
 
 int send_byte(int byte) {
     for (int bit=7; bit>=0; bit--) { send_bit((byte >> bit)&1); }
+#if I2C_DEBUG_SPACING
+    i2c_ndelay(2);
+#endif
     int nack = recv_bit();
     return nack;
 }
@@ -179,6 +223,9 @@ void send_word(int word) {
 int recv_byte(int nack) {
     int val = 0;
     for (int bit=7; bit>=0; bit--) { val |= (recv_bit() << bit); }
+#if I2C_DEBUG_SPACING
+    i2c_ndelay(2);
+#endif
     send_bit(nack);
     return val;
 }
@@ -205,19 +252,47 @@ int info_send_byte(uint8_t b) {
     return nack;
 }
 int info_recv_byte(int nack) {
+#if I2C_DEBUG_SPACING
+    i2c_ndelay(2); // spacing on scope
+#endif
     int b = recv_byte(nack);
     infof(" %02x", b);
     return b;
 }
 
-KEEP void eeprom_write() {
+KEEP void eeprom_write(uint8_t page, const uint8_t *buf, uintptr_t len) {
+    infof(" S");
     i2c_start();
 
-    info_send_byte(i2c_tester_state.addr << 1 | I2C_W);
-    info_send_byte(1);
-
+    // return value 1 means nack
+    if (info_send_byte(i2c_tester_state.addr << 1 | I2C_W)) goto nack;
+    if (info_send_byte(page)) goto nack;
+    for (uintptr_t i=0; i<len; i++) {
+        if (info_send_byte(buf[i])) goto nack;
+    }
+    goto stop;
+  nack:
+    infof("nack\n");
+  stop:
+    infof(" P");
     i2c_stop();
+    infof("\n");
+    return;
 }
+
+void eeprom_read_1(void) {
+    i2c_start();
+    int nack = info_send_byte(i2c_tester_state.addr << 1 | I2C_R);
+    if (nack) goto stop;
+    info_recv_byte(0);
+  stop:
+    i2c_stop();
+
+    i2c_ndelay(3);
+    i2c_deblock();
+
+}
+
 
 KEEP intptr_t eeprom_read(uint8_t offset, uint8_t *buf, uintptr_t len) {
     intptr_t rv = -1;
@@ -227,6 +302,8 @@ KEEP intptr_t eeprom_read(uint8_t offset, uint8_t *buf, uintptr_t len) {
 
     info_send_byte(i2c_tester_state.addr << 1 | I2C_W);
     info_send_byte(offset);
+
+    i2c_stop();
 
     infof(" S");
     i2c_start();
@@ -241,7 +318,8 @@ KEEP intptr_t eeprom_read(uint8_t offset, uint8_t *buf, uintptr_t len) {
 
     intptr_t i;
     for (i=0; i<len; i++) {
-        buf[i] = info_recv_byte(0 /*ack*/);
+        int nack = i >= len-1;
+        buf[i] = info_recv_byte(nack);
     }
     rv = len;
 
@@ -254,6 +332,41 @@ KEEP intptr_t eeprom_read(uint8_t offset, uint8_t *buf, uintptr_t len) {
     return rv;
 }
 
+void i2c_test_eeprom(void) {
+    if (0) {
+        eeprom_read_1();
+    }
+    if (1) {
+        uint8_t buf[8] = "abcxyz!";
+        uint8_t page = 0;
+        eeprom_write(page, buf, sizeof(buf));
+    }
+    if (1) {
+        for(int j=0; j<1; j++) {
+            uint8_t offset = 0;
+            for(int i=0; i<1; i++) {
+                uint8_t buf[16];
+                eeprom_read(offset, buf, sizeof(buf));
+                //eeprom_read(buf, sizeof(buf));
+                offset += sizeof(buf);
+                // hw_busywait_ms(100);
+                // FIXME: eeprom gets confused.  deblock solves it.
+                i2c_deblock();
+                if (1) {
+                    for(int c=0; c<sizeof(buf); c++) {
+                        if ((buf[c] >= ' ') && (buf[c] < 127)) {
+                            info_putchar(buf[c]);
+                        }
+                        else {
+                            info_putchar('.');
+                        }
+                    }
+                    info_putchar('\n');
+                }
+            }
+        }
+    }
+}
 
 KEEP void eeprom_write_read() {
 
@@ -488,9 +601,11 @@ KEEP void i2c_tester_command_write(const uint8_t *buf, uint32_t len) {
         case 'e':
             eeprom_write_read();
             break;
-        case 'w':
-            eeprom_write();
+        case 'w': {
+            uint8_t buf[1] = {123};
+            eeprom_write(0, buf, sizeof(buf));
             break;
+        }
         case 'r': {
             uint8_t buf[1];
             eeprom_read(0, buf, sizeof(buf));
