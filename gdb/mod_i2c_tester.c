@@ -176,10 +176,10 @@ void send_word(int word) {
     send_byte(word >> 8);
     send_byte(word);
 }
-int recv_byte(int ack) {
+int recv_byte(int nack) {
     int val = 0;
     for (int bit=7; bit>=0; bit--) { val |= (recv_bit() << bit); }
-    send_bit(ack); // ack
+    send_bit(nack);
     return val;
 }
 int recv_word(int ack) {
@@ -204,8 +204,8 @@ int info_send_byte(uint8_t b) {
     // infof(" %02x", b);
     return nack;
 }
-int info_recv_byte(int ack) {
-    int b = recv_byte(ack);
+int info_recv_byte(int nack) {
+    int b = recv_byte(nack);
     infof(" %02x", b);
     return b;
 }
@@ -241,7 +241,7 @@ KEEP intptr_t eeprom_read(uint8_t offset, uint8_t *buf, uintptr_t len) {
 
     intptr_t i;
     for (i=0; i<len; i++) {
-        buf[i] = info_recv_byte(1);
+        buf[i] = info_recv_byte(0 /*ack*/);
     }
     rv = len;
 
