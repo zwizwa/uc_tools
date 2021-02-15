@@ -37,7 +37,8 @@
 #define I2C_R 1
 #define I2C_W 0
 
-/* Half a clock period.  By default, run it slow. */
+/* Half a clock period.  By default, run it slow.
+   FIXME: It doesn't seem to work properly with 50,5 */
 #ifndef I2C_TESTER_PERIOD_US
 #define I2C_TESTER_PERIOD_US 500
 #endif
@@ -58,6 +59,7 @@ struct i2c_tester_config {
     .d = 0,
 };
 
+/* 1. NON BLOCKING CORE ROUTINES */
 
 /* On STM32, pull direction is set by the output data register ODR,
    which we access through hw_gpio_write().  There are only 2 states.
@@ -88,35 +90,54 @@ static inline void i2c_pin_set(uint32_t gpio, uint32_t pin, uint32_t val) {
         i2c_pin_low(gpio, pin);
 }
 
-
-void i2c_delay() {
-    /* Wait for 1/2 I2C clock period.  At 10kHz this is 50us. */
-    hw_busywait_us(i2c_tester_state.us);
-}
-void i2c_ndelay(int n) {
-    while(n--) i2c_delay();
-}
-
-
 static inline void i2c_write_sda(int bitval) {
     i2c_pin_set(I2C_GPIO, I2C_PIN_SDA, bitval);
 }
 static inline void i2c_write_scl(int bitval) {
     i2c_pin_set(I2C_GPIO, I2C_PIN_SCL, bitval);
 }
-static inline int sda_read(void) {
+static inline int i2c_sda_read(void) {
     return hw_gpio_read(I2C_GPIO, I2C_PIN_SDA);
 }
-static inline int scl_read(void) {
+static inline int i2c_scl_read(void) {
     return hw_gpio_read(I2C_GPIO, I2C_PIN_SCL);
 }
+
+
+
+/* 2. BLOCKING ROUTINES.
+
+   These are defined as macros, and parameterized by state, so we can
+   plug in a task mechanism.
+*/
+
+/* Primitives: delay and condition poll.  These will "infect" all
+   other code that is written in terms of them. */
+#define I2C_DELAY(s) \
+    i2c_delay_busywait()
+#define I2C_NDELAY(s,n_init) \
+    {int n = n_init; while(n--) I2C_DELAY(s); }
+#define I2C_WHILE(s,cond) \
+    while(cond)
+
+void i2c_delay_busywait() {
+    /* Wait for 1/2 I2C clock period.  At 10kHz this is 50us. */
+    uint32_t ticks_per_us = 72;
+    uint32_t timer = cycle_counter() + i2c_tester_state.us * ticks_per_us;
+    for(;;) {
+        int32_t left = timer - cycle_counter();
+        if (left < 0) break;
+    }
+    // hw_busywait_us(i2c_tester_state.us);
+}
+void *s; // transition
 
 
 // This is quite tricky with both lines involved in signaling.
 
 void wait_stretch(void) {
     // PRE: SCL released
-    if (i2c_tester_state.stretch) while (!scl_read());
+    if (i2c_tester_state.stretch) I2C_WHILE(s, !i2c_scl_read());
 }
 
 void i2c_write_scl_1(void) {
@@ -128,65 +149,65 @@ void i2c_write_scl_1(void) {
 
    Busyloop bitbanged for convenience. */
 
-void i2c_deblock(void) {
-    int i;
-    int sda = sda_read();
-    int scl = scl_read();
-    if (!(sda && scl)) {
-        //infof("\nWARNING: sda=%d, scl=%d\n", sda, scl);
-    }
-    for(i=0; i<16; i++) {
-        int sda1 = sda_read();
-        int scl1 = scl_read();
-        if (sda1 && scl1) break;
-
-        i2c_write_scl(0); i2c_delay();
-        i2c_write_scl(1); i2c_delay();  // no stretch
-    }
-    if (i) {
-        //infof("\nWARNING: deblock clocks=%d\n", i);
-        infof(" (%d,%d,%d)", sda,scl,i);
-    }
+#define I2C_DEBLOCK(s) {                                                \
+        int i;                                                          \
+        int sda = i2c_sda_read();                                       \
+        int scl = i2c_scl_read();                                       \
+        if (!(sda && scl)) {                                            \
+            /*infof("\nWARNING: sda=%d, scl=%d\n", sda, scl); */        \
+        }                                                               \
+        for(i=0; i<16; i++) {                                           \
+            int sda1 = i2c_sda_read();                                  \
+            int scl1 = i2c_scl_read();                                  \
+            if (sda1 && scl1) break;                                    \
+                                                                        \
+            i2c_write_scl(0); I2C_DELAY(s);                             \
+            i2c_write_scl(1); I2C_DELAY(s);  /* no stretch */           \
+        }                                                               \
+        if (i) {                                                        \
+            /*infof("\nWARNING: deblock clocks=%d\n", i);*/             \
+            infof(" (%d,%d,%d)", sda,scl,i);                            \
+        }                                                               \
 }
 
 void i2c_start(void) {
-    i2c_deblock();
+    I2C_DEBLOCK(s);
 
     // PRE:
     // - idle:   SDA=1,SCL=1
     // - repeat: SDA=?,SCL=0
     // For repeated start: bring lines high without causing a stop.
-    i2c_write_sda(1);  i2c_delay();
-    i2c_write_scl_1(); i2c_delay();
+    i2c_write_sda(1);  I2C_DELAY(s);
+    i2c_write_scl_1(); I2C_DELAY(s);
     // START transition = SDA 1->0 while SCL=1
-    i2c_write_sda(0);  i2c_delay();
+    i2c_write_sda(0);  I2C_DELAY(s);
     // Bring clock line low for first bit
-    i2c_write_scl(0);  i2c_delay();
+    i2c_write_scl(0);  I2C_DELAY(s);
     // POST: SDA=0, SCL=0
 }
 
 void send_bit(int val) {
     // PRE: SDA=?, SCL=0
-    i2c_write_sda(val); i2c_delay();  // set + propagate
-    i2c_write_scl_1();  i2c_delay();  // set + wait read
+    i2c_write_sda(val); I2C_DELAY(s);  // set + propagate
+    i2c_write_scl_1();  I2C_DELAY(s);  // set + wait read
     i2c_write_scl(0);
     // POST: SDA=x, SCL=0
 }
 int recv_bit(void) {
     // PRE: SDA=?, SCL=0
     int val;
-    i2c_write_sda(1);   i2c_delay();  // release, allow slave write
-    i2c_write_scl_1();  i2c_delay();  // slave write propagation
-    val = sda_read();
+    i2c_write_sda(1);   I2C_DELAY(s);  // release, allow slave write
+    i2c_write_scl_1();  I2C_DELAY(s);  // slave write propagation
+    val = i2c_sda_read();
     i2c_write_scl(0);
     return val;
     // POST: SDA=1, SCL=0
 }
 void i2c_check_busy(const char *tag) {
-    if (sda_read()) {
+    if (i2c_sda_read()) {
         infof("\nWARNING: %s: SDA=0\n", tag);
     }
-    if (scl_read()) {
+    if (i2c_scl_read()) {
         infof("\nWARNING: %s: SCL=0\n", tag);
     }
 }
@@ -195,23 +216,23 @@ void i2c_check_busy(const char *tag) {
 
 void i2c_stop(void) {
     // PRE: SDA=?, SCL=0
-    i2c_write_sda(0);  i2c_delay();
-    i2c_write_scl_1(); i2c_delay();
+    i2c_write_sda(0);  I2C_DELAY(s);
+    i2c_write_scl_1(); I2C_DELAY(s);
     // STOP transition = SDA 0->1 while SCL=1
-    i2c_write_sda(1);  i2c_delay();
+    i2c_write_sda(1);  I2C_DELAY(s);
     // POST: SDA=1, SCL=1  (unless held by slave)
 
     // FIXME: STOP isn't implemented correctly.  This shouldn't be
     // necessary in a working implementation.  Only deblock before
     // start.
-    i2c_deblock();
+    I2C_DEBLOCK();
 }
 
 
 int send_byte(int byte) {
     for (int bit=7; bit>=0; bit--) { send_bit((byte >> bit)&1); }
 #if I2C_DEBUG_SPACING
-    i2c_ndelay(2);
+    I2C_NDELAY(s, 2);
 #endif
     int nack = recv_bit();
     return nack;
@@ -224,7 +245,7 @@ int recv_byte(int nack) {
     int val = 0;
     for (int bit=7; bit>=0; bit--) { val |= (recv_bit() << bit); }
 #if I2C_DEBUG_SPACING
-    i2c_ndelay(2);
+    I2C_NDELAY(s, 2);
 #endif
     send_bit(nack);
     return val;
@@ -253,7 +274,7 @@ int info_send_byte(uint8_t b) {
 }
 int info_recv_byte(int nack) {
 #if I2C_DEBUG_SPACING
-    i2c_ndelay(2); // spacing on scope
+    I2C_NDELAY(s, 2); // spacing on scope
 #endif
     int b = recv_byte(nack);
     infof(" %02x", b);
@@ -288,8 +309,8 @@ void eeprom_read_1(void) {
   stop:
     i2c_stop();
 
-    i2c_ndelay(3);
-    i2c_deblock();
+    I2C_NDELAY(s, 3);
+    I2C_DEBLOCK(s);
 
 }
 
@@ -314,7 +335,7 @@ KEEP intptr_t eeprom_read(uint8_t offset, uint8_t *buf, uintptr_t len) {
         goto stop;
     }
 
-    i2c_ndelay(i2c_tester_state.d);
+    I2C_NDELAY(s, i2c_tester_state.d);
 
     intptr_t i;
     for (i=0; i<len; i++) {
@@ -332,38 +353,46 @@ KEEP intptr_t eeprom_read(uint8_t offset, uint8_t *buf, uintptr_t len) {
     return rv;
 }
 
+void info_ascii(uint8_t *buf, uint32_t len) {
+    for(int c=0; c<sizeof(buf); c++) {
+        if ((buf[c] >= ' ') && (buf[c] < 127)) {
+            info_putchar(buf[c]);
+        }
+        else {
+            info_putchar('.');
+        }
+    }
+    info_putchar('\n');
+}
+
 void i2c_test_eeprom(void) {
     if (0) {
         eeprom_read_1();
     }
     if (1) {
-        uint8_t buf[8] = "abcxyz!";
+        uint8_t buf[8] = "abcdefg";
         uint8_t page = 0;
         eeprom_write(page, buf, sizeof(buf));
     }
     if (1) {
-        for(int j=0; j<1; j++) {
-            uint8_t offset = 0;
-            for(int i=0; i<1; i++) {
-                uint8_t buf[16];
+        uint8_t offset = 0;
+        for(int j=0; j<3; j++) {
+            uint8_t buf[16];
+            for(int i=0; i<3; i++) {
+                memset(buf, 0, sizeof(buf));
                 eeprom_read(offset, buf, sizeof(buf));
                 //eeprom_read(buf, sizeof(buf));
-                offset += sizeof(buf);
                 // hw_busywait_ms(100);
                 // FIXME: eeprom gets confused.  deblock solves it.
-                i2c_deblock();
-                if (1) {
-                    for(int c=0; c<sizeof(buf); c++) {
-                        if ((buf[c] >= ' ') && (buf[c] < 127)) {
-                            info_putchar(buf[c]);
-                        }
-                        else {
-                            info_putchar('.');
-                        }
-                    }
-                    info_putchar('\n');
+                // i2c_deblock();
+                // if (1) { info_ascii(buf, sizeof(buf)); }
+
+                for(int c=0; c<sizeof(buf); c++) {
+                    buf[c]++;
                 }
+                eeprom_write(offset, buf, sizeof(buf));
             }
+            offset += sizeof(buf);
         }
     }
 }
@@ -522,7 +551,7 @@ void exti9_5_isr(void) {
     hw_exti_do_ack(8);
     hw_exti_do_ack(9);
     isr_count++;
-    i2c_track.bus = (scl_read() << 1) | sda_read();
+    i2c_track.bus = (i2c_scl_read() << 1) | i2c_sda_read();
     i2c_track_tick(&i2c_track);
 
 
@@ -589,12 +618,12 @@ KEEP void i2c_tester_command_write(const uint8_t *buf, uint32_t len) {
         infof("c:%02x --", c);
         switch(c) {
         case 'c':
-            val = !scl_read();
+            val = !i2c_scl_read();
             i2c_write_scl(val);
             infof("scl=%d", val);
             break;
         case 'd':
-            val = !sda_read();
+            val = !i2c_sda_read();
             i2c_write_sda(val);
             infof("sda=%d", val);
             break;
