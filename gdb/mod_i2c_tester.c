@@ -154,16 +154,16 @@ void i2c_delay_busywait() {
     }
 
 #define I2C_DEBLOCK(s) {                                                \
-        for(s->bit=0; s->bit<16; s->bit++) {                            \
+        for(s->clock=0; s->clock<16; s->clock++) {                      \
             int sda1 = i2c_sda_read();                                  \
             int scl1 = i2c_scl_read();                                  \
             if (sda1 && scl1) break;                                    \
             i2c_write_scl(0); I2C_DELAY(s);                             \
             i2c_write_scl(1); I2C_DELAY(s);  /* no stretch */           \
         }                                                               \
-        if (s->bit) {                                                   \
+        if (s->clock) {                                                 \
             /*infof("\nWARNING: deblock clocks=%d\n", i);*/             \
-            infof(" (%d)", s->bit);                                     \
+            infof(" (%d)", s->clock);                                   \
         }                                                               \
     }
 
@@ -186,7 +186,7 @@ void i2c_delay_busywait() {
 struct i2c_start {
     void *next;
     uint32_t timeout; // for I2C_DELAY macro
-    uint8_t bit; // for I2C_DEBLOCK
+    int8_t clock; // for I2C_DEBLOCK
 };
 void i2c_start_init(struct i2c_start *s) {
     s->next = 0;
@@ -249,7 +249,7 @@ sm_status_t i2c_stop_tick(struct i2c_stop *s) {
 struct i2c_send_byte {
     void *next;
     uint32_t timeout;
-    uint8_t clock;
+    int8_t clock;  // signed for negative sentinel
     uint8_t byte;
     uint8_t nack;
 };
@@ -272,7 +272,7 @@ sm_status_t i2c_send_byte_tick(struct i2c_send_byte *s) {
 struct i2c_recv_byte {
     void *next;
     uint32_t timeout;
-    uint8_t clock;
+    int8_t clock;
     uint8_t val;
     uint8_t nack;
     uint8_t bitval;
@@ -430,7 +430,7 @@ void info_ascii(uint8_t *buf, uint32_t len) {
 }
 
 void i2c_test_eeprom(void) {
-    if (1) {
+    if (0) {
         i2c_start();
         send_byte(123);
         i2c_stop();
@@ -439,12 +439,12 @@ void i2c_test_eeprom(void) {
     if (0) {
         eeprom_read_1();
     }
-    if (0) {
+    if (1) {
         uint8_t buf[8] = "abcdefg";
         uint8_t page = 0;
         eeprom_write(page, buf, sizeof(buf));
     }
-    if (0) {
+    if (1) {
         uint8_t offset = 0;
         for(int j=0; j<3; j++) {
             uint8_t buf[16];
