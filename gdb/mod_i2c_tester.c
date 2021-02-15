@@ -183,23 +183,23 @@ void *s; // transition
         /* POST: SDA=0, SCL=0 */                                        \
 }
 
-void send_bit(int val) {
-    // PRE: SDA=?, SCL=0
-    i2c_write_sda(val); I2C_DELAY(s);  // set + propagate
-    I2C_WRITE_SCL_1(s); I2C_DELAY(s);  // set + wait read
-    i2c_write_scl(0);
-    // POST: SDA=x, SCL=0
+#define I2C_SEND_BIT(s, val) {  \
+        /* PRE: SDA=?, SCL=0 */                                         \
+        i2c_write_sda(val); I2C_DELAY(s);  /* set + propagate */        \
+        I2C_WRITE_SCL_1(s); I2C_DELAY(s);  /* set + wait read */        \
+        i2c_write_scl(0);                                               \
+        /* POST: SDA=x, SCL=0 */                                        \
 }
-int recv_bit(void) {
-    // PRE: SDA=?, SCL=0
-    int val;
-    i2c_write_sda(1);   I2C_DELAY(s);  // release, allow slave write
-    I2C_WRITE_SCL_1(s); I2C_DELAY(s);  // slave write propagation
-    val = i2c_sda_read();
-    i2c_write_scl(0);
-    return val;
-    // POST: SDA=1, SCL=0
-}
+
+#define I2C_RECV_BIT(s) ({                                              \
+            /* PRE: SDA=?, SCL=0 */                                     \
+            i2c_write_sda(1);   I2C_DELAY(s);  /* release, allow slave write */ \
+            I2C_WRITE_SCL_1(s); I2C_DELAY(s);  /* slave write propagation */ \
+            int val = i2c_sda_read();                                   \
+            i2c_write_scl(0);                                           \
+            /* POST: SDA=1, SCL=0 */                                    \
+            val;})
+
 void i2c_check_busy(const char *tag) {
     if (i2c_sda_read()) {
         infof("\nWARNING: %s: SDA=0\n", tag);
@@ -208,8 +208,6 @@ void i2c_check_busy(const char *tag) {
         infof("\nWARNING: %s: SCL=0\n", tag);
     }
 }
-
-
 
 #define I2C_STOP(s) {                           \
         /* PRE: SDA=?, SCL=0 */                 \
@@ -222,24 +220,20 @@ void i2c_check_busy(const char *tag) {
 
 
 int send_byte(int byte) {
-    for (int bit=7; bit>=0; bit--) { send_bit((byte >> bit)&1); }
+    for (int bit=7; bit>=0; bit--) { I2C_SEND_BIT(s, (byte >> bit)&1); }
 #if I2C_DEBUG_SPACING
     I2C_NDELAY(s, 2);
 #endif
-    int nack = recv_bit();
+    int nack = I2C_RECV_BIT(s);
     return nack;
-}
-void send_word(int word) {
-    send_byte(word >> 8);
-    send_byte(word);
 }
 int recv_byte(int nack) {
     int val = 0;
-    for (int bit=7; bit>=0; bit--) { val |= (recv_bit() << bit); }
+    for (int bit=7; bit>=0; bit--) { val |= (I2C_RECV_BIT(s) << bit); }
 #if I2C_DEBUG_SPACING
     I2C_NDELAY(s, 2);
 #endif
-    send_bit(nack);
+    I2C_SEND_BIT(s, nack);
     return val;
 }
 int recv_word(int ack) {
