@@ -301,16 +301,19 @@ sm_status_t i2c_recv_byte_tick(struct i2c_recv_byte_state *s) {
 #include "slice.h"
 
 struct i2c_control_state {
-    uint32_t sr; // status register or ad-hoc status code
+    // In this implementation, nack is the only thing that can go
+    // wrong, which is most cases means that the device is not there.
+    // Maybe also include here in what byte the error occurred?
+    uint32_t sr;
 };
 
 struct i2c_transmit_state {
     struct i2c_control_state ctrl;
     void *next; // sm.h resume point
-    uint32_t i; // loop counter
     const_slice_uint8_t hdr;
     const_slice_uint8_t data;
     uint8_t slave; // slave address
+    int8_t i; // loop counter
     union {
         struct i2c_start_state      i2c_start;
         struct i2c_send_byte_state  i2c_send_byte;
@@ -322,8 +325,17 @@ struct i2c_receive_state {
     void *next; // sm.h resume point
     slice_uint8_t data;
     uint8_t slave; // slave address
+    int8_t i; // loop counter
+    union {
+        struct i2c_start_state      i2c_start;
+        struct i2c_send_byte_state  i2c_send_byte;
+        struct i2c_recv_byte_state  i2c_recv_byte;
+        struct i2c_stop_state       i2c_stop;
+    } sub;
 };
 
+// FIXME: Change other API to handle stop as a state machine before
+// merging.
 
 static inline void i2c_transmit_init(
     struct i2c_transmit_state *s,
@@ -347,6 +359,15 @@ static inline void i2c_transmit_init(
         }                                                               \
     }
 
+#define I2C_RECV_SLICE(s, slice)                                        \
+    if ((slice)->buf) {                                                 \
+        for(s->i = 0; s->i < (slice)->len; s->i++) {                    \
+            int nack = s->i >= (slice)->len - 1;                        \
+            SM_SUB_CATCH(s, i2c_recv_byte, nack);                       \
+            (slice)->buf[s->i] = s->sub.i2c_recv_byte.val;              \
+        }                                                               \
+    }
+
 static inline uint32_t i2c_transmit_tick(struct i2c_transmit_state *s) {
     SM_RESUME(s);
     SM_SUB_CATCH0(s, i2c_start);
@@ -364,6 +385,29 @@ static inline uint32_t i2c_transmit_tick(struct i2c_transmit_state *s) {
     SM_HALT_STATUS(s, s->ctrl.sr);
 }
 
+static inline void i2c_receive_init(
+    struct i2c_receive_state *s,
+    uint32_t slave,
+    uint8_t *data, uint32_t data_len) {
+
+    memset(s,0,sizeof(*s));
+    s->slave = slave;
+    s->data.buf = data;
+    s->data.len = data_len;
+}
+
+static inline uint32_t i2c_receive_tick(struct i2c_receive_state *s) {
+    SM_RESUME(s);
+    SM_SUB_CATCH0(s, i2c_start);
+    if (SM_SUB_CATCH(s, i2c_send_byte, s->slave << 1 | I2C_R)) goto nack;
+    I2C_RECV_SLICE(s,&s->data);
+    SM_SUB_CATCH0(s, i2c_stop);
+    s->ctrl.sr = 0;
+    SM_HALT(s);
+  nack:
+    s->ctrl.sr = 1;
+    SM_HALT_STATUS(s, s->ctrl.sr);
+}
 
 
 
