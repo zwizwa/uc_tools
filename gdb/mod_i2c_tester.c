@@ -21,6 +21,7 @@
 #include "cycle_counter.h"
 #include "cbuf.h"
 #include <stdint.h>
+#include "sm.h"
 
 #ifndef I2C_PIN_SCL
 #define I2C_PIN_SCL 8
@@ -168,6 +169,14 @@ void *s; // transition
             infof(" (%d,%d,%d)", sda,scl,i);                            \
         }                                                               \
 }
+struct i2c_deblock {
+    void *next;
+};
+sm_status_t i2c_deblock_tick(struct i2c_deblock *s) {
+    SM_RESUME(s); I2C_DEBLOCK(s); SM_HALT(s);
+}
+
+
 #define I2C_START(s) {                          \
         I2C_DEBLOCK(s);                         \
         /* PRE: */                                                      \
@@ -191,14 +200,14 @@ void *s; // transition
         /* POST: SDA=x, SCL=0 */                                        \
 }
 
-#define I2C_RECV_BIT(s) ({                                              \
-            /* PRE: SDA=?, SCL=0 */                                     \
-            i2c_write_sda(1);   I2C_DELAY(s);  /* release, allow slave write */ \
-            I2C_WRITE_SCL_1(s); I2C_DELAY(s);  /* slave write propagation */ \
-            int val = i2c_sda_read();                                   \
-            i2c_write_scl(0);                                           \
-            /* POST: SDA=1, SCL=0 */                                    \
-            val;})
+#define I2C_RECV_BIT(s) ({                                          \
+        /* PRE: SDA=?, SCL=0 */                                     \
+        i2c_write_sda(1);   I2C_DELAY(s);  /* release, allow slave write */ \
+        I2C_WRITE_SCL_1(s); I2C_DELAY(s);  /* slave write propagation */ \
+        int val = i2c_sda_read();                                   \
+        i2c_write_scl(0);                                           \
+        /* POST: SDA=1, SCL=0 */                                    \
+        val;})
 
 void i2c_check_busy(const char *tag) {
     if (i2c_sda_read()) {
@@ -218,9 +227,12 @@ void i2c_check_busy(const char *tag) {
         /* POST: SDA=1, SCL=1  (unless held by slave) */ \
 }
 
+// FIXME: These should be the state machines
 
 int send_byte(int byte) {
-    for (int bit=7; bit>=0; bit--) { I2C_SEND_BIT(s, (byte >> bit)&1); }
+    for (int bit=7; bit>=0; bit--) {
+        I2C_SEND_BIT(s, (byte >> bit)&1);
+    }
 #if I2C_DEBUG_SPACING
     I2C_NDELAY(s, 2);
 #endif
@@ -229,19 +241,15 @@ int send_byte(int byte) {
 }
 int recv_byte(int nack) {
     int val = 0;
-    for (int bit=7; bit>=0; bit--) { val |= (I2C_RECV_BIT(s) << bit); }
+    for (int bit=7; bit>=0; bit--) {
+        val |= (I2C_RECV_BIT(s) << bit);
+    }
 #if I2C_DEBUG_SPACING
     I2C_NDELAY(s, 2);
 #endif
     I2C_SEND_BIT(s, nack);
     return val;
 }
-int recv_word(int ack) {
-    int val = (recv_byte(0) << 8);
-    val |= recv_byte(ack);
-    return val;
-}
-
 
 
 
