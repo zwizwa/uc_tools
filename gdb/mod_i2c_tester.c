@@ -250,9 +250,10 @@ KEEP void eeprom_write_read() {
 
 struct i2c_track {
     void *next;
-    uint32_t bus;
-    uint32_t clock;
-    uint32_t sreg;
+    uint8_t bus;    // current bus value
+    uint8_t bus0;   // previous bus value (for STOP detection)
+    uint8_t bit;    // burrent bit
+    uint8_t sreg;   // shift register
 };
 struct i2c_track i2c_track;
 void i2c_track_init(struct i2c_track *s) {
@@ -272,34 +273,45 @@ void i2c_track_init(struct i2c_track *s) {
 // so machine can just wait on a condition (DC combo), we don't
 // need to track history, that is implicit in state machine.
 
-// (1) STOP condition.
+
+// FIXME: This is not correct.  It's impossible to get this right
+// while tired...
 
 uint32_t i2c_track_tick(struct i2c_track *s) {
     SM_RESUME(s);
-    for(;;) {
-        I2C_TRACK_WAIT_C1D1_IDLE(s);
-        I2C_TRACK_WAIT_C1D0_START(s);
 
+    I2C_TRACK_WAIT_C1D1_IDLE(s);
+
+  stop:
+    for(;;) {
+        I2C_TRACK_WAIT_C1D0_START(s);
         I2C_TRACK_WAIT_C0Dx_LO(s); // write edge
 
         for(;;) {
 
             // data byte
-            for(s->clock = 0; s->clock < 8; s->clock++) {
+            for(s->bit = 0; s->bit < 9; s->bit++) {
                 I2C_TRACK_WAIT_C1Dx_HI(s); // read edge
                 // sda must be stable until write edge
                 s->sreg = (s->bus & 1) | (s->sreg << 1);
 
-                // (1) STOP condition
+                // To distinguish between normal clock transition and
+                // STOP, we wait for a change and inspect it.
+                s->bus0 = s->bus;
+                SM_WAIT(s, s->bus != s->bus0);
 
-                I2C_TRACK_WAIT_C0Dx_LO(s); // write edge
+                // SDA 0->1 while SCL=1 is a STOP condition.  It
+                // always indicates end of transmission, even in the
+                // middle of a byte.
+                if ((s->bus0 == 0b10) &&
+                    (s->bus  == 0b11)) {
+                    goto stop;
+                }
+                // SCL 1->0 with SDA=dontcare indicates a normal clock
+                // edge, indicating a new bit is coming and the loop
+                // can continue.
             }
-            cbuf_put(&i2c_tester_mbox, s->sreg & 0xFF);
-            // ack
-            I2C_TRACK_WAIT_C1Dx_HI(s); // read edge
-            I2C_TRACK_WAIT_C0Dx_LO(s); // write edge
         }
-
     }
 }
 
