@@ -22,8 +22,17 @@
 #include "cbuf.h"
 #include <stdint.h>
 
-#define SCL GPIOB,8
-#define SDA GPIOB,9
+#ifndef I2C_PIN_SCL
+#define I2C_PIN_SCL 8
+#endif
+
+#ifndef I2C_PIN_SDA
+#define I2C_PIN_SDA 9
+#endif
+
+#ifndef I2C_GPIO
+#define I2C_GPIO GPIOB
+#endif
 
 #define I2C_R 1
 #define I2C_W 0
@@ -43,7 +52,8 @@ struct i2c_tester_config {
 } i2c_tester_state = {
     .us = I2C_TESTER_PERIOD_US,
     .stretch = 1,
-    .addr = 96,
+    //.addr = 96,
+    .addr = 0x54,  // eeprom first 256 bytes
     .d = 0,
 };
 
@@ -53,7 +63,7 @@ struct i2c_tester_config {
    These high()/low() functions provide glitch-free switching between
    them.  Order of operations is important.  Annotated with Hoare
    logic conditions. */
-static inline void pin_high(uint32_t gpio, uint32_t pin) {
+static inline void i2c_pin_high(uint32_t gpio, uint32_t pin) {
     // PRE: if pulling high, no state changes.
     // PRE: if asserting low, state changes annotated below
     hw_gpio_config(gpio, pin, HW_GPIO_CONFIG_INPUT_PULL);
@@ -62,7 +72,7 @@ static inline void pin_high(uint32_t gpio, uint32_t pin) {
     // POST: pulling high
 }
 
-static inline void pin_low(uint32_t gpio, uint32_t pin) {
+static inline void i2c_pin_low(uint32_t gpio, uint32_t pin) {
     // PRE: if asserting low, no state changes
     // PRE: if apulling high, state changes annotated below
     hw_gpio_write(gpio, pin, 0);
@@ -70,25 +80,35 @@ static inline void pin_low(uint32_t gpio, uint32_t pin) {
     hw_gpio_config(gpio, pin, HW_GPIO_CONFIG_OUTPUT);
     // POST: asserting low
 }
-static inline void pin_set(uint32_t gpio, uint32_t pin, uint32_t val) {
+static inline void i2c_pin_set(uint32_t gpio, uint32_t pin, uint32_t val) {
     if (val)
-        pin_high(gpio, pin);
+        i2c_pin_high(gpio, pin);
     else
-        pin_low(gpio, pin);
+        i2c_pin_low(gpio, pin);
 }
 
 
-void delay() {
+void i2c_delay() {
     /* Wait for 1/2 I2C clock period.  At 10kHz this is 50us. */
     hw_busywait_us(i2c_tester_state.us);
 }
-void ndelay(int n) {
-    while(n--) delay();
+void i2c_ndelay(int n) {
+    while(n--) i2c_delay();
 }
-static inline void sda(int bitval) { pin_set(SDA, bitval); }
-static inline void scl(int bitval) { pin_set(SCL, bitval); }
-static inline int sda_read(void) { return hw_gpio_read(SDA); }
-static inline int scl_read(void) { return hw_gpio_read(SCL); }
+
+
+static inline void i2c_write_sda(int bitval) {
+    i2c_pin_set(I2C_GPIO, I2C_PIN_SDA, bitval);
+}
+static inline void i2c_write_scl(int bitval) {
+    i2c_pin_set(I2C_GPIO, I2C_PIN_SCL, bitval);
+}
+static inline int sda_read(void) {
+    return hw_gpio_read(I2C_GPIO, I2C_PIN_SDA);
+}
+static inline int scl_read(void) {
+    return hw_gpio_read(I2C_GPIO, I2C_PIN_SCL);
+}
 
 
 // This is quite tricky with both lines involved in signaling.
@@ -98,8 +118,8 @@ void wait_stretch(void) {
     if (i2c_tester_state.stretch) while (!scl_read());
 }
 
-void scl_1(void) {
-    scl(1);
+void i2c_write_scl_1(void) {
+    i2c_write_scl(1);
     wait_stretch();
 }
 
@@ -107,49 +127,50 @@ void scl_1(void) {
 
    Busyloop bitbanged for convenience. */
 
-void send_start(void) {
+void i2c_start(void) {
     // PRE:
     // - idle:   SDA=1,SCL=1
     // - repeat: SDA=?,SCL=0
     // For repeated start: bring lines high without causing a stop.
-    sda(1);  delay();
-    scl_1(); delay();
+    i2c_write_sda(1);  i2c_delay();
+    i2c_write_scl_1(); i2c_delay();
     // START transition = SDA 1->0 while SCL=1
-    sda(0);  delay();
+    i2c_write_sda(0);  i2c_delay();
     // Bring clock line low for first bit
-    scl(0);  delay();
+    i2c_write_scl(0);  i2c_delay();
     // POST: SDA=0, SCL=0
 }
 void send_bit(int val) {
     // PRE: SDA=1, SCL=0
-    sda(val); delay();  // set + propagate
-    scl_1();  delay();  // set + wait read
-    scl(0);
+    i2c_write_sda(val); i2c_delay();  // set + propagate
+    i2c_write_scl_1();  i2c_delay();  // set + wait read
+    i2c_write_scl(0);
     // POST: SDA=x, SCL=0
 }
 int recv_bit(void) {
     // PRE: SDA=?, SCL=0
     int val;
-    sda(1);   delay();  // release, allow slave write
-    scl_1();  delay();  // slave write propagation
+    i2c_write_sda(1);   i2c_delay();  // release, allow slave write
+    i2c_write_scl_1();  i2c_delay();  // slave write propagation
     val = sda_read();
-    scl(0);
+    i2c_write_scl(0);
     return val;
     // POST: SDA=1, SCL=0
 }
-void send_stop(void) {
+void i2c_stop(void) {
     // PRE: SDA=?, SCL=0
-    sda(0);  delay();
-    scl_1(); delay();
+    i2c_write_sda(0);  i2c_delay();
+    i2c_write_scl_1(); i2c_delay();
     // STOP transition = SDA 0->1 while SCL=1
-    sda(1);  delay();
+    i2c_write_sda(1);  i2c_delay();
     // POST: SDA=1, SCL=1
 }
 
 
 int send_byte(int byte) {
     for (int bit=7; bit>=0; bit--) { send_bit((byte >> bit)&1); }
-    return recv_bit();
+    int nack = recv_bit();
+    return nack;
 }
 void send_word(int word) {
     send_byte(word >> 8);
@@ -170,15 +191,18 @@ int recv_word(int ack) {
 
 
 
-void info_ack(int ack) {
-    if(!ack)
+void info_ack(int nack) {
+    if(!nack)
         info_putchar('a');
     else
         info_putchar('n');
 }
-void info_send_byte(uint8_t b) {
-    int ack = send_byte(b);
-    infof(" %02x %d", b, ack);
+int info_send_byte(uint8_t b) {
+    int nack = send_byte(b);
+    // infof(" %02x %d", b, nack);
+    infof(" %02x%s", b, nack ? "(nack)" : "");
+    // infof(" %02x", b);
+    return nack;
 }
 int info_recv_byte(int ack) {
     int b = recv_byte(ack);
@@ -187,35 +211,58 @@ int info_recv_byte(int ack) {
 }
 
 KEEP void eeprom_write() {
-    send_start();
+    i2c_start();
 
     info_send_byte(i2c_tester_state.addr << 1 | I2C_W);
     info_send_byte(1);
 
-    send_stop();
+    i2c_stop();
 }
 
-KEEP void eeprom_read() {
-    send_start();
+KEEP intptr_t eeprom_read(uint8_t offset, uint8_t *buf, uintptr_t len) {
+    intptr_t rv = -1;
 
-    info_send_byte(i2c_tester_state.addr << 1 | I2C_R);
+    infof(" S");
+    i2c_start();
 
-    ndelay(i2c_tester_state.d);
+    info_send_byte(i2c_tester_state.addr << 1 | I2C_W);
+    info_send_byte(offset);
 
-    info_recv_byte(1);
+    infof(" S");
+    i2c_start();
 
-    send_stop();
+    int nack = info_send_byte(i2c_tester_state.addr << 1 | I2C_R);
+    if (nack) {
+        infof(" nack\n");
+        goto stop;
+    }
+
+    i2c_ndelay(i2c_tester_state.d);
+
+    intptr_t i;
+    for (i=0; i<len; i++) {
+        buf[i] = info_recv_byte(1);
+    }
+    rv = len;
+
+  stop:
+    infof(" P");
+    i2c_stop();
+
+    infof("\n");
+
+    return rv;
 }
 
 
 KEEP void eeprom_write_read() {
 
-    send_start();
+    i2c_start();
 
     info_send_byte(i2c_tester_state.addr << 1 | I2C_W);
     info_send_byte(1);
 
-    send_start();
+    i2c_start();
 
     send_byte(i2c_tester_state.addr << 1 | I2C_R);
 
@@ -223,7 +270,7 @@ KEEP void eeprom_write_read() {
     info_recv_byte(0);
     info_recv_byte(1);
 
-    send_stop();
+    i2c_stop();
 }
 
 /* 3. SLAVE
@@ -321,6 +368,7 @@ uint32_t i2c_track_tick(struct i2c_track *s) {
 // See mod_3level.c for inspiration
 // Note that I2C slave is synchronouse, so timer is likely not necessary.
 
+#if 0
 #define TICKS_PER_US 100
 
 const struct hw_delay hw_tim[] = {
@@ -342,6 +390,7 @@ void i2c_tester_tim_init(void) {
     hw_delay_arm(C_TIM, 1);
     hw_delay_trigger(C_TIM);
 }
+#endif
 
 
 
@@ -428,12 +477,12 @@ KEEP void i2c_tester_command_write(const uint8_t *buf, uint32_t len) {
         switch(c) {
         case 'c':
             val = !scl_read();
-            scl(val);
+            i2c_write_scl(val);
             infof("scl=%d", val);
             break;
         case 'd':
             val = !sda_read();
-            sda(val);
+            i2c_write_sda(val);
             infof("sda=%d", val);
             break;
         case 'e':
@@ -442,9 +491,11 @@ KEEP void i2c_tester_command_write(const uint8_t *buf, uint32_t len) {
         case 'w':
             eeprom_write();
             break;
-        case 'r':
-            eeprom_read();
+        case 'r': {
+            uint8_t buf[1];
+            eeprom_read(0, buf, sizeof(buf));
             break;
+        }
         case '[':
             if (i2c_tester_state.us>1) i2c_tester_state.us--;
             infof("us=%d", i2c_tester_state.us);
