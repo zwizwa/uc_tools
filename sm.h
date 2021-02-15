@@ -122,7 +122,7 @@ typedef uint32_t sm_status_t;
 
 /* inverted. */
 #define SM_WHILE(sm,ncond) \
-    SM_WAIT(sm,!(cond))
+    SM_WAIT(sm,!(ncond))
 
 
 
