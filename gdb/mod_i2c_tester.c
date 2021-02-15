@@ -135,15 +135,14 @@ void *s; // transition
 
 // This is quite tricky with both lines involved in signaling.
 
-void wait_stretch(void) {
-    // PRE: SCL released
-    if (i2c_tester_state.stretch) I2C_WHILE(s, !i2c_scl_read());
-}
-
-void i2c_write_scl_1(void) {
-    i2c_write_scl(1);
-    wait_stretch();
-}
+#define I2C_WAIT_STRETCH(s) {                                           \
+        /* PRE: SCL released */                                         \
+        if (i2c_tester_state.stretch) I2C_WHILE(s, !i2c_scl_read());    \
+    }
+#define I2C_WRITE_SCL_1(s) {                    \
+        i2c_write_scl(1);                       \
+        I2C_WAIT_STRETCH(s);                    \
+    }
 
 /* 2. MASTER
 
@@ -169,27 +168,25 @@ void i2c_write_scl_1(void) {
             infof(" (%d,%d,%d)", sda,scl,i);                            \
         }                                                               \
 }
-
-void i2c_start(void) {
-    I2C_DEBLOCK(s);
-
-    // PRE:
-    // - idle:   SDA=1,SCL=1
-    // - repeat: SDA=?,SCL=0
-    // For repeated start: bring lines high without causing a stop.
-    i2c_write_sda(1);  I2C_DELAY(s);
-    i2c_write_scl_1(); I2C_DELAY(s);
-    // START transition = SDA 1->0 while SCL=1
-    i2c_write_sda(0);  I2C_DELAY(s);
-    // Bring clock line low for first bit
-    i2c_write_scl(0);  I2C_DELAY(s);
-    // POST: SDA=0, SCL=0
+#define I2C_START(s) {                          \
+        I2C_DEBLOCK(s);                         \
+        /* PRE: */                                                      \
+        /* - idle:   SDA=1,SCL=1 */                                     \
+        /* - repeat: SDA=?,SCL=0 */                                     \
+        /* For repeated start: bring lines high without causing a stop. */ \
+        i2c_write_sda(1);   I2C_DELAY(s);                               \
+        I2C_WRITE_SCL_1(s); I2C_DELAY(s);                               \
+        /* START transition = SDA 1->0 while SCL=1 */                   \
+        i2c_write_sda(0);   I2C_DELAY(s);                               \
+        /* Bring clock line low for first bit */                        \
+        i2c_write_scl(0);   I2C_DELAY(s);                               \
+        /* POST: SDA=0, SCL=0 */                                        \
 }
 
 void send_bit(int val) {
     // PRE: SDA=?, SCL=0
     i2c_write_sda(val); I2C_DELAY(s);  // set + propagate
-    i2c_write_scl_1();  I2C_DELAY(s);  // set + wait read
+    I2C_WRITE_SCL_1(s); I2C_DELAY(s);  // set + wait read
     i2c_write_scl(0);
     // POST: SDA=x, SCL=0
 }
@@ -197,7 +194,7 @@ int recv_bit(void) {
     // PRE: SDA=?, SCL=0
     int val;
     i2c_write_sda(1);   I2C_DELAY(s);  // release, allow slave write
-    i2c_write_scl_1();  I2C_DELAY(s);  // slave write propagation
+    I2C_WRITE_SCL_1(s); I2C_DELAY(s);  // slave write propagation
     val = i2c_sda_read();
     i2c_write_scl(0);
     return val;
@@ -214,18 +211,13 @@ void i2c_check_busy(const char *tag) {
 
 
 
-void i2c_stop(void) {
-    // PRE: SDA=?, SCL=0
-    i2c_write_sda(0);  I2C_DELAY(s);
-    i2c_write_scl_1(); I2C_DELAY(s);
-    // STOP transition = SDA 0->1 while SCL=1
-    i2c_write_sda(1);  I2C_DELAY(s);
-    // POST: SDA=1, SCL=1  (unless held by slave)
-
-    // FIXME: STOP isn't implemented correctly.  This shouldn't be
-    // necessary in a working implementation.  Only deblock before
-    // start.
-    I2C_DEBLOCK();
+#define I2C_STOP(s) {                           \
+        /* PRE: SDA=?, SCL=0 */                 \
+        i2c_write_sda(0);   I2C_DELAY(s); \
+        I2C_WRITE_SCL_1(s); I2C_DELAY(s);               \
+        /* STOP transition = SDA 0->1 while SCL=1 */    \
+        i2c_write_sda(1);  I2C_DELAY(s);                \
+        /* POST: SDA=1, SCL=1  (unless held by slave) */ \
 }
 
 
@@ -283,7 +275,7 @@ int info_recv_byte(int nack) {
 
 KEEP void eeprom_write(uint8_t page, const uint8_t *buf, uintptr_t len) {
     infof(" S");
-    i2c_start();
+    I2C_START(s);
 
     // return value 1 means nack
     if (info_send_byte(i2c_tester_state.addr << 1 | I2C_W)) goto nack;
@@ -296,18 +288,18 @@ KEEP void eeprom_write(uint8_t page, const uint8_t *buf, uintptr_t len) {
     infof("nack\n");
   stop:
     infof(" P");
-    i2c_stop();
+    I2C_STOP(s);
     infof("\n");
     return;
 }
 
 void eeprom_read_1(void) {
-    i2c_start();
+    I2C_START(s);
     int nack = info_send_byte(i2c_tester_state.addr << 1 | I2C_R);
     if (nack) goto stop;
     info_recv_byte(0);
   stop:
-    i2c_stop();
+    I2C_STOP(s);
 
     I2C_NDELAY(s, 3);
     I2C_DEBLOCK(s);
@@ -319,15 +311,15 @@ KEEP intptr_t eeprom_read(uint8_t offset, uint8_t *buf, uintptr_t len) {
     intptr_t rv = -1;
 
     infof(" S");
-    i2c_start();
+    I2C_START(s);
 
     info_send_byte(i2c_tester_state.addr << 1 | I2C_W);
     info_send_byte(offset);
 
-    i2c_stop();
+    I2C_STOP(s);
 
     infof(" S");
-    i2c_start();
+    I2C_START(s);
 
     int nack = info_send_byte(i2c_tester_state.addr << 1 | I2C_R);
     if (nack) {
@@ -346,7 +338,7 @@ KEEP intptr_t eeprom_read(uint8_t offset, uint8_t *buf, uintptr_t len) {
 
   stop:
     infof(" P");
-    i2c_stop();
+    I2C_STOP(s);
 
     infof("\n");
 
@@ -399,12 +391,12 @@ void i2c_test_eeprom(void) {
 
 KEEP void eeprom_write_read() {
 
-    i2c_start();
+    I2C_START(s);
 
     info_send_byte(i2c_tester_state.addr << 1 | I2C_W);
     info_send_byte(1);
 
-    i2c_start();
+    I2C_START(s);
 
     send_byte(i2c_tester_state.addr << 1 | I2C_R);
 
@@ -412,7 +404,7 @@ KEEP void eeprom_write_read() {
     info_recv_byte(0);
     info_recv_byte(1);
 
-    i2c_stop();
+    I2C_STOP(s);
 }
 
 /* 3. SLAVE
