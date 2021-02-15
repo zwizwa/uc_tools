@@ -122,8 +122,8 @@ static inline int i2c_scl_read(void) {
 #define I2C_WHILE(s,cond) SM_WHILE(s,cond)
 
 #define I2C_DELAY(s) {                                                  \
-        s->timeout = cycle_counter() + I2C_TESTER_PERIOD_US * 72;       \
-        I2C_WHILE(s, ((int32_t)(s->timeout - cycle_counter())) > 0);    \
+        s->timeout = cycle_counter_future_time(I2C_TESTER_PERIOD_US * 72); \
+        SM_WAIT(s, cycle_counter_expired(s->timeout));                  \
     }
 #define I2C_NDELAY(s,n_init) \
     {int n = n_init; while(n--) I2C_DELAY(s); }
@@ -158,7 +158,6 @@ void i2c_delay_busywait() {
             int sda1 = i2c_sda_read();                                  \
             int scl1 = i2c_scl_read();                                  \
             if (sda1 && scl1) break;                                    \
-                                                                        \
             i2c_write_scl(0); I2C_DELAY(s);                             \
             i2c_write_scl(1); I2C_DELAY(s);  /* no stretch */           \
         }                                                               \
@@ -166,10 +165,9 @@ void i2c_delay_busywait() {
             /*infof("\nWARNING: deblock clocks=%d\n", i);*/             \
             infof(" (%d)", s->bit);                                     \
         }                                                               \
-}
+    }
 
-#define I2C_START(s) {                          \
-        I2C_DEBLOCK(s);                         \
+#define I2C_START(s) {                                                  \
         /* PRE: */                                                      \
         /* - idle:   SDA=1,SCL=1 */                                     \
         /* - repeat: SDA=?,SCL=0 */                                     \
@@ -251,7 +249,7 @@ sm_status_t i2c_stop_tick(struct i2c_stop *s) {
 struct i2c_send_byte {
     void *next;
     uint32_t timeout;
-    uint8_t bit;
+    uint8_t clock;
     uint8_t byte;
     uint8_t nack;
 };
@@ -261,8 +259,8 @@ void i2c_send_byte_init(struct i2c_send_byte *s, uint8_t byte) {
 }
 sm_status_t i2c_send_byte_tick(struct i2c_send_byte *s) {
     SM_RESUME(s);
-    for (s->bit=7; s->bit>=0; s->bit--) {
-        I2C_SEND_BIT(s, (s->byte >> s->bit)&1);
+    for (s->clock=7; s->clock>=0; s->clock--) {
+        I2C_SEND_BIT(s, (s->byte >> s->clock)&1);
     }
 #if I2C_DEBUG_SPACING
     I2C_NDELAY(s, 2);
@@ -432,15 +430,21 @@ void info_ascii(uint8_t *buf, uint32_t len) {
 }
 
 void i2c_test_eeprom(void) {
+    if (1) {
+        i2c_start();
+        send_byte(123);
+        i2c_stop();
+    }
+
     if (0) {
         eeprom_read_1();
     }
-    if (1) {
+    if (0) {
         uint8_t buf[8] = "abcdefg";
         uint8_t page = 0;
         eeprom_write(page, buf, sizeof(buf));
     }
-    if (1) {
+    if (0) {
         uint8_t offset = 0;
         for(int j=0; j<3; j++) {
             uint8_t buf[16];
