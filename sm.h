@@ -231,6 +231,11 @@ typedef uint32_t sm_status_t;
 #define SM_CALL_CATCH(sm,name,state,...) ({     \
     name##_init(state, __VA_ARGS__);            \
     SM_WAIT_TICK_CATCH(sm,name##_tick(state)); })
+
+#define SM_CALL_CATCH0(sm,name,state) ({                \
+    name##_init(state);                                 \
+    SM_WAIT_TICK_CATCH(sm,name##_tick(state)); })
+
 //
 
 /* SM_SUB is like SM_CALL, with the convention that the state for a
@@ -246,6 +251,8 @@ typedef uint32_t sm_status_t;
 /* Same, but don't abort on error, returning error value instead. */
 #define SM_SUB_CATCH(sm, name, ...) \
     SM_CALL_CATCH(sm, name, &((sm)->sub.name), __VA_ARGS__ )
+#define SM_SUB_CATCH0(sm, name) \
+    SM_CALL_CATCH0(sm, name, &((sm)->sub.name))
 
 
 /* Run with busy-wait (for testing) */
