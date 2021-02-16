@@ -28,6 +28,9 @@
 
 #define I2C_DEBUG_SPACING 0
 
+//#define I2C_LOG LOG
+#define I2C_LOG(...)
+
 /* Half a clock period.  By default, run it slow.
    FIXME: It doesn't seem to work properly with 50,5 */
 #ifndef I2C_TESTER_PERIOD_US
@@ -149,8 +152,8 @@ static inline int i2c_scl_read(void) {
             i2c_write_scl(1); I2C_DELAY(s);  /* no stretch */           \
         }                                                               \
         if (s->clock) {                                                 \
-            /*infof("\nWARNING: deblock clocks=%d\n", i);*/             \
-            infof(" (%d)", s->clock);                                   \
+            /*I2C_LOG("\nWARNING: deblock clocks=%d\n", i);*/             \
+            I2C_LOG(" (%d)", s->clock);                                   \
         }                                                               \
     }
 
@@ -202,12 +205,12 @@ sm_status_t i2c_start_tick(struct i2c_start_state *s) {
         /* POST: SDA=1, SCL=0 */                                        \
     }
 
-void i2c_check_busy(const char *tag) {
+void i2c_info_busy(const char *tag) {
     if (i2c_sda_read()) {
-        infof("\nWARNING: %s: SDA=0\n", tag);
+        I2C_LOG("\nWARNING: %s: SDA=0\n", tag);
     }
     if (i2c_scl_read()) {
-        infof("\nWARNING: %s: SCL=0\n", tag);
+        I2C_LOG("\nWARNING: %s: SCL=0\n", tag);
     }
 }
 
