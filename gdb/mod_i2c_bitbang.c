@@ -268,7 +268,8 @@ sm_status_t i2c_send_byte_tick(struct i2c_send_byte_state *s) {
     I2C_NDELAY(s, 2);
 #endif
     I2C_RECV_BIT(s, s->nack);
-    SM_HALT(s);
+    /* Returns 0 on correct ack, 1 on nack. */
+    SM_HALT_STATUS(s, s->nack);
 }
 
 struct i2c_recv_byte_state {
