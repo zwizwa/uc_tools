@@ -288,35 +288,15 @@ int recv_byte(int nack) {
     while(SM_WAITING == i2c_recv_byte_tick(&s));
     return s.val;
 }
+
 void i2c_start(void) {
     struct i2c_start_state s;
     i2c_start_init(&s);
     while(SM_WAITING == i2c_start_tick(&s));
 }
-void i2c_stop(void) {
-    struct i2c_stop_state s;
-    i2c_stop_init(&s);
-    while(SM_WAITING == i2c_stop_tick(&s));
-}
-uint32_t i2c_transmit(
-    uint32_t slave,
-    const uint8_t *hdr, uint32_t hdr_len,
-    const uint8_t *data, uint32_t data_len) {
 
-    struct i2c_transmit_state s;
-    i2c_transmit_init(&s, slave, hdr, hdr_len, data, data_len);
-    while (SM_WAITING == i2c_transmit_tick(&s));
-    return s.ctrl.sr;
-}
-uint32_t i2c_receive(
-    uint32_t slave,
-    uint8_t *data, uint32_t data_len) {
-
-    struct i2c_receive_state s;
-    i2c_receive_init(&s, slave, data, data_len);
-    while (SM_WAITING == i2c_receive_tick(&s));
-    return s.ctrl.sr;
-}
+/* The rest is shared api. */
+#include "mod_i2c_blocking_wrapper.c"
 
 
 

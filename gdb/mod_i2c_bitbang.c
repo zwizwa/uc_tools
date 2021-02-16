@@ -39,6 +39,17 @@
 
 
 /* 2. HAL */
+
+// FIXME: Just a stub to make emulator compile. Move this to the proper place
+#ifdef EMU
+
+static inline void i2c_write_sda(int bitval) {}
+static inline void i2c_write_scl(int bitval) {}
+static inline int i2c_sda_read(void) { return 1; }
+static inline int i2c_scl_read(void) { return 1; }
+
+#else
+
 #include "hw_stm32f103.h"
 #include "cycle_counter.h"
 
@@ -87,6 +98,8 @@ static inline int i2c_sda_read(void) {
 static inline int i2c_scl_read(void) {
     return hw_gpio_read(I2C_GPIO, I2C_PIN_SCL);
 }
+
+#endif
 
 
 
@@ -389,6 +402,12 @@ static inline uint32_t i2c_receive_tick(struct i2c_receive_state *s) {
     SM_HALT_STATUS(s, s->ctrl.sr);
 }
 
+
+
+typedef struct i2c_stop_state     i2c_stop_t;
+typedef struct i2c_transmit_state i2c_transmit_t;
+typedef struct i2c_receive_state  i2c_receive_t;
+typedef struct i2c_control_state  i2c_control_t;
 
 
 
