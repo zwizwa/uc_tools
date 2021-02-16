@@ -56,7 +56,7 @@
     sm_status_t name##_busywait(struct name##_state *s          \
                          SM_DEF_DECL_ARGS(name##_arg) ) {       \
         name##_init(s SM_DEF_REF_ARGS(name##_arg));             \
-        sm_status_t rv;                                         \
+        sm_status_t rv = 0;                                     \
         while (SM_WAITING == (rv = name##_tick(s)));            \
         return rv;                                              \
     }

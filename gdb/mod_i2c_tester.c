@@ -365,7 +365,7 @@ KEEP void eeprom_write(uint8_t page, const uint8_t *buf, uintptr_t len) {
     return;
 }
 
-void eeprom_read_1(void) {
+void test_eeprom_read_1(void) {
     i2c_start();
     int nack = info_send_byte(i2c_tester_state.addr << 1 | I2C_R);
     if (nack) goto stop;
@@ -379,7 +379,7 @@ void eeprom_read_1(void) {
 }
 
 
-KEEP intptr_t eeprom_read(uint8_t offset, uint8_t *buf, uintptr_t len) {
+KEEP intptr_t test_eeprom_read(uint8_t offset, uint8_t *buf, uintptr_t len) {
     intptr_t rv = -1;
 
     i2c_start();
@@ -437,7 +437,7 @@ void i2c_test_eeprom(void) {
     }
 
     if (0) {
-        eeprom_read_1();
+        test_eeprom_read_1();
     }
     if (1) {
         uint8_t buf[8] = "abcdefg";
@@ -450,8 +450,8 @@ void i2c_test_eeprom(void) {
             uint8_t buf[16];
             for(int i=0; i<3; i++) {
                 memset(buf, 0, sizeof(buf));
-                eeprom_read(offset, buf, sizeof(buf));
-                //eeprom_read(buf, sizeof(buf));
+                test_eeprom_read(offset, buf, sizeof(buf));
+                //test_eeprom_read(buf, sizeof(buf));
                 // hw_busywait_ms(100);
                 // FIXME: eeprom gets confused.  deblock solves it.
                 // i2c_deblock();
@@ -513,7 +513,7 @@ KEEP void i2c_tester_command_write(const uint8_t *buf, uint32_t len) {
         }
         case 'r': {
             uint8_t buf[1];
-            eeprom_read(0, buf, sizeof(buf));
+            test_eeprom_read(0, buf, sizeof(buf));
             break;
         }
         case '[':
