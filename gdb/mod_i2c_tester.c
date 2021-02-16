@@ -673,8 +673,8 @@ int info_recv_byte(int nack) {
 }
 
 KEEP void eeprom_write(uint8_t page, const uint8_t *buf, uintptr_t len) {
-    infof(" S");
     i2c_start();
+    infof(" S");
 
     // return value 1 means nack
     if (info_send_byte(i2c_tester_state.addr << 1 | I2C_W)) goto nack;
@@ -709,14 +709,16 @@ void eeprom_read_1(void) {
 KEEP intptr_t eeprom_read(uint8_t offset, uint8_t *buf, uintptr_t len) {
     intptr_t rv = -1;
 
-    infof(" S");
     i2c_start();
+    infof(" S");
 
     info_send_byte(i2c_tester_state.addr << 1 | I2C_W);
     info_send_byte(offset);
 
-    infof(" S");
+    i2c_stop();
+
     i2c_start();
+    infof(" S");
 
     int nack = info_send_byte(i2c_tester_state.addr << 1 | I2C_R);
     if (nack) {
