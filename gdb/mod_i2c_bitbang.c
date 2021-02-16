@@ -28,13 +28,14 @@
 
 #define I2C_DEBUG_SPACING 0
 
-//#define I2C_LOG LOG
-#define I2C_LOG(...)
+#define I2C_LOG LOG
+//#define I2C_LOG(...)
 
-/* Half a clock period.  By default, run it slow.
-   FIXME: It doesn't seem to work properly with 50,5 */
+/* Set default clock rate to 100kHz maximum.  If this runs in a main
+   polling loop, the effective clock rate is possibly lower.  E.g. the
+   app that drives this results in 10kHz effective frequency. */
 #ifndef I2C_TESTER_PERIOD_US
-#define I2C_TESTER_PERIOD_US 500
+#define I2C_TESTER_PERIOD_US 5
 #endif
 
 
