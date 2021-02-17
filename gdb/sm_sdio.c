@@ -31,8 +31,11 @@ uint32_t sm_sdio_wait_sta(struct hw_sdio_card *sd, uint32_t expected, uint32_t e
 /* Keep polling until something happens.
    Continue on expected flags, but abort on error. */
 #define SM_WAIT_STA(sm, expected)                                       \
-    SM_WAIT_TICK(sm, sm_sdio_wait_sta(sm->ctx->device->impl.sd,         \
-                                      expected, HW_SDIO_STATUS_ERROR_MASK), 1)
+    SM_WAIT_TICK_HALT(                                                  \
+        sm,                                                             \
+        sm_sdio_wait_sta(                                               \
+            sm->ctx->device->impl.sd,                                   \
+            expected, HW_SDIO_STATUS_ERROR_MASK))
 
 /* Wait for SD card to be ready, or pass this synchronization point
    through the spillover mechanism if one is provided. */

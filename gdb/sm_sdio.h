@@ -88,10 +88,10 @@ void sm_sdio_cmd_init(struct sm_sdio_cmd *sm,
 uint32_t sm_sdio_cmd_tick(struct sm_sdio_cmd *sm);
 
 /* Shorthand macros.
-                                        fn prefix      state          _init() arguments
---------------------------------------------------------------------------------------- */
-#define SM_CMD(sm,ctx,...)  SM_CALL(sm, sm_sdio_cmd,   &sm->sub.cmd,  ctx,  __VA_ARGS__)
-#define SM_DATA(sm,ctx,...) SM_CALL(sm, sm_sdio_data,  &sm->sub.data, ctx,  __VA_ARGS__)
+                                             fn prefix      state          _init() arguments
+-------------------------------------------------------------------------------------------- */
+#define SM_CMD(sm,ctx,...)  SM_CALL_HALT(sm, sm_sdio_cmd,   &sm->sub.cmd,  ctx,  __VA_ARGS__)
+#define SM_DATA(sm,ctx,...) SM_CALL_HALT(sm, sm_sdio_data,  &sm->sub.data, ctx,  __VA_ARGS__)
 
 
 

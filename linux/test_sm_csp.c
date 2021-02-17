@@ -94,8 +94,8 @@ struct proc {
 csp_status_t proc_tick(struct proc *s) {
     SM_RESUME(s);
     while(s->loops--) {
-        SM_SUB(s, procsub, &s->task, 3);
-        SM_SUB(s, procsub, &s->task, 2);
+        SM_SUB_HALT(s, procsub, &s->task, 3);
+        SM_SUB_HALT(s, procsub, &s->task, 2);
     }
   halt:
     SM_HALT(s);

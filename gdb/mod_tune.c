@@ -112,10 +112,11 @@ struct sm_tune {
 };
 
 /* Local macro.  This is complicated due to using the env struct. */
-#define MEASURE(_setpoint) \
-    ({ s->env.setpoint = _setpoint; \
-       SM_SUB(s, measure, &s->env); \
-       s->env.value; })
+#define MEASURE(_setpoint) ({                   \
+            s->env.setpoint = _setpoint;        \
+            SM_SUB_HALT(s, measure, &s->env);   \
+            s->env.value;                       \
+        })
 
 
 /* Basic structure of machine is to perform two measurements to

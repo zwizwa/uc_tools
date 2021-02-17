@@ -183,7 +183,7 @@ typedef uint32_t sm_status_t;
    introducing "smart" control flow.  Use explicit error checking
    instead. */
 
-#define _SM_WAIT_TICK(sm,label,tick,abort) ({   \
+#define _SM_WAIT_TICK_HALT(sm,label,tick) ({    \
         uint32_t rv;                            \
       label:                                    \
         rv = tick;                              \
@@ -194,16 +194,13 @@ typedef uint32_t sm_status_t;
             sm->next = &&label;                 \
             return rv;                          \
         default:                                \
-            if (abort) {                        \
-                sm->next = &&halt;              \
-                return rv;                      \
-            }                                   \
-            else break;                         \
+            sm->next = &&halt;                  \
+            return rv;                          \
         }                                       \
         rv;})
 
-#define SM_WAIT_TICK(sm,tick,abort)             \
-    _SM_WAIT_TICK(sm,GENSYM(label_),tick,abort)
+#define SM_WAIT_TICK_HALT(sm,tick)              \
+    _SM_WAIT_TICK_HALT(sm,GENSYM(label_),tick)
 
 
 #define _SM_WAIT_TICK_CATCH(sm,label,tick) ({   \
@@ -223,9 +220,9 @@ typedef uint32_t sm_status_t;
 /* Using SM_WAIT_TICK, provide a convenience routine that initializes
    a state machine with standard naming convention and runs it to
    completion or error. */
-#define SM_CALL(sm,name,state,...) do {                 \
-    name##_init(state, __VA_ARGS__);                    \
-    SM_WAIT_TICK(sm,name##_tick(state),1); } while(0)
+#define SM_CALL_HALT(sm,name,state,...) do {           \
+        name##_init(state, __VA_ARGS__);               \
+        SM_WAIT_TICK_HALT(sm,name##_tick(state)); } while(0)
 
 /* Same, but don't abort on error, returning error value instead. */
 #define SM_CALL_CATCH(sm,name,state,...) ({     \
@@ -244,9 +241,9 @@ typedef uint32_t sm_status_t;
    same union, as they are mutually exclusive.  Since the return value
    of _tick() is always SM_HALTED, instead a pointer to the struct is
    returned as the value of the expression. */
-#define SM_SUB(sm, name, ...) \
-    ({ SM_CALL(sm, name, &((sm)->sub.name), __VA_ARGS__ );      \
-       &((sm)->sub.name); })
+#define SM_SUB_HALT(sm, name, ...)                                     \
+    ({ SM_CALL_HALT(sm, name, &((sm)->sub.name), __VA_ARGS__ );        \
+        &((sm)->sub.name); })
 
 /* Same, but don't abort on error, returning error value instead. */
 #define SM_SUB_CATCH(sm, name, ...) \
