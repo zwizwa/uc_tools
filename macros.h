@@ -172,5 +172,8 @@ static inline void abort_busyloop(void) {
 
 #define NB_ARGS(...)  (sizeof((const char *[]){#__VA_ARGS__})/sizeof(int))
 
+// I'm allowed.  I've typed this enough now.
+#define ZERO(ptr) memset(ptr, 0, sizeof(*ptr))
+
 
 #endif
