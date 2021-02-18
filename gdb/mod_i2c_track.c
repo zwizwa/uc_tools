@@ -1,7 +1,5 @@
-#ifndef MOD_I2C_BITCRUCH
-#define MOD_I2C_BITCRUCH
-
-// The opposite of bitbang :)
+#ifndef MOD_I2C_TRACK
+#define MOD_I2C_TRACK
 
 /* This needs to respond immediately so is run from interrupt.  We use
    the EXTI mechanism, and implement the state machine in sm_cond.h
@@ -12,13 +10,18 @@
    state change.
 */
 
-struct cbuf i2c_tester_mbox; uint8_t i2c_tester_mbox_buf[64];
+#include "sm.h"
+
+/* The intention here is to create trace logs that interleave properly
+   with the test driver. */
+#ifndef LOG_I2C
+#define LOG_I2C(...)
+#endif
 
 // 3.0 Abstract machine
 
-#include "sm.h"
-#define I2C_BUS_SCL (1<<1)
-#define I2C_BUS_SDA (1<<0)
+#define I2C_TRACK_SCL (1<<1)
+#define I2C_TRACK_SDA (1<<0)
 
 #define I2C_WAIT_C1D1_IDLE(s)  SM_WAIT(s,   s->bus == 0b11)
 #define I2C_WAIT_C1D0_START(s) SM_WAIT(s,   s->bus == 0b10)
@@ -35,6 +38,7 @@ struct i2c_track {
 struct i2c_track i2c_track;
 void i2c_track_init(struct i2c_track *s) {
     memset(s,0,sizeof(*s));
+    s->bus = 0b11;
 }
 // CD -> CD
 // 11    10  start
@@ -50,9 +54,9 @@ void i2c_track_init(struct i2c_track *s) {
 // so machine can just wait on a condition (DC combo), we don't
 // need to track history, that is implicit in state machine.
 
-
-// FIXME: This is not correct.  It's impossible to get this right
-// while tired...
+// FIXME: This still needs some work.
+// 1. Convert the inner machine to a byte read/write machine similar to bitbang.
+// 2. Focus on getting test_i2c_bitbang.c to work properly first before moving this to uc.
 
 uint32_t i2c_track_tick(struct i2c_track *s) {
     SM_RESUME(s);
@@ -63,6 +67,7 @@ uint32_t i2c_track_tick(struct i2c_track *s) {
     for(;;) {
         I2C_WAIT_C1D0_START(s);
         I2C_WAIT_C0Dx_LO(s); // write edge
+        LOG_I2C(" start");
 
         for(;;) {
 
@@ -71,6 +76,8 @@ uint32_t i2c_track_tick(struct i2c_track *s) {
                 I2C_WAIT_C1Dx_HI(s); // read edge
                 // sda must be stable until write edge
                 s->sreg = (s->bus & 1) | (s->sreg << 1);
+
+                LOG_I2C(" b%d=%d", s->bit, s->bus & 1);
 
                 // To distinguish between normal clock transition and
                 // STOP, we wait for a change and inspect it.
@@ -82,17 +89,20 @@ uint32_t i2c_track_tick(struct i2c_track *s) {
                 // middle of a byte.
                 if ((s->bus0 == 0b10) &&
                     (s->bus  == 0b11)) {
+                    LOG_I2C(" stop");
                     goto stop;
                 }
                 // SCL 1->0 with SDA=dontcare indicates a normal clock
                 // edge, indicating a new bit is coming and the loop
                 // can continue.
+
+
             }
         }
     }
 }
 
-
+#ifndef EMU
 
 // 3.1 TIM
 // See mod_3level.c for inspiration
@@ -139,7 +149,7 @@ void exti9_5_isr(void) {
     hw_exti_do_ack(8);
     hw_exti_do_ack(9);
     isr_count++;
-    i2c_track.bus = (i2c_scl_read() << 1) | i2c_sda_read();
+    i2c_track.bus = (i2c_read_scl() << 1) | i2c_read_sda();
     i2c_track_tick(&i2c_track);
 
 
@@ -163,26 +173,8 @@ void i2c_tester_exti_init(void) {
     hw_exti_do_arm(GPIOB, 9, EXTI_TRIGGER_BOTH);
 }
 
-
-void i2c_tester_poll(void) {
-    while(cbuf_bytes(&i2c_tester_mbox)) {
-        uint8_t token = cbuf_get(&i2c_tester_mbox);
-        (void)token;
-        //infof("%d\n", token);
-    }
-#if 1
-    static uint32_t count_handled;
-    static uint32_t timer;
-    MS_PERIODIC(timer, 1000) {
-        uint32_t count = isr_count;
-        int32_t new_count = count - count_handled;
-        if (new_count) {
-            infof("%d %d\n", new_count, count);
-        }
-        count_handled = count;
-    }
 #endif
-}
+
 
 
 #endif

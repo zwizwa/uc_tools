@@ -25,7 +25,7 @@
 #include "sm_def.h"
 
 #include "mod_i2c_bitbang.c"
-#include "mod_i2c_bitcrunch.c"
+#include "mod_i2c_track.c"
 
 
 
@@ -35,7 +35,7 @@ struct i2c_tester_config {
     uint32_t us;
     uint8_t addr, stretch, d;
 } i2c_tester_state = {
-    .us = I2C_TESTER_PERIOD_US,
+    .us = I2C_HALF_PERIOD_TICKS / 72,
     .stretch = 1,
     //.addr = 96,
     .addr = 0x54,  // eeprom first 256 bytes
@@ -72,6 +72,30 @@ void i2c_delay_busywait() {
 /* 3. SLAVE */
 
 // see mod_i2c_bitcrunch
+
+struct cbuf i2c_tester_mbox; uint8_t i2c_tester_mbox_buf[64];
+
+
+void i2c_tester_poll(void) {
+    while(cbuf_bytes(&i2c_tester_mbox)) {
+        uint8_t token = cbuf_get(&i2c_tester_mbox);
+        (void)token;
+        //infof("%d\n", token);
+    }
+#if 1
+    static uint32_t count_handled;
+    static uint32_t timer;
+    MS_PERIODIC(timer, 1000) {
+        uint32_t count = isr_count;
+        int32_t new_count = count - count_handled;
+        if (new_count) {
+            infof("%d %d\n", new_count, count);
+        }
+        count_handled = count;
+    }
+#endif
+}
+
 
 instance_status_t i2c_tester_init(instance_init_t *ctx) {
     CBUF_INIT(i2c_tester_mbox);
@@ -299,12 +323,12 @@ KEEP void i2c_tester_command_write(const uint8_t *buf, uint32_t len) {
         infof("c:%02x --", c);
         switch(c) {
         case 'c':
-            val = !i2c_scl_read();
+            val = !i2c_read_scl();
             i2c_write_scl(val);
             infof("scl=%d", val);
             break;
         case 'd':
-            val = !i2c_sda_read();
+            val = !i2c_read_sda();
             i2c_write_sda(val);
             infof("sda=%d", val);
             break;

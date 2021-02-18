@@ -34,22 +34,15 @@
 /* Set default clock rate to 100kHz maximum.  If this runs in a main
    polling loop, the effective clock rate is possibly lower.  E.g. the
    app that drives this results in 10kHz effective frequency. */
-#ifndef I2C_TESTER_PERIOD_US
-#define I2C_TESTER_PERIOD_US 5
+#ifndef I2C_HALF_PERIOD_TICKS
+#define I2C_HALF_PERIOD_TICKS (5 * 72)
 #endif
 
 
 /* 2. HAL */
 
 // FIXME: Just a stub to make emulator compile. Move this to the proper place
-#ifdef EMU
-
-static inline void i2c_write_sda(int bitval) {}
-static inline void i2c_write_scl(int bitval) {}
-static inline int i2c_sda_read(void) { return 1; }
-static inline int i2c_scl_read(void) { return 1; }
-
-#else
+#ifndef EMU
 
 #include "hw_stm32f103.h"
 #include "cycle_counter.h"
@@ -93,10 +86,10 @@ static inline void i2c_write_sda(int bitval) {
 static inline void i2c_write_scl(int bitval) {
     i2c_pin_set(I2C_GPIO, I2C_PIN_SCL, bitval);
 }
-static inline int i2c_sda_read(void) {
+static inline int i2c_read_sda(void) {
     return hw_gpio_read(I2C_GPIO, I2C_PIN_SDA);
 }
-static inline int i2c_scl_read(void) {
+static inline int i2c_read_scl(void) {
     return hw_gpio_read(I2C_GPIO, I2C_PIN_SCL);
 }
 
@@ -141,7 +134,7 @@ static inline int i2c_scl_read(void) {
 #define I2C_WHILE(s,cond) SM_WHILE(s,cond)
 
 #define I2C_DELAY(s) {                                                  \
-        s->timeout = cycle_counter_future_time(I2C_TESTER_PERIOD_US * 72); \
+        s->timeout = cycle_counter_future_time(I2C_HALF_PERIOD_TICKS);  \
         SM_WAIT(s, cycle_counter_expired(s->timeout));                  \
     }
 #define I2C_NDELAY(s,n_init) \
@@ -150,7 +143,7 @@ static inline int i2c_scl_read(void) {
 
 #define I2C_WAIT_STRETCH(s) {                                           \
         /* PRE: SCL released */                                         \
-        if (I2C_STRETCH) I2C_WHILE(s, !i2c_scl_read());                 \
+        if (I2C_STRETCH) I2C_WHILE(s, !i2c_read_scl());                 \
     }
 #define I2C_WRITE_SCL_1(s) {                    \
         i2c_write_scl(1);                       \
@@ -159,8 +152,8 @@ static inline int i2c_scl_read(void) {
 
 #define I2C_DEBLOCK(s) {                                                \
         for(s->clock=0; s->clock<16; s->clock++) {                      \
-            int sda1 = i2c_sda_read();                                  \
-            int scl1 = i2c_scl_read();                                  \
+            int sda1 = i2c_read_sda();                                  \
+            int scl1 = i2c_read_scl();                                  \
             if (sda1 && scl1) break;                                    \
             i2c_write_scl(0); I2C_DELAY(s);                             \
             i2c_write_scl(1); I2C_DELAY(s);  /* no stretch */           \
@@ -214,16 +207,16 @@ sm_status_t i2c_start_tick(struct i2c_start_state *s) {
         /* PRE: SDA=?, SCL=0 */                                         \
         i2c_write_sda(1);   I2C_DELAY(s);  /* release, allow slave write */ \
         I2C_WRITE_SCL_1(s); I2C_DELAY(s);  /* slave write propagation */ \
-        lval = i2c_sda_read();                                          \
+        lval = i2c_read_sda();                                          \
         i2c_write_scl(0);                                               \
         /* POST: SDA=1, SCL=0 */                                        \
     }
 
 void i2c_info_busy(const char *tag) {
-    if (i2c_sda_read()) {
+    if (i2c_read_sda()) {
         I2C_LOG("\nWARNING: %s: SDA=0\n", tag);
     }
-    if (i2c_scl_read()) {
+    if (i2c_read_scl()) {
         I2C_LOG("\nWARNING: %s: SCL=0\n", tag);
     }
 }
@@ -410,8 +403,6 @@ typedef struct i2c_stop_state     i2c_stop_t;
 typedef struct i2c_transmit_state i2c_transmit_t;
 typedef struct i2c_receive_state  i2c_receive_t;
 typedef struct i2c_control_state  i2c_control_t;
-
-
 
 
 #endif
