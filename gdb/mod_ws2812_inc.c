@@ -109,6 +109,10 @@ struct grb {
 /* 3 bytes, 24 data bits, with 3x PWM encoding gives 72 spi bits or 9
    spi bytes to hold the 110/100 pwm bit pattern for a single
    pixel. */
+
+/* FIXME: One extra zero byte is reserved.  Otherwise the SPI data pin
+   will produce a 1. */
+
 #define LEDSTRIP_DMA_PIXEL_BUF_SIZE 9
 uint8_t ledstrip_dma_pixel_buf[LEDSTRIP_DMA_PIXEL_BUF_SIZE + 1];
 
@@ -120,6 +124,19 @@ void ledstrip_send_pixel(const struct grb *grb) {
         (const uint8_t*)grb,
         24 /* nb input bits, resulting in 72 output bits, or 9 bytes. */,
         0 /* pad with zero bits (there won't be any */);
+
+    /* This is bizar.
+
+       If the byte PAST the DMA buffer is set to 0, the SPI data line
+       is set to 0.  If it is not, the line will go high and will so
+       mess up the ws2812 protocol.
+
+       I can't explain it as a software bug. It seems to be something
+       that the hardware does when it is in a "don't care" state?
+       I.e. there is no guarantee for the state of the data line
+       except during the active clock edge, so this might not count as
+       a bug. */
+    ledstrip_dma_pixel_buf[LEDSTRIP_DMA_PIXEL_BUF_SIZE] = 0x0;
 
 #if 0
     infof("(%d,%d,%d):", grb->r, grb->g, grb->b);
@@ -158,7 +175,7 @@ void ledstrip_next(void) {
             ledstrip_grb_gen = 0;
         }
         else {
-            hw_busywait_us(50);
+            //hw_busywait_us(50);
             ledstrip_send_pixel(grb);
             //infof("(%d,%d,%d)\n", grb->r, grb->g, grb->b);
         }

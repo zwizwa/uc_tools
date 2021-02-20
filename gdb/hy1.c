@@ -6,7 +6,7 @@
 
 */
 
-#define LEDSTRIP_NB_LEDS 1
+#define LEDSTRIP_NB_LEDS 32
 #define FOR_LEDS(i) for(int i=0;i<LEDSTRIP_NB_LEDS;i++)
 #define PRODUCT "hy1"
 
@@ -16,9 +16,32 @@
 
 #include "tag_u32.h"
 
+
+
+void ledstrip_bounce(int pixel);
+void ledstrip_progress(uint32_t scale0, uint32_t value);
+void animation_poll(void) {
+    static uint32_t timer;
+    const uint32_t scale = 32;
+    static int32_t value;
+    static int dir = 1;
+    (void)scale;
+    MS_PERIODIC(timer, 20) {
+        // ledstrip_progress(scale, value);
+        ledstrip_bounce(value);
+        if (value >= 31) {
+            dir = -1;
+        }
+        else if (value <= 0) {
+            dir = +1;
+        }
+        value += dir;
+    }
+}
+
 instance_status_t app_init(instance_init_t *i) {
     INSTANCE_NEED(i, &console, &ledstrip);
-    //_service.add(ledstrip_animation_tick);
+    //_service.add(animation_poll);
     return 0;
 }
 DEF_INSTANCE(app);
@@ -67,10 +90,11 @@ void doodle_gen_init(struct doodle_gen *g, uint32_t param) {
     g->len = LEDSTRIP_NB_LEDS;
 }
 
-DEF_COMMAND(doodle) {
-    doodle_gen_init(&doodle_gen, command_stack_pop());
+void doodle(uint32_t init) {
+    doodle_gen_init(&doodle_gen, init);
     ledstrip_send(&doodle_gen.gen);
 }
+DEF_COMMAND(doodle) { doodle(command_stack_pop()); }
 
 
 
@@ -145,6 +169,20 @@ void ledstrip_progress(uint32_t scale0, uint32_t value) {
     }
     ledstrip_send_frame();
 }
+void ledstrip_bounce(int pixel) {
+    struct grb on  = { .b = 255 };
+    struct grb off = { };
+    FOR_ARRAY_INDEX(frame, i) {
+        if (i == pixel) {
+            frame[i] = on;
+        }
+        else {
+            frame[i] = off;
+        }
+    }
+    ledstrip_send_frame();
+}
+
 
 int handle_led_progress(struct tag_u32 *req) {
     /* Scale comes first to make currying easier. */
