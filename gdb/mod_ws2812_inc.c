@@ -18,6 +18,13 @@
    buffer, and allows the pixels to be generated on the fly without a
    pixel buffer at all.
 
+   A frame takes about 30us to send (/ (* 3 23) 2.25)
+
+   On the scope, the inter-frame pixel time (the pixel "render time"
+   from gbr to pwm waveform) is a little under 30us, so while fast
+   enough, we can't really go much lower in response time to handle
+   this and not end up producing end-of-frame signalling (50us pause).
+   To avoid, precompute everything.
 
 */
 
@@ -82,54 +89,53 @@ uint8_t ledstrip_dma_buf[PWM_BITSTREAM_NB_BYTES((LEDSTRIP_NB_LEDS)*24)];
        doesn't show as bad, or quickly send a second frame.
 
    (2) we use only the DMA as a synchronization mechanism.  the ws2812
-       frames are separated by 50us pauses (FIXME: which we should
-       generate as SPI frames!).
+       frames are separated by 50us pauses.
+
+       In most cases this is not necessary as updates are typically
+       driven from a video frame clock and the whole system is fairly
+       predictable giving plenty of inter-frame spaceing.
+
+       However, to run at max frame rate, we could use the SPI to send
+       the 50us blank time as 113 bits at 2.25MHz, or 15 bytes of
+       zero.  This can be done using the exisiting 9 byte pixel wave
+       buffer twice.  However in most cases this can be omitted as
+       long as the frame update rate is low enough.
+
 
 */
 
 
-
-
-
+/* 3 bytes, 24 data bits, with 3x PWM encoding gives 72 spi bits or 9
+   spi bytes to hold the 110/100 pwm bit pattern for a single
+   pixel. */
+uint8_t ledstrip_dma_pixel_buf[9];
 volatile uint32_t ledstrip_repeat;
-volatile uint32_t ledstrip_dma_bytes;
-void ledstrip_send(const struct grb *grb) {
-    /* Create PWM bitstream. */
-    ledstrip_dma_bytes =
-        pwm_bitstream_write(
-            ledstrip_dma_buf,
-            (const uint8_t*)grb,
-            LEDSTRIP_NB_LEDS * 24);
-    // infof("ledstrip_send %d %d\n", dma_bytes, sizeof(ledstrip_dma_buf));
-    ledstrip_repeat = 3;
-    spi_chunk_send_dma(ledstrip_dma_buf, ledstrip_dma_bytes);
-}
-
-/* Similar, but use data producing callback to avoid double buffering. */
-void ledstrip_send_gen(struct grb (*grb_gen)(void*, int led_nb), void *ctx, int nb_leds) {
-    /* Create PWM bitstream. */
-    struct bitbuf dst;
-    bitbuf_init(&dst, ledstrip_dma_buf);
-    for(uint32_t led=0; led<nb_leds; led++) {
-        struct bitbuf src;
-        struct grb grb = grb_gen(ctx, led);
-        bitbuf_init(&src, (void*)&grb);
-        for(uint32_t i=0; i<24; i++) {
-            pwm_bitstream_bitbuf_write(&dst, bitbuf_read(&src));
-        }
-    }
-    uint32_t dma_bytes = bitbuf_flush(&dst);
-    //infof("ledstrip_send_gen %d %d\n", dma_bytes, sizeof(ledstrip_dma_buf));
-    spi_chunk_send_dma(ledstrip_dma_buf, dma_bytes);
+volatile const struct grb *ledstrip_grb;
+void ledstrip_send_buf(const struct grb *grb, uint32_t nb) {
+    if (!nb) return;
+    ledstrip_grb = grb;
+    ledstrip_repeat = nb;
+    ledstrip_next();
 }
 
 
-// called from DMA ISR in mod_spi_chunk.c
+
 void ledstrip_next(void) {
     if (ledstrip_repeat--) {
-        spi_chunk_send_dma(ledstrip_dma_buf, ledstrip_dma_bytes);
+        /* Create PWM bitstream. */
+        pwm_bitstream_write(
+            ledstrip_dma_pixel_buf,
+            (const uint8_t*)(ledstrip_grb++),
+            24 /* nb input bits, resulting in 72 output bits, or 9 bytes. */);
+        spi_chunk_send_dma(ledstrip_dma_pixel_buf, 9);
     }
 }
+
+/* Backwards compatbile API. */
+void ledstrip_send(const struct grb *grb) {
+    ledstrip_send_buf(grb, LEDSTRIP_NB_LEDS);
+}
+
 
 
 

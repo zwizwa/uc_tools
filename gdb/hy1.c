@@ -6,7 +6,7 @@
 
 */
 
-#define LEDSTRIP_NB_LEDS 8
+#define LEDSTRIP_NB_LEDS 32
 #define FOR_LEDS(i) for(int i=0;i<LEDSTRIP_NB_LEDS;i++)
 #define PRODUCT "hy1"
 
