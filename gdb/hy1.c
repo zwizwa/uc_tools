@@ -6,12 +6,13 @@
 
 */
 
-#define LEDSTRIP_NB_LEDS 32
+#define LEDSTRIP_NB_LEDS 8
 #define FOR_LEDS(i) for(int i=0;i<LEDSTRIP_NB_LEDS;i++)
 #define PRODUCT "hy1"
 
 #include "mod_lab.c"
-#include "mod_ws2812.c"
+//#include "mod_ws2812.c"
+#include "mod_ws2812_inc.c"
 
 #include "tag_u32.h"
 
@@ -53,6 +54,7 @@ int reply_ok(struct tag_u32 *req) {
 
 int handle_led_set(struct tag_u32 *req) {
     TAG_U32_UNPACK(req, -2, m, led_nb, _set_cmd, r, g, b) {
+        //infof("set %d (%d,%d,%d)\n", m->led_nb, m->r, m->g, m->b);
         if (m->led_nb >= LEDSTRIP_NB_LEDS) return -1;
         set_rgb(&frame[m->led_nb], m->r, m->g, m->b);
         ledstrip_send(frame);
@@ -84,6 +86,8 @@ int map_led(struct tag_u32 *req) {
 }
 
 void ledstrip_progress(uint32_t scale0, uint32_t value) {
+    //infof("progress %d %d\n", scale0, value);
+
     /* Don't allow division by zero. */
     uint32_t scale = scale0 >= 1 ? scale0 : 1;
     /* 0 maps to 0, value == scale maps to LEDSTRIP_NB_LEDS */
