@@ -52,7 +52,11 @@ struct grb {
     uint8_t g,r,b;
 } __attribute__((__packed__));
 
-uint8_t ledstrip_dma_buf[PWM_BITSTREAM_NB_BYTES((LEDSTRIP_NB_LEDS)*24)];
+
+#define WS2812_NB_BYTES(nb_bits) (((((nb_bits)*3)-1)/8)+1+1)
+// same as WS2812_NB_BYTES(nb_bits) (PWM_BITSTREAM_BITS_TO_BYTES(nb_bits)+1)
+
+uint8_t ledstrip_dma_buf[WS2812_NB_BYTES((LEDSTRIP_NB_LEDS)*24)];
 //uint8_t ledstrip_dma_buf[400];
 
 /* Invert the bitstream. */

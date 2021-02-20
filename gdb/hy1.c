@@ -6,7 +6,7 @@
 
 */
 
-#define LEDSTRIP_NB_LEDS 32
+#define LEDSTRIP_NB_LEDS 1
 #define FOR_LEDS(i) for(int i=0;i<LEDSTRIP_NB_LEDS;i++)
 #define PRODUCT "hy1"
 
@@ -24,11 +24,14 @@ instance_status_t app_init(instance_init_t *i) {
 DEF_INSTANCE(app);
 
 
+/* Pixel buffer + generator wrapper . */
 struct grb frame[LEDSTRIP_NB_LEDS];
-static inline void set_rgb(struct grb *grb, uint8_t r, uint8_t g, uint8_t b) {
-    grb->r = r; grb->g = g; grb->b = b;
+struct grb_buf_gen grb_buf_gen;
+void ledstrip_send_frame(void) {
+    grb_buf_gen_init(&grb_buf_gen, frame, ARRAY_SIZE(frame));
+    /* PRECONDITION: previous transfer is finished. */
+    ledstrip_send(&grb_buf_gen.gen);
 }
-
 DEF_COMMAND(leds) { // r g b --
     struct grb grb;
     grb.b = command_stack_pop();
@@ -37,8 +40,41 @@ DEF_COMMAND(leds) { // r g b --
     for(int i=0; i<LEDSTRIP_NB_LEDS; i++) {
         frame[i] = grb;
     }
-    ledstrip_send(frame);
+    ledstrip_send_frame();
 }
+
+
+/* Doodle: parametic generator. */
+/* Generator wrapper for pixel synthesizer. */
+
+struct doodle_gen {
+    struct seq_gen gen;
+    uint16_t index, len;
+    struct grb grb;
+} doodle_gen;
+const void *doodle_gen_pop(struct seq_gen *_g) {
+    struct doodle_gen *g = (void*)_g;
+    if (g->index >= g->len) return NULL;
+    g->grb.r = 0;//g->index;
+    g->grb.g = 0;//g->index;
+    g->grb.b = 4 + g->index;
+    g->index++;
+    return &g->grb;
+}
+void doodle_gen_init(struct doodle_gen *g, uint32_t param) {
+    g->gen.pop = doodle_gen_pop;
+    g->index = 0;
+    g->len = LEDSTRIP_NB_LEDS;
+}
+
+DEF_COMMAND(doodle) {
+    doodle_gen_init(&doodle_gen, command_stack_pop());
+    ledstrip_send(&doodle_gen.gen);
+}
+
+
+
+
 
 const char t_map[] = "map";
 const char t_cmd[] = "cmd";
@@ -51,13 +87,16 @@ int reply_ok(struct tag_u32 *req) {
     return reply_1(req, 0);
 }
 
+static inline void set_rgb(struct grb *grb, uint8_t r, uint8_t g, uint8_t b) {
+    grb->r = r; grb->g = g; grb->b = b;
+}
 
 int handle_led_set(struct tag_u32 *req) {
     TAG_U32_UNPACK(req, -2, m, led_nb, _set_cmd, r, g, b) {
         //infof("set %d (%d,%d,%d)\n", m->led_nb, m->r, m->g, m->b);
         if (m->led_nb >= LEDSTRIP_NB_LEDS) return -1;
         set_rgb(&frame[m->led_nb], m->r, m->g, m->b);
-        ledstrip_send(frame);
+        ledstrip_send_frame();
         return reply_ok(req);
     }
     return -1;
@@ -104,7 +143,7 @@ void ledstrip_progress(uint32_t scale0, uint32_t value) {
             *led = red;
         }
     }
-    ledstrip_send(frame);
+    ledstrip_send_frame();
 }
 
 int handle_led_progress(struct tag_u32 *req) {

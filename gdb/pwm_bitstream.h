@@ -1,6 +1,8 @@
 #ifndef PWM_BITSTREAM_H
 #define PWM_BITSTREAM_H
 
+#include <stdint.h>
+
 /* 1. BITBANG */
 
 /* Require this to be overridden. */
@@ -106,6 +108,8 @@ static inline void pwm_bitstream_bitbuf_write(struct bitbuf *dst, uint32_t bit) 
     bitbuf_write(dst, bit);
     bitbuf_write(dst, 0);
 }
+
+/* FIXME: bitbuf_flush() is not correct.  Use pwm_bitstream_write_pad() instead. */
 static inline uint32_t pwm_bitstream_write(uint8_t *dst_buf, const uint8_t *src_buf, uint32_t nb_bits) {
     struct bitbuf src, dst;
     bitbuf_init(&src, (void*)src_buf);
@@ -116,12 +120,30 @@ static inline uint32_t pwm_bitstream_write(uint8_t *dst_buf, const uint8_t *src_
     return bitbuf_flush(&dst);
 }
 
+static inline uint32_t pwm_bitstream_write_pad(uint8_t *dst_buf, const uint8_t *src_buf, uint32_t nb_bits, int pad) {
+    struct bitbuf src, dst;
+    bitbuf_init(&src, (void*)src_buf);
+    bitbuf_init(&dst, dst_buf);
+    for(uint32_t i=0; i<nb_bits; i++) {
+        pwm_bitstream_bitbuf_write(&dst, bitbuf_read(&src));
+    }
+    while(nb_bits & 7) {
+        bitbuf_write(&dst, pad);
+        nb_bits++;
+    }
+    return bitbuf_close(&dst);
+}
+
 
 
 
 // ASSERT(nbits > 0)
 // FIXME: I had to +1 this.  Why?
-#define PWM_BITSTREAM_NB_BYTES(nb_bits) (((((nb_bits)*3)-1)/8)+1+1)
+//
+// #define PWM_BITSTREAM_NB_BYTES(nb_bits) (((((nb_bits)*3)-1)/8)+1+1)
+
+// API change: this is correct.  It was hiding another bug.
+#define PWM_BITSTREAM_BITS_TO_BYTES(nb_bits) (((((nb_bits)*3)-1)/8)+1)
 
 
 

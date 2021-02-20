@@ -3,9 +3,9 @@
 
 /* LED STRIP DRIVER
 
-   FIXME: This is a copy of mod_ws2812.c to stage an "incremental"
-   version that sends each pixel individually to reduce the buffering.
-   This will eventually be a drop-in replacement.
+   A fork of mod_ws2812.c to stage an "incremental" version that sends
+   each pixel individually to reduce the buffering.  This will not be
+   a drop-in replacement, but easy to change.
 
    SPI data pin update rate is 2.25 MBit/sec (/ 72.0 32)
    That runs at 3x the WS2812 PWM bit rate, which is 750kHz (/ 72000.0 (* 3 32))
@@ -33,6 +33,7 @@
 #include <hw_stm32f103.h>
 #include "pwm_bitstream.h"
 #include "fixedpoint.h"
+#include "seq_gen.h"
 
 
 /* The STM32F103 at 72MHz is to slow to bit-bang the 2.5MHz from
@@ -72,7 +73,7 @@ struct grb {
     uint8_t g,r,b;
 } __attribute__((__packed__));
 
-uint8_t ledstrip_dma_buf[PWM_BITSTREAM_NB_BYTES((LEDSTRIP_NB_LEDS)*24)];
+//uint8_t ledstrip_dma_buf[PWM_BITSTREAM_NB_BYTES((LEDSTRIP_NB_LEDS)*24)];
 //uint8_t ledstrip_dma_buf[400];
 
 /* Invert the bitstream. */
@@ -108,33 +109,80 @@ uint8_t ledstrip_dma_buf[PWM_BITSTREAM_NB_BYTES((LEDSTRIP_NB_LEDS)*24)];
 /* 3 bytes, 24 data bits, with 3x PWM encoding gives 72 spi bits or 9
    spi bytes to hold the 110/100 pwm bit pattern for a single
    pixel. */
-uint8_t ledstrip_dma_pixel_buf[9];
-volatile uint32_t ledstrip_repeat;
-volatile const struct grb *ledstrip_grb;
-void ledstrip_send_buf(const struct grb *grb, uint32_t nb) {
-    if (!nb) return;
-    ledstrip_grb = grb;
-    ledstrip_repeat = nb;
-    ledstrip_next();
+#define LEDSTRIP_DMA_PIXEL_BUF_SIZE 9
+uint8_t ledstrip_dma_pixel_buf[LEDSTRIP_DMA_PIXEL_BUF_SIZE + 1];
+
+/* Render GRB value into PWM waveform bitstream. */
+void ledstrip_send_pixel(const struct grb *grb) {
+    /* Create PWM bitstream. */
+    pwm_bitstream_write_pad(
+        ledstrip_dma_pixel_buf,
+        (const uint8_t*)grb,
+        24 /* nb input bits, resulting in 72 output bits, or 9 bytes. */,
+        0 /* pad with zero bits (there won't be any */);
+
+#if 0
+    infof("(%d,%d,%d):", grb->r, grb->g, grb->b);
+    for(int i=0; i<9; i++) {
+        infof(" %02x", ledstrip_dma_pixel_buf[i]);
+    }
+    infof("\n");
+#endif
+
+    spi_chunk_send_dma(
+        ledstrip_dma_pixel_buf,
+        sizeof(ledstrip_dma_pixel_buf));
 }
 
 
+/* Read from buffer. */
 
+/* The DMA needs to be fed one pixel at a time.  Since we would need
+   to keep track of a buffer and count anyway, it seems better to push
+   the bookkeeping towards the user and impose a generator API. */
+
+struct seq_gen *ledstrip_grb_gen;
+
+void ledstrip_send(struct seq_gen *grb_gen) {
+    ledstrip_grb_gen = grb_gen;
+    ledstrip_next();
+}
 void ledstrip_next(void) {
-    if (ledstrip_repeat--) {
-        /* Create PWM bitstream. */
-        pwm_bitstream_write(
-            ledstrip_dma_pixel_buf,
-            (const uint8_t*)(ledstrip_grb++),
-            24 /* nb input bits, resulting in 72 output bits, or 9 bytes. */);
-        spi_chunk_send_dma(ledstrip_dma_pixel_buf, 9);
+    if (ledstrip_grb_gen) {
+        /* Generator is active.  Get the next pixel. */
+        const struct grb *grb = ledstrip_grb_gen->pop(ledstrip_grb_gen);
+        if (!grb) {
+            /* Done.  This would be a place to send the postamble,
+               e.g. the 50us spacer.  But we don't really need that in
+               practice so just stop here. */
+            ledstrip_grb_gen = 0;
+        }
+        else {
+            hw_busywait_us(50);
+            ledstrip_send_pixel(grb);
+            //infof("(%d,%d,%d)\n", grb->r, grb->g, grb->b);
+        }
     }
 }
 
-/* Backwards compatbile API. */
-void ledstrip_send(const struct grb *grb) {
-    ledstrip_send_buf(grb, LEDSTRIP_NB_LEDS);
+/* Generator wrapper for flat pixel buffer. */
+struct grb_buf_gen {
+    struct seq_gen gen;
+    const struct grb *grb;
+    uint16_t index, len;
+};
+const void *grb_buf_gen_pop(struct seq_gen *_g) {
+    struct grb_buf_gen *g = (void*)_g;
+    if (g->index >= g->len) return NULL;
+    return &g->grb[g->index++];
 }
+void grb_buf_gen_init(struct grb_buf_gen *g, const struct grb *grb_buf, uint16_t len) {
+    g->gen.pop = grb_buf_gen_pop;
+    g->grb = grb_buf;
+    g->index = 0;
+    g->len = len;
+}
+
 
 
 

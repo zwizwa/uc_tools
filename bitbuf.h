@@ -15,11 +15,34 @@ static inline void bitbuf_init(struct bitbuf *b, uint8_t *buf) {
     b->shiftreg = 0;
     b->count = 0;
 }
+/* DO NOT USE THIS FUNCTION IN NEW CODE.
+
+   It is not correct:
+   - it returns one extra byte in case count is a multiple of 8.
+   - in case it is not a multiple of 8, the shift count is off.
+
+   FIXME: Dependent code needs to be validated and changed to use
+   bitbuf_close() instead. */
+
 static inline uint32_t bitbuf_flush(struct bitbuf *b) {
     uint32_t nbyte = b->count / 8;
     uint32_t nbit = b->count % 8;
     b->buf[nbyte] = b->shiftreg << (7 - nbit);
     return nbyte+1;
+}
+static inline uint32_t bitbuf_close(struct bitbuf *b) {
+    uint32_t nbyte = b->count / 8;
+    uint32_t nbit = b->count % 8;
+    if (nbit == 0) {
+        /* The shift register is empty. */
+        return nbyte;
+    }
+    else {
+        /* The shift register is not empty.  Pad with zeros.
+           FIXME: mke 0/1 pad configurable. */
+        b->buf[nbyte] = b->shiftreg << (8 - nbit);
+        return nbyte+1;
+    }
 }
 static inline void bitbuf_write(struct bitbuf *b, uint32_t bitval) {
     /* Precondition is that there is room in the shift register. */
