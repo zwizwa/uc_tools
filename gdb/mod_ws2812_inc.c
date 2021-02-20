@@ -28,22 +28,18 @@
 #include "fixedpoint.h"
 
 
+/* The STM32F103 at 72MHz is to slow to bit-bang the 2.5MHz from
+   interrupt, and busy wait is not an option due to other interrupts
+   running.  So we prepare the bit pattern in RAM and send it out in
+   one go using SPI DMA. */
 
+/* SPI DIV32 is approximate: / 72 32 is 2.25mHz */
 
-/* This uses a SPI peripheral.  The STM32F103 at 72MHz is to slow to
-   bit-bang the 2.5MHz from interrupt, and busy wait is not an option
-   due to other interrupts running.  So prepare the bit pattern in RAM
-   and send it out in one go using DMA. */
+#define SPI_CHUNK_DIV SPI_CR1_BAUDRATE_FPCLK_DIV_32
+#define SPI_CHUNK_NEXT ledstrip_next
+void ledstrip_next(void);
+#include "mod_spi_chunk.c"
 
-/* Note that the protocol is 5V, and A7 is not 5V tolerant.  I'm using
-   74HC14 inverter with Schmitt-trigger inputs (2x) to adapt. */
-
-
-//          rcc_gpio   rcc_spi   spi   rst       gpio    data clk master tx  hw_dma      ie  bits mode        div
-// -----------------------------------------------------------------------------------------------------------------------------------------
-const struct hw_spi hw_spi_tx8_master_0rw[] = {
-    [1] = { RCC_GPIOA, RCC_SPI1, SPI1, RST_SPI1, GPIOA,  7,   5,  1,     1,  HW_DMA_1_3,  1,  8,  HW_SPI_0RW, SPI_CR1_BAUDRATE_FPCLK_DIV_32},
-};
 
 /* Note that SPI only allows power of two division on STM.  Different
    clocks would require external loopback of TIM pin and transmit in
@@ -60,7 +56,6 @@ const struct hw_spi hw_spi_tx8_master_0rw[] = {
 */
 
 /* Byte order G-R-B */
-#define LEDSTRIP_C_SPI hw_spi_tx8_master_0rw[1]
 
 #ifndef LEDSTRIP_NB_LEDS
 #error need LEDSTRIP_NB_LEDS
@@ -78,23 +73,6 @@ uint8_t ledstrip_dma_buf[PWM_BITSTREAM_NB_BYTES((LEDSTRIP_NB_LEDS)*24)];
 #define LEDSTRIP_INVERT 0
 #endif
 
-/* Move to hw_stm32f103.h */
-INLINE void hw_spi_continue(struct hw_spi c, const void *data, uint32_t nb_data) {
-    /* Transfer a new buffer.  Called e.g. from DMA interrupt to send the next packet.
-       This needs to be preceeded by hw_spi_start() which does a full configuration. */
-
-    DMA_CMAR(c.d.dma, c.d.chan) = (uint32_t) data;
-    DMA_CNDTR(c.d.dma, c.d.chan) = nb_data;
-
-    /* 5 Enable transfer complete interrupt. */
-    DMA_CCR(c.d.dma, c.d.chan) |= DMA_CCR_TCIE;
-
-    /* 6 Enable */
-    DMA_CCR(c.d.dma, c.d.chan) |= DMA_CCR_EN;
-
-    /* Enable SPI TX/RX */
-    SPI_CR2(c.spi) = c.tx ? SPI_CR2_TXDMAEN : SPI_CR2_RXDMAEN;
-}
 
 /* Remarks:
 
@@ -112,20 +90,6 @@ INLINE void hw_spi_continue(struct hw_spi c, const void *data, uint32_t nb_data)
 
 
 
-/* The reset glitches the data line, so we reset only once.  Solve
-   this properly by holding the line low during reset. */
-static int ledstrip_spi_initialized;
-void ledstrip_send_dma(const uint8_t *buf, uint32_t nb_bytes) {
-    if (!ledstrip_spi_initialized) {
-        ledstrip_spi_initialized = 1;
-        hw_spi_reset(LEDSTRIP_C_SPI);
-        hw_spi_start(LEDSTRIP_C_SPI, buf, nb_bytes);
-    }
-    else {
-        hw_spi_continue(LEDSTRIP_C_SPI, buf, nb_bytes);
-    }
-
-}
 
 volatile uint32_t ledstrip_repeat;
 volatile uint32_t ledstrip_dma_bytes;
@@ -138,7 +102,7 @@ void ledstrip_send(const struct grb *grb) {
             LEDSTRIP_NB_LEDS * 24);
     // infof("ledstrip_send %d %d\n", dma_bytes, sizeof(ledstrip_dma_buf));
     ledstrip_repeat = 3;
-    ledstrip_send_dma(ledstrip_dma_buf, ledstrip_dma_bytes);
+    spi_chunk_send_dma(ledstrip_dma_buf, ledstrip_dma_bytes);
 }
 
 /* Similar, but use data producing callback to avoid double buffering. */
@@ -156,32 +120,19 @@ void ledstrip_send_gen(struct grb (*grb_gen)(void*, int led_nb), void *ctx, int 
     }
     uint32_t dma_bytes = bitbuf_flush(&dst);
     //infof("ledstrip_send_gen %d %d\n", dma_bytes, sizeof(ledstrip_dma_buf));
-    ledstrip_send_dma(ledstrip_dma_buf, dma_bytes);
-}
-
-int ledstrip_dma_done(void) {
-    if (!hw_spi_ready(LEDSTRIP_C_SPI)) return 0;
-    hw_spi_ack(LEDSTRIP_C_SPI);
-    return 1;
+    spi_chunk_send_dma(ledstrip_dma_buf, dma_bytes);
 }
 
 
-
-volatile uint32_t dma_count;
-// it's not spi1_isr!
-void dma1_channel3_isr(void) {
-    hw_spi_ack(LEDSTRIP_C_SPI);
-    dma_count++;
+// called from DMA ISR in mod_spi_chunk.c
+void ledstrip_next(void) {
     if (ledstrip_repeat--) {
-        // duration of a single byte is 3.55 us (/ (* 8 32) 72.0)
-
-        // How to bridge time between dma interrupt and next packet
-        // ok?  I believe it can just start sending the transfer.
-
-        //hw_busywait_us(8);
-        hw_spi_continue(LEDSTRIP_C_SPI, ledstrip_dma_buf, ledstrip_dma_bytes);
+        spi_chunk_send_dma(ledstrip_dma_buf, ledstrip_dma_bytes);
     }
 }
+
+
+
 
 struct ledstrip_config {
     uint32_t rate_mHz;
@@ -267,7 +218,7 @@ void ledstrip_animation_tick(void) {
 
 #include "instance.h"
 instance_status_t ledstrip_init(instance_init_t *i) {
-    hw_spi_init(LEDSTRIP_C_SPI);
+    spi_chunk_init();
     return 0;
 }
 DEF_INSTANCE(ledstrip);

@@ -981,6 +981,25 @@ INLINE void hw_spi_start(struct hw_spi c,
     SPI_CR2(c.spi) = c.tx ? SPI_CR2_TXDMAEN : SPI_CR2_RXDMAEN;
 }
 
+/* Transfer the next buffer.  Can be used e.g. from
+   dma1_channel3_isr() to send the next packet.  This needs to be
+   preceeded once by hw_spi_start() which does a full configuration,
+   and can be used for all subsequent packets. */
+INLINE void hw_spi_next(struct hw_spi c, const void *data, uint32_t nb_data) {
+
+    DMA_CMAR(c.d.dma, c.d.chan) = (uint32_t) data;
+    DMA_CNDTR(c.d.dma, c.d.chan) = nb_data;
+
+    /* 5 Enable transfer complete interrupt. */
+    DMA_CCR(c.d.dma, c.d.chan) |= DMA_CCR_TCIE;
+
+    /* 6 Enable */
+    DMA_CCR(c.d.dma, c.d.chan) |= DMA_CCR_EN;
+
+    /* Enable SPI TX/RX */
+    SPI_CR2(c.spi) = c.tx ? SPI_CR2_TXDMAEN : SPI_CR2_RXDMAEN;
+}
+
 INLINE int hw_spi_ready(struct hw_spi c) {
     return (DMA_ISR(c.d.dma) & DMA_ISR_TCIF(c.d.chan)) != 0;
 }
