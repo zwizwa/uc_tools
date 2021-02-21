@@ -113,42 +113,74 @@ struct grb {
 /* FIXME: One extra zero byte is reserved.  Otherwise the SPI data pin
    will produce a 1. */
 
-#define LEDSTRIP_DMA_PIXEL_BUF_SIZE 9
-uint8_t ledstrip_dma_pixel_buf[LEDSTRIP_DMA_PIXEL_BUF_SIZE + 1];
+#define LEDSTRIP_STATE_BUF_SIZE (9 + 1)
+struct ledstrip_state {
+    struct seq_gen *grb_gen;
+    uint8_t buffers[2][LEDSTRIP_STATE_BUF_SIZE];
+    uint32_t index;
+} ledstrip_state;
+
+/* Specialized bit pattern synthesizer that is a bit faster than
+   pwm_bitstream.
+
+   One byte is expanded to 3 bytes with the following pattern:
+
+   1.01.01. 01.01.01 .01.01.0  bitstream
+    7  6  5   4  3   2  1  0   bit number
+
+   See assembly listing at the bottom.
+*/
+
+void ws2812_pwm_write_byte(uint8_t *buf, uint8_t val) {
+
+    //                           1.01.01.
+    buf[0] =                    0b10010010
+        | ((val & 0b10000000) ? 0b01000000 : 0)
+        | ((val & 0b01000000) ? 0b00001000 : 0)
+        | ((val & 0b00100000) ? 0b00000001 : 0);
+
+    //                           01.01.01
+    buf[1] =                    0b01001001
+        | ((val & 0b00010000) ? 0b00100000 : 0)
+        | ((val & 0b00001000) ? 0b00000100 : 0);
+
+    //                           .01.01.0
+    buf[2] =                    0b00100100
+        | ((val & 0b00000100) ? 0b10000000 : 0)
+        | ((val & 0b00000010) ? 0b00010000 : 0)
+        | ((val & 0b00000001) ? 0b00000010 : 0);
+
+}
+void ws2812_pwm_write_grb(uint8_t *buf, const struct grb *grb) {
+    ws2812_pwm_write_byte(buf+0, grb->g);
+    ws2812_pwm_write_byte(buf+3, grb->r);
+    ws2812_pwm_write_byte(buf+6, grb->b);
+}
+
 
 /* Render GRB value into PWM waveform bitstream. */
 void ledstrip_send_pixel(const struct grb *grb) {
+    uint8_t *buf = ledstrip_state.buffers[ledstrip_state.index];
     /* Create PWM bitstream. */
+#if 0
+    /* Generic code. */
     pwm_bitstream_write_pad(
-        ledstrip_dma_pixel_buf,
+        buf,
         (const uint8_t*)grb,
         24 /* nb input bits, resulting in 72 output bits, or 9 bytes. */,
         0 /* pad with zero bits (there won't be any */);
-
-    /* This is bizar.
-
-       If the byte PAST the DMA buffer is set to 0, the SPI data line
-       is set to 0.  If it is not, the line will go high and will so
-       mess up the ws2812 protocol.
-
-       I can't explain it as a software bug. It seems to be something
-       that the hardware does when it is in a "don't care" state?
-       I.e. there is no guarantee for the state of the data line
-       except during the active clock edge, so this might not count as
-       a bug. */
-    ledstrip_dma_pixel_buf[LEDSTRIP_DMA_PIXEL_BUF_SIZE] = 0x0;
-
-#if 0
-    infof("(%d,%d,%d):", grb->r, grb->g, grb->b);
-    for(int i=0; i<9; i++) {
-        infof(" %02x", ledstrip_dma_pixel_buf[i]);
-    }
-    infof("\n");
+#else
+    /* More efficient manual code. */
+    ws2812_pwm_write_grb(buf, grb);
 #endif
 
-    spi_chunk_send_dma(
-        ledstrip_dma_pixel_buf,
-        sizeof(ledstrip_dma_pixel_buf));
+    /* Send a trailing zero byte to make sure that the data line goes
+       to zero.  I've tried a lot of different things, but a full zero
+       byte is the only thing that works to properly terminate the bit
+       sequence and not leave it hanging high. */
+    buf[LEDSTRIP_STATE_BUF_SIZE-1] = 0;
+
+    spi_chunk_send_dma(buf, LEDSTRIP_STATE_BUF_SIZE);
 }
 
 
@@ -158,21 +190,21 @@ void ledstrip_send_pixel(const struct grb *grb) {
    to keep track of a buffer and count anyway, it seems better to push
    the bookkeeping towards the user and impose a generator API. */
 
-struct seq_gen *ledstrip_grb_gen;
 
 void ledstrip_send(struct seq_gen *grb_gen) {
-    ledstrip_grb_gen = grb_gen;
+    ledstrip_state.grb_gen = grb_gen;
     ledstrip_next();
 }
 void ledstrip_next(void) {
-    if (ledstrip_grb_gen) {
+    struct seq_gen *g = ledstrip_state.grb_gen;
+    if (g) {
         /* Generator is active.  Get the next pixel. */
-        const struct grb *grb = ledstrip_grb_gen->pop(ledstrip_grb_gen);
+        const struct grb *grb = g->pop(g);
         if (!grb) {
             /* Done.  This would be a place to send the postamble,
                e.g. the 50us spacer.  But we don't really need that in
                practice so just stop here. */
-            ledstrip_grb_gen = 0;
+            ledstrip_state.grb_gen = 0;
         }
         else {
             //hw_busywait_us(50);
@@ -294,3 +326,48 @@ instance_status_t ledstrip_init(instance_init_t *i) {
 }
 DEF_INSTANCE(ledstrip);
 #endif
+
+
+
+/*
+08003176 <ws2812_pwm_write_byte>:
+ 8003176:	f011 0f80 	tst.w	r1, #128	; 0x80
+ 800317a:	b510      	push	{r4, lr}
+ 800317c:	f3c1 1340 	ubfx	r3, r1, #5, #1
+ 8003180:	bf0c      	ite	eq
+ 8003182:	2492      	moveq	r4, #146	; 0x92
+ 8003184:	24d2      	movne	r4, #210	; 0xd2
+ 8003186:	f011 0f40 	tst.w	r1, #64	; 0x40
+ 800318a:	bf0c      	ite	eq
+ 800318c:	2200      	moveq	r2, #0
+ 800318e:	2208      	movne	r2, #8
+ 8003190:	4323      	orrs	r3, r4
+ 8003192:	4313      	orrs	r3, r2
+ 8003194:	f011 0f10 	tst.w	r1, #16
+ 8003198:	7003      	strb	r3, [r0, #0]
+ 800319a:	bf0c      	ite	eq
+ 800319c:	2349      	moveq	r3, #73	; 0x49
+ 800319e:	2369      	movne	r3, #105	; 0x69
+ 80031a0:	f011 0f08 	tst.w	r1, #8
+ 80031a4:	bf0c      	ite	eq
+ 80031a6:	2200      	moveq	r2, #0
+ 80031a8:	2204      	movne	r2, #4
+ 80031aa:	4313      	orrs	r3, r2
+ 80031ac:	f011 0f04 	tst.w	r1, #4
+ 80031b0:	7043      	strb	r3, [r0, #1]
+ 80031b2:	bf0c      	ite	eq
+ 80031b4:	2324      	moveq	r3, #36	; 0x24
+ 80031b6:	23a4      	movne	r3, #164	; 0xa4
+ 80031b8:	f011 0f02 	tst.w	r1, #2
+ 80031bc:	bf0c      	ite	eq
+ 80031be:	2200      	moveq	r2, #0
+ 80031c0:	2210      	movne	r2, #16
+ 80031c2:	f011 0f01 	tst.w	r1, #1
+ 80031c6:	ea42 0303 	orr.w	r3, r2, r3
+ 80031ca:	bf0c      	ite	eq
+ 80031cc:	2200      	moveq	r2, #0
+ 80031ce:	2202      	movne	r2, #2
+ 80031d0:	4313      	orrs	r3, r2
+ 80031d2:	7083      	strb	r3, [r0, #2]
+ 80031d4:	bd10      	pop	{r4, pc}
+*/

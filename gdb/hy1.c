@@ -20,13 +20,21 @@
 
 void ledstrip_bounce(int pixel);
 void ledstrip_progress(uint32_t scale0, uint32_t value);
+
+int animation_ms;
+DEF_COMMAND(animation) {
+    animation_ms = command_stack_pop();
+}
+
 void animation_poll(void) {
+    if (!animation_ms) return;
+
     static uint32_t timer;
     const uint32_t scale = 32;
     static int32_t value;
     static int dir = 1;
     (void)scale;
-    MS_PERIODIC(timer, 20) {
+    MS_PERIODIC(timer, animation_ms) {
         // ledstrip_progress(scale, value);
         ledstrip_bounce(value);
         if (value >= 31) {
@@ -41,7 +49,7 @@ void animation_poll(void) {
 
 instance_status_t app_init(instance_init_t *i) {
     INSTANCE_NEED(i, &console, &ledstrip);
-    //_service.add(animation_poll);
+    _service.add(animation_poll);
     return 0;
 }
 DEF_INSTANCE(app);

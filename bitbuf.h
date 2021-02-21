@@ -47,9 +47,9 @@ static inline uint32_t bitbuf_close(struct bitbuf *b) {
 static inline void bitbuf_write(struct bitbuf *b, uint32_t bitval) {
     /* Precondition is that there is room in the shift register. */
     b->shiftreg = (b->shiftreg << 1) | bitval;
-    uint32_t nbyte = b->count / 8;
     uint32_t nbit  = b->count % 8;
     if (nbit == 7) {
+        uint32_t nbyte = b->count / 8;
         b->buf[nbyte] = b->shiftreg;
     }
     b->count++;
