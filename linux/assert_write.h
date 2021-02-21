@@ -2,6 +2,7 @@
 #define ASSERT_WRITE_H
 
 #include "macros.h"
+#include <stdint.h>
 
 static inline void assert_write(int fd, const uint8_t *buf, size_t len) {
     size_t written = 0;
