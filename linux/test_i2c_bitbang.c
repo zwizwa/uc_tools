@@ -7,81 +7,112 @@
 #include <stdint.h>
 #include "macros.h"
 
-#if 0
-#include "info_null.c"
-#else
-uint8_t byte_count;
-int info_bytes(void) { return 1; }
+/* mod_i2c_info uses these. */
+uint8_t info_byte_count;
+int info_bytes(void) { return info_byte_count; }
 int info_read(uint8_t *buf, uint32_t len) {
-    for (uint32_t i=0; i<len; i++) {
-        buf[i] = byte_count++;
+    uint32_t i=0;
+    for(;;) {
+        if (i >= len) break;
+        if (!info_byte_count) break;
+        buf[i++] = info_byte_count--;
     }
-    return len;
+    return i;
 }
+#define INFOF_H
 
-#endif
-
-
-void i2c_write_sda(int bitval);
-void i2c_write_scl(int bitval);
-int i2c_read_sda(void);
-int i2c_read_scl(void);
-
-void notify(void);
 uint32_t cycle_counter_;
 uint32_t cycle_counter() {
     return cycle_counter_;
 }
+/* Note that cycle_counter_expired() uses strict comparison.  See
+   comment in that file.  To move past the timeout on the next tick of
+   I2C_DELAY, we need to advance one more. */
+
 void cycle_counter_next(void) {
-    cycle_counter_++;
+    cycle_counter_ += 1 + I2C_HALF_PERIOD_TICKS;
 }
-// FIXME: these will eventually be platform-independent, so move them up
+
+
+
+/* Note that simulating the wire-and requires some effort.
+
+   We need to keep track of the output state of each of the I2C ports,
+   and combine the values on every read. */
+
+struct i2c_ports {
+    uint8_t m, s;
+} i2c_ports;
+void i2c_ports_init(struct i2c_ports *p) {
+    // Both high impedance.
+    p->m = 0b11;
+    p->s = 0b11;
+}
+
+int i2c_read_bus(void) {
+    return i2c_ports.m & i2c_ports.s;
+}
+void i2c_write_port(uint8_t *port, uint8_t mask, int bitval) {
+    *port &= ~mask;
+    if (bitval) *port |= mask;
+}
+int i2c_read_sda(void);
+int i2c_read_scl(void);
+
+/* Tracker / slave. */
+#define i2c_write_sda(bitval)  i2c_write_port(&i2c_ports.s, I2C_TRACK_SDA, bitval)
+#define i2c_write_scl(bitval)  i2c_write_port(&i2c_ports.s, I2C_TRACK_SCL, bitval)
+#include "gdb/mod_i2c_track.c"
+#undef  i2c_write_sda
+#undef  i2c_write_scl
+
+/* Master impl + info packet write. */
+#define i2c_write_sda(bitval)  i2c_write_port(&i2c_ports.m, I2C_TRACK_SDA, bitval)
+#define i2c_write_scl(bitval)  i2c_write_port(&i2c_ports.m, I2C_TRACK_SCL, bitval)
 #include "gdb/mod_i2c_bitbang.c"
 #include "gdb/mod_i2c_info.c"
-#include "gdb/mod_i2c_track.c"
-
-struct i2c_track i2c_track;
-struct i2c_info  i2c_info;
-
-void i2c_write_sda(int bitval) {
-    i2c_track.bus &= ~I2C_TRACK_SDA;
-    if (bitval) i2c_track.bus |= I2C_TRACK_SDA;
-    notify();
-}
-void i2c_write_scl(int bitval) {
-    i2c_track.bus &= ~I2C_TRACK_SCL;
-    if (bitval) i2c_track.bus |= I2C_TRACK_SCL;
-    notify();
-}
+#undef  i2c_write_sda
+#undef  i2c_write_scl
 
 int i2c_read_sda(void) {
-    return !!(i2c_track.bus & I2C_TRACK_SDA);
+    return !!(i2c_read_bus() & I2C_TRACK_SDA);
 }
 int i2c_read_scl(void) {
-    return !!(i2c_track.bus & I2C_TRACK_SCL);
+    return !!(i2c_read_bus() & I2C_TRACK_SCL);
 }
 
-void notify(void) {
-}
 
+
+/* Logging:
+
+   "t:" indicates state of bus right after running the master, and
+   before running the slave. */
 
 #include "macros.h"
 int main(void) {
+    struct i2c_track i2c_track = {};
+    struct i2c_info  i2c_info = {};
+
+    i2c_ports_init(&i2c_ports);
     i2c_track_init(&i2c_track);
     LOG("test: %s\n", __FILE__);
-    i2c_info_init(&i2c_info, 10);
-    LOG_I2C("C D\n---\n");
-    for(;;) {
-        sm_status_t status1 = i2c_info_tick(&i2c_info);
-        LOG_I2C("%d %d ", i2c_read_scl(), i2c_read_sda());
-        sm_status_t status2 = i2c_track_tick(&i2c_track);
-        ASSERT(SM_WAITING == status2);
+    //LOG_I2C("t: C D\nt: ---\n");
+    info_byte_count = 0xff;
 
-        if (SM_WAITING != status1) break;
-        LOG_I2C("\n");
+    for (int i=0; i<2; i++) {
+        i2c_info_init(&i2c_info, 10);
+        for(;;) {
+            sm_status_t status1 = i2c_info_tick(&i2c_info);
+            i2c_track.bus = i2c_read_bus();
+            //LOG_I2C("t: %d %d\n", i2c_read_scl(), i2c_read_sda());
+            sm_status_t status2 = i2c_track_tick(&i2c_track);
+            ASSERT(SM_WAITING == status2);
 
-        ASSERT(cycle_counter() < 100000); // Infinite loop guard
-        cycle_counter_next();
+            if (SM_WAITING != status1) break;
+
+            ASSERT(cycle_counter() < 1000); // Infinite loop guard
+            cycle_counter_next();
+        }
     }
     return 0;
 }

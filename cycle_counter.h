@@ -73,6 +73,11 @@ static inline int32_t cycle_counter_diff(uint32_t expiration_time, uint32_t cc_c
 static inline int32_t cycle_counter_remaining(uint32_t expiration_time) {
     return cycle_counter_diff(expiration_time, cycle_counter());
 }
+/* Note that =< 0 might be better.  In simulation I found that future
+   time +1 expires at future time +2.  It is probably ok to change
+   this, but it needs a code review to see if there are no
+   pathological cases.  In general it seems that actual offset in
+   ticks is quite high so one less shouldn't break anything. */
 static inline int32_t cycle_counter_expired(uint32_t expiration_time) {
     return cycle_counter_remaining(expiration_time) < 0;
 }

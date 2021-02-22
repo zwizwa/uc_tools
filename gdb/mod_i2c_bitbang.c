@@ -28,8 +28,11 @@
 
 #define I2C_DEBUG_SPACING 0
 
-#define I2C_LOG LOG
-//#define I2C_LOG(...)
+/* By default this is off.  It is defined e.g. in the host and target
+   test applications or can be enabled for ad-hoc debugging. */
+#ifndef I2C_LOG
+#define I2C_LOG(...)
+#endif
 
 /* Set default clock rate to 100kHz maximum.  If this runs in a main
    polling loop, the effective clock rate is possibly lower.  E.g. the
@@ -150,6 +153,12 @@ static inline int i2c_read_scl(void) {
         I2C_WAIT_STRETCH(s);                    \
     }
 
+/* FIXME: The deblock warning events should be logged or at least
+   counted.  At the moment it is not clear how to integrate warnings
+   into the rest of the application framework.  Maybe treat deblog as
+   an error on start that is upstream interpreted as warning: can
+   continue, but log. */
+
 #define I2C_DEBLOCK(s) {                                                \
         for(s->clock=0; s->clock<16; s->clock++) {                      \
             int sda1 = i2c_read_sda();                                  \
@@ -159,8 +168,8 @@ static inline int i2c_read_scl(void) {
             i2c_write_scl(1); I2C_DELAY(s);  /* no stretch */           \
         }                                                               \
         if (s->clock) {                                                 \
-            /*I2C_LOG("\nWARNING: deblock clocks=%d\n", i);*/             \
-            I2C_LOG(" (%d)", s->clock);                                   \
+            I2C_LOG("m: WARNING: deblock clocks=%d\n", i);              \
+            /* LOG(" (%d)", s->clock); */                               \
         }                                                               \
     }
 

@@ -36,7 +36,7 @@ sm_status_t i2c_info_tick(struct i2c_info *s) {
     SM_RESUME(s);
     SM_SUB_CATCH0(s, i2c_start);
     if (SM_SUB_CATCH(s, i2c_send_byte, I2C_INFO_ADDR << 1)) {
-        LOG_I2C(" nack@start");
+        LOG_I2C("l: nack@start\n");
         goto done;
     }
     // FIXME: should this throttle? also, watch out for log feedback
@@ -44,7 +44,7 @@ sm_status_t i2c_info_tick(struct i2c_info *s) {
         uint8_t byte;
         info_read(&byte, 1);
         if (SM_SUB_CATCH(s, i2c_send_byte, byte)) {
-            LOG_I2C(" nack@%d", s->left);
+            LOG_I2C("l: nack@%d\n", s->left);
             goto done;
         }
     }
