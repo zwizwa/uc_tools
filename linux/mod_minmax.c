@@ -54,7 +54,8 @@ intptr_t generate_minmax(const char *file, const char *dir) {
 
         off_t nb_at_level = mipmap_nb_at_level(&mipmap, level);
         off_t bytes_at_level = nb_at_level * sizeof(struct minmax);
-        struct minmax *mm = mmap_file_open(&mipmap.level[level], tmp, bytes_at_level);
+        struct minmax *mm = mmap_file_open(
+            &mipmap.level[level], tmp, bytes_at_level);
 
         if (level == 0) {
             /* All the rest can be dervied from this. */
@@ -91,10 +92,11 @@ void cursor_init(struct cursor *c) {
 /* Return value is actual level: we decide whether it makes sense to
    zoom out further.  The buffer is always valid.  Off-edge values are
    filled with min/max at zero. */
-int16_t snapshot_minmax(struct minmax *buf,  // Holds win_w elements
-                        int16_t win_w,       // Window width
-                        int16_t win_x,       // Mouse pointer offset
-                        int16_t level_inc) { // Increment +1,-1
+int16_t snapshot_window(struct minmax *buf,   // Holds win_w elements
+                        int16_t win_w,        // Window width
+                        int16_t win_h,        // Window height
+                        int16_t win_x,        // Mouse pointer offset
+                        int16_t level_inc) {  // Increment +1,-1
 
     /* Find the new point by converting pixels to point offset, which
        is stored as a level 0 offset. */
@@ -115,20 +117,28 @@ int16_t snapshot_minmax(struct minmax *buf,  // Holds win_w elements
     {
         /* Current level coordinate of left window edge. */
         off_t left_abs  = (cursor.point >> cursor.level) - win_x;
+
         /* Number of samples at this level, for bounds checking. */
         off_t nb = mipmap_nb_at_level(&mipmap, cursor.level);
-        struct minmax zero = {};
+
+        /* Fill in the window in window coordinates, with out-of-bound
+           represented as midline. */
+        intptr_t o = win_h / 2;
+        intptr_t s = 0xFFFF / win_h;
+
+        struct minmax zero = { .min = o, .max = o};
         struct minmax *mm = mipmap.level[cursor.level].buf;
-        /* Fill in the window from actual samples, or zero when out-of-bound. */
         for(off_t rel=0; rel<win_w; rel++) {
             off_t abs = left_abs + rel;
             if ((abs >= 0) && (abs < nb)) {
-                buf[rel] = mm[abs];
+                buf[rel].min = o - mm[abs].min / s;
+                buf[rel].max = o - mm[abs].max / s;
             }
             else {
                 buf[rel] = zero;
             }
         }
+        LOG("left_abs = %d\n", left_abs);
     }
 
     return cursor.level;

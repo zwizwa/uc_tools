@@ -17,12 +17,12 @@
 #define DEF_MAP DEF_TAG_U32_CONST_MAP_HANDLE
 
 int op1(struct tag_u32 *req) {
-    TAG_U32_UNPACK(req, 0, m, win_w, win_x, level_inc) {
-        ASSERT(m->win_w < 10000); // arbitrary
+    TAG_U32_UNPACK(req, 0, m, win_w, win_h, win_x, level_inc) {
+        ASSERT(m->win_w < 10000); // bug guard
         ASSERT(m->win_x < m->win_w);
         struct minmax buf[m->win_w];
-        int16_t new_level =
-            snapshot_minmax(buf, m->win_w, m->win_x, m->level_inc);
+        int16_t new_level = snapshot_window(
+            buf, m->win_w, m->win_h, m->win_x, m->level_inc);
         LOG("new_level = %d\n", new_level);
         send_reply_tag_u32_status(req, 0, (const uint8_t*)buf, sizeof(buf));
         return 0;
@@ -32,7 +32,7 @@ int op1(struct tag_u32 *req) {
 
 DEF_MAP(
     map_cmd,
-    {"window", "cmd", op1, 3}
+    {"window", "cmd", op1, 4}
     )
 
 DEF_MAP(
@@ -53,8 +53,8 @@ int handle_tag_u32(struct tag_u32 *req) {
 
 int main(void) {
     generate_minmax(
-        //"/tmp/test.raw", // large
-        "/tmp/test.bin", // small
+        "/tmp/test.raw", // large
+        //"/tmp/test.bin", // small
         "/tmp/minmax");
     return tag_u32_loop();
 }
