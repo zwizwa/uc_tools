@@ -1,8 +1,12 @@
 #ifndef MOD_MINMAX
 #define MOD_MINMAX
 
+#include "mmap_file.h"
+
+#include <stdint.h>
 
 #define NS(name) minmax##name
+typedef int16_t NS(_t);
 #include "ns_minmax.h"
 #undef NS
 

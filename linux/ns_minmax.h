@@ -5,8 +5,11 @@
 
 #include "mmap_file.h"
 
-/* Basic data type. */
-typedef int16_t NS(_t);
+//#define MINMAX_LOG LOG
+#ifndef MINMAX_LOG
+#define MINMAX_LOG(...)
+#endif
+
 struct NS(_minmax) { NS(_t) min, max; };
 static inline NS(_t) NS(_max)(NS(_t) a, NS(_t) b) { return a > b ? a : b; }
 static inline NS(_t) NS(_min)(NS(_t) a, NS(_t) b) { return a < b ? a : b; }
@@ -21,12 +24,13 @@ static inline NS(_t) NS(_min)(NS(_t) a, NS(_t) b) { return a < b ? a : b; }
    - Stick to int16_t as data type.
 */
 
-#define NB_LEVELS 20
+#define LEVEL_ENDX 20
 struct NS(_map) {
+    uintptr_t level_start;
     /* Original file is mapped at 0.
        The min/max levels are mapped starting at 1.
        This keeps the nb_at_level invariant. */
-    struct mmap_file level[NB_LEVELS];
+    struct mmap_file level[LEVEL_ENDX];
 };
 
 static inline NS(_t)* NS(_original)(struct NS(_map) *s) {
@@ -34,26 +38,47 @@ static inline NS(_t)* NS(_original)(struct NS(_map) *s) {
 }
 static inline struct NS(_minmax)* NS(_level)(struct NS(_map) *s, uintptr_t level) {
     ASSERT(level > 0);
-    ASSERT(level < NB_LEVELS);
+    ASSERT(level < LEVEL_ENDX);
     return s->level[level].buf;
 }
 /* Always get the array bounds right to make refactoring simpler.
    This is used for allocation and for array dereference. */
 static inline off_t NS(_nb_at_level)(struct NS(_map) *s, uintptr_t level) {
-    ASSERT(level < NB_LEVELS);
     off_t nb_in = s->level[0].size / sizeof(NS(_t));
     return nb_in >> level;
 }
 
-static inline intptr_t NS(_open)(struct NS(_map) *s, const char *file) {
+/* Compute directly */
+static inline struct NS(_minmax) NS(_compute)(NS(_t) *orig, off_t abs, uintptr_t level) {
+
+    /* Compute the original coordinates from abs.  Because abs is
+       within bounds and each level>0 sample has full parent extent,
+       the original coordinates are as well. */
+    NS(_t) *o      = &orig[abs     << level];
+    NS(_t) *o_endx = &orig[(abs+1) << level];
+    struct NS(_minmax) mm = {
+        .min = *o,
+        .max = *o,
+    };
+    while(++o < o_endx) {
+        mm.min = NS(_min)(mm.min, *o);
+        mm.max = NS(_max)(mm.max, *o);
+    }
+    return mm;
+}
+static inline intptr_t NS(_open)(struct NS(_map) *s, const char *file,
+                                 uintptr_t level_start) {
+    ASSERT(level_start > 1);
+    ASSERT(level_start < LEVEL_ENDX);
     memset(s,0,sizeof(*s));
+    s->level_start = level_start;
     mmap_file_open_ro(&s->level[0], file);
 
     char tmp[1024];
     snprintf(tmp, sizeof(tmp), "mkdir -p '%s.d'\n", file);
     system(tmp);
 
-    for (int level=1; level<NB_LEVELS; level++) {
+    for (int level=s->level_start; level<LEVEL_ENDX; level++) {
 
         snprintf(tmp, sizeof(tmp), "%s.d/%02d.minmax", file, level);
 
@@ -62,19 +87,16 @@ static inline intptr_t NS(_open)(struct NS(_map) *s, const char *file) {
         mmap_file_open(&s->level[level], tmp, bytes_at_level);
         struct NS(_minmax) *mm = NS(_level)(s, level);
 
-        if (level == 1) {
-            NS(_t) *in = NS(_original)(s);
+        if (level == s->level_start) {
+            NS(_t) *orig = NS(_original)(s);
 
-            /* All the rest can be derived from this. */
-
-            /* First level is initialized from file. */
+            /* The first level needs to be computed from the original. */
             for (off_t i=0; i<nb_at_level; i++) {
-                mm[i].min = NS(_min)(in[2*i], in[2*i+1]);
-                mm[i].max = NS(_max)(in[2*i], in[2*i+1]);
+                mm[i] = NS(_compute)(orig, i, level);
             }
         }
         else {
-            /* Other levels use the previous minmaxmap. */
+            /* Other levels are computed recursively. */
             struct NS(_minmax) *mm1 = NS(_level)(s, level-1);
             for (off_t i=0; i<nb_at_level; i++) {
                 mm[i].min = NS(_min)(mm1[2*i].min, mm1[2*i+1].min);
@@ -97,6 +119,8 @@ struct NS(_cursor) {
 void NS(_cursor_init)(struct NS(_cursor) *c) {
     ZERO(c);
 }
+
+
 
 /* Return value is actual level: we decide whether it makes sense to
    zoom out further.  The buffer is always valid.  Off-edge values are
@@ -121,7 +145,7 @@ int16_t NS(_cursor_zoom)(
     {
         int16_t next_level = c->level + level_inc;
         if (next_level < 0) next_level = 0;
-        if (next_level >= NB_LEVELS) next_level = NB_LEVELS-1;
+        if (next_level >= LEVEL_ENDX) next_level = LEVEL_ENDX-1;
         c->level = next_level;
     }
 
@@ -139,16 +163,18 @@ int16_t NS(_cursor_zoom)(
         intptr_t sc = 0xFFFF / win_h;
 
         struct NS(_minmax) zero = { .min = of, .max = of};
-        if (c->level == 0) {
-            /* FIXME: Extend this to the finest levels, so they do not
-               need to be stored on disk. */
-            NS(_t) *data = NS(_original)(s);
+        if (c->level < s->level_start) {
+            MINMAX_LOG("compute %d\n", c->level);
+            /* For the finest level we do not keep minmax data, as the
+               storage requirements are large, and it can just as well
+               be recomputed. */
+            NS(_t) *orig = NS(_original)(s);
             for(off_t rel=0; rel<win_w; rel++) {
                 off_t abs = left_abs + rel;
                 if ((abs >= 0) && (abs < nb)) {
-                    buf[rel].min =
-                    buf[rel].max =
-                        of - data[abs] / sc;
+                    struct NS(_minmax) mm = NS(_compute)(orig, abs, c->level);
+                    buf[rel].min = of - mm.min / sc;
+                    buf[rel].max = of - mm.max / sc;
                 }
                 else {
                     buf[rel] = zero;
@@ -156,6 +182,7 @@ int16_t NS(_cursor_zoom)(
             }
         }
         else {
+            MINMAX_LOG("cached %d\n", c->level);
             struct NS(_minmax) *mm = NS(_level)(s, c->level);
             for(off_t rel=0; rel<win_w; rel++) {
                 off_t abs = left_abs + rel;
@@ -168,7 +195,7 @@ int16_t NS(_cursor_zoom)(
                 }
             }
         }
-        LOG("left_abs = %d\n", left_abs);
+        MINMAX_LOG("left_abs = %d\n", left_abs);
     }
 
     return c->level;

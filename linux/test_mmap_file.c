@@ -38,7 +38,7 @@ int main(void) {
 
     struct minmax_map minmax_map;
 
-    minmax_open(&minmax_map, "/tmp/test.raw");
+    minmax_open(&minmax_map, "/tmp/test.raw", 8);
 
     return 0;
 }

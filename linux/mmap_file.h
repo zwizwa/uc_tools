@@ -3,10 +3,14 @@
 
 /* A sane interface for memory-mapped read/write files: growable arrays. */
 
+#define _XOPEN_SOURCE 500 // for ftruncate()
 #define _GNU_SOURCE // for mremap()
 #include "assert_mmap.h"
 #include "assert_write.h"
 #include <stdint.h>
+#include <unistd.h>
+#include <sys/types.h>
+
 
 struct mmap_file {
     void *buf;
