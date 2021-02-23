@@ -36,7 +36,9 @@ int main(void) {
     test();
     test();
 
-    generate_minmax("/tmp/test.raw", "/tmp/minmax");
+    struct minmax_map minmax_map;
+
+    minmax_open(&minmax_map, "/tmp/test.raw");
 
     return 0;
 }

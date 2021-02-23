@@ -46,9 +46,13 @@ static inline off_t mmap_file_grow__(struct mmap_file *ref, off_t size) {
 
         off_t old_size = ref->size;
         MMAP_FILE_LOG("growing: %d -> %d\n", old_size, size);
+#if 0
         ASSERT_ERRNO(lseek(ref->fd, size-1, SEEK_SET));
         uint8_t byte = 0;
         assert_write(ref->fd, &byte, 1);
+#else
+        ftruncate(ref->fd, size);
+#endif
         ref->size = size;
         return old_size;
     }

@@ -111,8 +111,8 @@ uint32_t i2c_track_tick(struct i2c_track *s) {
                     else if (s->byte == 0) {
                         // Inaddress receive mode, we only acknowledge
                         // if the address matches.
-                        uint16_t transmit = s->sreg & 1;
-                        uint16_t addr     = (s->sreg >> 1) & 0x7f;
+                        uint16_t receive = s->sreg & 1;
+                        uint16_t addr    = (s->sreg >> 1) & 0x7f;
                         LOG_I2C("addr = 0x%x\n", addr);
                         if (0x10 == addr) { // FIXME
                             i2c_write_sda(0); // ack
@@ -120,7 +120,7 @@ uint32_t i2c_track_tick(struct i2c_track *s) {
                         else {
                             i2c_write_sda(1); // nack
                         }
-                        (void)transmit; // FIXME
+                        (void)receive; // FIXME
                     }
                     else {
                         // In data receive mode there are a number of
