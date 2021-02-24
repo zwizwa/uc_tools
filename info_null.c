@@ -38,8 +38,8 @@ KEEP uint32_t info_bytes() {
 */
 
 /* Zero means default behavior: log everything. */
-uint32_t info_level_threshold = 0;
-uint32_t info_level_current = 0;
+int32_t info_level_threshold = 0;
+int32_t info_level_current = 0;
 
 uint32_t info_overflow_errors = 0;
 KEEP int info_putchar_inner(int c) {
