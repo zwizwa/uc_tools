@@ -17,8 +17,8 @@
 
 /* The intention here is to create trace logs that interleave properly
    with the test driver. */
-#ifndef LOG_I2C
-#define LOG_I2C(...)
+#ifndef I2C_LOG
+#define I2C_LOG(...)
 #endif
 
 // 3.0 Abstract machine
@@ -86,7 +86,7 @@ uint32_t i2c_track_tick(struct i2c_track *s) {
     for(;;) {
         I2C_WAIT_C1D0_START(s);
         /* Start is defined as SDA 1->0 when SCL == 1. */
-        LOG_I2C("s: start\n");
+        I2C_LOG("s: start\n");
 
         /* The first byte is address byte, we're always in read mode
            and will acknowledge. */
@@ -113,7 +113,7 @@ uint32_t i2c_track_tick(struct i2c_track *s) {
                         // if the address matches.
                         uint16_t receive = s->sreg & 1;
                         uint16_t addr    = (s->sreg >> 1) & 0x7f;
-                        LOG_I2C("addr = 0x%x\n", addr);
+                        I2C_LOG("addr = 0x%02x\n", addr);
                         if (0x10 == addr) { // FIXME
                             i2c_write_sda(0); // ack
                         }
@@ -143,7 +143,7 @@ uint32_t i2c_track_tick(struct i2c_track *s) {
                 I2C_WAIT_C1Dx_HI(s); // when C=1 data is stable
                 s->sreg = (s->bus & 1) | (s->sreg << 1);
 
-                // LOG_I2C("s: b%d=%d\n", s->bit, s->bus & 1);
+                // I2C_LOG("s: b%d=%d\n", s->bit, s->bus & 1);
 
                 // To distinguish between normal clock transition and
                 // STOP, we wait for a change and inspect it.
@@ -155,7 +155,7 @@ uint32_t i2c_track_tick(struct i2c_track *s) {
                 // middle of a byte.
                 if ((s->bus0 == 0b10) &&
                     (s->bus  == 0b11)) {
-                    LOG_I2C("s: stop\n");
+                    I2C_LOG("s: stop\n");
                     goto stop;
                 }
                 // SCL 1->0 with SDA=dontcare indicates a normal clock
@@ -166,7 +166,7 @@ uint32_t i2c_track_tick(struct i2c_track *s) {
             uint16_t byte = (s->sreg >> 1) & 0xFF;
             uint16_t ack  = s->sreg & 1;
             (void)ack;
-            LOG_I2C("s: 0x%x %d\n", byte, ack);
+            I2C_LOG("s: 0x%02x %d\n", byte, ack);
             // Keep track of bytes.
             if (s->p) pbuf_put(s->p, byte);
         }

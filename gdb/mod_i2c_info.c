@@ -23,8 +23,8 @@ void i2c_info_init(struct i2c_info *s, uint32_t left) {
 // what to pick here?
 #define I2C_INFO_ADDR 0x10
 
-#ifndef LOG_I2C
-#define LOG_I2C(...)
+#ifndef I2C_LOG
+#define I2C_LOG(...)
 #endif
 
 /* This intentionally does not produce errors.  It logs only when
@@ -36,7 +36,7 @@ sm_status_t i2c_info_tick(struct i2c_info *s) {
     SM_RESUME(s);
     SM_SUB_CATCH0(s, i2c_start);
     if (SM_SUB_CATCH(s, i2c_send_byte, I2C_INFO_ADDR << 1)) {
-        LOG_I2C("l: nack@start\n");
+        I2C_LOG("l: nack@start\n");
         goto done;
     }
     // FIXME: should this throttle? also, watch out for log feedback
@@ -44,7 +44,7 @@ sm_status_t i2c_info_tick(struct i2c_info *s) {
         uint8_t byte;
         info_read(&byte, 1);
         if (SM_SUB_CATCH(s, i2c_send_byte, byte)) {
-            LOG_I2C("l: nack@%d\n", s->left);
+            I2C_LOG("l: nack@%d\n", s->left);
             goto done;
         }
     }

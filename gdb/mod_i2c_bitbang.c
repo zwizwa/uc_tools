@@ -168,7 +168,7 @@ static inline int i2c_read_scl(void) {
             i2c_write_scl(1); I2C_DELAY(s);  /* no stretch */           \
         }                                                               \
         if (s->clock) {                                                 \
-            I2C_LOG("m: WARNING: deblock clocks=%d\n", i);              \
+            I2C_LOG("m: WARNING: deblock clocks=%d\n", s->clock);       \
             /* LOG(" (%d)", s->clock); */                               \
         }                                                               \
     }

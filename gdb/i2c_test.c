@@ -4,6 +4,8 @@
 
 */
 
+#define I2C_LOG LOG
+
 #define PRODUCT "i2c_test"
 #include "mod_lab.c"
 #include "mod_console.c"
