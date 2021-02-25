@@ -5,6 +5,7 @@
    Same interface as mod_pdm.c, different implementation. */
 
 
+#define XORSHIFT_STATIC 1
 #include "xorshift.h"
 #include "pdm.h"
 #include "fixedpoint.h"

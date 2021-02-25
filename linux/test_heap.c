@@ -75,7 +75,7 @@ typedef struct ind_heap ind_heap_heap_t;
 #undef NS
 
 
-
+#define XORSHIFT_STATIC 1
 #include "xorshift.h"
 
 void log_arr(uint32_t *arr, uint32_t nb) {

@@ -29,6 +29,7 @@ void to_hex_u32(char *buf, uint32_t val) {
         buf[i] = hex[0xF & (val >> ((7-i)*4))];
     }
 }
+#define XORSHIFT_STATIC 1
 #include "xorshift.h"
 
 /* TODO: Generate a display menu on the fly from a pointer into a data
