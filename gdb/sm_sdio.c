@@ -91,7 +91,9 @@ uint32_t sm_sdio_data_tick(struct sm_sdio_data *sm) {
                logical data block (2K).  The header is in the first
                one only. */
             // FIXME: messy -- move this into sdio_block_stream
-            sm->ctx->finalize(sm->ctx->finalize_ctx, buf);
+            if (sm->ctx->finalize) {
+                sm->ctx->finalize(sm->ctx->finalize_ctx, buf);
+            }
         }
 
         hw_sdio_send_unit(buf, sm->logsize);
@@ -120,23 +122,23 @@ void sm_sdio_write_cluster_init(struct sm_sdio_write_cluster *sm,
     sm->lba = lba;
 }
 
-
 uint32_t sm_sdio_write_cluster_tick(struct sm_sdio_write_cluster *sm) {
+    struct hw_sdio_card *sd = sm->ctx->device->impl.sd;
+
     SM_RESUME(sm);
 
-    if (!hw_sdio_card_ccs()) {
+    if (!hw_sdio_card_ccs(sd)) {
         SM_CMD(sm, sm->ctx, SDIO_CMD_SET_BLOCKLEN, 1 << sm->logsize);
     }
     SM_CMD (sm, sm->ctx, SDIO_CMD_APP_CMD, sm->ctx->device->impl.sd->rca << 16);
     SM_CMD (sm, sm->ctx, SDIO_ACMD_SET_WR_BLK_ERASE_COUNT, sm->nb_blocks);
-    SM_CMD (sm, sm->ctx, SDIO_CMD_WRITE_MULTIPLE_BLOCK, hw_sdio_card_lba_to_addr(sm->lba));
+    SM_CMD (sm, sm->ctx, SDIO_CMD_WRITE_MULTIPLE_BLOCK, hw_sdio_card_lba_to_addr(sd, sm->lba));
     SM_DATA(sm, sm->ctx, sm->nb_blocks, sm->logsize);
     SM_CMD (sm, sm->ctx, SDIO_CMD_STOP_TRANSMISSION, 0);
 
   halt:
     SM_HALT(sm);
 }
-
 
 void sm_sdio_erase_init(struct sm_sdio_erase *sm,
                         struct device *device,
@@ -150,6 +152,8 @@ void sm_sdio_erase_init(struct sm_sdio_erase *sm,
     sm->cluster = lba_cluster;
 }
 uint32_t sm_sdio_erase_tick(struct sm_sdio_erase *sm) {
+    struct hw_sdio_card *sd = sm->ctx.device->impl.sd;
+
     SM_RESUME(sm);
     if (!sm->cluster) goto halt; // FIXME: this is to boot in halt
     infof("sm_sdio_erase: %d blocks at LBA %d\n", sm->endx - sm->cur, sm->cur);
@@ -157,8 +161,8 @@ uint32_t sm_sdio_erase_tick(struct sm_sdio_erase *sm) {
     /* Erase card before writing. */
     for(; sm->cur < sm->endx; sm->cur += sm->cluster) {
         // infof("sm_sdio_erase: %x/%x\n", (int)sm->cur, (int)sm->endx);
-        SM_CMD(sm, &sm->ctx, SDIO_CMD_ERASE_WR_BLK_START_ADDR, hw_sdio_card_lba_to_addr(sm->cur));
-        SM_CMD(sm, &sm->ctx, SDIO_CMD_ERASE_WR_BLK_END_ADDR,   hw_sdio_card_lba_to_addr(sm->cur + sm->cluster - 1));
+        SM_CMD(sm, &sm->ctx, SDIO_CMD_ERASE_WR_BLK_START_ADDR, hw_sdio_card_lba_to_addr(sd, sm->cur));
+        SM_CMD(sm, &sm->ctx, SDIO_CMD_ERASE_WR_BLK_END_ADDR,   hw_sdio_card_lba_to_addr(sd, sm->cur + sm->cluster - 1));
         SM_CMD(sm, &sm->ctx, SDIO_CMD_ERASE, 0);
         SM_WAIT(sm, hw_sdio_ready());
     }

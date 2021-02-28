@@ -37,6 +37,7 @@ uint32_t dtimer_init = 0x1000000;
 
 #ifndef LOG_SDIO
 #define LOG_SDIO(...)
+//#define LOG_SDIO LOG
 #endif
 
 
@@ -134,7 +135,7 @@ uint32_t hw_sdio_command_read_data(struct hw_sdio_card *sd,
 }
 
 uint32_t hw_sdio_read_unit(struct hw_sdio_card *sd, uint32_t lba, uint8_t *buf) {
-    uint32_t addr = hw_sdio_card_lba_to_addr(lba);
+    uint32_t addr = hw_sdio_card_lba_to_addr(sd, lba);
 
     if ((((uint32_t)buf) & 3) != 0) return HW_SDIO_ERROR_ALIGN;
     uint32_t *buf32 = (void*)buf; // buffer should be aligned
@@ -186,7 +187,7 @@ void hw_sdio_reset(int on) {
 
 // Use the write multiple state machine for high performance.
 uint32_t hw_sdio_write_unit(struct hw_sdio_card *sd, uint32_t lba, uint8_t *buf) {
-    uint32_t addr = hw_sdio_card_lba_to_addr(lba);
+    uint32_t addr = hw_sdio_card_lba_to_addr(sd, lba);
 
     if ((((uint32_t)buf) & 3) != 0) return HW_SDIO_ERROR_ALIGN;
     uint32_t *buf32 = (void*)buf;
@@ -239,8 +240,8 @@ uint32_t hw_sdio_read_ssr(struct hw_sdio_card *sd) {
 }
 
 uint32_t hw_sdio_erase(struct hw_sdio_card *sd, uint32_t start_lba, uint32_t end_lba) {
-    uint32_t start_addr = hw_sdio_card_lba_to_addr(start_lba);
-    uint32_t end_addr   = hw_sdio_card_lba_to_addr(end_lba);
+    uint32_t start_addr = hw_sdio_card_lba_to_addr(sd, start_lba);
+    uint32_t end_addr   = hw_sdio_card_lba_to_addr(sd, end_lba);
     TRY(hw_sdio_command(sd, SDIO_CMD_ERASE_WR_BLK_START_ADDR, start_addr));
     TRY(hw_sdio_command(sd, SDIO_CMD_ERASE_WR_BLK_END_ADDR, end_addr));
     TRY(hw_sdio_command(sd, SDIO_CMD_ERASE, 0));
@@ -318,16 +319,16 @@ uint32_t hw_sdio_open(struct hw_sdio_card *sd) {
     //hw_sdio_set_bus(HW_SDIO_4BIT, 24000000); // Doesn't work on powermcu board: DCRCFAIL
 
     sd->nb_units = 0;
-    switch (hw_sdio_csd_structure()) {
+    switch (hw_sdio_csd_structure(sd)) {
         // Size encoding depends on CSD structure version, see 5.3.2 CSD Register
     case 0: {
-        uint32_t tmp_reg = ((1 << (hw_sdio_c_size_mult_v1() + 2)) *
-                            (1 <<  hw_sdio_read_bl_len())) >> 9;
-        sd->nb_units = tmp_reg * (hw_sdio_c_size_v1() + 1);
+        uint32_t tmp_reg = ((1 << (hw_sdio_c_size_mult_v1(sd) + 2)) *
+                            (1 <<  hw_sdio_read_bl_len(sd))) >> 9;
+        sd->nb_units = tmp_reg * (hw_sdio_c_size_v1(sd) + 1);
         break;
     }
     case 1:
-        sd->nb_units = (hw_sdio_c_size_v2()+1) << 10;
+        sd->nb_units = (hw_sdio_c_size_v2(sd)+1) << 10;
         break;
     default:
         sd->nb_units = 0; // Bug if its not CSD V1 or V2
@@ -339,7 +340,7 @@ uint32_t hw_sdio_open(struct hw_sdio_card *sd) {
     // if (DEBUG)
     infof("sd: %d MiB (%s)\n",
            (int)sd->nb_units/2048,
-           hw_sdio_card_ccs() ? "SDHC" : "SD"
+           hw_sdio_card_ccs(sd) ? "SDHC" : "SD"
         );
     infof("sd: cid: %08x %08x %08x %08x\n",
           sd->cid[0],

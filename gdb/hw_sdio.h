@@ -274,8 +274,8 @@ void hw_sdio_cmd(uint32_t cmd, uint32_t arg);
 void hw_sdio_send_unit(void *data, uint32_t logsize);
 
 
-/* Only one, so no need to keep referring to it.. */
-extern struct hw_sdio_card sd;
+/* The STM has only one sdio device, so no need to keep referring to it.. */
+// extern struct hw_sdio_card sd;
 extern struct hw_sdio_stats stats;
 
 void hw_sdio_init(void);
@@ -286,13 +286,13 @@ uint32_t hw_sdio_write_unit(struct hw_sdio_card *sd, uint32_t lba, uint8_t *buf)
 uint32_t hw_sdio_erase(struct hw_sdio_card *sd, uint32_t start, uint32_t end);
 uint32_t hw_sdio_select(struct hw_sdio_card *sd, int rca);
 
-INLINE int hw_sdio_card_ccs(void) {
+INLINE int hw_sdio_card_ccs(struct hw_sdio_card *sd) {
     // Card capacity status. Physical layer simplified spec: 5.1 ocr
-    return (sd.ocr & 0x40000000) != 0;
+    return (sd->ocr & 0x40000000) != 0;
 }
 
-INLINE uint32_t hw_sdio_card_lba_to_addr(uint32_t lba) {
-    return hw_sdio_card_ccs() ? lba : lba * SD_UNIT_SIZE;
+INLINE uint32_t hw_sdio_card_lba_to_addr(struct hw_sdio_card *sd, uint32_t lba) {
+    return hw_sdio_card_ccs(sd) ? lba : lba * SD_UNIT_SIZE;
 }
 
 
@@ -302,17 +302,17 @@ INLINE uint32_t hw_sdio_card_lba_to_addr(uint32_t lba) {
  * size calculation.
  */
 
-INLINE uint32_t hw_sdio_csd(uint32_t end, uint32_t start) { return bitslice(sd.csd, end, start); }
-INLINE uint32_t hw_sdio_ssr(uint32_t end, uint32_t start) { return bitslice(sd.ssr, end, start); }
+INLINE uint32_t hw_sdio_csd(struct hw_sdio_card *sd, uint32_t end, uint32_t start) { return bitslice(sd->csd, end, start); }
+INLINE uint32_t hw_sdio_ssr(struct hw_sdio_card *sd, uint32_t end, uint32_t start) { return bitslice(sd->ssr, end, start); }
 
-INLINE int hw_sdio_csd_structure()   { return hw_sdio_csd(127, 126); }
-INLINE int hw_sdio_read_bl_len()     { return hw_sdio_csd( 83,  80); }
-INLINE int hw_sdio_c_size_mult_v1()  { return hw_sdio_csd( 49,  47); }
-INLINE int hw_sdio_c_size_v1()       { return hw_sdio_csd( 73,  62); }
-INLINE int hw_sdio_c_size_v2()       { return hw_sdio_csd( 69,  48); }
+INLINE int hw_sdio_csd_structure(struct hw_sdio_card *sd)   { return hw_sdio_csd(sd, 127, 126); }
+INLINE int hw_sdio_read_bl_len(struct hw_sdio_card *sd)     { return hw_sdio_csd(sd,  83,  80); }
+INLINE int hw_sdio_c_size_mult_v1(struct hw_sdio_card *sd)  { return hw_sdio_csd(sd,  49,  47); }
+INLINE int hw_sdio_c_size_v1(struct hw_sdio_card *sd)       { return hw_sdio_csd(sd,  73,  62); }
+INLINE int hw_sdio_c_size_v2(struct hw_sdio_card *sd)       { return hw_sdio_csd(sd,  69,  48); }
 
-INLINE int hw_sdio_au_size()         { return hw_sdio_ssr( 431, 428); }
-INLINE int hw_sdio_erase_size()      { return hw_sdio_ssr( 423, 408); }
+INLINE int hw_sdio_au_size(struct hw_sdio_card *sd)         { return hw_sdio_ssr(sd,  431, 428); }
+INLINE int hw_sdio_erase_size(struct hw_sdio_card *sd)      { return hw_sdio_ssr(sd,  423, 408); }
 
 #include "sm_sdio.h"
 
