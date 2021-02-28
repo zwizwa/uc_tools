@@ -3,10 +3,15 @@
 
 #include <stdint.h>
 #include <string.h>
+#include <libopencm3/stm32/sdio.h>
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/cm3/nvic.h>
 #include <stdio.h>
+
+#include "hw_sdio.h"
+
+#include "sdio_cmd.h"
 
 #define DEBUG 0
 
@@ -30,20 +35,26 @@ uint32_t dtimer_init = 0x1000000;
    there were level triggered EXTI interrupts.
 */
 
+#ifndef LOG_SDIO
+#define LOG_SDIO(...)
+#endif
+
+
+
 void hw_sdio_cmd(uint32_t cmd, uint32_t arg) {
-    LOG_EMU("hw_sdio_cmd(%d,%d)\n", (int)cmd, (int)arg);
+    LOG_SDIO("hw_sdio_cmd(%d,%d)\n", (int)cmd, (int)arg);
     SDIO_ICR = -1; // ack any pending
     SDIO_ARG = arg;
     SDIO_CMD =
         (SDIO_CMD & ~(0x7FF)) | // save pre-existing state
-        (cmd & SDIO_CMD_CMDINDEX_MSK) |
+        (cmd & SDIO_CMD_CMDINDEX_MASK) |
         SDIO_CMD_CPSMEN |
         SDIO_CMD_WAITRESP_SHORT;
 }
 
 
 void hw_sdio_send_unit(void *data, uint32_t logsize) {
-    LOG_EMU("hw_sdio_send_unit(%08x,%d)\n",(unsigned int)data,(int)logsize);
+    LOG_SDIO("hw_sdio_send_unit(%08x,%d)\n",(unsigned int)data,(int)logsize);
     uint32_t nb_32bit_words = 1 << (logsize - 2);
     hw_sdio_write_unit_dma_init(data, nb_32bit_words);
 
@@ -202,6 +213,14 @@ uint32_t hw_sdio_write_unit(struct hw_sdio_card *sd, uint32_t lba, uint8_t *buf)
 
 
 
+INLINE void swap_buf(uint32_t *buf, uint32_t n) {
+    for (uint32_t i=0; i < n/2; i++) {
+        uint32_t a = buf[i];
+        uint32_t b = buf[n - 1 - i];
+        buf[i] = hw_swap(b);
+        buf[n - 1 - i] = hw_swap(a);
+    }
+}
 
 uint32_t hw_sdio_read_scr(struct hw_sdio_card *sd) {
     TRY(hw_sdio_command(sd, SDIO_CMD_SET_BLOCKLEN, 8));

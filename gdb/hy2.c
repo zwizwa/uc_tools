@@ -2,13 +2,14 @@
 #define PRODUCT "hy2"
 
 #include "mod_lab.c"
+#include "mod_sdio.c"
+#include "mod_map_forth.c"
 
 instance_status_t app_init(instance_init_t *i) {
-    INSTANCE_NEED(i, &console);
+    INSTANCE_NEED(i, &console, &sdio);
     return 0;
 }
 DEF_INSTANCE(app);
-#include "mod_map_forth.c"
 
 void set_gpioa(int pin, int val) {
     hw_gpio_write(GPIOA, pin, val);
