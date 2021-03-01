@@ -103,8 +103,6 @@ sm_status_t sdio_monitor_tick(struct sdio_monitor *s) {
 
 struct sdio_monitor sdio_monitor;
 
-// FIXME: crashes because transfer context is not filled in
-
 DEF_COMMAND(sdio_req) {
     sdio_monitor.request |= 1;
 }

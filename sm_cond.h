@@ -81,6 +81,20 @@
 
 */
 
+/* A counterpoint, after thinking about this.
+   TL&DR: should have read it!
+
+   Basic idea above is that the dataflow network is already implicit,
+   the code computes the conditions, but the _primitives_ can be
+   annotated by recording sensitivities that can then be used to wake
+   up a task.
+
+   This is in contrast to doing it at syntax level in a DSL,
+   e.g. using some kind of global analysis, all this can be made
+   explicit: explicit dataflow, explicit inversion, and explicit
+   compilation of "hot" operations.
+*/
+
 #include <stdint.h>
 
 /* This is mostly structured around the representation of time.

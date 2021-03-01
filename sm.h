@@ -108,15 +108,45 @@ typedef uint32_t sm_status_t;
 #define SM_READY      ((sm_status_t)0xFFFFFFFEUL)  // yield point; caller can fetch output.
 #define SM_WAITING    ((sm_status_t)0xFFFFFFFFUL)  // machine is still active, poll again
 
+
+/* In certain ideal situations when condition evaluation
+
+   - has no side effects
+
+   - depends only on the state of another task in a set of tasks, or a
+     pure input state (e.g. no volatile such as a GPIO register)
+
+   We can define what "done" means for a set of tasks, and we can use
+   the mechanism to implement an event-driven scheduler by just
+   polling N tasks in round-robin, and stopping when the last N tasks
+   indicate that they are just waiting.
+
+   This can be implemented by signaling a central scheduler object
+   that one of two things happened: a machine was just started (see
+   SM_RESUME), or a condition was evaluated to true, and execution
+   resumed (see SM_WAIT and variants).  The signaling only indicates
+   "needs or doesn't need check", and doesn't say anything about
+   whether actual observable work happened.
+
+   Since this is optional, we implement this using an optional macro.
+*/
+#ifndef SM_SCHED_ACTIVE
+#define SM_SCHED_ACTIVE(sm)
+#endif
+
 /* sm->next contains the address of the C code resume point. */
 #define SM_RESUME(sm) do {                      \
-    if (sm->next) goto *(sm->next) ; } while(0)
+        if (sm->next) goto *(sm->next);         \
+        SM_SCHED_ACTIVE(sm);                    \
+    } while(0)
 #define _SM_WAIT(sm,label,condition) do {       \
     label:                                      \
       if (!(condition)) {                       \
           sm->next = &&label;                   \
           return SM_WAITING;                    \
-      }} while (0)
+      }                                         \
+      SM_SCHED_ACTIVE(sm);                      \
+    } while (0)
 #define SM_WAIT(sm,condition)                   \
     _SM_WAIT(sm,GENSYM(label_),condition)
 
@@ -142,7 +172,8 @@ typedef uint32_t sm_status_t;
 
 
 /* cooperative scheduling yield point.
-   If you need this, you're on the wrong track! */
+   If you need this, you're on the wrong track!
+   Replace it with SM_WAIT */
 #define _SM_SUSPEND(sm,label) do {              \
         sm->next = &&label;                     \
         return SM_WAITING;                      \
@@ -197,6 +228,7 @@ typedef uint32_t sm_status_t;
             sm->next = &&halt;                  \
             return rv;                          \
         }                                       \
+        SM_SCHED_ACTIVE(sm);                    \
         rv;})
 
 #define SM_WAIT_TICK_HALT(sm,tick)              \
@@ -211,6 +243,7 @@ typedef uint32_t sm_status_t;
             sm->next = &&label;                 \
             return rv;                          \
         }                                       \
+        SM_SCHED_ACTIVE(sm);                    \
         rv;})
 
 #define SM_WAIT_TICK_CATCH(sm,tick)    \
