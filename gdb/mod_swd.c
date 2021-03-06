@@ -19,26 +19,24 @@
    - Ack phase,     3 bits <-DP
    - Data phase,   up to 32 bits <->DP, with odd parity bit
 
-   NEXT: Can't get response.  Can't see what's wrong...
-
 
 */
 
 #include "instance.h"
 #include "sm.h"
 
-#define SWD_GPIO_SWDIO GPIOA,2
-#define SWD_GPIO_SWCLK GPIOA,3
-#define SWD_GPIO_RESET GPIOA,4
+#define SWD_GPIO_SWDIO GPIOA,0
+#define SWD_GPIO_SWCLK GPIOA,1
+#define SWD_GPIO_RESET GPIOA,2
 
 #define SWD_OUT 0
 #define SWD_IN  1
 
-static inline int  swd_get_swdio(void)     { return hw_gpio_read(SWD_GPIO_SWDIO); }
-static inline void swd_set_swdio(int val)  { hw_gpio_write(SWD_GPIO_SWDIO, val); }
-static inline void swd_swclk(int val)      { hw_gpio_write(SWD_GPIO_SWCLK, val); }
-static inline void swd_reset(int val)      { hw_gpio_write(SWD_GPIO_RESET, val); }
-static inline void swd_dir(int in) {
+INLINE int  swd_get_swdio(void)     { return hw_gpio_read(SWD_GPIO_SWDIO); }
+INLINE void swd_set_swdio(int val)  { hw_gpio_write(SWD_GPIO_SWDIO, val); }
+INLINE void swd_swclk(int val)      { hw_gpio_write(SWD_GPIO_SWCLK, val); }
+INLINE void swd_reset(int val)      { hw_gpio_write(SWD_GPIO_RESET, val); }
+INLINE void swd_dir(int in) {
     hw_gpio_config(
         SWD_GPIO_SWDIO, in ?
         HW_GPIO_CONFIG_INPUT :
@@ -53,7 +51,7 @@ instance_status_t swd_init(instance_init_t *ctx) {
     swd_swclk(0); hw_gpio_config(SWD_GPIO_SWCLK, HW_GPIO_CONFIG_OUTPUT);
     swd_reset(1); hw_gpio_config(SWD_GPIO_RESET, HW_GPIO_CONFIG_OUTPUT);
     swd_set_swdio(1);
-    swd_dir(SWD_IN);
+    swd_dir(SWD_OUT);
     return 0;
 }
 
@@ -121,12 +119,13 @@ sm_status_t swd_task_tick(struct swd_task *s) {
     SM_RESUME(s);
     infof("swd_task start %x\n", s->cmd);
     if (!s->cmd) goto halt;
-    /* Initialize. */
+    /* Initialize.  The number of zero bits after the 50 x 1 reset
+       sequence is significant.  The first has to be 0x, the second
+       has to be 2x. */
     swd_dir(SWD_OUT);
-    SWD_RESET(s,54,2);
+    SWD_RESET(s,50,0);
     SWD_WRITE_MSB(s, 0b0111100111100111, 16);
-
-    SWD_RESET(s,54,2);
+    SWD_RESET(s,50,2);
 
     // Perform READID
     // 1  start bit
@@ -136,6 +135,7 @@ sm_status_t swd_task_tick(struct swd_task *s) {
     // 1  parity
     // 0  stop
     // 1  park
+    //                 10100101
     SWD_WRITE_MSB(s, 0b10100101, 8);
 
     swd_dir(SWD_IN);
