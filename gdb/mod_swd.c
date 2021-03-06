@@ -11,6 +11,7 @@
    https://developer.arm.com/documentation/ddi0316/d/functional-description/swj-dp/swd-and-jtag-selection-mechanism
 
    https://static.docs.arm.com/ihi0031/c/IHI0031C_debug_interface_as.pdf
+   https://research.kudelskisecurity.com/2019/07/31/swd-part-2-the-mem-ap/
 
    SWDIO data is set by host during rising edge, and sampled by DP during falling edge of SWCLK
 
@@ -68,15 +69,17 @@ instance_status_t swd_init(instance_init_t *ctx) {
 
 struct swd_cmd {
     void *next;
+    uint32_t arg;
     uint32_t dr;
     int8_t i;
     int8_t flags;
     int8_t cmd;
-    int8_t _res0;
+    int8_t res;
 };
-void swd_cmd_init(struct swd_cmd *s, uint32_t cmd) {
+void swd_cmd_init(struct swd_cmd *s, uint8_t cmd, uint32_t arg) {
     ZERO(s);
     s->cmd = cmd;
+    s->arg = arg;
 }
 
 #define SWD_DELAY(s) hw_busywait(1) // FIXME
@@ -118,8 +121,11 @@ void swd_cmd_init(struct swd_cmd *s, uint32_t cmd) {
 #define SWD_WRITE_LSB(s, bits_vec, bits_nb) {            \
         SWD_INFO_BIT("w:");                              \
         s->dr = bits_vec;                                \
-        for (s->i = 0; s->i < (bits_nb); s->i++) {      \
+        for (s->i = 0; s->i < (bits_nb); s->i++) {       \
             int bit = (s->dr >> s->i) & 1;               \
+            if (bit) {                                   \
+                s->flags ^= SWD_FLAGS_PARITY;            \
+            }                                            \
             SWD_INFO_BIT("%d", bit);                     \
             SWD_WRITE_BIT(s, bit);                       \
         }                                                \
@@ -146,24 +152,53 @@ void swd_cmd_init(struct swd_cmd *s, uint32_t cmd) {
     }
 
 
-uint32_t swd_header(uint32_t port, uint32_t read, uint32_t addr) {
+uint32_t swd_cmd_hdr(uint32_t port, uint32_t read, uint32_t addr) {
     uint32_t hdr =
         (1<<0) /* start */ |
         ((1 & port)<<1) |
         ((1 & read)<<2) |
-        ((3 & addr)<<3) |
-        ((1 & (port ^ read ^ addr ^ (addr >> 1))) << 5) /* parity */ |
+        ((0b1100 & addr)<<1) |
+        ((1 & (port ^ read ^ (addr >> 2) ^ (addr >> 3))) << 5) /* parity */ |
         (1<<7) /* park */;
     return hdr;
 }
 
+// Select Debug Port or Access Port
+#define SWD_PORT_DP 0
+#define SWD_PORT_AP 1
+
+// Read or write transaction
+#define SWD_READ 1
+#define SWD_WRITE 0
+
+// The A[3:2] address bits, using same 0,4,8,C numbering as manual.
+#define SWD_DP_RD_DPIDR    0
+#define SWD_DP_RD_CTRLSTAT 0x4
+#define SWD_DP_WR_CTRLSTAT 0x4
+#define SWD_DP_WR_SELECT   0x8
+#define SWD_DP_RD_RDBUFF   0xc
+
+#define SWD_CTRLSTAT_CDBGRSTREQ (1 << 26)
+#define SWD_CTRLSTAT_CDBGRSTACK (1 << 27)
+#define SWD_CTRLSTAT_CDBGPWRUPREQ (1 << 28)
+#define SWD_CTRLSTAT_CDBGPWRUPACK (1 << 29)
+#define SWD_CTRLSTAT_CSYSPWRUPREQ (1 << 30)
+#define SWD_CTRLSTAT_CSYSPWRUPACK (1 << 31)
+
+
+/* Register documentation is in
+   ARM Debug Interface Architecture Specification ADIv5.0 to ADIv5.2
+   IHI0031C_debug_interface_as.pdf
+
+   Section 2.3 DP register descriptions
+
+*/
+
 sm_status_t swd_cmd_tick(struct swd_cmd *s) {
     SM_RESUME(s);
-    infof("swd_cmd start %x\n", s->cmd);
+    //infof("swd_cmd start %x\n", s->cmd);
     switch(s->cmd) {
-        default:
-            goto halt;
-    case 1:
+    case 0:
         /* Initialize.  The number of low bits after the 50 x high
            reset sequence is significant.  The first has to be 0x, the
            second has to be 2x. */
@@ -172,41 +207,144 @@ sm_status_t swd_cmd_tick(struct swd_cmd *s) {
         //SWD_WRITE_MSB(s, 0b0111100111100111, 16);
         SWD_WRITE_LSB(s, 0xE79E, 16);
         SWD_RESET(s,50,2);
-        /* FALLTHROUGH */
-    case 2:
         /* Perform READID
            1  start bit
            0  debug port
            1  read
-           00 IDCODE register
+           00 DPIDR register
            1  parity
            0  stop
            1  park */
+        s->cmd = swd_cmd_hdr(SWD_PORT_DP, SWD_READ, SWD_DP_RD_DPIDR);
+        /* FALLTHROUGH */
+
+    default:
+        /* Transaction. */
         swd_dir(SWD_OUT);
         //SWD_WRITE_LSB(s, 0b10100101, 8);
-        SWD_WRITE_LSB(s, swd_header(/*port*/0, /*read*/1, /*addr*/0), 8);
+        SWD_WRITE_LSB(s, s->cmd, 8);
         swd_dir(SWD_IN);
-
+ 
         /* FIXME: shouldn't there be a TRN bit here? */
 
-        if (0b001 != SWD_READ_LSB(s, 3)) {
+        s->res = SWD_READ_LSB(s, 3);
+        if (0b001 != s->res) {
             /* not ACK */
+            infof("res = %d\n", s->res);
         }
         s->flags &= ~SWD_FLAGS_PARITY; // reset
-        uint32_t idcode = SWD_READ_LSB(s, 32); // sets s->dr
-        infof("idcode %x\n", idcode);  // stm32f103 is 1ba01477
-        if (SWD_READ_BIT(s)) s->flags ^= SWD_FLAGS_PARITY;
-        SWD_READ_BIT(s); // turn
+        if (s->cmd & (1 << 2)) {
+            /* Read */
+            SWD_READ_LSB(s, 32); // sets s->dr
+            int parity = SWD_READ_BIT(s);
+            SWD_INFO_BIT("p:%d\n", parity);
+            if (parity) s->flags ^= SWD_FLAGS_PARITY;
+            SWD_READ_BIT(s); // turn
+            // s->dr still contains value
+        }
+        else {
+            /* Write */
+            SWD_READ_BIT(s); // turn
+            SWD_READ_BIT(s); // turn
+            swd_dir(SWD_OUT);
+            SWD_WRITE_LSB(s, s->arg, 32);
+            int parity = !!(s->flags & SWD_FLAGS_PARITY);
+            SWD_INFO_BIT("p:%d\n", parity);
+            SWD_WRITE_BIT(s, parity);;
+        }
         SWD_WRITE_BIT(s, 0); // idle
-        // s->dr still contains value
         break;
     }
 
-  halt:
     swd_dir(SWD_IN);
-    infof("swd_cmd halt\n");
+    //infof("swd_cmd halt\n");
     SM_HALT(s);
 }
+
+/* High level command server. */
+struct swd_serv {
+    void *next;
+    union {
+        struct swd_cmd swd_cmd;
+    } sub;
+};
+void swd_serv_init(struct swd_serv *s) {
+    ZERO(s);
+}
+
+#define SWD_DP_READ(s, reg)                             \
+    SM_SUB_CATCH(                                       \
+        s, swd_cmd,                                     \
+        swd_cmd_hdr(SWD_PORT_DP, SWD_READ, reg), 0)
+
+#define SWD_AP_READ(s, reg)                             \
+    SM_SUB_CATCH(                                       \
+        s, swd_cmd,                                     \
+        swd_cmd_hdr(SWD_PORT_AP, SWD_READ, reg), 0)
+
+#define SWD_DP_WRITE(s, reg, val)                       \
+    SM_SUB_CATCH(                                       \
+        s, swd_cmd,                                     \
+        swd_cmd_hdr(SWD_PORT_DP, SWD_WRITE, reg), val)
+
+
+sm_status_t swd_serv_tick(struct swd_serv *s) {
+    struct swd_cmd *c = &s->sub.swd_cmd;
+    SM_RESUME(s);
+    /* Initialize SWD. */
+    if (SM_SUB_CATCH(s, swd_cmd, 0, 0)) goto error;
+    // stm32f103 is 1ba01477
+    infof("dpidr 0x%08x, p=%d\n", c->dr, !!(c->flags & SWD_FLAGS_PARITY));
+
+    /* Read dpidr again. */
+    if (SWD_DP_READ(s, SWD_DP_RD_DPIDR)) goto error;
+    infof("dpidr 0x%08x, p=%d\n", c->dr, !!(c->flags & SWD_FLAGS_PARITY));
+
+    /* Read status register. */
+    if (SWD_DP_READ(s, SWD_DP_RD_CTRLSTAT)) goto error;
+    infof("ctrlstat 0x%08x, p=%d\n", c->dr, !!(c->flags & SWD_FLAGS_PARITY));
+
+    /* Power up debug domain.*/
+    if (SWD_DP_WRITE(s, SWD_DP_WR_CTRLSTAT,
+                     0
+                     |SWD_CTRLSTAT_CDBGPWRUPREQ
+                     //|SWD_CTRLSTAT_CDBGPWRUPACK
+                     |SWD_CTRLSTAT_CSYSPWRUPREQ
+                     //|SWD_CTRLSTAT_CSYSPWRUPACK
+           )) goto error;
+
+    hw_busywait_ms(10);
+
+    /* Read status register. */
+    if (SWD_DP_READ(s, SWD_DP_RD_CTRLSTAT)) goto error;
+    infof("ctrlstat 0x%08x, p=%d\n", c->dr, !!(c->flags & SWD_FLAGS_PARITY));
+
+    /* Read 0xFC (bank 0xF, reg 0xC) in AP 0 */
+    if (SWD_DP_WRITE(s, SWD_DP_WR_SELECT,
+                      (0xf << 4)  /* APBANKSEL */
+                     |(0   << 0)  /* DPBANKSEL */
+                     |(0   << 24) /* APSEL */
+            )) goto error;
+    if (SWD_AP_READ(s, 0xC)) goto error;
+    if (SWD_DP_READ(s, SWD_DP_RD_RDBUFF)) goto error;
+
+
+#if 0
+    /* Read dpidr again. */
+    if (SWD_DP_READ(s, SWD_DP_RD_DPIDR)) goto error;
+    infof("dpidr 0x%08x, p=%d\n", c->dr, !!(c->flags & SWD_FLAGS_PARITY));
+
+    /* Read status register. */
+    if (SWD_DP_READ(s, SWD_DP_RD_CTRLSTAT)) goto error;
+    infof("ctrlstat 0x%08x, p=%d\n", c->dr, !!(c->flags & SWD_FLAGS_PARITY));
+#endif
+
+    SM_HALT(s);
+  error:
+    infof("error\n");
+    SM_HALT_STATUS(s, 1);
+}
+
 
 DEF_INSTANCE(swd);
 
