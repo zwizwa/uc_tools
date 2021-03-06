@@ -69,17 +69,17 @@ instance_status_t swd_init(instance_init_t *ctx) {
 
 struct swd_cmd {
     void *next;
-    uint32_t arg;
+    uint32_t val;
     uint32_t dr;
     int8_t i;
     int8_t flags;
     int8_t cmd;
     int8_t res;
 };
-void swd_cmd_init(struct swd_cmd *s, uint8_t cmd, uint32_t arg) {
+void swd_cmd_init(struct swd_cmd *s, uint8_t cmd, uint32_t val) {
     ZERO(s);
     s->cmd = cmd;
-    s->arg = arg;
+    s->val = val;
 }
 
 #define SWD_DELAY(s) hw_busywait(1) // FIXME
@@ -88,9 +88,9 @@ void swd_cmd_init(struct swd_cmd *s, uint8_t cmd, uint32_t arg) {
    needed before setting clock high.  Direction needs to be set
    elsewhere. */
 #define SWD_WRITE_BIT(s, bit) {                 \
-            swd_set_swdio(bit);                 \
             SWD_DELAY(s);                       \
             swd_swclk(1);                       \
+            swd_set_swdio(bit);                 \
             SWD_DELAY(s);                       \
             swd_swclk(0);                       \
     }
@@ -224,8 +224,9 @@ sm_status_t swd_cmd_tick(struct swd_cmd *s) {
         //SWD_WRITE_LSB(s, 0b10100101, 8);
         SWD_WRITE_LSB(s, s->cmd, 8);
         swd_dir(SWD_IN);
- 
+
         /* FIXME: shouldn't there be a TRN bit here? */
+        SWD_READ_BIT(s); // turn
 
         s->res = SWD_READ_LSB(s, 3);
         if (0b001 != s->res) {
@@ -236,18 +237,17 @@ sm_status_t swd_cmd_tick(struct swd_cmd *s) {
         if (s->cmd & (1 << 2)) {
             /* Read */
             SWD_READ_LSB(s, 32); // sets s->dr
+            s->val = s->dr;
             int parity = SWD_READ_BIT(s);
             SWD_INFO_BIT("p:%d\n", parity);
             if (parity) s->flags ^= SWD_FLAGS_PARITY;
             SWD_READ_BIT(s); // turn
-            // s->dr still contains value
         }
         else {
             /* Write */
             SWD_READ_BIT(s); // turn
-            SWD_READ_BIT(s); // turn
             swd_dir(SWD_OUT);
-            SWD_WRITE_LSB(s, s->arg, 32);
+            SWD_WRITE_LSB(s, s->val, 32);
             int parity = !!(s->flags & SWD_FLAGS_PARITY);
             SWD_INFO_BIT("p:%d\n", parity);
             SWD_WRITE_BIT(s, parity);;
@@ -294,30 +294,29 @@ sm_status_t swd_serv_tick(struct swd_serv *s) {
     /* Initialize SWD. */
     if (SM_SUB_CATCH(s, swd_cmd, 0, 0)) goto error;
     // stm32f103 is 1ba01477
-    infof("dpidr 0x%08x, p=%d\n", c->dr, !!(c->flags & SWD_FLAGS_PARITY));
+    infof("dpidr 0x%08x, p=%d\n", c->val, !!(c->flags & SWD_FLAGS_PARITY));
 
     /* Read dpidr again. */
     if (SWD_DP_READ(s, SWD_DP_RD_DPIDR)) goto error;
-    infof("dpidr 0x%08x, p=%d\n", c->dr, !!(c->flags & SWD_FLAGS_PARITY));
+    infof("dpidr 0x%08x, p=%d\n", c->val, !!(c->flags & SWD_FLAGS_PARITY));
 
     /* Read status register. */
     if (SWD_DP_READ(s, SWD_DP_RD_CTRLSTAT)) goto error;
-    infof("ctrlstat 0x%08x, p=%d\n", c->dr, !!(c->flags & SWD_FLAGS_PARITY));
+    infof("ctrlstat 0x%08x, p=%d\n", c->val, !!(c->flags & SWD_FLAGS_PARITY));
 
     /* Power up debug domain.*/
     if (SWD_DP_WRITE(s, SWD_DP_WR_CTRLSTAT,
-                     0
-                     |SWD_CTRLSTAT_CDBGPWRUPREQ
-                     //|SWD_CTRLSTAT_CDBGPWRUPACK
-                     |SWD_CTRLSTAT_CSYSPWRUPREQ
-                     //|SWD_CTRLSTAT_CSYSPWRUPACK
+                     SWD_CTRLSTAT_CDBGPWRUPREQ | SWD_CTRLSTAT_CSYSPWRUPREQ
            )) goto error;
 
     hw_busywait_ms(10);
 
     /* Read status register. */
     if (SWD_DP_READ(s, SWD_DP_RD_CTRLSTAT)) goto error;
-    infof("ctrlstat 0x%08x, p=%d\n", c->dr, !!(c->flags & SWD_FLAGS_PARITY));
+    // check SWD_CTRLSTAT_CSYSPWRUPACK | SWD_CTRLSTAT_CDBGPWRUPACK
+
+
+    infof("ctrlstat 0x%08x, p=%d\n", c->val, !!(c->flags & SWD_FLAGS_PARITY));
 
     /* Read 0xFC (bank 0xF, reg 0xC) in AP 0 */
     if (SWD_DP_WRITE(s, SWD_DP_WR_SELECT,
@@ -332,11 +331,11 @@ sm_status_t swd_serv_tick(struct swd_serv *s) {
 #if 0
     /* Read dpidr again. */
     if (SWD_DP_READ(s, SWD_DP_RD_DPIDR)) goto error;
-    infof("dpidr 0x%08x, p=%d\n", c->dr, !!(c->flags & SWD_FLAGS_PARITY));
+    infof("dpidr 0x%08x, p=%d\n", c->val, !!(c->flags & SWD_FLAGS_PARITY));
 
     /* Read status register. */
     if (SWD_DP_READ(s, SWD_DP_RD_CTRLSTAT)) goto error;
-    infof("ctrlstat 0x%08x, p=%d\n", c->dr, !!(c->flags & SWD_FLAGS_PARITY));
+    infof("ctrlstat 0x%08x, p=%d\n", c->val, !!(c->flags & SWD_FLAGS_PARITY));
 #endif
 
     SM_HALT(s);
