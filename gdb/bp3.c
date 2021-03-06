@@ -16,13 +16,13 @@
 
 #include "mod_swd.c"
 
-struct swd_task swd_task;
+struct swd_cmd swd_cmd;
 void app_poll(void) {
-    swd_task_tick(&swd_task);
+    swd_cmd_tick(&swd_cmd);
 }
 
 DEF_COMMAND(start) {
-    swd_task_init(&swd_task, 1);
+    swd_cmd_init(&swd_cmd, 1);
 }
 
 instance_status_t app_init(instance_init_t *ctx) {

@@ -17,7 +17,16 @@
    Each SWD transaction has three phases:
    - Request phase. 8 bits ->DP
    - Ack phase,     3 bits <-DP
-   - Data phase,   up to 32 bits <->DP, with odd parity bit
+   - Data phase,    up to 32 bits <->DP, with odd parity bit
+   - Turnaround cycle for every direction switch
+   - 46 clocks total
+   - at least 1 idle (0) cycle between transactions
+
+   DONE:
+   - Basic read transaction is working.  Can read IDCODE
+   TODO:
+   - Write transaction
+   - Other registers, indirections
 
 
 */
@@ -55,18 +64,22 @@ instance_status_t swd_init(instance_init_t *ctx) {
     return 0;
 }
 
-struct swd_task {
+#define SWD_FLAGS_PARITY (1<<0)
+
+struct swd_cmd {
     void *next;
     uint32_t dr;
-    int32_t i;  // signed, so it can contain -1 as a stop condition
-    uint32_t cmd;
+    int8_t i;
+    int8_t flags;
+    int8_t cmd;
+    int8_t _res0;
 };
-void swd_task_init(struct swd_task *s, uint32_t cmd) {
+void swd_cmd_init(struct swd_cmd *s, uint32_t cmd) {
     ZERO(s);
     s->cmd = cmd;
 }
 
-#define SWD_DELAY(s) hw_busywait(10) // FIXME
+#define SWD_DELAY(s) hw_busywait(1) // FIXME
 
 /* Precondition for these two macros: clock is low, and delay still
    needed before setting clock high.  Direction needs to be set
@@ -88,6 +101,7 @@ void swd_task_init(struct swd_task *s, uint32_t cmd) {
 
 #define SWD_INFO_BIT infof
 
+#if 0
 #define SWD_WRITE_MSB(s, bits_vec, bits_nb) {            \
         SWD_INFO_BIT("w:");                              \
         s->dr = bits_vec;                                \
@@ -98,13 +112,30 @@ void swd_task_init(struct swd_task *s, uint32_t cmd) {
         }                                                \
         SWD_INFO_BIT("\n");                              \
     }
-#define SWD_READ_MSB(s, bits_nb) ({                           \
+#endif
+
+
+#define SWD_WRITE_LSB(s, bits_vec, bits_nb) {            \
+        SWD_INFO_BIT("w:");                              \
+        s->dr = bits_vec;                                \
+        for (s->i = 0; s->i < (bits_nb); s->i++) {      \
+            int bit = (s->dr >> s->i) & 1;               \
+            SWD_INFO_BIT("%d", bit);                     \
+            SWD_WRITE_BIT(s, bit);                       \
+        }                                                \
+        SWD_INFO_BIT("\n");                              \
+    }
+
+#define SWD_READ_LSB(s, bits_nb) ({                           \
             SWD_INFO_BIT("r:");                               \
             s->dr = 0;                                        \
             for (s->i = 0; s->i < (bits_nb); s->i++) {        \
                 int bit = SWD_READ_BIT(s) & 1;                \
                 SWD_INFO_BIT("%d", bit);                      \
-                s->dr = bit | (s->dr << 1);                   \
+                if (bit) {                                    \
+                    s->dr |= (1 << s->i);                     \
+                    s->flags ^= SWD_FLAGS_PARITY;             \
+                };                                            \
             }                                                 \
             SWD_INFO_BIT("\n");                               \
             s->dr;                                            \
@@ -115,36 +146,65 @@ void swd_task_init(struct swd_task *s, uint32_t cmd) {
     }
 
 
-sm_status_t swd_task_tick(struct swd_task *s) {
+uint32_t swd_header(uint32_t port, uint32_t read, uint32_t addr) {
+    uint32_t hdr =
+        (1<<0) /* start */ |
+        ((1 & port)<<1) |
+        ((1 & read)<<2) |
+        ((3 & addr)<<3) |
+        ((1 & (port ^ read ^ addr ^ (addr >> 1))) << 5) /* parity */ |
+        (1<<7) /* park */;
+    return hdr;
+}
+
+sm_status_t swd_cmd_tick(struct swd_cmd *s) {
     SM_RESUME(s);
-    infof("swd_task start %x\n", s->cmd);
-    if (!s->cmd) goto halt;
-    /* Initialize.  The number of zero bits after the 50 x 1 reset
-       sequence is significant.  The first has to be 0x, the second
-       has to be 2x. */
-    swd_dir(SWD_OUT);
-    SWD_RESET(s,50,0);
-    SWD_WRITE_MSB(s, 0b0111100111100111, 16);
-    SWD_RESET(s,50,2);
+    infof("swd_cmd start %x\n", s->cmd);
+    switch(s->cmd) {
+        default:
+            goto halt;
+    case 1:
+        /* Initialize.  The number of low bits after the 50 x high
+           reset sequence is significant.  The first has to be 0x, the
+           second has to be 2x. */
+        swd_dir(SWD_OUT);
+        SWD_RESET(s,50,0);
+        //SWD_WRITE_MSB(s, 0b0111100111100111, 16);
+        SWD_WRITE_LSB(s, 0xE79E, 16);
+        SWD_RESET(s,50,2);
+        /* FALLTHROUGH */
+    case 2:
+        /* Perform READID
+           1  start bit
+           0  debug port
+           1  read
+           00 IDCODE register
+           1  parity
+           0  stop
+           1  park */
+        swd_dir(SWD_OUT);
+        //SWD_WRITE_LSB(s, 0b10100101, 8);
+        SWD_WRITE_LSB(s, swd_header(/*port*/0, /*read*/1, /*addr*/0), 8);
+        swd_dir(SWD_IN);
 
-    // Perform READID
-    // 1  start bit
-    // 0  debug port
-    // 1  read
-    // 00 IDCODE register
-    // 1  parity
-    // 0  stop
-    // 1  park
-    //                 10100101
-    SWD_WRITE_MSB(s, 0b10100101, 8);
+        /* FIXME: shouldn't there be a TRN bit here? */
 
-    swd_dir(SWD_IN);
+        if (0b001 != SWD_READ_LSB(s, 3)) {
+            /* not ACK */
+        }
+        s->flags &= ~SWD_FLAGS_PARITY; // reset
+        uint32_t idcode = SWD_READ_LSB(s, 32); // sets s->dr
+        infof("idcode %x\n", idcode);  // stm32f103 is 1ba01477
+        if (SWD_READ_BIT(s)) s->flags ^= SWD_FLAGS_PARITY;
+        SWD_READ_BIT(s); // turn
+        SWD_WRITE_BIT(s, 0); // idle
+        // s->dr still contains value
+        break;
+    }
 
-    //swd_dir(SWD_OUT); swd_set_swdio(0);
-    SWD_READ_MSB(s, 32);
   halt:
     swd_dir(SWD_IN);
-    infof("swd_task halt\n");
+    infof("swd_cmd halt\n");
     SM_HALT(s);
 }
 
