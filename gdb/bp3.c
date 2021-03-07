@@ -49,3 +49,32 @@ int handle_tag_u32(struct tag_u32 *req) {
     return 0;
 }
 
+
+#if 1
+KEEP uint32_t test_shift_right(uint32_t a, uint32_t b) {
+    return a >> b;
+}
+KEEP uint32_t test_shift_left(uint32_t a, uint32_t b) {
+    return a << b;
+}
+#endif
+#if 1
+struct ts {
+    uint32_t top;
+    uint32_t *stack;
+};
+KEEP struct ts test_add(struct ts ts) {
+    ts.top += (*(ts.stack)++);
+    return ts;
+}
+KEEP uint32_t *test_add_v2(uint32_t *stack) {
+    stack[1] += stack[0];
+    stack++;
+    return stack;
+}
+#endif
+
+KEEP void test_forth(void) {
+    command_fun_start();
+    command_fun_start();
+}
