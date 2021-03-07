@@ -127,6 +127,12 @@ INLINE void hw_gpio_low(uint32_t gpio, uint32_t pin) {
     GPIO_BRR(gpio) = 1 << pin;
 }
 
+/* Write bit using BSRR only. */
+INLINE void hw_gpio_write_v2(uint32_t gpio, uint32_t pin, uint32_t val) {
+    pin += 16 * (!val);
+    GPIO_BSRR(gpio) = 1 << pin;
+}
+
 
 /* Timers */
 void hw_tim_stretch_14_to_15(volatile uint32_t* tim_arr);
