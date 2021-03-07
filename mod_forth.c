@@ -95,19 +95,18 @@
 w *ip;
 
 /* Special interpreter opcodes */
-#define YIELD IOPC(0)
-#define TODO  IOPC(1)
-// TODO: blocking read
 
-void interpreter(void) {
+void interpreter(w *thread) {
+    ip = thread;
     for(;;) {
         w xt = *ip;
         //LOG("ip:%p xt:%p\n", ip, xt);
         ip++;
 
-        /* This only works on ARM thumb.  Is there a simple way to
-           make this portable enough for running in an emulator? */
-        if (xt_is_word(xt)) {
+        if (xt.u == YIELD.u) {
+            return;
+        }
+        else if (xt_is_word(xt)) {
             //LOG("is_word\n");
             (xt.pw)->code(xt.pw+1);
         }
@@ -116,21 +115,15 @@ void interpreter(void) {
             xt.code(0);
         }
         else {
-            // Interpreter control.
-            if (YIELD == xt.u) return;
-            if (TODO  == xt.u) {
-                LOG("undefined opcode\n");
-                return;
-            }
+            LOG("bad xt %x\n", xt);
+            return;
         }
     }
 }
 
 void run(w xt) {
-    /* This needs a wrapper word. */
-    w wrap[] = {xt,(w)YIELD};
-    ip = wrap;
-    interpreter();
+    w thread[] = {xt, YIELD};
+    interpreter(thread);
 }
 
 
@@ -321,33 +314,33 @@ FORTH_WORDS
     {"execute", (w)execute},
     {"yield",   (w)YIELD},
     {"s",       (w)s},
-    {"?branch", (w)TODO},
-    {"branch",  (w)TODO},
+    //{"?branch", (w)TODO},
+    //{"branch",  (w)TODO},
     // Memory access
     {"!",       (w)store},
     {"@",       (w)fetch},
-    {"C!",      (w)TODO},
-    {"C@",      (w)TODO},
+    //{"C!",      (w)TODO},
+    //{"C@",      (w)TODO},
     // Return stack
-    {"RP@",     (w)TODO},
-    {"RP!",     (w)TODO},
-    {"R>",      (w)TODO},
-    {"R@",      (w)TODO},
-    {">R",      (w)TODO},
+    //{"RP@",     (w)TODO},
+    //{"RP!",     (w)TODO},
+    //{"R>",      (w)TODO},
+    //{"R@",      (w)TODO},
+    //{">R",      (w)TODO},
     // Data stack
-    {"SP@",     (w)TODO},
-    {"SP!",     (w)TODO},
+    //{"SP@",     (w)TODO},
+    //{"SP!",     (w)TODO},
     {"drop",    (w)(code_fn)pop},
     {"dup",     (w)w_dup},
-    {"SWAP",    (w)TODO},
-    {"OVER",    (w)TODO},
+    //{"SWAP",    (w)TODO},
+    //{"OVER",    (w)TODO},
     //Logic
-    {"0<",      (w)TODO},
-    {"AND",     (w)TODO},
-    {"OR",      (w)TODO},
-    {"XOR",     (w)TODO},
+    //{"0<",      (w)TODO},
+    //{"AND",     (w)TODO},
+    //{"OR",      (w)TODO},
+    //{"XOR",     (w)TODO},
     // Arithmetic
-    {"UM+",     (w)TODO},
+    //{"UM+",     (w)TODO},
     {"+",       (w)add},
     // High level words
     {"p",       (w)p},

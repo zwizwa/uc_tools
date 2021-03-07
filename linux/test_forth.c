@@ -4,9 +4,8 @@
 #define FORTH_OUT_INFO 1
 #include "mod_forth.c"
 
-const w lit1[] = { (w)enter, (w)lit, (w)1, (w)w_exit };
+const w lit1[] = { (w)enter, (w)lit, (w)1, (w)w_dup, (w)p, (w)w_exit };
 const w test[] = { (w)enter, (w)lit1, (w)lit1, (w)add, (w)p, (w)w_exit };
-
 
 #include "macros.h"
 
@@ -25,6 +24,7 @@ int main(void) {
     XT_TYPE(w_exit);
     XT_TYPE(add);
     XT_TYPE(p);
+    XT_TYPE(w_dup);
     XT_TYPE(YIELD);
     w xt = { .cpw = &test[0] };
     run(xt);

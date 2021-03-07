@@ -21,26 +21,32 @@ union word {
 };
 typedef union word w;
 
-/* Not that the encoding was written specificially for Thumb2, which
-   has LSB conveniently set to 1 for code pointers.  The "portable"
-   workaround below is a terrible hack, only used to run tests and
-   perform bootstreapping. */
+#define YIELD ((w)0)
 #ifdef STM32F1
-INLINE int xt_is_code(w xt)   { return xt.u & 1; }
+/* The encoding assumes that xts can be disambiguated into machine
+   code pointer, xt list pointer and interpreter token.  This was
+   originally written specificially for Thumb2, which has LSB
+   conveniently set to 1 for code pointers.  Together with 4-byte
+   alignment for threaded code pointers, this leaves one slot for
+   interpreter tokens.  All very convenient, but not very
+   portable... */
+INLINE int xt_is_code(w xt) { return xt.u & 1; }
 INLINE int xt_is_word(w xt) { return (xt.u & 3) == 0; }
 #define IOPC(x) ((uintptr_t)(2 | ((x)<<2)))
 
 #else
 
+/* So for emulation on Linux we use a trick.  If an xt is not an
+   interpreter control token, it's at least a valid pointer, so we can
+   dereference.  All threaded words currently start with a pointer to
+   enter(), so use that to distinguish.  Later if there are more 'type
+   words', they can be added. */
 static inline int xt_is_token(w xt) {
     return xt.u < 2;
 }
 static void enter(w* list);
 static inline int xt_is_word(w xt) {
     if (xt_is_token(xt)) return 0;
-    /* If it's not a token, it's at least a valid pointer, so we can
-       dereference.  All threaded words currently start with enter, so
-       use that to distinguish. */
     return ((uintptr_t)enter) == *(xt.up);
 }
 static inline int xt_is_code(w xt) {
