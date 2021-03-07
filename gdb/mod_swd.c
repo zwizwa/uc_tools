@@ -4,6 +4,37 @@
 /* To hell with off the shelf debugging adaptors.
    What can I do with a bluepill?
 
+   See documentation below.
+
+   TL&DR: There are a couple of layers to the protocol.
+
+   Specific to STM32F103, from high level down to low level:
+
+   1. You probably want to only perform MEM-AP access, to read out
+      words from the processor's memory space.  This can be done while
+      it is running.
+
+   2. Such a memory access uses the CSW (config), TAR (target
+      address), and DRW (data read/write) registers in the MEM-AP: set
+      TAR, and read DRW.
+
+   3. Each of the individual reads and writes to those registers
+      requires two to three SWD transactions: (optionally) select
+      bank, perform AP read or write, and perform DP read for result
+      or status.
+
+   4. A single SWD transaction consists of a packet of 46 bits, spaced
+      by at least one idle period (0).
+
+      - Request phase. 8 bits ->DP
+      - Ack phase,     3 bits <-DP
+      - Data phase,    up to 32 bits <->DP, with odd parity bit
+      - Turnaround cycle for every direction switch
+      - 46 clocks total
+      - at least 1 idle (0) cycle between transactions
+
+
+
    https://developer.arm.com/architectures/cpu-architecture/debug-visibility-and-trace/coresight-architecture/serial-wire-debug
    https://en.wikipedia.org/wiki/JTAG#Similar_interface_standards
    https://research.kudelskisecurity.com/2019/05/16/swd-arms-alternative-to-jtag
@@ -19,18 +50,11 @@
 
    SWDIO data is set by host during rising edge, and sampled by DP during falling edge of SWCLK
 
-   Each SWD transaction has three phases:
-   - Request phase. 8 bits ->DP
-   - Ack phase,     3 bits <-DP
-   - Data phase,    up to 32 bits <->DP, with odd parity bit
-   - Turnaround cycle for every direction switch
-   - 46 clocks total
-   - at least 1 idle (0) cycle between transactions
 
-   DONE:
-   - Basic read transaction is working.  Can read IDCODE
-   - Write transaction
-   - Other registers, indirections
+   This was originally written as a SM, but that turned out to be too
+   complicated, and since bitbang seems to work without any busy
+   delays, it seems not worth it.  So I'm factoring out some bits into
+   a header file to be used in both implementations.
 
 */
 
@@ -178,6 +202,10 @@ uint32_t swd_cmd_hdr(uint32_t port, uint32_t read, uint32_t addr) {
 #define SWD_CTRLSTAT_CSYSPWRUPREQ (1 << 30)
 #define SWD_CTRLSTAT_CSYSPWRUPACK (1 << 31)
 
+#define SWD_MEM_AP_CSW 0x0
+#define SWD_MEM_AP_TAR 0x4
+#define SWD_MEM_AP_DRW 0xC
+
 
 /* Register documentation is in
    ARM Debug Interface Architecture Specification ADIv5.0 to ADIv5.2
@@ -318,48 +346,49 @@ void swd_serv_init(struct swd_serv *s) {
     ZERO(s);
 }
 
-#define SWD_DP_READ(s, reg)                             \
+/* Single transactions. */
+#define SWD_TRANS_DP_READ(s, reg)                       \
     SM_SUB_CATCH(                                       \
         s, swd_cmd,                                     \
         swd_cmd_hdr(SWD_PORT_DP, SWD_READ, reg), 0)
 
-#define SWD_AP_READ(s, reg)                             \
+#define SWD_TRANS_AP_READ(s, reg)                       \
     SM_SUB_CATCH(                                       \
         s, swd_cmd,                                     \
         swd_cmd_hdr(SWD_PORT_AP, SWD_READ, reg), 0)
 
-#define SWD_DP_WRITE(s, reg, val)                       \
+#define SWD_TRANS_DP_WRITE(s, reg, val)                 \
     SM_SUB_CATCH(                                       \
         s, swd_cmd,                                     \
         swd_cmd_hdr(SWD_PORT_DP, SWD_WRITE, reg), val)
 
-#define SWD_AP_WRITE(s, reg, val)                       \
+#define SWD_TRANS_AP_WRITE(s, reg, val)                 \
     SM_SUB_CATCH(                                       \
         s, swd_cmd,                                     \
         swd_cmd_hdr(SWD_PORT_AP, SWD_WRITE, reg), val)
 
-/* Composite operations.  This really needs separate state machines,
-   or a just busy-waiting functions.  FIXME: The SELECT can be
-   cached. */
-#define SWD_AP_SELECT(s, reg) {                                 \
-        if (SWD_DP_WRITE(s, SWD_DP_WR_SELECT,                   \
-                         ((reg >> 4) << 4)  /* APBANKSEL */     \
-                         |(0   << 0)  /* DPBANKSEL */           \
-                         |(0   << 24) /* APSEL */               \
-                )) goto error;                                  \
-    }
-#define SWD_AP_REG_READ(s, reg) {                               \
-        SWD_AP_SELECT(s, reg);                                  \
-        if (SWD_AP_READ(s, reg & 0b1100)) goto error;           \
-        if (SWD_DP_READ(s, SWD_DP_RD_RDBUFF)) goto error;       \
+/* Read/Write AP registers requires two transactions. Note that these
+   do not change banks.  For MEM-AP that is not necessary. */
+#define SWD_AP_REG_READ(s, reg) {                                     \
+        if (SWD_TRANS_AP_READ(s, reg & 0b1100)) goto error;           \
+        if (SWD_TRANS_DP_READ(s, SWD_DP_RD_RDBUFF)) goto error;       \
     }
 #define SWD_AP_REG_WRITE(s, reg, val) {                                 \
-        SWD_AP_SELECT(s, reg);                                          \
-        if (SWD_AP_WRITE(s, reg & 0xb1100, val)) goto error;            \
+        if (SWD_TRANS_AP_WRITE(s, reg & 0b1100, val)) goto error;       \
         /* Read status register, otherwise subsequent AP_READ returns WAIT? */ \
-        if (SWD_DP_READ(s, SWD_DP_RD_CTRLSTAT)) goto error;             \
+        if (SWD_TRANS_DP_READ(s, SWD_DP_RD_CTRLSTAT)) goto error;       \
     }
 
+/* MEM-AP access uses another layer of indirection: set TAR, read DRW */
+#define SWD_MEM_AP_READ(s, addr) {                              \
+        SWD_AP_REG_WRITE(s, SWD_MEM_AP_TAR, addr);              \
+        SWD_AP_REG_READ(s, SWD_MEM_AP_DRW);                     \
+    }
+
+#define SWD_MEM_AP_WRITE(s, addr, val) {                        \
+        SWD_AP_REG_WRITE(s, SWD_MEM_AP_TAR, addr);              \
+        SWD_AP_REG_WRITE(s, SWD_MEM_AP_DRW, val);               \
+    }
 
 
 sm_status_t swd_serv_tick(struct swd_serv *s) {
@@ -370,78 +399,67 @@ sm_status_t swd_serv_tick(struct swd_serv *s) {
     // stm32f103 is 1ba01477
     infof("dpidr 0x%08x, p=%d\n", c->val, !!(c->flags & SWD_FLAGS_PARITY));
 
-#if 0
-    /* Read dpidr again. */
-    if (SWD_DP_READ(s, SWD_DP_RD_DPIDR)) goto error;
-    infof("dpidr 0x%08x, p=%d\n", c->val, !!(c->flags & SWD_FLAGS_PARITY));
-#endif
-
     /* Read status register. */
-    if (SWD_DP_READ(s, SWD_DP_RD_CTRLSTAT)) goto error;
+    if (SWD_TRANS_DP_READ(s, SWD_DP_RD_CTRLSTAT)) goto error;
     infof("ctrlstat 0x%08x, p=%d\n", c->val, !!(c->flags & SWD_FLAGS_PARITY));
 
     /* Power up debug domain.*/
-    if (SWD_DP_WRITE(s, SWD_DP_WR_CTRLSTAT,
+    if (SWD_TRANS_DP_WRITE(s, SWD_DP_WR_CTRLSTAT,
                      SWD_CTRLSTAT_CDBGPWRUPREQ | SWD_CTRLSTAT_CSYSPWRUPREQ
            )) goto error;
 
-    hw_busywait_ms(10);
-
     /* Read status register. */
-    if (SWD_DP_READ(s, SWD_DP_RD_CTRLSTAT)) goto error;
-    // check SWD_CTRLSTAT_CSYSPWRUPACK | SWD_CTRLSTAT_CDBGPWRUPACK
+    if (SWD_TRANS_DP_READ(s, SWD_DP_RD_CTRLSTAT)) goto error;
+    // FIXME: check SWD_CTRLSTAT_CSYSPWRUPACK | SWD_CTRLSTAT_CDBGPWRUPACK
     infof("ctrlstat 0x%08x, p=%d\n", c->val, !!(c->flags & SWD_FLAGS_PARITY));
 
     /* Iterate over APs */
     for (s->i = 0; s->i < 4; s->i++) {
         /* Read 0xFC (bank 0xF, reg 0xC) in AP 0 */
-        if (SWD_DP_WRITE(s, SWD_DP_WR_SELECT,
+        if (SWD_TRANS_DP_WRITE(s, SWD_DP_WR_SELECT,
                          (0xf   << 4)  /* APBANKSEL */
                          |(0    << 0)  /* DPBANKSEL */
                          |(s->i << 24) /* APSEL */
                 )) goto error;
-        if (SWD_AP_READ(s, 0xC)) goto error;
-        if (SWD_DP_READ(s, SWD_DP_RD_RDBUFF)) goto error;
+        if (SWD_TRANS_AP_READ(s, 0xC)) goto error;
+        if (SWD_TRANS_DP_READ(s, SWD_DP_RD_RDBUFF)) goto error;
         /* Assuming zero result means end of AP list */
         if (!c->val) break;
         /* 0x14770011 is AHB-AP */
         infof("idr %d 0x%08x\n", s->i, c->val);
     }
 
-    /* Read 0x00 (bank 0x0, reg 0x0) in AP 0
-       Assume this is MEM-AP, then it is CSW */
-    SWD_AP_REG_READ(s, 0x0);
+    /* All subsequent AP reads/writes use only the main registers, so
+       we can just set SELECT once.  Assume this is MEM-AP. */
+    if (SWD_TRANS_DP_WRITE(s, SWD_DP_WR_SELECT,                       \
+                      (0   << 4)  /* APBANKSEL */               \
+                     |(0   << 0)  /* DPBANKSEL */               \
+                     |(0   << 24) /* APSEL */                   \
+            )) goto error;
+
+    /* Configure MEM-AP for 32 bit transfers. */
+    SWD_AP_REG_READ(s, 0x0); // CSW
+    infof("csw 0x%08x\n", c->val);
+    SWD_AP_REG_WRITE(s, SWD_MEM_AP_CSW, c->val | 2);
+    SWD_AP_REG_READ(s, SWD_MEM_AP_CSW);
     infof("csw 0x%08x\n", c->val);
 
-    SWD_AP_REG_WRITE(s, 0x0, c->val | 2);
+    /* Perform memory reads and writes */
+    SWD_MEM_AP_READ(s, 0x08000000)
+    infof("drw 0x%08x\n", c->val);
 
-    SWD_AP_REG_READ(s, 0x0);
-    infof("csw 0x%08x\n", c->val);
+    SWD_MEM_AP_READ(s, 0x08000004)
+    infof("drw 0x%08x\n", c->val);
 
-    /* Selected register bank is still the same.  Set TAR. */
-    if (SWD_AP_WRITE(s, 0x4, 0x08000000)) goto error;
-#if 1
-    /* Read status register. */
-    /* FIXME: If I don't do this, the subsequent AP_READ returns WAIT. */
-    if (SWD_DP_READ(s, SWD_DP_RD_CTRLSTAT)) goto error;
-    infof("ctrlstat 0x%08x, p=%d\n", c->val, !!(c->flags & SWD_FLAGS_PARITY));
-#endif
+    SWD_MEM_AP_READ(s, 0x20000000)
+    infof("drw 0x%08x\n", c->val);
 
-    /* Selected register bank is still the same.  Read DRW. */
-    if (SWD_AP_READ(s, 0xC)) goto error;
-    if (SWD_DP_READ(s, SWD_DP_RD_RDBUFF)) goto error;
+    SWD_MEM_AP_WRITE(s, 0x20000000, 0x123)
+
+    SWD_MEM_AP_READ(s, 0x20000000)
     infof("drw 0x%08x\n", c->val);
 
 
-#if 0
-    /* Read dpidr again. */
-    if (SWD_DP_READ(s, SWD_DP_RD_DPIDR)) goto error;
-    infof("dpidr 0x%08x, p=%d\n", c->val, !!(c->flags & SWD_FLAGS_PARITY));
-
-    /* Read status register. */
-    if (SWD_DP_READ(s, SWD_DP_RD_CTRLSTAT)) goto error;
-    infof("ctrlstat 0x%08x, p=%d\n", c->val, !!(c->flags & SWD_FLAGS_PARITY));
-#endif
 
     SM_HALT(s);
   error:
