@@ -29,10 +29,8 @@
 
    DONE:
    - Basic read transaction is working.  Can read IDCODE
-   TODO:
    - Write transaction
    - Other registers, indirections
-
 
 */
 
@@ -132,12 +130,12 @@ void swd_cmd_init(struct swd_cmd *s, uint8_t cmd, uint32_t val) {
                 SWD_INFO_BIT("%d", bit);                      \
                 dr >>= 1;                                     \
                 if (bit) {                                    \
-                    dr |= (1 << (bits_nb-1));                 \
+                    dr |= (1 << 31);                          \
                     flags ^= SWD_FLAGS_PARITY;                \
                 };                                            \
             }                                                 \
             SWD_INFO_BIT("\n");                               \
-            dr;                                               \
+            dr >>= (32-bits_nb);                              \
         })
 
 
@@ -225,7 +223,7 @@ uint32_t swd_cmd_hdr(uint32_t port, uint32_t read, uint32_t addr) {
         res = SWD_READ_LSB_(s, 3, dr, i, flags);                \
         if (0b001 != res) {                                     \
             /* not ACK */                                       \
-            SWD_INFO_BIT("res = %d\n", res);                    \
+            LOG("res = %d\n", res);                             \
         }                                                       \
         flags &= ~SWD_FLAGS_PARITY; /* reset */                 \
         if (cmd & (1 << 2)) {                                   \
@@ -335,6 +333,34 @@ void swd_serv_init(struct swd_serv *s) {
         s, swd_cmd,                                     \
         swd_cmd_hdr(SWD_PORT_DP, SWD_WRITE, reg), val)
 
+#define SWD_AP_WRITE(s, reg, val)                       \
+    SM_SUB_CATCH(                                       \
+        s, swd_cmd,                                     \
+        swd_cmd_hdr(SWD_PORT_AP, SWD_WRITE, reg), val)
+
+/* Composite operations.  This really needs separate state machines,
+   or a just busy-waiting functions.  FIXME: The SELECT can be
+   cached. */
+#define SWD_AP_SELECT(s, reg) {                                 \
+        if (SWD_DP_WRITE(s, SWD_DP_WR_SELECT,                   \
+                         ((reg >> 4) << 4)  /* APBANKSEL */     \
+                         |(0   << 0)  /* DPBANKSEL */           \
+                         |(0   << 24) /* APSEL */               \
+                )) goto error;                                  \
+    }
+#define SWD_AP_REG_READ(s, reg) {                               \
+        SWD_AP_SELECT(s, reg);                                  \
+        if (SWD_AP_READ(s, reg & 0b1100)) goto error;           \
+        if (SWD_DP_READ(s, SWD_DP_RD_RDBUFF)) goto error;       \
+    }
+#define SWD_AP_REG_WRITE(s, reg, val) {                                 \
+        SWD_AP_SELECT(s, reg);                                          \
+        if (SWD_AP_WRITE(s, reg & 0xb1100, val)) goto error;            \
+        /* Read status register, otherwise subsequent AP_READ returns WAIT? */ \
+        if (SWD_DP_READ(s, SWD_DP_RD_CTRLSTAT)) goto error;             \
+    }
+
+
 
 sm_status_t swd_serv_tick(struct swd_serv *s) {
     struct swd_cmd *c = &s->sub.swd_cmd;
@@ -384,14 +410,27 @@ sm_status_t swd_serv_tick(struct swd_serv *s) {
 
     /* Read 0x00 (bank 0x0, reg 0x0) in AP 0
        Assume this is MEM-AP, then it is CSW */
-    if (SWD_DP_WRITE(s, SWD_DP_WR_SELECT,
-                      (0x0 << 4)  /* APBANKSEL */
-                     |(0   << 0)  /* DPBANKSEL */
-                     |(0   << 24) /* APSEL */
-            )) goto error;
-    if (SWD_AP_READ(s, 0x0)) goto error;
-    if (SWD_DP_READ(s, SWD_DP_RD_RDBUFF)) goto error;
+    SWD_AP_REG_READ(s, 0x0);
     infof("csw 0x%08x\n", c->val);
+
+    SWD_AP_REG_WRITE(s, 0x0, c->val | 2);
+
+    SWD_AP_REG_READ(s, 0x0);
+    infof("csw 0x%08x\n", c->val);
+
+    /* Selected register bank is still the same.  Set TAR. */
+    if (SWD_AP_WRITE(s, 0x4, 0x08000000)) goto error;
+#if 1
+    /* Read status register. */
+    /* FIXME: If I don't do this, the subsequent AP_READ returns WAIT. */
+    if (SWD_DP_READ(s, SWD_DP_RD_CTRLSTAT)) goto error;
+    infof("ctrlstat 0x%08x, p=%d\n", c->val, !!(c->flags & SWD_FLAGS_PARITY));
+#endif
+
+    /* Selected register bank is still the same.  Read DRW. */
+    if (SWD_AP_READ(s, 0xC)) goto error;
+    if (SWD_DP_READ(s, SWD_DP_RD_RDBUFF)) goto error;
+    infof("drw 0x%08x\n", c->val);
 
 
 #if 0
