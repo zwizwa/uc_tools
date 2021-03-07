@@ -1,6 +1,8 @@
-#include "base.h"
 #include "forth.h"
 #include "cbuf.h"
+#include "macros.h"
+#include "infof.h"
+#include "tools.h"
 
 // FIXME: rename functions to avoid clashes
 
@@ -53,8 +55,6 @@
 */
 
 
-#include "cbuf.h"
-
 
 
 
@@ -94,7 +94,7 @@ w *ip;
 void interpreter(void) {
     for(;;) {
         w xt = *ip;
-        // infof("ip:%08x xt:%08x\n", ip, xt);
+        // LOG("ip:%08x xt:%08x\n", ip, xt);
         ip++;
 
         /* This only works on ARM thumb.  Is there a simple way to
@@ -111,7 +111,7 @@ void interpreter(void) {
         case 2: // Interpreter control.
             if (YIELD == xt.u) return;
             if (TODO  == xt.u) {
-                infof("undefined opcode\n");
+                LOG("undefined opcode\n");
                 return;
             }
             break;
@@ -259,18 +259,19 @@ static void execute(w* _) {
 
 /* Print machine state. */
 static void s(w* _) {
-    infof("d:"); for(int i=0; i<DI; i++) { infof(" %08x", ds[i]); } infof("\n");
-    infof("r:"); for(int i=0; i<RI; i++) { infof(" %08x", rs[i]); } infof("\n");
+    LOG("d:"); for(int i=0; i<DI; i++) { LOG(" %08x", ds[i]); } LOG("\n");
+    LOG("r:"); for(int i=0; i<RI; i++) { LOG(" %08x", rs[i]); } LOG("\n");
 }
 
 
 /* If an on-target outer interpreter is necessary, the high level word
    dictionary is best bootstrapped from another eForth image or from
    an outer interpreter written in another language.  Writing
-   primitives in C can be done like this ... */
+   primitives in C can be done like this ...
 
-// #define FORTH_TEST
-#ifdef FORTH_TEST
+   See linux/test_forth.c */
+
+#if 0
 const w lit1[] = { (w)enter, (w)lit, (w)1, (w)w_exit };
 const w test[] = { (w)enter, (w)lit1, (w)lit1, (w)add, (w)p, (w)w_exit };
 #endif
@@ -369,7 +370,7 @@ uintptr_t forth_accept(uint8_t *buf, uintptr_t len) {
     uintptr_t i = 0;
     for(;;) {
         uint16_t c = cbuf_peek(&forth_in, i);
-        // infof("peek: %d\n", c);
+        // LOG("peek: %d\n", c);
 
         switch(c) {
         case CBUF_EAGAIN:
@@ -390,7 +391,7 @@ uintptr_t forth_accept(uint8_t *buf, uintptr_t len) {
                 // FIXME: there is no error mechanism to signal bad words.
                 cbuf_drop(&forth_in, i);
 
-                // infof("w:%d\n", i);
+                // LOG("w:%d\n", i);
                 return i;
             }
             break;
@@ -425,14 +426,14 @@ void forth_write(const uint8_t *buf, uint32_t len) {
         word[len] = 0;
         w xt = forth_find((const char*)&word[0]);
         if (xt.i) {
-            //infof("xt:  %08x %s\n", xt, word);
+            //LOG("xt:  %08x %s\n", xt, word);
             run(xt);
         }
         else {
             /* Words that are not defined are interpreted as hex. */
             uintptr_t lit;
             if (0 == read_hex_nibbles_check_uptr(&word[0], len, &lit)) {
-                //infof("lit: %08x %s\n", lit, word);
+                //LOG("lit: %08x %s\n", lit, word);
                 push((w)lit);
             }
             /* If that fails an error is printed inline. */
@@ -456,7 +457,7 @@ void forth_write_echo(const uint8_t *buf, uintptr_t len) {
 }
 
 void forth_start(void) {
-    infof("forth_start()\n");
+    LOG("forth_start()\n");
     CBUF_INIT(forth_in);
 #if FORTH_OUT_INFO
 #else
@@ -466,8 +467,8 @@ void forth_start(void) {
 #endif
 
 #ifdef FORTH_TEST
-    infof("(pre)  di = %d\n", di);
+    LOG("(pre)  di = %d\n", di);
     run((w)test);
-    infof("(post) di = %d\n", di);
+    LOG("(post) di = %d\n", di);
 #endif
 }

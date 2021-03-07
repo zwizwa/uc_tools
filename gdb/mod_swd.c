@@ -91,20 +91,15 @@ void swd_cmd_init(struct swd_cmd *s, uint8_t cmd, uint32_t val) {
 /* Precondition for these two macros: clock is low, and delay still
    needed before setting clock high.  Direction needs to be set
    elsewhere. */
-#define SWD_WRITE_BIT(s, bit) {                 \
-            SWD_DELAY(s);                       \
-            swd_swclk(1);                       \
-            swd_set_swdio(bit);                 \
-            SWD_DELAY(s);                       \
-            swd_swclk(0);                       \
-    }
-#define SWD_READ_BIT(s) ({                      \
-            SWD_DELAY(s);                       \
-            swd_swclk(1);                       \
-            SWD_DELAY(s);                       \
-            swd_swclk(0);                       \
-            swd_get_swdio();                    \
-        })
+
+//                              ___________
+//                       ______|   w       |___r___
+#define SWD_W(d, c, w)  { d; c(1); w; d; c(0);    }
+#define SWD_R(d, c, r) ({ d; c(1);    d; c(0); r; })
+
+#define SWD_WRITE_BIT(s, bit) SWD_W(SWD_DELAY(s), swd_swclk, swd_set_swdio(bit))
+#define SWD_READ_BIT(s)       SWD_R(SWD_DELAY(s), swd_swclk, swd_get_swdio())
+
 
 //#define SWD_INFO_BIT infof
 #define SWD_INFO_BIT(...)
@@ -282,7 +277,13 @@ static inline sm_status_t swd_cmd_tick(struct swd_cmd *s) {
 }
 
 #if 1
-KEEP void swd_transaction(uint32_t port, uint32_t read, uint32_t reg) {
+//#define SWD_KEEP KEEP  // just for looking at assembly
+#define SWD_KEEP // don't keep at link time if not used, but still compile
+/* Optimized blocking versions.  Note that a single transaction is
+   fast enough, so it makes sense to use these as atomics in a
+   cooperative multitasking environment.  However, speed isn't an
+   issue yet, so these are not used. */
+SWD_KEEP void swd_transaction(uint32_t port, uint32_t read, uint32_t reg) {
     uint32_t res = 0, flags = 0, val = 0, dr = 0, i = 0;
     uint32_t cmd = swd_cmd_hdr(port, read, reg);
     SWD_TRANSACTION_(NULL,cmd,res,flags,val,dr,i);
@@ -293,12 +294,12 @@ void swd_log_flags(uint32_t flags) {
         infof("flags = 0x%0x\n", flags);
     }
 }
-KEEP void swd_write_lsb(uint32_t bits_vec, uint32_t bits_nb) {
+SWD_KEEP void swd_write_lsb(uint32_t bits_vec, uint32_t bits_nb) {
     uint32_t dr=0, i=0, flags=0;
     SWD_WRITE_LSB_(NULL, bits_vec, bits_nb, dr, i, flags);
     swd_log_flags(flags);
 }
-KEEP uint32_t swd_read_lsb(uint32_t bits_nb) {
+SWD_KEEP uint32_t swd_read_lsb(uint32_t bits_nb) {
     uint32_t dr=0, i=0, flags=0;
     SWD_READ_LSB_(NULL, bits_nb, dr, i, flags);
     swd_log_flags(flags);
