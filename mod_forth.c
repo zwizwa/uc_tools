@@ -80,28 +80,74 @@
      word, and do the double dereference inside the interpreter loop.
 
    - Due to pointer alignment, we have room to encode special
-     interpreter opcodes, e.g. to break out of the main loop.
+     interpreter opcodes, e.g. to break out of the main loop.  But
+     this is no longer used.  Only NULL is used as a special case XT
+     to inidicate YIELD.
 
    - It is very tempting to use the THUMB bit to distinguish machine
      code from execuion tokens, so that is exectly what we're going to
-     do.  This avoids the need for wrapping each primitive in a
+     do.  This avoids the need for wrapping each code primitive in a
      dictionary entry.
 
    - Taking that further, all token lists are going to be 32-bit
      aligned, so there are actually 2 extra tag codes to use.  So this
-     could be called a loop threaded token/direct/indirect interpreter.
+     could be called a loop threaded token/direct/indirect
+     interpreter.  The token space is currently not used.
 */
 
-w *ip;
 
-/* Special interpreter opcodes */
+/* Review 2021/3/7
+
+   - Using the tumb bit is very convenient if a little awkward to
+     emulate on Linux.
+
+   - I'm no longer using the token space.  It wasn't really necessary.
+     It's enough to have a special case YIELD == NULL.
+
+*/
+
+#define DS_LOGSIZE 3
+#define DS_SIZE (1 << DS_LOGSIZE)
+#define DS_MASK (DS_SIZE-1)
+
+#define RS_LOGSIZE 5
+#define RS_SIZE (1 << RS_LOGSIZE)
+#define RS_MASK (RS_SIZE-1)
+
+/* Memory */
+
+/* Put all state in a single struct to reduce the number of literals
+   needed. */
+struct forth {
+    w ds[DS_SIZE]; uintptr_t di;
+    w rs[DS_SIZE]; uintptr_t ri;
+    w *ip;
+};
+struct forth forth;
+
+ /* Output needs to be buffered for USB polling.  Input is buffered as
+  * well because the Forth interpreter uses a pull interface input,
+  * not a push interface that we could call when data comes in. */
+uint8_t     forth_out_buf[64];
+struct cbuf forth_out;
+
+/* Input is a cbuf, such both the C outer interpreter and the forth
+ * word ?rx can read from the input. */
+uint8_t     forth_in_buf[64];
+struct cbuf forth_in;
+
+
+
+
+
+/* Code */
 
 void interpreter(w *thread) {
-    ip = thread;
+    forth.ip = thread;
     for(;;) {
-        w xt = *ip;
+        w xt = *forth.ip;
         //LOG("ip:%p xt:%p\n", ip, xt);
-        ip++;
+        forth.ip++;
 
         if (xt.u == YIELD.u) {
             return;
@@ -136,50 +182,33 @@ void run(w xt) {
 //#include "infof.h"
 #else
 
-/* Output needs to be buffered for USB polling.  Input is buffered as
- * well because the Forth interpreter uses a pull interface input, not
- * a push interface that we could call when data comes in. */
-uint8_t     forth_out_buf[64];
-struct cbuf forth_out;
 
 #endif
 
-/* Input is a cbuf, such both the C outer interpreter and the forth
- * word ?rx can read from the input. */
-uint8_t     forth_in_buf[64];
-struct cbuf forth_in;
 
-
-#define DS_LOGSIZE 3
-#define DS_SIZE (1 << DS_LOGSIZE)
-#define DS_MASK (DS_SIZE-1)
-
-#define RS_LOGSIZE 5
-#define RS_SIZE (1 << RS_LOGSIZE)
-#define RS_MASK (RS_SIZE-1)
-
-w ds[DS_SIZE]; uintptr_t di;
-w rs[DS_SIZE]; uintptr_t ri;
 
 /* Stacks are circular to avoid the most obvious crashes. */
-#define DI (di&DS_MASK)
-#define RI (ri&RS_MASK)
+#define DI (forth.di&DS_MASK)
+#define RI (forth.ri&RS_MASK)
 
-#define TOP ds[DI]
-#define SND ds[(di-1)&DS_MASK]
+#define TOP forth.ds[DI]
+#define SND forth.ds[(forth.di-1)&DS_MASK]
 
-#define TOPR rs[ri&RS_MASK]
+#define TOPR forth.rs[forth.ri&RS_MASK]
 
-static void push(w a) { di++; TOP = a; }
-static w pop(void) { w rv = TOP; di--; return rv; }
+static void push(w a) { forth.di++; TOP = a; }
+static w pop(void) { w rv = TOP; forth.di--; return rv; }
 
-static void pushr(w a) { ri++; TOPR= a; }
-static w popr(void) { w rv = TOPR; ri--; return rv; }
+static void pushr(w a) { forth.ri++; TOPR= a; }
+static w popr(void) { w rv = TOPR; forth.ri--; return rv; }
 
 // static w index(uintptr_t i) { return ds[(di + i) & DS_MASK]; }
 
-static void w_dup(w* _) { di++; TOP = SND; }
+static void w_dup(w* _) { forth.di++; TOP = SND; }
 static void add(w* _) { SND.u += TOP.u; pop(); }
+static void and(w* _) { SND.u &= TOP.u; pop(); }
+static void or (w* _) { SND.u |= TOP.u; pop(); }
+static void xor(w* _) { SND.u ^= TOP.u; pop(); }
 
 
 // ?RX ( -- c T | F )
@@ -237,38 +266,46 @@ static void store(w* _) {
     w val   = pop();
     *addr = val;
 }
+static void cfetch(w* _) {
+    TOP.u = *((uint8_t*)(TOP.pw));
+}
+static void cstore(w* _) {
+    uint8_t *addr = (uint8_t*)pop().pw;
+    w val   = pop();
+    *addr = val.u;
+}
 
 // Inner interpreter
 static void lit(w* _) {
-    push(*ip++);
+    push(*forth.ip++);
 }
 static void push_ip(void) {
-    w _ip_old = {.pw = ip};
+    w _ip_old = {.pw = forth.ip};
     pushr(_ip_old);
 }
 static void enter(w* list) {
     push_ip();
-    ip = list;
+    forth.ip = list;
 }
 static void w_exit(w* _) {
-    ip = popr().pw;
+    forth.ip = popr().pw;
 }
 static void execute(w* _) {
     push_ip();
-    ip = pop().pw;
+    forth.ip = pop().pw;
 }
 
 /* Print machine state. */
 static void s(w* _) {
-    LOG("d:"); for(int i=0; i<DI; i++) { LOG(" %08x", ds[i]); } LOG("\n");
-    LOG("r:"); for(int i=0; i<RI; i++) { LOG(" %08x", rs[i]); } LOG("\n");
+    LOG("d:"); for(int i=0; i<DI; i++) { LOG(" %08x", forth.ds[i]); } LOG("\n");
+    LOG("r:"); for(int i=0; i<RI; i++) { LOG(" %08x", forth.rs[i]); } LOG("\n");
 }
 
 
 /* If an on-target outer interpreter is necessary, the high level word
    dictionary is best bootstrapped from another eForth image or from
    an outer interpreter written in another language.  Writing
-   primitives in C can be done like this ...
+   primitives in C can be done like this .
 
    See linux/test_forth.c */
 
@@ -293,7 +330,10 @@ struct record {
 
 void words(void);
 
-struct record dict[] = {
+/* FIXME: Split it in two: const dictionary + dynamic for runtime
+   compiled words. */
+
+const struct record dict[] = {
 
 /* The idea is to just include forth.c in a wrapper .c file, and
  * define some extra application words before including. */
@@ -303,7 +343,7 @@ FORTH_WORDS
 
     {"words",   (w)words},
 
-    // eForth primitives
+    // inspired by eForth primitives
     // System interface
     {"?rx",     (w)rx},
     {"tx!",     (w)tx},
@@ -319,8 +359,8 @@ FORTH_WORDS
     // Memory access
     {"!",       (w)store},
     {"@",       (w)fetch},
-    //{"C!",      (w)TODO},
-    //{"C@",      (w)TODO},
+    {"c!",      (w)cstore},
+    {"c@",      (w)cfetch},
     // Return stack
     //{"RP@",     (w)TODO},
     //{"RP!",     (w)TODO},
@@ -336,9 +376,9 @@ FORTH_WORDS
     //{"OVER",    (w)TODO},
     //Logic
     //{"0<",      (w)TODO},
-    //{"AND",     (w)TODO},
-    //{"OR",      (w)TODO},
-    //{"XOR",     (w)TODO},
+    {"and",     (w)and},
+    {"or",      (w)or},
+    {"xor",     (w)xor},
     // Arithmetic
     //{"UM+",     (w)TODO},
     {"+",       (w)add},
@@ -445,6 +485,14 @@ void forth_write(const uint8_t *buf, uint32_t len) {
         }
     }
 }
+void forth_write_str(const char *str) {
+    forth_write((uint8_t*)str, strlen(str));
+}
+void forth_write_word(const char *word) {
+    forth_write_str(word);
+    forth_write_str("\n");
+}
+
 
 // FIXME: This is hardcoded to info_putchar.
 // Wrap forth_write (command to interpeter) with echo to info log.
