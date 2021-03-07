@@ -21,11 +21,35 @@ union word {
 };
 typedef union word w;
 
+/* Not that the encoding was written specificially for Thumb2, which
+   has LSB conveniently set to 1 for code pointers.  The "portable"
+   workaround below is a terrible hack, only used to run tests and
+   perform bootstreapping. */
+#ifdef STM32F1
+INLINE int xt_is_code(w xt)   { return xt.u & 1; }
+INLINE int xt_is_word(w xt) { return (xt.u & 3) == 0; }
+#define IOPC(x) ((uintptr_t)(2 | ((x)<<2)))
 
-static inline uintptr_t word_tag(w w) {
-    /* ARM: */
-    return w.u & 3;
+#else
+
+static inline int xt_is_token(w xt) {
+    return xt.u < 2;
 }
+static void enter(w* list);
+static inline int xt_is_word(w xt) {
+    if (xt_is_token(xt)) return 0;
+    /* If it's not a token, it's at least a valid pointer, so we can
+       dereference.  All threaded words currently start with enter, so
+       use that to distinguish. */
+    return ((uintptr_t)enter) == *(xt.up);
+}
+static inline int xt_is_code(w xt) {
+    return (!xt_is_token(xt)) && (!xt_is_word(xt));
+}
+#define IOPC(x) ((uintptr_t)x)
+
+#endif
+
 
 
 void forth_start(void);
