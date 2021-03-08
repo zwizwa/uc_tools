@@ -1,12 +1,7 @@
 #ifndef MOD_SWD
 #define MOD_SWD
 
-/* To hell with off the shelf debugging adaptors.
-   What can I do with a bluepill?
-
-   See documentation below.
-
-   TL&DR: There are a couple of layers to the protocol.
+/* TL&DR: There are a couple of layers to the protocol.
 
    Specific to STM32F103, from high level down to low level:
 
@@ -32,29 +27,30 @@
       - Turnaround cycle for every direction switch
       - 46 clocks total
       - at least 1 idle (0) cycle between transactions
+      - write at rising edge, read at falling edge
 
-
+   LINKS
 
    https://developer.arm.com/architectures/cpu-architecture/debug-visibility-and-trace/coresight-architecture/serial-wire-debug
    https://en.wikipedia.org/wiki/JTAG#Similar_interface_standards
    https://research.kudelskisecurity.com/2019/05/16/swd-arms-alternative-to-jtag
    https://www.cnblogs.com/shangdawei/p/4748751.html
    https://developer.arm.com/documentation/ddi0316/d/functional-description/swj-dp/swd-and-jtag-selection-mechanism
-
    https://static.docs.arm.com/ihi0031/c/IHI0031C_debug_interface_as.pdf
    https://research.kudelskisecurity.com/2019/07/31/swd-part-2-the-mem-ap/
    https://developer.arm.com/documentation/ddi0439/b/Debug/About-the-AHB-AP/AHB-AP-programmers-model
 
-   https://developer.arm.com/documentation/100230/0002/appendices/debug-access-port/dap-register-descriptions/ahb-ap-register-descriptions
+   Chapter 31 in RM0008 (TRM STM32F1):
+   https://www.st.com/resource/en/reference_manual/cd00171190-stm32f101xx-stm32f102xx-stm32f103xx-stm32f105xx-and-stm32f107xx-advanced-arm-based-32-bit-mcus-stmicroelectronics.pdf
 
+   IMPLEMENTATION
 
-   SWDIO data is set by host during rising edge, and sampled by DP during falling edge of SWCLK
-
-
-   This was originally written as a SM, but that turned out to be too
-   complicated, and since bitbang seems to work without any busy
-   delays, it seems not worth it.  So I'm factoring out some bits into
-   a header file to be used in both implementations.
+   This was originally written as a SM, but that turned out to be
+   complicated because nesting is deep.  SM is also not necessary
+   because it can run at high rate without extra delays so the unit of
+   work could be one transaction, and in a typical application this
+   will be single-threaded anyway.  So SM might still be useful, but
+   at a coarser level.
 
 */
 
@@ -272,6 +268,7 @@ uint32_t swd_cmd_hdr(uint32_t port, uint32_t read, uint32_t addr) {
             SWD_INFO_BIT("p:%d\n", parity);                     \
             SWD_WRITE_BIT(s, parity);;                          \
         }                                                       \
+        /* RM0008 says it needs two after write, but that doesn't work? */              \
         SWD_WRITE_BIT(s, 0); /* idle */                         \
         swd_dir(SWD_IN);                                        \
     }
