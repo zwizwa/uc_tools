@@ -46,7 +46,13 @@ static inline http_err_t httpserver_read_headers(struct http_req *c) {
             len -= 2; buf[len] = 0;
             if (len == 0) { break; }
             if (0 == nb_lines) {
-                if ((rv = c->request(c, buf))) return rv;
+                /* Only HTTP/1.1 GET is supported. */
+                rv = HTTPSERVER_STATUS_INVALID;
+                if (len < (3+1+1+1+8)) { goto error;};
+                if (strncmp(buf,"GET ",3+1)) { goto error;};
+                if (strcmp(buf+len-8,"HTTP/1.1")) { goto error;};
+                buf[len-9] = 0;
+                if ((rv = c->request(c, buf+4))) { goto error; }
             }
             else {
                 /* Split header and value. */
@@ -65,7 +71,10 @@ static inline http_err_t httpserver_read_headers(struct http_req *c) {
             nb_lines++;
         }
     }
-    return 0;
+    rv = 0;
+  error:
+    if (rv) { LOG("error = %d, len = %d\n", rv, len); }
+    return rv;
 }
 
 
