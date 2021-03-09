@@ -52,6 +52,20 @@
    will be single-threaded anyway.  So SM might still be useful, but
    at a coarser level.
 
+   For now, the base macros are left intact, and they are expanded
+   into functions.  This leaves the option open for later to go back
+   to SM in case that is needed.  Note: this is an exercise in doing
+   the nesting in a systematic way, making all dependencies explicit.
+
+   TODO: All SM macros now also have a nested function form, but
+   MEM-AP reads return errors:
+
+   bp3: info: res = 4
+   {[4294967295],<<>>}bp3: info: ERROR: flags = 0x00000001
+
+   bp3: info: res = 7
+   bp3: info: ERROR: flags = 0x0000000
+1
 */
 
 #include "instance.h"
@@ -59,7 +73,7 @@
 
 #define SWD_GPIO_SWDIO GPIOA,0
 #define SWD_GPIO_SWCLK GPIOA,1
-#define SWD_GPIO_RESET GPIOA,2
+#define SWD_GPIO_NRST  GPIOA,2
 
 #define SWD_OUT 0
 #define SWD_IN  1
@@ -67,7 +81,7 @@
 INLINE int  swd_get_swdio(void)     { return hw_gpio_read(SWD_GPIO_SWDIO); }
 INLINE void swd_set_swdio(int val)  { hw_gpio_write_v2(SWD_GPIO_SWDIO, val); }
 INLINE void swd_swclk(int val)      { hw_gpio_write_v2(SWD_GPIO_SWCLK, val); }
-INLINE void swd_reset(int val)      { hw_gpio_write_v2(SWD_GPIO_RESET, val); }
+INLINE void swd_nrst(int val)       { hw_gpio_write_v2(SWD_GPIO_NRST, val); }
 INLINE void swd_dir(int in) {
     hw_gpio_config(
         SWD_GPIO_SWDIO, in ?
@@ -81,7 +95,7 @@ instance_status_t swd_init(instance_init_t *ctx) {
     infof("swd_init clk=%d, dio=%d\n", clk, dio);
 
     swd_swclk(0); hw_gpio_config(SWD_GPIO_SWCLK, HW_GPIO_CONFIG_OUTPUT);
-    swd_reset(1); hw_gpio_config(SWD_GPIO_RESET, HW_GPIO_CONFIG_OUTPUT);
+    swd_nrst(1);  hw_gpio_config(SWD_GPIO_NRST,  HW_GPIO_CONFIG_OUTPUT);
     swd_set_swdio(1);
     swd_dir(SWD_OUT);
     return 0;
@@ -104,6 +118,12 @@ void swd_cmd_init(struct swd_cmd *s, uint8_t cmd, uint32_t val) {
     s->val = val;
 }
 
+/* This is the (error) context used for the blocking calls. */
+struct swd_ctx {
+    uint32_t flags;
+    uint8_t res;
+};
+
 #define SWD_DELAY(s) //hw_busywait(1) // FIXME
 
 /* Precondition for these two macros: clock is low, and delay still
@@ -118,31 +138,56 @@ void swd_cmd_init(struct swd_cmd *s, uint8_t cmd, uint32_t val) {
 #define SWD_WRITE_BIT(s, bit) SWD_W(SWD_DELAY(s), swd_swclk, swd_set_swdio(bit))
 #define SWD_READ_BIT(s)       SWD_R(SWD_DELAY(s), swd_swclk, swd_get_swdio())
 
+void swd_write_bit(struct swd_ctx *c, int bit) {
+    SWD_WRITE_BIT(c, bit);
+}
+int swd_read_bit(struct swd_ctx *c) {
+    return SWD_READ_BIT(c);
+}
+
+void swd_log_flags(struct swd_ctx *c) {
+    if (c->flags) {
+        // FIXME: need error mechanism
+        infof("ERROR: flags = 0x%08x\n", c->flags);
+    }
+}
 
 //#define SWD_INFO_BIT infof
 #define SWD_INFO_BIT(...)
 
-#define SWD_WRITE_LSB(s, bits_vec, bits_nb) \
-        SWD_WRITE_LSB_(s, bits_vec, bits_nb, s->dr, s->i, s->flags)
-
-#define SWD_WRITE_LSB_(s, bits_vec, bits_nb, dr, i, flags) {    \
-        SWD_INFO_BIT("w:");                                     \
-        dr = bits_vec;                                          \
-        for (i = 0; i < (bits_nb); i++) {                       \
-            int bit = dr & 1;                                   \
-            if (bit) {                                          \
-                flags ^= SWD_FLAGS_PARITY;                      \
-            }                                                   \
-            SWD_INFO_BIT("%d", bit);                            \
-            SWD_WRITE_BIT(s, bit);                              \
-            dr >>= 1;                                           \
-        }                                                       \
-        SWD_INFO_BIT("\n");                                     \
+#define SWD_WRITE_LSB_(s, bits_vec, bits_nb, dr, i, flags, write_bit) { \
+        flags &= ~SWD_FLAGS_PARITY;                                     \
+        SWD_INFO_BIT("w:");                                             \
+        dr = bits_vec;                                                  \
+        for (i = 0; i < (bits_nb); i++) {                               \
+            int bit = dr & 1;                                           \
+            if (bit) {                                                  \
+                flags ^= SWD_FLAGS_PARITY;                              \
+            }                                                           \
+            SWD_INFO_BIT("%d", bit);                                    \
+            write_bit(s, bit);                                          \
+            dr >>= 1;                                                   \
+        }                                                               \
+        SWD_INFO_BIT("\n");                                             \
     }
-#define SWD_READ_LSB(s, bits_nb) \
-    SWD_READ_LSB_(s, bits_nb, s->dr, s->i, s->flags)
+
+#define SWD_WRITE_LSB(s, bits_vec, bits_nb) \
+        SWD_WRITE_LSB_(s, bits_vec, bits_nb, s->dr, s->i, s->flags, SWD_WRITE_BIT)
+
+void swd_write_lsb(struct swd_ctx *c, uint32_t bits_vec, uint32_t bits_nb) {
+    uint32_t dr=0, i=0, flags=0;
+    SWD_WRITE_LSB_(c, bits_vec, bits_nb, dr, i, flags, swd_write_bit);
+    c->flags = flags;
+}
+
+
+/* Optimized blocking versions.  Note that a single transaction is
+   fast enough, so it makes sense to use these as atomics in a
+   cooperative multitasking environment.  However, speed isn't an
+   issue yet, so these are not used. */
 
 #define SWD_READ_LSB_(s, bits_nb, dr, i, flags) ({            \
+            flags &= ~SWD_FLAGS_PARITY;                       \
             SWD_INFO_BIT("r:");                               \
             dr = 0;                                           \
             for (i = 0; i < (bits_nb); i++) {                 \
@@ -156,13 +201,47 @@ void swd_cmd_init(struct swd_cmd *s, uint8_t cmd, uint32_t val) {
             }                                                 \
             SWD_INFO_BIT("\n");                               \
             dr >>= (32-bits_nb);                              \
+            dr;                                               \
         })
 
+#define SWD_READ_LSB(s, bits_nb) \
+    SWD_READ_LSB_(s, bits_nb, s->dr, s->i, s->flags)
 
-#define SWD_RESET(s,n1,n0) {                                            \
-        for (s->i = 0; s->i<n1; s->i++) { SWD_WRITE_BIT(s, 1); }        \
-        for (s->i = 0; s->i<n0; s->i++) { SWD_WRITE_BIT(s, 0); }        \
+uint32_t swd_read_lsb(struct swd_ctx *c, uint32_t bits_nb) {
+    uint32_t dr=0, i=0, flags=0;
+    SWD_READ_LSB_(c, bits_nb, dr, i, flags);
+    c->flags = flags;
+    return dr;
+}
+
+
+#define SWD_ONES_ZEROS_(s,n1,n0,i,write_bit) {             \
+        for (i = 0; i<n1; i++) { write_bit(s, 1); }        \
+        for (i = 0; i<n0; i++) { write_bit(s, 0); }        \
     }
+#define SWD_ONES_ZEROS(s,n1,n0) \
+    SWD_ONES_ZEROS_(s,n1,n0,s->i,SWD_WRITE_BIT)
+
+void swd_ones_zeros(struct swd_ctx *c, uint32_t n1, uint32_t n0) {
+    uint32_t i=0;
+    SWD_ONES_ZEROS_(c,n1,n0,i,swd_write_bit);
+}
+
+/* Reset.  The number of low bits after the 50 x high reset
+   sequence is significant.  The first has to be 0x, the second has to
+   be 2x. */
+#define SWD_RESET_(s,write_lsb,ones_zeros) {                       \
+        swd_dir(SWD_OUT);                                               \
+        ones_zeros(s,50,0);                                             \
+        write_lsb(s, 0xE79E, 16);                                       \
+        ones_zeros(s,50,2);                                             \
+    }
+#define SWD_RESET(s) \
+    SWD_RESET_(s,SWD_WRITE_LSB,SWD_ONES_ZEROS)
+
+void swd_reset(struct swd_ctx *c) {
+    SWD_RESET_(c,swd_write_lsb,swd_ones_zeros);
+}
 
 
 uint32_t swd_cmd_hdr(uint32_t port, uint32_t read, uint32_t addr) {
@@ -215,15 +294,7 @@ uint32_t swd_cmd_hdr(uint32_t port, uint32_t read, uint32_t addr) {
    implementation.  __always_inline__ does not work with computed
    goto. */
 
-/* Initialize.  The number of low bits after the 50 x high reset
-   sequence is significant.  The first has to be 0x, the second has to
-   be 2x. */
-#define SWD_INITIALIZE(s) {                             \
-        swd_dir(SWD_OUT);                               \
-        SWD_RESET(s,50,0);                              \
-        SWD_WRITE_LSB(s, 0xE79E, 16);                   \
-        SWD_RESET(s,50,2);                              \
-    }
+
 
 /* Transaction based on the _LSB macros.  Note that read and write
    cycles are both 46 clocks, but the location of the turn phases is
@@ -234,17 +305,13 @@ uint32_t swd_cmd_hdr(uint32_t port, uint32_t read, uint32_t addr) {
    information such that it can) eliminate the state struct.  The only
    references to s that are left are only necessary when this is
    compiled to SM. */
-#define SWD_TRANSACTION(s) \
-    SWD_TRANSACTION_(s,s->cmd,s->res,s->flags,s->val,s->dr,s->i)
-
-#define SWD_TRANSACTION_(s,cmd,res,flags,val,dr,i) {            \
+#define SWD_TRANSACTION_(s,cmd,res,flags,val,write_bit,read_bit,write_lsb,read_lsb) { \
         flags = 0;                                              \
-        dr = 0;                                                 \
         swd_dir(SWD_OUT);                                       \
-        SWD_WRITE_LSB_(s, cmd, 8, dr, i, flags);                \
+        write_lsb(s, cmd, 8);                                   \
         swd_dir(SWD_IN);                                        \
-        SWD_READ_BIT(s); /* turn */                             \
-        res = SWD_READ_LSB_(s, 3, dr, i, flags);                \
+        read_bit(s); /* turn */                                 \
+        res = read_lsb(s, 3);                                   \
         if (0b001 != res) {                                     \
             /* not ACK */                                       \
             LOG("res = %d\n", res);                             \
@@ -252,34 +319,47 @@ uint32_t swd_cmd_hdr(uint32_t port, uint32_t read, uint32_t addr) {
         flags &= ~SWD_FLAGS_PARITY; /* reset */                 \
         if (cmd & (1 << 2)) {                                   \
             /* Read */                                          \
-            SWD_READ_LSB_(s, 32, dr, i, flags);                 \
-            val = dr;                                           \
-            int parity = SWD_READ_BIT(s);                       \
+            val = read_lsb(s, 32);                              \
+            int parity = read_bit(s);                           \
             SWD_INFO_BIT("p:%d\n", parity);                     \
             if (parity) flags ^= SWD_FLAGS_PARITY;              \
-            SWD_READ_BIT(s); /* turn */                         \
+            read_bit(s); /* turn */                             \
         }                                                       \
         else {                                                  \
             /* Write */                                         \
-            SWD_READ_BIT(s); /* turn */                         \
+            read_bit(s); /* turn */                             \
             swd_dir(SWD_OUT);                                   \
-            SWD_WRITE_LSB_(s, val, 32, dr, i, flags);           \
+            write_lsb(s, val, 32);                              \
             int parity = !!(flags & SWD_FLAGS_PARITY);          \
             SWD_INFO_BIT("p:%d\n", parity);                     \
-            SWD_WRITE_BIT(s, parity);;                          \
-        }                                                       \
-        /* RM0008 says it needs two after write, but that doesn't work? */              \
-        SWD_WRITE_BIT(s, 0); /* idle */                         \
-        swd_dir(SWD_IN);                                        \
+            write_bit(s, parity);;                              \
+        }                                                               \
+        /* RM0008 says it needs two after write, but that doesn't work? */ \
+        write_bit(s, 0); /* idle */                                     \
+        swd_dir(SWD_IN);                                                \
     }
+
+#define SWD_TRANSACTION(s)                                              \
+    SWD_TRANSACTION_(s,s->cmd,s->res,s->flags,s->val,                   \
+                     SWD_WRITE_BIT, SWD_READ_BIT, SWD_WRITE_LSB, SWD_READ_LSB)
+
+uint32_t swd_transaction(struct swd_ctx *c, uint8_t cmd, uint32_t val) {
+    uint32_t res = 0, flags = 0;
+    SWD_TRANSACTION_(c,cmd,res,flags,val,
+                     swd_write_bit,swd_read_bit,swd_write_lsb,swd_read_lsb);
+    c->res = res;
+    c->flags = flags;
+    swd_log_flags(c);
+    return val;
+}
 
 static inline sm_status_t swd_cmd_tick(struct swd_cmd *s) {
     SM_RESUME(s);
     //infof("swd_cmd start %x\n", s->cmd);
     switch(s->cmd) {
     case 0:
-        SWD_INITIALIZE(s)
-        /* Perform READID
+        SWD_RESET(s)
+        /* Perform mandatory READID
            1  start bit
            0  debug port
            1  read
@@ -299,36 +379,24 @@ static inline sm_status_t swd_cmd_tick(struct swd_cmd *s) {
     SM_HALT(s);
 }
 
-#if 1
-//#define SWD_KEEP KEEP  // just for looking at assembly
-#define SWD_KEEP // don't keep at link time if not used, but still compile
-/* Optimized blocking versions.  Note that a single transaction is
-   fast enough, so it makes sense to use these as atomics in a
-   cooperative multitasking environment.  However, speed isn't an
-   issue yet, so these are not used. */
-SWD_KEEP void swd_transaction(uint32_t port, uint32_t read, uint32_t reg) {
-    uint32_t res = 0, flags = 0, val = 0, dr = 0, i = 0;
-    uint32_t cmd = swd_cmd_hdr(port, read, reg);
-    SWD_TRANSACTION_(NULL,cmd,res,flags,val,dr,i);
-}
-void swd_log_flags(uint32_t flags) {
-    if (flags) {
-        // FIXME: need error mechanism
-        infof("flags = 0x%0x\n", flags);
+uint32_t swd_cmd(struct swd_ctx *c, uint8_t cmd, uint32_t val) {
+    if (!cmd) {
+        LOG("swd_cmd: reset\n");
+        swd_reset(c);
+        cmd = swd_cmd_hdr(SWD_PORT_DP, SWD_READ, SWD_DP_RD_DPIDR);
     }
+    return swd_transaction(c, cmd, val);
 }
-SWD_KEEP void swd_write_lsb(uint32_t bits_vec, uint32_t bits_nb) {
-    uint32_t dr=0, i=0, flags=0;
-    SWD_WRITE_LSB_(NULL, bits_vec, bits_nb, dr, i, flags);
-    swd_log_flags(flags);
+
+DEF_COMMAND(swd_cmd) {
+    struct swd_ctx c = {};
+    uint32_t wval = command_stack_pop();
+    uint8_t  cmd  = command_stack_pop();
+    uint32_t rval = swd_cmd(&c, cmd, wval);
+    LOG("rval = 0x%08x\n", rval);
+    command_stack_push(rval);
 }
-SWD_KEEP uint32_t swd_read_lsb(uint32_t bits_nb) {
-    uint32_t dr=0, i=0, flags=0;
-    SWD_READ_LSB_(NULL, bits_nb, dr, i, flags);
-    swd_log_flags(flags);
-    return dr;
-}
-#endif
+
 
 
 /* High level command server. */
@@ -343,26 +411,63 @@ void swd_serv_init(struct swd_serv *s) {
     ZERO(s);
 }
 
+/* Generic interactive command wrappers. */
+void swd_command_read(uint32_t (*read)(struct swd_ctx *c, uint32_t addr)) {
+    struct swd_ctx c = {};
+    uint32_t addr = command_stack_pop();
+    uint32_t rv = read(&c, addr);
+    command_stack_push(rv);
+}
+#define SWD_DEF_READ_COMMAND(name) \
+    DEF_COMMAND(name) { swd_command_read(name); }
+
+void swd_command_write(void (*write)(struct swd_ctx *c, uint32_t addr, uint32_t val)) {
+    struct swd_ctx c = {};
+    uint32_t val  = command_stack_pop();
+    uint32_t addr = command_stack_pop();
+    write(&c, addr, val);
+}
+#define SWD_DEF_WRITE_COMMAND(name) \
+    DEF_COMMAND(name) { swd_command_write(name); }
+
+
+
 /* Single transactions. */
 #define SWD_TRANS_DP_READ(s, reg)                       \
     SM_SUB_CATCH(                                       \
         s, swd_cmd,                                     \
         swd_cmd_hdr(SWD_PORT_DP, SWD_READ, reg), 0)
+uint32_t swd_trans_dp_read(struct swd_ctx *c, uint32_t reg) {
+    return swd_cmd(c, swd_cmd_hdr(SWD_PORT_DP, SWD_READ, reg), 0);
+}
+SWD_DEF_READ_COMMAND(swd_trans_dp_read);
 
 #define SWD_TRANS_AP_READ(s, reg)                       \
     SM_SUB_CATCH(                                       \
         s, swd_cmd,                                     \
         swd_cmd_hdr(SWD_PORT_AP, SWD_READ, reg), 0)
+uint32_t swd_trans_ap_read(struct swd_ctx *c, uint32_t reg) {
+    return swd_cmd(c, swd_cmd_hdr(SWD_PORT_AP, SWD_READ, reg), 0);
+}
+SWD_DEF_READ_COMMAND(swd_trans_ap_read);
 
 #define SWD_TRANS_DP_WRITE(s, reg, val)                 \
     SM_SUB_CATCH(                                       \
         s, swd_cmd,                                     \
         swd_cmd_hdr(SWD_PORT_DP, SWD_WRITE, reg), val)
+void swd_trans_dp_write(struct swd_ctx *c, uint32_t reg, uint32_t val) {
+    swd_cmd(c, swd_cmd_hdr(SWD_PORT_DP, SWD_WRITE, reg), val);
+}
+SWD_DEF_WRITE_COMMAND(swd_trans_dp_write);
 
 #define SWD_TRANS_AP_WRITE(s, reg, val)                 \
     SM_SUB_CATCH(                                       \
         s, swd_cmd,                                     \
         swd_cmd_hdr(SWD_PORT_AP, SWD_WRITE, reg), val)
+void swd_trans_ap_write(struct swd_ctx *c, uint32_t reg, uint32_t val) {
+    swd_cmd(c, swd_cmd_hdr(SWD_PORT_AP, SWD_WRITE, reg), val);
+}
+SWD_DEF_WRITE_COMMAND(swd_trans_ap_write);
 
 /* Read/Write AP registers requires two transactions. Note that these
    do not change banks.  For MEM-AP that is not necessary. */
@@ -370,28 +475,61 @@ void swd_serv_init(struct swd_serv *s) {
         if (SWD_TRANS_AP_READ(s, reg & 0b1100)) goto error;           \
         if (SWD_TRANS_DP_READ(s, SWD_DP_RD_RDBUFF)) goto error;       \
     }
+
+uint32_t swd_ap_reg_read(struct swd_ctx *c, uint32_t reg) {
+    swd_trans_ap_read(c, reg & 0b1100);
+    return swd_trans_dp_read(c, SWD_DP_RD_RDBUFF);
+}
+SWD_DEF_READ_COMMAND(swd_ap_reg_read)
+
 #define SWD_AP_REG_WRITE(s, reg, val) {                                 \
         if (SWD_TRANS_AP_WRITE(s, reg & 0b1100, val)) goto error;       \
         /* Read status register, otherwise subsequent AP_READ returns WAIT? */ \
         if (SWD_TRANS_DP_READ(s, SWD_DP_RD_CTRLSTAT)) goto error;       \
     }
+void swd_ap_reg_write(struct swd_ctx *c, uint32_t reg, uint32_t val) {
+    swd_trans_ap_write(c, reg & 0b1100, val);
+    swd_trans_dp_read(c, SWD_DP_RD_CTRLSTAT);
+}
+SWD_DEF_WRITE_COMMAND(swd_ap_reg_write)
 
 /* MEM-AP access uses another layer of indirection: set TAR, read DRW */
 #define SWD_MEM_AP_READ(s, addr) {                              \
         SWD_AP_REG_WRITE(s, SWD_MEM_AP_TAR, addr);              \
         SWD_AP_REG_READ(s, SWD_MEM_AP_DRW);                     \
     }
+uint32_t swd_mem_ap_read(struct swd_ctx *c, uint32_t addr) {
+    swd_ap_reg_write(c, SWD_MEM_AP_TAR, addr);
+    return swd_ap_reg_read(c, SWD_MEM_AP_DRW);
+}
+SWD_DEF_READ_COMMAND(swd_mem_ap_read)
 
 #define SWD_MEM_AP_WRITE(s, addr, val) {                        \
         SWD_AP_REG_WRITE(s, SWD_MEM_AP_TAR, addr);              \
         SWD_AP_REG_WRITE(s, SWD_MEM_AP_DRW, val);               \
     }
+void swd_mem_ap_write(struct swd_ctx *c, uint32_t addr, uint32_t val) {
+    swd_ap_reg_write(c, SWD_MEM_AP_TAR, addr);
+    swd_ap_reg_write(c, SWD_MEM_AP_DRW, val);
+}
+SWD_DEF_WRITE_COMMAND(swd_mem_ap_write)
 
+
+#define SWD_SELECT_(s, ap, reg, trans_dp_write) \
+    trans_dp_write(s, SWD_DP_WR_SELECT, \
+                   ((reg >> 4) << 4) /* APBANKSEL */     \
+                   |(0    << 0)      /* DPBANKSEL */     \
+                   |(ap   << 24)     /* APSEL */ )
+#define SWD_SELECT(s, ap, reg) \
+    SWD_SELECT_(s, ap, reg, SWD_TRANS_DP_WRITE)
+void swd_select(struct swd_ctx *c, uint32_t ap, uint32_t reg) {
+    SWD_SELECT_(c, ap, reg, swd_trans_dp_write);
+}
 
 sm_status_t swd_serv_tick(struct swd_serv *s) {
     struct swd_cmd *c = &s->sub.swd_cmd;
     SM_RESUME(s);
-    /* Initialize SWD. */
+    /* Reset SWD. */
     if (SM_SUB_CATCH(s, swd_cmd, 0, 0)) goto error;
     // stm32f103 is 1ba01477
     infof("dpidr 0x%08x, p=%d\n", c->val, !!(c->flags & SWD_FLAGS_PARITY));
@@ -413,26 +551,18 @@ sm_status_t swd_serv_tick(struct swd_serv *s) {
     /* Iterate over APs */
     for (s->i = 0; s->i < 4; s->i++) {
         /* Read 0xFC (bank 0xF, reg 0xC) in AP 0 */
-        if (SWD_TRANS_DP_WRITE(s, SWD_DP_WR_SELECT,
-                         (0xf   << 4)  /* APBANKSEL */
-                         |(0    << 0)  /* DPBANKSEL */
-                         |(s->i << 24) /* APSEL */
-                )) goto error;
+        if (SWD_SELECT(s, s->i, 0xFC)) goto error;
         if (SWD_TRANS_AP_READ(s, 0xC)) goto error;
         if (SWD_TRANS_DP_READ(s, SWD_DP_RD_RDBUFF)) goto error;
         /* Assuming zero result means end of AP list */
         if (!c->val) break;
         /* 0x14770011 is AHB-AP */
-        infof("idr %d 0x%08x\n", s->i, c->val);
+        infof("ap %d, idr 0x%08x\n", s->i, c->val);
     }
 
     /* All subsequent AP reads/writes use only the main registers, so
        we can just set SELECT once.  Assume this is MEM-AP. */
-    if (SWD_TRANS_DP_WRITE(s, SWD_DP_WR_SELECT,                       \
-                      (0   << 4)  /* APBANKSEL */               \
-                     |(0   << 0)  /* DPBANKSEL */               \
-                     |(0   << 24) /* APSEL */                   \
-            )) goto error;
+    if (SWD_SELECT(s, 0, 0)) goto error;
 
     /* Configure MEM-AP for 32 bit transfers. */
     SWD_AP_REG_READ(s, 0x0); // CSW
