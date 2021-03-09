@@ -108,5 +108,20 @@ static inline ws_err_t ws_read_msg(struct ws_req *c) {
 
 }
 
+static inline ws_err_t ws_write_msg(struct ws_req *c, const struct ws_message *m) {
+    ASSERT(m->len < 126); // Only small size for now
+    uint8_t hdr[2] = {
+        (m->fin << 7) | (m->opcode & 0xF),
+        (m->mask << 7) | m->len
+    };
+    intptr_t rv;
+    if (2 != (rv = c->c.write(&c->c, hdr, 2))) goto error_rv;
+    if (m->len != (rv = c->c.write(&c->c, m->buf, m->len))) goto error_rv;
+    rv = 0;
+error_rv:
+    if (rv) LOG("error: %d\n", rv);
+    return rv;
+}
+
 
 #endif
