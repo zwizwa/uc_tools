@@ -2,6 +2,8 @@
 #include "macros.h"
 #include "assert_read.h"
 #include "assert_write.h"
+#include "sha1.h"
+#include "base64.h"
 
 #define HTTPSERVER_MAX_HEADER_SIZE 4096
 
@@ -12,32 +14,58 @@ intptr_t read_(struct http_req *c, uint8_t *buf, uintptr_t len) {
 }
 intptr_t write_(struct http_req *c, const uint8_t *buf, uintptr_t len) {
     assert_write(1, buf, len);
+    for(uintptr_t i=0; i<len; i++) LOG("%c", buf[i]);
     return len;
 }
 
 struct server;
 struct server {
-    struct http_req c;
+    struct ws_req ws;
     void (*handler)(struct server *);
+    uint8_t websocket_sha1[SHA1_BLOCK_SIZE];
 };
 
 const char root[] = "hello";
 const char not_found[] = "404 not found";
 
+void write_str(struct server *s, const char *str) {
+    write_(&s->ws.c, (const uint8_t*)str, strlen(str));
+}
 void serve_html(struct server *s, const char *resp, const char *html) {
-    write_(&s->c, (const uint8_t*)resp, strlen(resp));
-    write_(&s->c, (const uint8_t*)html, strlen(html));
+    write_str(s, resp);
+    write_str(s, html);
 }
 void handle_root(struct server *s) {
-    return serve_html(s, "HTTP/1.0 200 OK\r\nContent-Type: text/html; charset=ISO-8859-1\r\n\r\n", root);
+    write_str(s,"HTTP/1.0 200 OK\r\nContent-Type: "
+              "text/html; charset=ISO-8859-1\r\n\r\n");
+    write_str(s, root);
 }
 void handle_404(struct server *s) {
-    return serve_html(s, "HTTP/1.0 404 Not Found\r\nContent-Type: text/html; charset=ISO-8859-1\r\n\r\n", not_found);
+    write_str(s, "HTTP/1.0 404 Not Found\r\nContent-Type: "
+              "text/html; charset=ISO-8859-1\r\n\r\n");
+    write_str(s, not_found);
 }
 void handle_ws(struct server *s) {
-    // TODO: send response
-    // switch to websocket main loop
+    write_str(s, "HTTP/1.1 101 Switching Protocols\r\n"
+              "Upgrade: websocket\r\n"
+              "Connection: Upgrade\r\n"
+              "Sec-WebSocket-Accept: ");
+    int n = base64_length(sizeof(s->websocket_sha1));
+    char buf[n+1];
+    base64_encode(buf, s->websocket_sha1, sizeof(s->websocket_sha1));
+    buf[n] = 0;
+    write_str(s, buf);
+    write_str(s, "\r\n\r\n");
+    for(;;) { ws_read_msg(&s->ws); }
 }
+
+ws_err_t push(struct ws_req *r, struct ws_message *m) {
+    //LOG("m.len = %d\n", m->len);
+    m->buf[m->len] = 0; // FIXME: don't do this
+    LOG("push: %s\n", m->buf);
+    return 0;
+}
+
 
 
 intptr_t request(struct http_req *c, const char *uri) {
@@ -49,20 +77,34 @@ intptr_t request(struct http_req *c, const char *uri) {
     return 0;
 }
 intptr_t header(struct http_req *c, const char *hdr, const char *val) {
+    struct server *s = (void*)c;
     LOG("H: %s = %s\n", hdr, val);
+    // FIXME: case-insensitive?
+    if (!strcmp(hdr, "Sec-WebSocket-Key")) {
+        SHA1_CTX ctx;
+        sha1_init(&ctx);
+        sha1_update(&ctx, (BYTE*)val, strlen(val));
+        const char magic[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+        sha1_update(&ctx, (BYTE*)magic, strlen(magic));
+        sha1_final(&ctx, s->websocket_sha1);
+
+    }
     return 0;
 }
 
 void test_server(void) {
     struct server s = {
-        .c = {
-            .read    = read_,
-            .write   = write_,
-            .request = request,
-            .header  = header,
-        },
+        .ws = {
+            .c = {
+                .read    = read_,
+                .write   = write_,
+                .request = request,
+                .header  = header,
+            },
+            .push = push
+        }
     };
-    httpserver_read_headers(&s.c);
+    httpserver_read_headers(&s.ws.c);
     if (s.handler) s.handler(&s);
 }
 

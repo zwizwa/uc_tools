@@ -30,12 +30,15 @@ struct ws_message {
     unsigned int opcode:4;
 };
 
+/* Set this to the maximum message size used by the application.
+   Currently streaming is not supported so don't make this too big. */
+#define WS_LEN_MAX 4096
+
 /* Decouple it from implementation of read and write. */
 typedef uintptr_t ws_err_t; struct ws_req;
 struct ws_req {
     struct http_req c;
     ws_err_t (*push)(struct ws_req *, struct ws_message *);
-    uint32_t len_max;
 };
 
 /* Undo the xormask.  The xormask is (I believe), a hack that is part
@@ -62,7 +65,7 @@ static inline ws_err_t ws_read_msg_body(struct ws_req *c, struct ws_message *m,
         /* Buffer goes on the stack.  FIXME: Is streaming necessary?
            It's a little awkward because we need to undo the xor
            mask, so we would need to provide a read function. */
-        ASSERT(m->len <= c->len_max);
+        ASSERT(m->len <= WS_LEN_MAX);
         uint8_t buf[m->len]; m->buf = buf;
 
         if (4 != (rv = c->c.read(&c->c, m->xorkey, 4))) goto error_rv;
