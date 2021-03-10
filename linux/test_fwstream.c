@@ -32,7 +32,7 @@ int main(int argc, char **argv) {
         .write = fw_write,
         .checksum_inc = crc32b_inc
     };
-    fwstream_init(&fws);
+    fwstream_reset(&fws);
     for (int i=0; i<fw_len/fws.chunk_size; i++) {
         ASSERT(0 == fwstream_push(&fws, i, fw + i*fws.chunk_size));
     }

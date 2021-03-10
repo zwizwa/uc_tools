@@ -45,6 +45,9 @@ struct fwstream {
        using e.g. crc32b. */
     uint32_t (*checksum_inc)(const uint8_t *, uint32_t len, uint32_t acc);
 
+    /* Priority to set before writing the control block to flash. */
+    uint32_t priority;
+
 
     /* STATE */
 
@@ -65,13 +68,40 @@ struct fwstream {
 };
 
 static inline void
-fwstream_init(struct fwstream *s) {
+fwstream_reset(struct fwstream *s) {
     /* It is assumed that user has already filled in the callbacks,
-       chunk_size and max_size.  For the rest we only need to set the
-       expected first block.  The fwstream_push() routine will init
-       everything from the first block. */
+       chunk_size, max_size and priority.  For the rest we only need
+       to set the expected first block.  The fwstream_push() routine
+       will init everything from the first block. */
     s->expected_chunk_nb = 0;
 }
+
+static inline uint32_t
+fwstream_size_padded(uint32_t size_bytes) {  // endx-start
+    return (((size_bytes-1)/BLOCK_SIZE)+1)*BLOCK_SIZE;
+}
+static inline uint32_t
+fwstream_ctrl_crc(struct fwstream *s, const struct gdbstub_control *c) {
+    return s->checksum_inc((void*)c, c->size - sizeof(uint32_t), 0);
+}
+static inline uint32_t
+fwstream_new_priority(struct fwstream *s, const struct gdbstub_config *config) {
+    uint32_t size_padded =
+        fwstream_size_padded(config->flash_endx - config->flash_start);
+    struct gdbstub_control *c = (void*)(config->flash_start + size_padded);
+
+    uint32_t priority = 0;
+    uint32_t crc = fwstream_ctrl_crc(s, c);
+    if (c->ctrl_crc == crc) {
+        priority = c->priority + 1;
+    }
+    else {
+        LOG("fwstream_ctrl_crc: %x != %x\n", c->ctrl_crc, crc);
+    }
+    return priority;
+
+}
+
 
 static inline int
 fwstream_push(struct fwstream *s, uintptr_t chunk_nb, const uint8_t *chunk_data) {
@@ -89,6 +119,7 @@ fwstream_push(struct fwstream *s, uintptr_t chunk_nb, const uint8_t *chunk_data)
        concetenated and streamed.
 
     */
+    struct gdbstub_control new_c;
 
     /* Start ignoring once the sequence is broken. */
     if (chunk_nb != s->expected_chunk_nb) {
@@ -118,7 +149,7 @@ fwstream_push(struct fwstream *s, uintptr_t chunk_nb, const uint8_t *chunk_data)
            we've lost track and need to abort the iteration. */
         if (endx <= start) return FWSTREAM_ERR_FW_ENDX;
         uint32_t size_bytes = endx - start;
-        uint32_t size_padded = (((size_bytes-1)/BLOCK_SIZE)+1)*BLOCK_SIZE;
+        uint32_t size_padded = fwstream_size_padded(size_bytes);
         if (s->max_size && (size_padded > s->max_size)) return FWSTREAM_ERR_FW_SIZE;
         s->control_chunk = size_padded / s->chunk_size;
 
@@ -133,20 +164,29 @@ fwstream_push(struct fwstream *s, uintptr_t chunk_nb, const uint8_t *chunk_data)
            use it.  Still assuming same endianness. */
         const struct gdbstub_control *c = (const void*)chunk_data;
         if ((c->size != sizeof(struct gdbstub_control))) return FWSTREAM_ERR_CTRL_SIZE;
-        uint32_t ctrl_crc = s->checksum_inc((void*)c, c->size - sizeof(uint32_t), 0);
+        uint32_t ctrl_crc = fwstream_ctrl_crc(s, c);
 
         LOG("crc ctrl: %08x (%08x)\n", ctrl_crc, c->ctrl_crc);
         if (ctrl_crc != c->ctrl_crc) return FWSTREAM_ERR_CTRL_CRC;
 
         /* Validate the control header, assuming it fits in one chunk,
            then validate the incremental checksum. */
-        // TODO
         LOG("crc fw:   %08x (%08x)\n", s->checksum_acc, c->fw_crc);
         if (s->checksum_acc != c->fw_crc) return FWSTREAM_ERR_FW_CRC;
 
-        s->valid = 1;
+        /* Optionally update the priority. */
+        if (c->priority != s->priority) {
+            LOG("priority: %d -> %d\n", c->priority, s->priority);
+            /* Chunk is const, so replace control block chunk with copy. */
+            new_c = *c;
+            chunk_data = (const uint8_t*)&new_c;
+            new_c.priority = s->priority;
+            new_c.ctrl_crc = fwstream_ctrl_crc(s, &new_c);
+            LOG("crc ctrl: %08x (updated)\n", new_c.ctrl_crc);
+        }
 
-        LOG("fw OK\n");
+        s->valid = 1;
+        LOG("fw receive OK\n");
     }
 
     /* Write chunk. */
