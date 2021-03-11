@@ -137,7 +137,7 @@
  * @note    The default is @p TRUE.
  */
 #if !defined(CH_CFG_OPTIMIZE_SPEED)
-#define CH_CFG_OPTIMIZE_SPEED               TRUE
+#define CH_CFG_OPTIMIZE_SPEED               FALSE
 #endif
 
 /** @} */
@@ -747,9 +747,20 @@
 
 /** @} */
 
+
+#if !defined(SHELL_CMD_TEST_ENABLED) || defined(__DOXYGEN__)
+#endif
+
+
 /*===========================================================================*/
 /* Port-specific settings (override port settings defaulted in chcore.h).    */
 /*===========================================================================*/
+
+
+
+// Tom mods
+#define SHELL_CMD_TEST_ENABLED              FALSE
+
 
 #endif  /* CHCONF_H */
 
