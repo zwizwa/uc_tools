@@ -87,6 +87,7 @@ ws_err_t push(struct ws_req *r, struct ws_message *m) {
     LOG("push: %s\n", m->buf);
     TEST_REPLY("1", 1, 42); // T_INT, 42
     TEST_REPLY("2", 2, 0);  // T_TUP, 0
+    TEST_REPLY("3", 2, 1, 1, 123);  // T_TUP, 1, T_INT, 123
     return 0;
 }
 
