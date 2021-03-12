@@ -11,9 +11,14 @@
 typedef intptr_t http_err_t;
 
 struct http_req;
+typedef intptr_t (*http_read)(struct http_req *, uint8_t *buf, uintptr_t len);
+typedef intptr_t (*http_write)(struct http_req *, const uint8_t *buf, uintptr_t len);
+typedef void     (*http_close)(struct http_req *);
+
 struct http_req {
-    intptr_t (*read)(struct http_req *, uint8_t *buf, uintptr_t len);
-    intptr_t (*write)(struct http_req *, const uint8_t *buf, uintptr_t len);
+    http_read  read;
+    http_write write;
+    http_close close;
     http_err_t (*request)(struct http_req *, const char *uri);
     http_err_t (*header)(struct http_req *, const char *header, const char *value);
 };
@@ -78,5 +83,40 @@ static inline http_err_t httpserver_read_headers(struct http_req *c) {
 }
 
 
+
+static inline void httpserver_write_str(struct http_req *s, const char *str) {
+    s->write(s, (const uint8_t*)str, strlen(str));
+}
+static inline void httpserver_write_200_resp(struct http_req *s, const char *type) {
+    httpserver_write_str(s, "HTTP/1.0 200 OK\r\nContent-Type: ");
+    httpserver_write_str(s, type);
+    httpserver_write_str(s, "\r\n\r\n");
+}
+static inline void httpserver_write_404_resp(struct http_req *s) {
+    httpserver_write_str(s, "HTTP/1.0 404 Not Found\r\nContent-Type: text/html; charset=ISO-8859-1\r\n\r\n");
+
+}
+
+/* Set type based on extension. */
+const char *httpserver_file_type(const char *filename) {
+    const struct {
+        const char *ext;
+        const char *type;
+    } ext_to_type[] = {
+        {".html","text/html; charset=UTF-8"}, // default
+        {".js",  "text/javascript; charset=UTF-8"},
+        {".wasm","application/wasm"},
+    };
+    size_t n = strlen(filename);
+    while(n--) {
+        if (filename[n] == '.') {
+            FOR_ARRAY(ext_to_type,e2t) {
+                if (!strcmp(filename+n,e2t->ext)) { return e2t->type; }
+            }
+            break;
+        }
+    }
+    return ext_to_type[0].type;
+}
 
 #endif
