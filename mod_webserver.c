@@ -28,16 +28,16 @@ void serve_file(struct server_req *s) {
     FILE *f = NULL;
     if (s->file[0]) {f = fopen(s->file, "r"); }
     if (!f) {
-        httpserver_write_404_resp(h);
+        http_write_404_resp(h);
         f = fopen("404.html", "r");
         if (!f) {
-            httpserver_write_str(h, not_found);
+            http_write_str(h, not_found);
             return;
         }
         /* Fallthrough and write 404.html */
     }
     else {
-        httpserver_write_200_resp(h, httpserver_file_type(s->file));
+        http_write_200_resp(h, http_file_type(s->file));
     }
     uint8_t buf[WEBSERVER_FILE_CHUNK];
     for(;;) {
@@ -49,7 +49,7 @@ void serve_file(struct server_req *s) {
 }
 void serve_ws(struct server_req *s) {
     struct http_req *h = &s->ws.c;
-    httpserver_write_str(
+    http_write_str(
         h, "HTTP/1.1 101 Switching Protocols\r\n"
         "Upgrade: websocket\r\n"
         "Connection: Upgrade\r\n"
@@ -58,27 +58,35 @@ void serve_ws(struct server_req *s) {
     char buf[n+1];
     base64_encode(buf, s->websocket_sha1, sizeof(s->websocket_sha1));
     buf[n] = 0;
-    httpserver_write_str(h, buf);
-    httpserver_write_str(h, "\r\n\r\n");
+    http_write_str(h, buf);
+    http_write_str(h, "\r\n\r\n");
     for(;;) { ws_read_msg(&s->ws); }
 }
+
+void test_reply(struct ws_req *r, uint8_t *buf, uintptr_t len) {
+    //LOG("push: sending reply\n");
+    struct ws_message m = {
+        .opcode = 2,  // binary
+        .fin = 1,
+        .mask = 0,
+        .buf = buf,
+        .len = len
+    };
+    ws_write_msg(r, &m);
+}
+
+#define TEST_REPLY(val, ...)                      \
+    if (!strcmp((const char*)m->buf, val)) {      \
+        uint8_t buf[] = {__VA_ARGS__};            \
+        test_reply(r, buf, sizeof(buf));          \
+    }
 
 ws_err_t push(struct ws_req *r, struct ws_message *m) {
     //LOG("m.len = %d\n", m->len);
     m->buf[m->len] = 0; // FIXME: don't do this
     LOG("push: %s\n", m->buf);
-    if (!strcmp((const char*)m->buf, "123")) {
-        uint8_t buf[3] = {'a','b','c'};
-        LOG("push: sending reply\n");
-        struct ws_message m = {
-            .opcode = 1,
-            .fin = 1,
-            .mask = 0,
-            .buf = buf,
-            .len = sizeof(buf)
-        };
-        ws_write_msg(r, &m);
-    }
+    TEST_REPLY("1", 1, 42); // T_INT, 42
+    TEST_REPLY("2", 2, 0);  // T_TUP, 0
     return 0;
 }
 
@@ -104,7 +112,7 @@ intptr_t request(struct http_req *c, const char *uri) {
 
 intptr_t header(struct http_req *c, const char *hdr, const char *val) {
     struct server_req *s = (void*)c;
-    LOG("H: %s = %s\n", hdr, val);
+    // LOG("H: %s = %s\n", hdr, val);
     // FIXME: case-insensitive?
     if (!strcmp(hdr, "Sec-WebSocket-Key")) {
         SHA1_CTX ctx;
@@ -136,7 +144,7 @@ void server_init(struct server_req *s,
 void server_serve(http_read read, http_write write, http_close close) {
     struct server_req s;
     server_init(&s, read, write, close);
-    httpserver_read_headers(&s.ws.c);
+    http_read_headers(&s.ws.c);
     ASSERT(s.serve);
     s.serve(&s);
     if (s.ws.c.close) {

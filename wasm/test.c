@@ -1,4 +1,11 @@
 #include <stdint.h>
-int test(uint32_t a) {
-    return a + 1;
+#include <stdio.h>
+int inc = 0;
+int main(int argc, char **argv) {
+    printf("hello\n");
+    inc = 123;
+    return 0;
+}
+int testfun(int i) {
+    return i+123;
 }

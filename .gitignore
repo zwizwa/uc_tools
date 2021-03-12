@@ -21,3 +21,5 @@ target
 *.lock
 rust/cmix_ex/ex1/test
 rust/cmix_ex/ex2/test
+a.out.js
+a.out.wasm

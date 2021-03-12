@@ -28,12 +28,12 @@ void log_c(const uint8_t *buf, uintptr_t len) {
     for(uintptr_t i=0; i<len; i++) LOG("%c", buf[i]);
 }
 
-#define HTTPSERVER_STATUS_EOF            -1
-#define HTTPSERVER_STATUS_OVERRUN        -2
-#define HTTPSERVER_STATUS_INVALID        -3
+#define HTTP_STATUS_EOF            -1
+#define HTTP_STATUS_OVERRUN        -2
+#define HTTP_STATUS_INVALID        -3
 
 /* Don't do anything fancy, just read the headers into a buffer. */
-static inline http_err_t httpserver_read_headers(struct http_req *c) {
+static inline http_err_t http_read_headers(struct http_req *c) {
     /* We parse one line at a time, which allows us to keep the buffer
        small, and locally managed.  Callbacks can use the memory in
        the extent of the call. */
@@ -42,9 +42,9 @@ static inline http_err_t httpserver_read_headers(struct http_req *c) {
     intptr_t rv;
     uintptr_t nb_lines = 0;
     for(;;) {
-        if (len >= sizeof(buf)) return HTTPSERVER_STATUS_OVERRUN;
+        if (len >= sizeof(buf)) return HTTP_STATUS_OVERRUN;
         rv = c->read(c, (uint8_t*)&buf[len++], 1);
-        if (rv == 0) return HTTPSERVER_STATUS_EOF;
+        if (rv == 0) return HTTP_STATUS_EOF;
         ASSERT(1 == rv);
         if ((len >= 2) && (buf[len-2] == 0xd) && (buf[len-1] == 0xa)) {
             /* Convert 0d,0a to cstring. */
@@ -52,7 +52,7 @@ static inline http_err_t httpserver_read_headers(struct http_req *c) {
             if (len == 0) { break; }
             if (0 == nb_lines) {
                 /* Only HTTP/1.1 GET is supported. */
-                rv = HTTPSERVER_STATUS_INVALID;
+                rv = HTTP_STATUS_INVALID;
                 if (len < (3+1+1+1+8)) { goto error;};
                 if (strncmp(buf,"GET ",3+1)) { goto error;};
                 if (strcmp(buf+len-8,"HTTP/1.1")) { goto error;};
@@ -65,7 +65,7 @@ static inline http_err_t httpserver_read_headers(struct http_req *c) {
                 for(uintptr_t i=0; i<len; i++) {
                     if (buf[i] == ':') {
                         buf[i] = 0;
-                        if (len < i+2) return HTTPSERVER_STATUS_INVALID;
+                        if (len < i+2) return HTTP_STATUS_INVALID;
                         val = buf+i+2;
                         break;
                     }
@@ -84,26 +84,28 @@ static inline http_err_t httpserver_read_headers(struct http_req *c) {
 
 
 
-static inline void httpserver_write_str(struct http_req *s, const char *str) {
+static inline void http_write_str(struct http_req *s, const char *str) {
     s->write(s, (const uint8_t*)str, strlen(str));
 }
-static inline void httpserver_write_200_resp(struct http_req *s, const char *type) {
-    httpserver_write_str(s, "HTTP/1.0 200 OK\r\nContent-Type: ");
-    httpserver_write_str(s, type);
-    httpserver_write_str(s, "\r\n\r\n");
+static inline void http_write_200_resp(struct http_req *s, const char *type) {
+    http_write_str(s, "HTTP/1.0 200 OK\r\nContent-Type: ");
+    http_write_str(s, type);
+    http_write_str(s, "\r\n\r\n");
 }
-static inline void httpserver_write_404_resp(struct http_req *s) {
-    httpserver_write_str(s, "HTTP/1.0 404 Not Found\r\nContent-Type: text/html; charset=ISO-8859-1\r\n\r\n");
+static inline void http_write_404_resp(struct http_req *s) {
+    http_write_str(s, "HTTP/1.0 404 Not Found\r\nContent-Type: text/html; charset=ISO-8859-1\r\n\r\n");
 
 }
 
 /* Set type based on extension. */
-const char *httpserver_file_type(const char *filename) {
+const char *http_file_type(const char *filename) {
     const struct {
         const char *ext;
         const char *type;
     } ext_to_type[] = {
-        {".html","text/html; charset=UTF-8"}, // default
+        {".c","text/plain; charset=UTF-8"},
+        {".txt","text/plain; charset=UTF-8"},
+        {".html","text/html; charset=UTF-8"},
         {".js",  "text/javascript; charset=UTF-8"},
         {".wasm","application/wasm"},
     };
