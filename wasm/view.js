@@ -7,14 +7,11 @@
 // than the other way around.
 
 function fetch_view(file, id) {
-    fetch_element(file)
+    return fetch_element(file)
         .then(el => {
             el.setAttribute("id", id)
             var module = el.getAttribute("module")
-            import('./' + module).then(m => {
-                m.init(el)
-                set_cell(el)
-            })
+            return import('./' + module).then(m => m.init(el))
         })
 }
 
@@ -35,7 +32,7 @@ function render(html) {
 
 // TEST
 export function button() {
-    fetch_view('wave.svg', 'wave')
+    fetch_view('wave.svg', 'wave').then(set_cell)
 }
 // Set the main cell
 function set_cell(element) {
