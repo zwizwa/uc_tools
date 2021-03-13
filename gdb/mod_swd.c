@@ -408,6 +408,7 @@ void swd_serv_init(struct swd_serv *s) {
 #define SWD_SELECT(s, ap, reg) \
     SWD_SELECT_(s, ap, reg, SWD_TRANS_DP_WRITE)
 
+int swd_req = 0;
 
 sm_status_t swd_serv_tick(struct swd_serv *s) {
     struct swd_cmd *c = &s->sub.swd_cmd;
@@ -477,8 +478,10 @@ sm_status_t swd_serv_tick(struct swd_serv *s) {
     SWD_MEM_AP_READ(s, 0x08000010)
     infof("drw 0x%08x (verify 0x08000010)\n", c->val);
 
+
+  again:
     /* Auto-incrementing read.  Note that AP register reads are
-       pipelined, so the correct sequence is to set the TAP, read DRW
+       pipelined, so the correct sequence is to set the TAR, read DRW
        once, discard, then read again to obtain the first result.
        Also note that this wraps on 0x400 (1K) boundaries.  The
        following is expanded into individual transactions to make it
@@ -494,10 +497,22 @@ sm_status_t swd_serv_tick(struct swd_serv *s) {
         infof("drw 0x%08x @%x %d\n", c->val, 0x08000000 + s->i * 4, s->i);
     }
 
+    for(;;) {
+        SM_SUSPEND(s);
+        if (swd_req) {
+            swd_req--;
+            goto again;
+        }
+    }
+
     SM_HALT(s);
   error:
     infof("error\n");
     SM_HALT_STATUS(s, 1);
+}
+
+DEF_COMMAND(swd_req) {
+    swd_req++;
 }
 
 
