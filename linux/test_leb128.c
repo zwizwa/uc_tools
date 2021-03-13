@@ -2,7 +2,6 @@
 #include "macros.h"
 
 // TODO:
-// - switch to signed implementation
 // - create a message sender leb128 tag format
 
 int main(void) {
