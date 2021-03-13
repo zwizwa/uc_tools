@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     module="wave.js"
+     id="dummy"
+     width="800"
+     height="200"
+     pointer-events="all">
+  <rect width="800"
+        height="200"
+        stroke="white"
+        fill="grey"/>
+  <path vector-effect="non-scaling-stroke"
+        fill="none"
+        stroke="black"
+        id="max"
+        d=""/>
+  <path vector-effect="non-scaling-stroke"
+        fill="none"
+        stroke="black"
+        id="min"
+        d=""/>
+</svg>
+   

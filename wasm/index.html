@@ -1,5 +1,7 @@
 <html>
-<script src="/a.out.js"></script>
-<script src="/lib.js"></script>
-<body>SPA test</body>
+  <body>
+    <script>import('./main.js').then(m => main = m)</script>
+    <input type="button" onclick="main.button()"/>
+    <div id="cell">[cell]</div>
+  </body>
 </html>

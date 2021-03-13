@@ -103,11 +103,12 @@ const char *http_file_type(const char *filename) {
         const char *ext;
         const char *type;
     } ext_to_type[] = {
-        {".c","text/plain; charset=UTF-8"},
-        {".txt","text/plain; charset=UTF-8"},
-        {".html","text/html; charset=UTF-8"},
-        {".js",  "text/javascript; charset=UTF-8"},
-        {".wasm","application/wasm"},
+        {".c",    "text/plain; charset=UTF-8"},
+        {".txt",  "text/plain; charset=UTF-8"},
+        {".html", "text/html; charset=UTF-8"},
+        {".js",   "text/javascript; charset=UTF-8"},
+        {".wasm", "application/wasm"},
+        {".svg",  "image/svg+xml"},
     };
     size_t n = strlen(filename);
     while(n--) {
