@@ -29,14 +29,11 @@ function render(html) {
     return tmp.firstChild;
 }
 
+// Widget instantiation
+function wave() {
+    return fetch_view('wave.svg', 'wave')
+}
 
-// TEST
-export function button() {
-    fetch_view('wave.svg', 'wave').then(set_cell)
-}
-// Set the main cell
-function set_cell(element) {
-    var cell = document.getElementById("cell")
-    cell.innerHTML=""
-    cell.appendChild(element)
-}
+
+
+export { wave }

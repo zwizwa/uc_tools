@@ -1,3 +1,9 @@
+// Protocol code.  This contains two parts: wire protocol (packed
+// format based on LEB128 signed integers), and the unpacked "path"
+// form, similar to TAG_U32 in C.
+
+// 1. WIRE PROTOCOL
+
 function read_from_array(b) {
     var env = {i: 0, b: b};
     var msg = read(env);
@@ -90,4 +96,23 @@ function read(env) {
 }
 
 
-export { read_from_array };
+
+
+// 2. PATH FORM
+
+// Apply a protocol message to a function.  This essentially
+// implements pattern matching.  Expose this as a msg method instead.
+function unpack(msg, fun) {
+    var args = []
+    for(var i=0; i<fun.length; i=i+1) {
+        var arg = msg.path.shift()
+        args.push(arg)
+    }
+    //console.log('args',args)
+    return fun.apply(null, args)
+}
+
+
+
+
+export { read_from_array, unpack };
