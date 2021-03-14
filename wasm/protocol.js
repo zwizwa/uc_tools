@@ -4,17 +4,34 @@
 
 // 1. WIRE PROTOCOL
 
-// class ArrayReader {
-//     constructor(array) {
-//         this.i = 0
-//         this.b = array
-//     }
-// }
-
-function read_from_array(b) {
-    var env = {i: 0, b: b};
+// Current implementation assumes the entire message can be buffered.
+// We do the main parsing from an u8 view into the full buffer, and
+// create other views as needed.
+function read_from_arrayBuf(arrayBuf) {
+    var env = {
+        i: 0,
+        ab: arrayBuf,
+        u8: new Uint8Array(arrayBuf)
+    };
     var msg = read(env);
     return msg;
+}
+function read_byte(env) {
+    var b = env.u8[env.i];
+    if (b == null) throw 'eof';
+    env.i = env.i + 1;
+    return b;
+}
+function read_bytes(env, n) {
+    var ab_slice = env.ab.slice(env.i, env.i + n);
+    env.i = env.i + n;
+    return ab_slice;
+}
+// Note that endianness is the host endianness, which leads to code
+// that is not portable.  We use this function as a patch point for
+// later in case the issue ever pops up.
+function int16_le(arrayBuf) {
+    return new Int816Array(arrayBuf);
 }
 
 
@@ -29,17 +46,6 @@ var T_TAG = 7  // 7 = T
 var T_CMT = 35 // '#'
 function skip_comment(env) {
     while (10 == read_byte(env));
-}
-function read_byte(env) {
-    if (null == env.b[env.i]) throw 'eof';
-    var b = env.b[env.i];
-    env.i = env.i + 1;
-    return b;
-}
-function read_bytes(env, n) {
-    var b = new Uint8Array(n);
-    for(var i=0; i<n; i=i+1) b[i] = read_byte(env);
-    return b;
 }
 function read_int(env) {
     var sr = 0;
@@ -62,31 +68,31 @@ function read_int(env) {
 }
 function read_multi(n, rd) {
     var a = []
-    for (var i=0; i<n; i=i+1) { a.push(rd()) }
+    for (var i=0; i<n; i=i+1) { a.push(rd()); }
     return a;
 }
 function read_tup(env) {
     var size = read_int(env);
-    return read_multi(size, _ => read(env))
+    return read_multi(size, _ => read(env));
 }
 function read_arr(env) {
     var size = read_int(env);
     var type = read_int(env);
-    return read_multi(size, _ => read_type(env, type))
+    return read_multi(size, _ => read_type(env, type));
 }
 function read_bin(env) {
     var size = read_int(env)
-    return read_bytes(env, size)
+    return read_bytes(env, size);
 }
 function read_sym(env) {
     var bs = read_bin(env)
-    return new TextDecoder().decode(bs)
+    return new TextDecoder().decode(bs);
 }
 function read_tag(env) {
     var nf = read_int(env); var from = read_multi(nf, _ => read_int(env));
     var nt = read_int(env); var to   = read_multi(nt, _ => read_int(env));
     var nb = read_int(env); var bin  = read_bytes(env, nb);
-    return {from: from, to: to, bin: bin}
+    return new Message(from, to, bin);
 }
 function read_type(env, type) {
     if (type == T_INT) return read_int(env);
@@ -101,7 +107,7 @@ function read(env) {
     var type = read_int(env)
     if (type == T_NOP) return read(env);
     if (type == T_CMT) return skip_comment(env);
-    return read_type(env, type)
+    return read_type(env, type);
 }
 
 
@@ -110,10 +116,10 @@ function read(env) {
 // 2. PATH FORM
 
 class Message {
-    constructor(from,to,bin) {
-        this.from = from,
-        this.to   = to,
-        this.bin  = bin,
+    constructor(from, to, bin) {
+        this.from   = from,
+        this.to     = to,
+        this.bin    = bin,
         this.unpack = function(fun) { return unpack(this, fun); }
     }
 }
@@ -132,4 +138,4 @@ function unpack(msg, fun) {
 
 
 
-export { read_from_array, unpack, Message };
+export { read_from_arrayBuf, unpack, Message };

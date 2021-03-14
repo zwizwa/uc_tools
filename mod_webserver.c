@@ -64,7 +64,7 @@ void serve_ws(struct server_req *s) {
 }
 
 void test_reply(struct ws_req *r, uint8_t *buf, uintptr_t len) {
-    //LOG("push: sending reply\n");
+    LOG("push: sending %d bytes\n", len);
     struct ws_message m = {
         .opcode = 2,  // binary
         .fin = 1,
@@ -85,9 +85,15 @@ ws_err_t push(struct ws_req *r, struct ws_message *m) {
     //LOG("m.len = %d\n", m->len);
     m->buf[m->len] = 0; // FIXME: don't do this
     LOG("push: %s\n", m->buf);
-    TEST_REPLY("1", 1, 42); // T_INT, 42
-    TEST_REPLY("2", 2, 0);  // T_TUP, 0
-    TEST_REPLY("3", 2, 1, 1, 123);  // T_TUP, 1, T_INT, 123
+    TEST_REPLY("1", 1, 42); // T_INT
+    TEST_REPLY("2", 2, 1, 3, 123, 56, 1);  // T_TUP
+    TEST_REPLY("3", 3, 4, 1,2,3,4);  // T_BIN
+    // This is a full TAG RPC message to the wave viewer
+    TEST_REPLY("7",
+               7,
+               0, // from
+               2, 0,0, // to
+               4, 1,2,3,4) // bin
     return 0;
 }
 
