@@ -18,12 +18,9 @@ import * as protocol from './protocol.js'
 var check = tools.check;
 
 function path_set_d(path, arr) {
-    var prev_y, path_d;
+    var prev_y=arr[0]
+    var path_d='M0,'+prev_y;
     tools.each(arr, function(y) {
-        if (null == prev_y) {
-            prev_y = y;
-            path_d = 'M0,' + y;
-        }
         path_d += 'l1,' + (y - prev_y);
         prev_y = y;
     });
@@ -32,45 +29,38 @@ function path_set_d(path, arr) {
 
 const selectors = ["#min","#max"]
 function path_handle(el, msg) {
-    // Since JavaScript doesn't have pattern matching, we use a custom
-    // "popper" that takes a number of tags off of the top of
-    // msg.path, determined by the number of arguments of the
-    // function, and then applies the function, essentially
-    // implementing matching.
-    // FIXME: msg.shift_apply()
-    protocol.unpack(
-        msg,
-        function(path_nb) {
-            //console.log('path_nb',path_nb)
+    msg.unpack(
+        path_nb => {
             var sel  = check(selectors[path_nb])
             var path = check(el.querySelector(sel))
             // Interpret the binary payload as a signed 16-bit array.
             var arr  = msg.int16();
             path_set_d(path, arr)
+            // The convention is that we need to reply if the return
+            // path is not empty.
+            if (msg.from.length > 0) {
+                console.log('from',msg.from)
+            }
         })
 }
 
-const dir_meta = [{name: "min"},{name: "max"}];
+// FIXME
+const dir_meta = [{name: "min"}, {name: "max"}];
 
 function handle(msg) {
-    // console.log('handle',this)
-
-    // The general idea of the path protocol is that the first tag in
-    // the path determines where to send the message.  In the
-    // JavaScript setting we are allowed to modify the tag in-place.
-    var tag = msg.path.shift()
-    switch(tag) {
-        case -1: return protocol.dir(msg, dir_meta);
-        case  0: return path_handle(this, msg)
-    }
+    msg.unpack(
+        tag => {
+            switch(tag) {
+            case -1: return protocol.dir(msg, dir_meta);
+            case  0: return path_handle(this, msg)
+            }
+        })
 }
 
 function init(el, env) {
     el.env = env
     el.handle = handle
     console.log("wave.js init")
-    //console.log(el)
-    //console.log(el.querySelector("#min"))
     return el; // chaining...
 }
 

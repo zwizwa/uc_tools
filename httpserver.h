@@ -109,6 +109,7 @@ const char *http_file_type(const char *filename) {
         {".js",   "text/javascript; charset=UTF-8"},
         {".wasm", "application/wasm"},
         {".svg",  "image/svg+xml"},
+        {".ico",  "image/png"},
     };
     size_t n = strlen(filename);
     while(n--) {

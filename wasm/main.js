@@ -20,9 +20,7 @@ function test() {
     view.wave().then(
         el => {
             set_cell(el)
-            var msg = {
-                path: [0,0]
-            }
+            var msg = new protocol.Message([123],[0,0])
             msg.int16 = function() {
                 // FIXME: This needs to parse the Arraybuffer instead.
                 var arr = []

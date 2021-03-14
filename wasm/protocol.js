@@ -100,12 +100,21 @@ function read(env) {
 
 // 2. PATH FORM
 
+class Message {
+    constructor(from,to,bin) {
+        this.from = from,
+        this.to   = to,
+        this.bin  = bin,
+        this.unpack = function(fun) { return unpack(this, fun); }
+    }
+}
+
 // Apply a protocol message to a function.  This essentially
-// implements pattern matching.  Expose this as a msg method instead.
+// implements pattern matching.
 function unpack(msg, fun) {
     var args = []
     for(var i=0; i<fun.length; i=i+1) {
-        var arg = msg.path.shift()
+        var arg = msg.to.shift()
         args.push(arg)
     }
     //console.log('args',args)
@@ -115,4 +124,4 @@ function unpack(msg, fun) {
 
 
 
-export { read_from_array, unpack };
+export { read_from_array, unpack, Message };
