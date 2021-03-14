@@ -4,11 +4,20 @@
 
 // 1. WIRE PROTOCOL
 
+// class ArrayReader {
+//     constructor(array) {
+//         this.i = 0
+//         this.b = array
+//     }
+// }
+
 function read_from_array(b) {
     var env = {i: 0, b: b};
     var msg = read(env);
     return msg;
 }
+
+
 // type tags   // mnemonics
 var T_NOP = 0  // n0p, padding
 var T_INT = 1  // 1 = I
@@ -36,12 +45,12 @@ function read_int(env) {
     var sr = 0;
     var shift = 0;
     for(;;) {
-        var byte = read_byte(env);
-        sr = sr | ((byte & 127) << shift);
+        var b = read_byte(env);
+        sr = sr | ((b & 127) << shift);
         shift = shift + 7;
-        if (!(byte & 128)) {
+        if (!(b & 128)) {
             // Last byte
-            if (byte & 64) {
+            if (b & 64) {
                 // Signed
                 return sr - (1 << shift);
             }
@@ -117,7 +126,6 @@ function unpack(msg, fun) {
         var arg = msg.to.shift()
         args.push(arg)
     }
-    //console.log('args',args)
     return fun.apply(null, args)
 }
 

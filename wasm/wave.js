@@ -18,11 +18,16 @@ import * as protocol from './protocol.js'
 var check = tools.check;
 
 function path_set_d(path, arr) {
-    var prev_y=arr[0]
-    var path_d='M0,'+prev_y;
+    var prev_y, path_d;
     tools.each(arr, function(y) {
-        path_d += 'l1,' + (y - prev_y);
-        prev_y = y;
+        if (prev_y == null) {
+            prev_y = y;
+            path_d='M0,'+y;
+        }
+        else {
+            path_d += 'l1,' + (y - prev_y);
+            prev_y = y;
+        }
     });
     path.setAttribute('d',path_d);
 }
@@ -57,10 +62,33 @@ function handle(msg) {
         })
 }
 
+var mouse_listeners = {
+    wheel: function(ev) {
+        console.log(ev);
+    },
+    mousemove: function(ev) {
+        //console.log(ev);
+    },
+    mousedown: function(ev) {
+        console.log(ev);
+    }
+}
+function add_listeners(el, listeners) {
+    for (const key in listeners) {
+        el.addEventListener(key, listeners[key])
+    }
+}
 function init(el, env) {
     el.env = env
     el.handle = handle
     console.log("wave.js init")
+    tools.each(
+        // Events go to path elements or the background rect.
+        ["#background","#min","#max"],
+        sel => {
+            var el1 = check(el.querySelector(sel))
+            add_listeners(el1, mouse_listeners);
+        })
     return el; // chaining...
 }
 

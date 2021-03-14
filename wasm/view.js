@@ -17,7 +17,9 @@ function fetch_view(file, id) {
 
 // Fetch renderable object from server and render.
 function fetch_element(file) {
-    return fetch(file)
+    //var opts = {cache: "force-cache"};
+    var opts = {}
+    return fetch(file, opts)
         .then(r => r.text())
         .then(html => render(html))
 }
