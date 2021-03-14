@@ -22,7 +22,7 @@ function test() {
         el => {
             set_cell(el)
             var msg = new protocol.Message([123],[0,0])
-            msg.int16 = function() {
+            msg.int16_le = function() {
                 // FIXME: This needs to parse the Arraybuffer instead.
                 var arr = []
                 for (var i=0; i<800; i++) {

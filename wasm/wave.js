@@ -39,7 +39,7 @@ function path_handle(el, msg) {
             var sel  = check(selectors[path_nb])
             var path = check(el.querySelector(sel))
             // Interpret the binary payload as a signed 16-bit array.
-            var arr  = msg.int16();
+            var arr  = msg.int16_le();
             path_set_d(path, arr)
             // The convention is that we need to reply if the return
             // path is not empty.

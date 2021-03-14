@@ -92,8 +92,8 @@ ws_err_t push(struct ws_req *r, struct ws_message *m) {
     TEST_REPLY("7",
                7,
                0, // from
-               2, 0,0, // to
-               4, 1,2,3,4) // bin
+               3, 0,0,0, // to
+               4, 0,0,100,0) // bin
     return 0;
 }
 

@@ -1,5 +1,7 @@
 // WEBSOCKET
 import * as protocol from './protocol.js';
+import * as tools    from './tools.js';
+var check = tools.check;
 
 var ws;
 
@@ -30,6 +32,13 @@ function start() {
    modify it in place before passing it on. */
 function dispatch(msg) {
     console.log('dispatch',msg);
+    msg.unpack(
+        tag => {
+            // FIXME: map tag to instance
+            var el = check(document.getElementById("wave"));
+            check(el.handle);
+            el.handle(msg);
+        })
 }
 function send(o) {
     ws.send(JSON.stringify(o));

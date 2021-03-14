@@ -27,12 +27,6 @@ function read_bytes(env, n) {
     env.i = env.i + n;
     return ab_slice;
 }
-// Note that endianness is the host endianness, which leads to code
-// that is not portable.  We use this function as a patch point for
-// later in case the issue ever pops up.
-function int16_le(arrayBuf) {
-    return new Int816Array(arrayBuf);
-}
 
 
 // type tags   // mnemonics
@@ -121,6 +115,14 @@ class Message {
         this.to     = to,
         this.bin    = bin,
         this.unpack = function(fun) { return unpack(this, fun); }
+    }
+    // Note that endianness is the host endianness, which leads to
+    // code that is not portable.  We use this function as a patch
+    // point for later in case the issue ever pops up.
+    int16_le() {
+        var a = new Int16Array(this.bin);
+        console.log(a);
+        return a;
     }
 }
 
