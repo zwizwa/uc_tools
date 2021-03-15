@@ -12,18 +12,24 @@
 #include "sha1.h"
 #include "base64.h"
 
-struct server_req;
-struct server_req {
+#define WEBSERVER_REQ_OK 0
+#define WEBSERVER_REQ_ERROR -1
+#define WEBSERVER_REQ_WEBSOCKET_UP 1
+
+typedef intptr_t webserver_req_status_t;
+
+struct webserver_req;
+struct webserver_req {
     /* struct http_req is inside ws. */
     struct ws_req ws;
-    void (*serve)(struct server_req *);
+    webserver_req_status_t (*serve)(struct webserver_req *);
     uint8_t websocket_sha1[SHA1_BLOCK_SIZE];
     char file[WEBSERVER_FILE_NAME];
 };
 
 const char not_found[] = "404 not found";
 
-void serve_file(struct server_req *s) {
+webserver_req_status_t serve_file(struct webserver_req *s) {
     struct http_req *h = &s->ws.c;
     FILE *f = NULL;
     if (s->file[0]) {f = fopen(s->file, "r"); }
@@ -32,7 +38,7 @@ void serve_file(struct server_req *s) {
         f = fopen("404.html", "r");
         if (!f) {
             http_write_str(h, not_found);
-            return;
+            return WEBSERVER_REQ_ERROR;
         }
         /* Fallthrough and write 404.html */
     }
@@ -46,8 +52,9 @@ void serve_file(struct server_req *s) {
         h->write(h, buf, rv);
     }
     fclose(f);
+    return WEBSERVER_REQ_OK;
 }
-void serve_ws(struct server_req *s) {
+webserver_req_status_t serve_ws(struct webserver_req *s) {
     struct http_req *h = &s->ws.c;
     http_write_str(
         h, "HTTP/1.1 101 Switching Protocols\r\n"
@@ -60,13 +67,17 @@ void serve_ws(struct server_req *s) {
     buf[n] = 0;
     http_write_str(h, buf);
     http_write_str(h, "\r\n\r\n");
+    /* Indicate to caller that serve_ws_msg() needs to be called in a
+       loop. This gives caller the chance to spawn a thread. */
+    return WEBSERVER_REQ_WEBSOCKET_UP;
+}
+webserver_req_status_t server_ws_loop(struct webserver_req *s, http_push push) {
+    s->ws.push = push;
     for(;;) { ws_read_msg(&s->ws); }
 }
 
-
-
 intptr_t request(struct http_req *c, const char *uri) {
-    struct server_req *s = (void*)c;
+    struct webserver_req *s = (void*)c;
     LOG("R: %s\n", uri);
     s->file[0] = 0;
     s->serve = (!strcmp(uri,"/ws")) ? serve_ws : serve_file;
@@ -86,7 +97,7 @@ intptr_t request(struct http_req *c, const char *uri) {
 }
 
 intptr_t header(struct http_req *c, const char *hdr, const char *val) {
-    struct server_req *s = (void*)c;
+    struct webserver_req *s = (void*)c;
     // LOG("H: %s = %s\n", hdr, val);
     // FIXME: case-insensitive?
     if (!strcmp(hdr, "Sec-WebSocket-Key")) {
@@ -100,15 +111,14 @@ intptr_t header(struct http_req *c, const char *hdr, const char *val) {
     return 0;
 }
 
-void server_init(struct server_req *s,
+
+void server_init(struct webserver_req *s,
                  http_read  read,
                  http_write write,
-                 http_close close,
-                 http_push  push) {
+                 http_close close) {
     ZERO(s);
     s->ws.c.request = request;
     s->ws.c.header  = header;
-    s->ws.push      = push;
     s->ws.c.read    = read;
     s->ws.c.write   = write;
 }
@@ -117,15 +127,22 @@ void server_init(struct server_req *s,
    after serving a single file, closing the socket.  If it is a
    websocket, the function will keep serving until the other end
    closes. */
-void server_serve(http_read read, http_write write, http_close close, http_push push) {
-    struct server_req s;
-    server_init(&s, read, write, close, push);
-    http_read_headers(&s.ws.c);
-    ASSERT(s.serve);
-    s.serve(&s);
-    if (s.ws.c.close) {
-        s.ws.c.close(&s.ws.c);
+webserver_req_status_t server_serve(
+    struct webserver_req *s,
+    http_read read,
+    http_write write,
+    http_close close) {
+
+    server_init(s, read, write, close);
+    http_read_headers(&s->ws.c);
+    ASSERT(s->serve);
+    webserver_req_status_t status = s->serve(s);
+    if (WEBSERVER_REQ_OK == status) {
+        if (s->ws.c.close) {
+            s->ws.c.close(&s->ws.c);
+        }
     }
+    return status;
 }
 
 

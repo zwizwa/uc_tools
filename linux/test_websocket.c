@@ -52,9 +52,13 @@ ws_err_t push(struct ws_req *r, struct ws_message *m) {
 
 // ws = new WebSocket("ws://10.1.3.29:3456");
 int main(int argc, char **argv) {
+    struct webserver_req s;
     //LOG("%s\n", __FILE__);
     if (argc == 2) {
         ASSERT_ERRNO(chdir(argv[1]));
-        server_serve(read_, write_, close_, push);
+        if (WEBSERVER_REQ_WEBSOCKET_UP ==
+            server_serve(&s, read_, write_, close_)) {
+            server_ws_loop(&s, push);
+        }
     }
 }
