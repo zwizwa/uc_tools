@@ -73,10 +73,7 @@ webserver_req_status_t serve_ws(struct webserver_req *s) {
 }
 webserver_req_status_t server_ws_loop(struct webserver_req *s, http_push push) {
     s->ws.push = push;
-    for(;;) {
-        LOG("ws_read_msg()\n");
-        ws_read_msg(&s->ws);
-    }
+    for(;;) { ws_read_msg(&s->ws); }
 }
 
 intptr_t request(struct http_req *c, const char *uri) {

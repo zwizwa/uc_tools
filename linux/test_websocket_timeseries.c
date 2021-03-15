@@ -34,9 +34,18 @@ struct client {
 intptr_t read_(struct http_req *r, uint8_t *buf, uintptr_t len) {
     struct client *c = (void*)r;
     LOG("read...\r");
-    ssize_t rv = assert_read(c->socket, buf, len);
-    LOG("read ok\r");
-    return rv;
+    // ssize_t rv = assert_read(c->socket, buf, len);
+    // FIXME: This can produce a short read.
+    ssize_t rv = read(c->socket, buf, len);
+    if (rv > 0) {
+        LOG("read ok\r");
+        return rv;
+    }
+    ASSERT_ERRNO(rv);
+    LOG("read EOF, exit thread\n");
+    // Any error terminates the thread
+    // free(c);  // not sure if this is ok before exit.. just leak it.
+    pthread_exit(NULL);
 }
 intptr_t write_(struct http_req *r, const uint8_t *buf, uintptr_t len) {
     struct client *c = (void*)r;
@@ -78,7 +87,7 @@ int main(int argc, char **argv) {
     }
     ASSERT_ERRNO(chdir(argv[1]));
 
-    minmax_open(&map, argv[2], 8);
+    //minmax_open(&map, argv[2], 8);
 
     int server_fd = assert_tcp_listen(3456);
     for(;;) {
