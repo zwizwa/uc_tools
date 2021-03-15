@@ -59,8 +59,22 @@ intptr_t write_(struct http_req *r, const uint8_t *buf, uintptr_t len) {
 
 /* Incoming request from websocket. */
 ws_err_t push(struct ws_req *r, struct ws_message *m) {
-    m->buf[m->len] = 0; // FIXME: don't do this
-    LOG("push: %s\n", m->buf);
+    // m->buf[m->len] = 0; // FIXME: don't do this
+    // LOG("push: %s\n", m->buf);
+    LOG("push:");
+    for(int i=0;i<m->len;i++) LOG(" %02x", m->buf[i]);
+    LOG("\n");
+
+#if 0
+    /* We don't know how many tags there are, so just guess a bunch.
+     * Later abstract this a bit. */
+    uint32_t max_nb_tags = 16;
+    uint32_t nb_tags = 0;
+    uint32_t tags[16];
+    uint32_t n = 0;
+    uint32_t n1 = leb128_read(buf+n, m->len-n, tags + nb_tags);
+#endif
+
     return 0;
 }
 void *ws_loop(void *ctx) {

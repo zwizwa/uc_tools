@@ -2,12 +2,16 @@
 // format based on LEB128 signed integers), and the unpacked "path"
 // form, similar to TAG_U32 in C.
 
+import * as tools    from './tools.js';
+
 // 1. WIRE PROTOCOL
+
+// 1.1 READ
 
 // Current implementation assumes the entire message can be buffered.
 // We do the main parsing from an u8 view into the full buffer, and
 // create other views as needed.
-function read_from_arrayBuf(arrayBuf) {
+function from_arrayBuffer(arrayBuf) {
     var env = {
         i: 0,
         ab: arrayBuf,
@@ -105,6 +109,57 @@ function read(env) {
 }
 
 
+// 1.2 WRITE
+
+// Use the same approach as for read: an ArrayBuffer.  For now, assume
+// the buffer is big enough.  FIXME: Later, grow the buffer when
+// necessary.
+function write_byte(env, b) {
+    env.u8[env.i] = b;
+    env.i += 1;
+}
+function write_int(env, n) {
+    for(;;) {
+        if ((n > 63) || (n < -64)) {
+            write_byte(env, 128 | (n & 127));
+            n >>= 7;
+        }
+        else {
+            write_byte(env, n & 127)
+            return;
+        }
+    }
+}
+function write_tag(env, msg) {
+    write_int(env, msg.from.length); tools.each(msg.from, i => write_int(env, i));
+    write_int(env, msg.to.length);   tools.each(msg.to,   i => write_int(env, i));
+    write_int(env, 0); // FIXME: skip binary for now
+}
+function term_type(term) {
+    if ("number" == typeof(term)) return T_INT; // no floats atm
+    if (term.to != null) return T_TAG;
+    return T_INT;
+}
+function write_type(env, type, term) {
+    if (type == T_INT) { return write_int(env, term); }
+    if (type == T_TAG) { return write_tag(env, term); }
+    throw 'type error';
+}
+function write(env, term) {
+    var type = term_type(term);
+    write_int(env, type);
+    write_type(env, type, term);
+}
+function to_arrayBuffer(term) {
+    var ab = new ArrayBuffer(1000); // FIXME
+    var env = {
+        ab: ab,
+        u8: new Uint8Array(ab),
+        i: 0
+    }
+    write(env, term);
+    return ab.slice(0,env.i);
+}
 
 
 
@@ -142,4 +197,4 @@ function unpack(msg, fun) {
 
 
 
-export { read_from_arrayBuf, unpack, Message };
+export { from_arrayBuffer, to_arrayBuffer, unpack, Message };

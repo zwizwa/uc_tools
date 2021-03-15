@@ -14,7 +14,7 @@ function start() {
         /* Just buffer it for now.  Much easier to work with. */
         raw_msg.data.arrayBuffer().then(
             arrayBuf => {
-                var msg = protocol.read_from_arrayBuf(arrayBuf);
+                var msg = protocol.from_arrayBuffer(arrayBuf);
                 /* The protocol is the LEB128 based tree encoding.
                    However we currently only use this to transport
                    nested tag messadges (T_TAG), or array (T_ARR) of
@@ -41,7 +41,7 @@ function dispatch(msg) {
         })
 }
 function send(o) {
-    ws.send(JSON.stringify(o));
+    ws.send(protocol.to_arrayBuffer(o))
 }
 
 export { start, send };
