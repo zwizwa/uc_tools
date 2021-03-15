@@ -11,9 +11,6 @@ intptr_t write_(struct http_req *c, const uint8_t *buf, uintptr_t len) {
     //for(uintptr_t i=0; i<len; i++) LOG("%c", buf[i]);
     return len;
 }
-void close_(struct http_req *c) {
-    close(0);
-}
 
 void test_reply(struct ws_req *r, uint8_t *buf, uintptr_t len) {
     LOG("push: sending %d bytes\n", len);
@@ -52,12 +49,12 @@ ws_err_t push(struct ws_req *r, struct ws_message *m) {
 
 // ws = new WebSocket("ws://10.1.3.29:3456");
 int main(int argc, char **argv) {
-    struct webserver_req s;
     //LOG("%s\n", __FILE__);
+    struct webserver_req s;
     if (argc == 2) {
         ASSERT_ERRNO(chdir(argv[1]));
         if (WEBSERVER_REQ_WEBSOCKET_UP ==
-            server_serve(&s, read_, write_, close_)) {
+            server_serve(&s, read_, write_)) {
             server_ws_loop(&s, push);
         }
     }

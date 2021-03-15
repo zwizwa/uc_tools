@@ -73,7 +73,10 @@ webserver_req_status_t serve_ws(struct webserver_req *s) {
 }
 webserver_req_status_t server_ws_loop(struct webserver_req *s, http_push push) {
     s->ws.push = push;
-    for(;;) { ws_read_msg(&s->ws); }
+    for(;;) {
+        LOG("ws_read_msg()\n");
+        ws_read_msg(&s->ws);
+    }
 }
 
 intptr_t request(struct http_req *c, const char *uri) {
@@ -114,8 +117,7 @@ intptr_t header(struct http_req *c, const char *hdr, const char *val) {
 
 void server_init(struct webserver_req *s,
                  http_read  read,
-                 http_write write,
-                 http_close close) {
+                 http_write write) {
     ZERO(s);
     s->ws.c.request = request;
     s->ws.c.header  = header;
@@ -130,18 +132,12 @@ void server_init(struct webserver_req *s,
 webserver_req_status_t server_serve(
     struct webserver_req *s,
     http_read read,
-    http_write write,
-    http_close close) {
+    http_write write) {
 
-    server_init(s, read, write, close);
+    server_init(s, read, write);
     http_read_headers(&s->ws.c);
     ASSERT(s->serve);
     webserver_req_status_t status = s->serve(s);
-    if (WEBSERVER_REQ_OK == status) {
-        if (s->ws.c.close) {
-            s->ws.c.close(&s->ws.c);
-        }
-    }
     return status;
 }
 

@@ -18,7 +18,6 @@ typedef void     (*http_close)(struct http_req *);
 struct http_req {
     http_read  read;
     http_write write;
-    http_close close;
     http_err_t (*request)(struct http_req *, const char *uri);
     http_err_t (*header)(struct http_req *, const char *header, const char *value);
 };

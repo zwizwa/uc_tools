@@ -68,6 +68,17 @@ static inline int assert_raw_listen(const char *iface) {
 }
 #endif
 
+static inline int assert_accept(int fd_server) {
+    struct sockaddr_in sockaddr_in;
+    socklen_t addrlen = sizeof(sockaddr_in);
+    int fd_con;
+    ASSERT_ERRNO(fd_con =
+                 accept(fd_server,
+                        (struct sockaddr *)&sockaddr_in,
+                        &addrlen));
+    return fd_con;
+}
+
 
 
 #endif
