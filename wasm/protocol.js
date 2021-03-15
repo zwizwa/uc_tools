@@ -116,9 +116,9 @@ class Message {
         this.bin    = bin,
         this.unpack = function(fun) { return unpack(this, fun); }
     }
-    // Note that endianness is the host endianness, which leads to
-    // code that is not portable.  We use this function as a patch
-    // point for later in case the issue ever pops up.
+    // FIXME: Int16Array's endianness is implementation dependent.  We
+    // do not need this yet as all practical cases use little endian,
+    // but at the very least leave a patch point for later.
     int16_le() {
         var a = new Int16Array(this.bin);
         console.log(a);
@@ -126,8 +126,8 @@ class Message {
     }
 }
 
-// Apply a protocol message to a function.  This essentially
-// implements pattern matching.
+// Apply a protocol message to a function, consuming the top address
+// tags.  This essentially implements pattern matching.
 function unpack(msg, fun) {
     var args = []
     for(var i=0; i<fun.length; i=i+1) {

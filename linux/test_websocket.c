@@ -12,13 +12,49 @@ intptr_t write_(struct http_req *c, const uint8_t *buf, uintptr_t len) {
     return len;
 }
 void close_(struct http_req *c) {
-    close(1);
+    close(0);
 }
+
+void test_reply(struct ws_req *r, uint8_t *buf, uintptr_t len) {
+    LOG("push: sending %d bytes\n", len);
+    struct ws_message m = {
+        .opcode = 2,  // binary
+        .fin = 1,
+        .mask = 0,
+        .buf = buf,
+        .len = len
+    };
+    ws_write_msg(r, &m);
+}
+
+#define TEST_REPLY(val, ...)                      \
+    if (!strcmp((const char*)m->buf, val)) {      \
+        uint8_t buf[] = {__VA_ARGS__};            \
+        test_reply(r, buf, sizeof(buf));          \
+    }
+
+ws_err_t push(struct ws_req *r, struct ws_message *m) {
+    //LOG("m.len = %d\n", m->len);
+    m->buf[m->len] = 0; // FIXME: don't do this
+    LOG("push: %s\n", m->buf);
+    TEST_REPLY("1", 1, 42); // T_INT
+    TEST_REPLY("2", 2, 1, 3, 123, 56, 1);  // T_TUP
+    TEST_REPLY("3", 3, 4, 1,2,3,4);  // T_BIN
+    // This is a full TAG RPC message to the wave viewer
+    TEST_REPLY("7",
+               7,
+               0, // from
+               3, 0,0,0, // to
+               4, 0,0,100,0) // bin
+    return 0;
+}
+
+
 // ws = new WebSocket("ws://10.1.3.29:3456");
 int main(int argc, char **argv) {
     //LOG("%s\n", __FILE__);
     if (argc == 2) {
         ASSERT_ERRNO(chdir(argv[1]));
-        server_serve(read_, write_, close_);
+        server_serve(read_, write_, close_, push);
     }
 }

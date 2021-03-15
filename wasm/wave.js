@@ -22,7 +22,7 @@ function path_set_d(path, arr) {
     tools.each(arr, function(y) {
         if (prev_y == null) {
             prev_y = y;
-            path_d='M0,'+y;
+            path_d = 'M0.5,' + y;
         }
         else {
             path_d += 'l1,' + (y - prev_y);
@@ -71,6 +71,10 @@ var mouse_listeners = {
     },
     mousedown: function(ev) {
         console.log(ev);
+    },
+    contextmenu: function(ev) {
+        // Turn off context menu
+        ev.preventDefault();
     }
 }
 function add_listeners(el, listeners) {

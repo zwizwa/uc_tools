@@ -36,9 +36,10 @@ struct ws_message {
 
 /* Decouple it from implementation of read and write. */
 typedef uintptr_t ws_err_t; struct ws_req;
+typedef ws_err_t (*http_push)(struct ws_req *, struct ws_message *);
 struct ws_req {
     struct http_req c;
-    ws_err_t (*push)(struct ws_req *, struct ws_message *);
+    http_push push;
 };
 
 /* Undo the xormask.  The xormask is (I believe), a hack that is part
