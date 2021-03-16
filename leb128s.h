@@ -155,4 +155,75 @@ static inline leb128_id_t leb128s_element(struct leb128s *s) {
     return 0;
 }
 
+
+/* FIXME: The write interface will likely change. I currently only
+   need a tag_u32 writer + support. */
+static inline void leb128s_write_i32(struct leb128s *s, int32_t val) {
+    uintptr_t upper_bound = 5;
+    if ((s->offset + upper_bound) > s->len) {
+        s->error = LEB128S_ERROR_ALLOC;
+    }
+    else {
+        s->offset += leb128_write_i32(s->buf, val);
+    }
+}
+/* This is used a lot so wrap it into a macro. */
+#define LEB128S_WRITE_I32(s, val)                               \
+    do { leb128s_write_i32(s, val); OR_ABORT_VOID(s); } while(0)
+
+static inline void leb128s_write_i32_array(struct leb128s *s, uint32_t nb, const int32_t *a) {
+    for (uint32_t i=0; i<nb; i++) {
+        LEB128S_WRITE_I32(s, a[i]);
+    }
+}
+static inline void leb128s_write_bytes(struct leb128s *s, uint32_t len, const uint8_t *buf) {
+    if (len) {
+        if (s->offset + len > s->len) {
+            s->error = LEB128S_ERROR_ALLOC;
+        }
+        else {
+            /* FIXME: Later, write a streaming implementation to avoid
+               the memcpy. */
+            memcpy(s->buf + s->offset, buf, len);
+            s->offset += len;
+        }
+    }
+}
+
+static inline void leb128s_write_tag_u32(struct leb128s *s, const struct tag_u32 *msg) {
+
+    LEB128S_WRITE_I32(s, msg->nb_from);
+    leb128s_write_i32_array(s, msg->nb_from, (const int32_t*)msg->from);
+    OR_ABORT_VOID(s);
+
+    LEB128S_WRITE_I32(s, msg->nb_args);
+    leb128s_write_i32_array(s, msg->nb_args, (const int32_t*)msg->args);
+    OR_ABORT_VOID(s);
+
+    LEB128S_WRITE_I32(s, msg->nb_bytes);
+    leb128s_write_bytes(s, msg->nb_bytes, msg->bytes);
+}
+
+
+static inline void leb128s_write_tag_u32_reply(struct leb128s *s, const struct tag_u32 *req, const struct tag_u32 *resp) {
+
+    // Replies do not have a from address
+    LEB128S_WRITE_I32(s, 0);
+
+    // Concatenate reply address and arguments.
+    LEB128S_WRITE_I32(s, req->nb_from + resp->nb_args);
+
+    leb128s_write_i32_array(s, req->nb_from, (const int32_t*)req->from);
+    OR_ABORT_VOID(s);
+
+    leb128s_write_i32_array(s, resp->nb_args, (const int32_t*)resp->args);
+    OR_ABORT_VOID(s);
+
+    LEB128S_WRITE_I32(s, resp->nb_bytes);
+    leb128s_write_bytes(s, resp->nb_bytes, resp->bytes);
+
+}
+
+
+
 #endif

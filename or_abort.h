@@ -38,4 +38,7 @@
 #define OR_ABORT(s,v) \
     do { if (s->error) return v; } while(0)
 
+#define OR_ABORT_VOID(s) \
+    do { if (s->error) return; } while(0)
+
 #endif

@@ -44,5 +44,9 @@ function send(o) {
     ws.send(protocol.to_arrayBuffer(o))
 }
 
-export { start, send };
+function test() {
+    send({to:[0,0,800,200,0,1],from:[0],bin:[]})
+}
+
+export { start, send, test };
 

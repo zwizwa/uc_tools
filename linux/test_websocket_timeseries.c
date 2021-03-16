@@ -1,13 +1,6 @@
 #define MMAP_FILE_LOG LOG
 
 #include "mod_minmax.c"
-#if 0
-/* tag_u32 on stdio */
-#include "mod_tag_u32_stream.c"
-#include "mod_send_tag_u32.c"
-#else
-/* tag_u32 / leb128 on websocket */
-#endif
 
 #include "mod_webserver.c"
 
@@ -26,6 +19,43 @@
 
 struct minmax_map    map;
 struct minmax_cursor cursor;
+
+int zoom(struct tag_u32 *req) {
+    TAG_U32_UNPACK(req, 0, m, win_w, win_h, win_x, level_inc) {
+        ASSERT(m->win_w < 10000); // bug guard
+        ASSERT(m->win_x < m->win_w);
+        struct minmax_minmax buf[m->win_w];
+        int16_t new_level = minmax_cursor_zoom(
+            &cursor, &map,
+            buf, m->win_w, m->win_h, m->win_x, m->level_inc);
+        (void)new_level;
+        MINMAX_LOG("new_level = %d\n", new_level);
+        send_reply_tag_u32_status(req, 0, (const uint8_t*)buf, sizeof(buf));
+        return 0;
+    }
+    return -1;
+}
+
+DEF_MAP(
+    map_cmd,
+    {"zoom", "cmd", zoom, 4}
+    )
+
+DEF_MAP(
+    map_root,
+    {"window", "map", map_cmd},
+    )
+
+/* Protocol handler entry point. */
+int handle_tag_u32(struct tag_u32 *req) {
+    int rv = map_root(req);
+    if (rv) {
+        /* Always send a reply when there is a from address. */
+        LOG("map_root() returned %d\n", rv);
+        send_reply_tag_u32_status_cstring(req, 1, "bad_ref");
+    }
+    return 0;
+}
 
 
 
@@ -72,12 +102,30 @@ static inline void log_hex(const char *tag, uint32_t nb, const uint8_t *buf) {
     LOG("\n");
 }
 
+/* Return path. */
+struct msg_ctx {
+    struct tag_u32 msg;
+};
+void reply_tag_u32(const struct tag_u32 *req, const struct tag_u32 *rpl) {
+    uint8_t buf[1024]; // FIXME
+    struct leb128s s = {
+        .buf = buf,
+        .len = sizeof(buf)
+    };
+    leb128s_write_tag_u32(&s, rpl);
+    struct msg_ctx *ctx = (void*)req;
+    LOG("FIXME: reply %p\n", ctx);
+    // FIXME: how to get at the server context?
+}
+
 /* Incoming request from websocket. */
 leb128s_status_t push_tag_u32(struct leb128s *s, struct tag_u32 *msg) {
+    msg->reply = reply_tag_u32;
     // FIXME CALLBACK
     log_u32("from: ", msg->nb_from, msg->from);
     log_u32("to:   ", msg->nb_args, msg->args);
     log_hex("bin:  ", msg->nb_bytes, msg->bytes);
+    handle_tag_u32(msg);
     return 0;
 }
 
@@ -89,7 +137,7 @@ ws_err_t push(struct ws_req *r, struct ws_message *m) {
     LOG("\n");
 
     struct leb128s_env env = {
-        .tag_u32 = push_tag_u32
+        .tag_u32 = push_tag_u32,
     };
 
     struct leb128s s = { .buf = m->buf, .len = m->len, .env = &env };
