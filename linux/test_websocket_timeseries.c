@@ -61,17 +61,23 @@ intptr_t write_(struct http_req *r, const uint8_t *buf, uintptr_t len) {
  * not use two websockets at the same time. */
 
 
-static inline void log_arr(const char *tag, uint32_t nb, const uint32_t *arr) {
+static inline void log_u32(const char *tag, uint32_t nb, const uint32_t *arr) {
     LOG("%s",tag);
     for(int32_t i=0; i<nb; i++) { LOG(" %d", arr[i]); }
     LOG("\n");
 }
+static inline void log_hex(const char *tag, uint32_t nb, const uint8_t *buf) {
+    LOG("%s",tag);
+    for(int32_t i=0; i<nb; i++) { LOG(" %02x", buf[i]); }
+    LOG("\n");
+}
 
 /* Incoming request from websocket. */
-leb128s_status_t push_tag_u32(struct leb128s_env *env, struct tag_u32 *msg) {
+leb128s_status_t push_tag_u32(struct leb128s *s, struct tag_u32 *msg) {
     // FIXME CALLBACK
-    log_arr("from: ", msg->nb_from, msg->from);
-    log_arr("to:   ", msg->nb_args, msg->args);
+    log_u32("from: ", msg->nb_from, msg->from);
+    log_u32("to:   ", msg->nb_args, msg->args);
+    log_hex("bin:  ", msg->nb_bytes, msg->bytes);
     return 0;
 }
 
@@ -87,8 +93,8 @@ ws_err_t push(struct ws_req *r, struct ws_message *m) {
     };
 
     struct leb128s s = { .buf = m->buf, .len = m->len, .env = &env };
-    int32_t tag = leb128s_element(&s);
-    ASSERT(tag == T_TAG); // only support messages for now
+    leb128_id_t id = leb128s_element(&s);
+    (void)id;
     if(s.error) {
         LOG("error %d\n", s.error);
     }
@@ -130,7 +136,7 @@ int main(int argc, char **argv) {
 
         /* Spawn a handler loop when a websocket connection was created. */
         if (WEBSERVER_REQ_WEBSOCKET_UP == s) {
-            LOG("spawn websocket handler\n");
+            LOG("spawn ws_loop()\n");
             pthread_create(&c->thread, NULL, ws_loop, c);
         }
         else {

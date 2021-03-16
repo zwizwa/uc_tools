@@ -65,7 +65,7 @@ function read_int(env) {
     }
 }
 function read_multi(n, rd) {
-    var a = []
+    var a = [];
     for (var i=0; i<n; i=i+1) { a.push(rd()); }
     return a;
 }
@@ -118,6 +118,15 @@ function write_byte(env, b) {
     env.u8[env.i] = b;
     env.i += 1;
 }
+function write_bytes(env, bufView) {
+    /* We assume that bufView.buffer is defined, e.g. that bufView is
+       an ArrayBuffer view such as UintArray. */
+    var buf = new Uint8Array(bufView.buffer);
+    for(var i=0; i<buf.length; i+=1) {
+        env.u8[env.i] = buf[i];
+        env.i += 1;
+    }
+}
 function write_int(env, n) {
     for(;;) {
         if ((n > 63) || (n < -64)) {
@@ -133,7 +142,8 @@ function write_int(env, n) {
 function write_tag(env, msg) {
     write_int(env, msg.from.length); tools.each(msg.from, i => write_int(env, i));
     write_int(env, msg.to.length);   tools.each(msg.to,   i => write_int(env, i));
-    write_int(env, 0); // FIXME: skip binary for now
+    write_int(env, msg.bin.length);
+    write_bytes(env, msg.bin);
 }
 function term_type(term) {
     if ("number" == typeof(term)) return T_INT; // no floats atm
