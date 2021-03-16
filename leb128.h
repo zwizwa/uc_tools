@@ -22,7 +22,7 @@ static inline void leb128_reset(struct leb128 *s) {
     s->accu = 0;
     s->segment = 0;
 }
-static inline uint32_t leb128_decode_push(struct leb128 *s, uint8_t byte) {
+static inline uint32_t leb128_decode_i32_push(struct leb128 *s, uint8_t byte) {
     uint32_t bits = (byte & 0x7f) << (s->segment * 7);
     s->segment++;
     s->accu |= bits;
@@ -32,18 +32,18 @@ static inline uint32_t leb128_decode_push(struct leb128 *s, uint8_t byte) {
     }
     return last;
 }
-static inline int32_t leb128_read(const uint8_t *buf, uint32_t nb_buf, int32_t *val) {
+static inline intptr_t leb128_read_i32(const uint8_t *buf, uintptr_t nb_buf, int32_t *val) {
     if (nb_buf == 0) return 0;
     struct leb128 s;
     leb128_reset(&s);
-    uint32_t nb = 0;
+    uintptr_t nb = 0;
     for(;;) {
         if(nb == nb_buf) {
             /* This is an error condition: the buffer contained a
                partial number. */
             return -1;
         }
-        if (leb128_decode_push(&s, buf[nb++])) { break; }
+        if (leb128_decode_i32_push(&s, buf[nb++])) { break; }
     }
     /* Unsigned to signed conversion happens here. */
     if (val) *val = s.accu;
@@ -51,7 +51,7 @@ static inline int32_t leb128_read(const uint8_t *buf, uint32_t nb_buf, int32_t *
 }
 static inline int32_t leb128_tick(struct leb128 *s, uint8_t byte, int32_t (*push_word)(struct leb128 *s)) {
     int32_t rv;
-    if ((rv = leb128_decode_push(s, byte))) {
+    if ((rv = leb128_decode_i32_push(s, byte))) {
         rv = push_word(s);
         leb128_reset(s);
     }
@@ -60,8 +60,8 @@ static inline int32_t leb128_tick(struct leb128 *s, uint8_t byte, int32_t (*push
 
 
 /* Assumes buffer is large enough. */
-static inline uint32_t leb128_write(uint8_t *buf, int32_t word) {
-    uint32_t nb = 0;
+static inline uintptr_t leb128_write_i32(uint8_t *buf, int32_t word) {
+    uintptr_t nb = 0;
     for(;;) {
         if ((word >= -0x40) && (word <= 0x3f)) {
             // last

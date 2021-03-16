@@ -16,6 +16,9 @@
 
 #include "tcp_tools.h"
 
+#include "leb128s.h"
+
+
 #include <pthread.h>
 
 /* The name of the map refers to the handler function. */
@@ -57,24 +60,38 @@ intptr_t write_(struct http_req *r, const uint8_t *buf, uintptr_t len) {
 /* FIXME: Mutual exclusion access is not implemented in this test.  Do
  * not use two websockets at the same time. */
 
+
+static inline void log_arr(const char *tag, uint32_t nb, const uint32_t *arr) {
+    LOG("%s",tag);
+    for(int32_t i=0; i<nb; i++) { LOG(" %d", arr[i]); }
+    LOG("\n");
+}
+
 /* Incoming request from websocket. */
+leb128s_status_t push_tag_u32(struct leb128s_env *env, struct tag_u32 *msg) {
+    // FIXME CALLBACK
+    log_arr("from: ", msg->nb_from, msg->from);
+    log_arr("to:   ", msg->nb_args, msg->args);
+    return 0;
+}
+
 ws_err_t push(struct ws_req *r, struct ws_message *m) {
     // m->buf[m->len] = 0; // FIXME: don't do this
     // LOG("push: %s\n", m->buf);
-    LOG("push:");
+    LOG("ws_push:");
     for(int i=0;i<m->len;i++) LOG(" %02x", m->buf[i]);
     LOG("\n");
 
-#if 0
-    /* We don't know how many tags there are, so just guess a bunch.
-     * Later abstract this a bit. */
-    uint32_t max_nb_tags = 16;
-    uint32_t nb_tags = 0;
-    uint32_t tags[16];
-    uint32_t n = 0;
-    uint32_t n1 = leb128_read(buf+n, m->len-n, tags + nb_tags);
-#endif
+    struct leb128s_env env = {
+        .tag_u32 = push_tag_u32
+    };
 
+    struct leb128s s = { .buf = m->buf, .len = m->len, .env = &env };
+    int32_t tag = leb128s_element(&s);
+    ASSERT(tag == T_TAG); // only support messages for now
+    if(s.error) {
+        LOG("error %d\n", s.error);
+    }
     return 0;
 }
 void *ws_loop(void *ctx) {
