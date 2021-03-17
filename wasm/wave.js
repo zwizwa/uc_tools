@@ -13,6 +13,7 @@
 
 import * as tools    from './tools.js'
 import * as protocol from './protocol.js'
+import * as event    from './event.js'
 
 // FIXME: Currently the websocket is a global entity, i.e. there is
 // only one message sender.  Later it might be necessary to inject
@@ -46,7 +47,7 @@ function path_handle(el, msg) {
             // GUI event, which would have been set up as an RPC
             // response with a single status code and a binary
             // payload.
-            console.log('status',status);
+            // console.log('status',status);
 
             // The binary payload contains interleaved min, max values
             // as uint16_t little endian.
@@ -77,9 +78,9 @@ function handle(msg) {
         })
 }
 function rel_coords(ev) {
-    console.log(ev);
+    // console.log(ev);
     var br = ev.target.env.background.getBoundingClientRect();
-    console.log(br);
+    // console.log(br);
     return {x: ev.clientX - br.left, w: br.width,
             y: ev.clientY - br.top,  h: br.height}
 }
@@ -95,11 +96,16 @@ var mouse_listeners = {
         ws.send(msg);
         //console.log(msg);
     },
-    mousemove: function(ev) {
-        //console.log(ev);
-    },
+    // This is for tracking the current object, which is useful in
+    // combination with a global keydown handler.
+    mouseover: event.mouseover,
+    mouseout:  event.mouseout,
+
     mousedown: function(ev) {
         //console.log(ev, x, y);
+    },
+    keydown: function(ev) {
+        console.log(ev);
     },
     contextmenu: function(ev) {
         // Turn off context menu

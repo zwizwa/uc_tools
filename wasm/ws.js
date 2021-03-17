@@ -31,7 +31,7 @@ function start() {
 /* The convention is that the dispatch chain owns the message and can
    modify it in place before passing it on. */
 function dispatch(msg) {
-    console.log('dispatch',msg);
+    // console.log('dispatch',msg);
     msg.unpack(
         tag => {
             // FIXME: map tag to instance

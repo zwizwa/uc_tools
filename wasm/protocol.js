@@ -193,7 +193,7 @@ class Message {
     // but at the very least leave a patch point for later.
     int16_le() {
         var a = new Int16Array(this.bin);
-        console.log(a);
+        // console.log(a);
         return a;
     }
 }
