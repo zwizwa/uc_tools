@@ -14,12 +14,18 @@
 import * as tools    from './tools.js'
 import * as protocol from './protocol.js'
 
+// FIXME: Currently the websocket is a global entity, i.e. there is
+// only one message sender.  Later it might be necessary to inject
+// that dependency but for now that seems like unnecessary overhead.
+import * as ws       from './ws.js'
+
 // Catch null and undefined early.
 var check = tools.check;
 
-function path_set_d(path, arr) {
+function path_set_d(path, arr, stride, offset) {
     var prev_y, path_d;
-    tools.each(arr, function(y) {
+    for (var i=offset; i<arr.length; i+=stride) {
+        var y = arr[i];
         if (prev_y == null) {
             prev_y = y;
             path_d = 'M0.5,' + y;
@@ -28,21 +34,30 @@ function path_set_d(path, arr) {
             path_d += 'l1,' + (y - prev_y);
             prev_y = y;
         }
-    });
+    }
     path.setAttribute('d',path_d);
 }
 
 const selectors = ["#min","#max"]
 function path_handle(el, msg) {
     msg.unpack(
-        path_nb => {
-            var sel  = check(selectors[path_nb])
-            var path = check(el.querySelector(sel))
-            // Interpret the binary payload as a signed 16-bit array.
+        status => {
+            // The message is most likely generated as a response to a
+            // GUI event, which would have been set up as an RPC
+            // response with a single status code and a binary
+            // payload.
+            console.log('status',status);
+
+            // The binary payload contains interleaved min, max values
+            // as uint16_t little endian.
             var arr  = msg.int16_le();
-            path_set_d(path, arr)
+
+            path_set_d(check(el.querySelector("#min")), arr, 2, 0)
+            path_set_d(check(el.querySelector("#max")), arr, 2, 1)
+
             // The convention is that we need to reply if the return
-            // path is not empty.
+            // path is not empty.  We do expect it to be empty because
+            // this is an RPC reply.
             if (msg.from.length > 0) {
                 console.log('from',msg.from)
             }
@@ -61,16 +76,30 @@ function handle(msg) {
             }
         })
 }
+function rel_coords(ev) {
+    console.log(ev);
+    var br = ev.target.env.background.getBoundingClientRect();
+    console.log(br);
+    return {x: ev.clientX - br.left, w: br.width,
+            y: ev.clientY - br.top,  h: br.height}
+}
 
 var mouse_listeners = {
     wheel: function(ev) {
-        console.log(ev);
+        var win = rel_coords(ev);
+        var level_inc = ev.deltaY > 0 ? 1 : -1;
+        var msg = 
+            new protocol.Message(
+                [0], // FIXME: we need to know our own address
+                [0, 0, win.w, win.h, win.x, level_inc]);
+        ws.send(msg);
+        //console.log(msg);
     },
     mousemove: function(ev) {
         //console.log(ev);
     },
     mousedown: function(ev) {
-        console.log(ev);
+        //console.log(ev, x, y);
     },
     contextmenu: function(ev) {
         // Turn off context menu
@@ -86,11 +115,15 @@ function init(el, env) {
     el.env = env
     el.handle = handle
     console.log("wave.js init")
+    var env = {
+        background: check(el.querySelector("#background"))
+    };
     tools.each(
         // Events go to path elements or the background rect.
         ["#background","#min","#max"],
         sel => {
             var el1 = check(el.querySelector(sel))
+            el1.env = env;
             add_listeners(el1, mouse_listeners);
         })
     return el; // chaining...

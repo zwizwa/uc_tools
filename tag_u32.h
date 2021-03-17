@@ -74,7 +74,7 @@ struct tag_u32 {
     const uint8_t*  bytes; uint32_t nb_bytes;
 
     /* Reply sender.  This is for abstract RPC. */
-    tag_u32_reply_fn reply;
+    tag_u32_reply_fn reply; void *reply_ctx;
 };
 
 

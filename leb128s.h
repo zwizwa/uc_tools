@@ -25,16 +25,24 @@
 struct leb128s_env;
 typedef intptr_t leb128s_status_t;
 struct leb128s {
+    /* Stream state for read/write. */
     uint8_t*  buf;
     uintptr_t len;
     uintptr_t offset;
     leb128s_status_t error;
+    /* Handler environment for read. */
     struct leb128s_env *env;
 };
 /* For use in the fold. */
+typedef intptr_t leb128_id_t;
 struct leb128s_env {
-    leb128s_status_t (*tag_u32)(struct leb128s *, struct tag_u32 *);
-    leb128s_status_t (*i32)(struct leb128s *, int32_t);
+    /* Optional context. */
+    void *ctx;
+    /* Optional handlers (constructors for generalized fold).  When
+       null, the data is ignored (skipped) and a 0 reference is
+       returned. */
+    leb128_id_t (*tag_u32)(struct leb128s *, struct tag_u32 *);
+    leb128_id_t (*i32)(struct leb128s *, int32_t);
 };
 
 static inline int32_t leb128s_i32(struct leb128s *s) {
@@ -118,7 +126,6 @@ static inline struct tag_u32 *leb128s_read_tag_u32(
 
 */
 
-typedef intptr_t leb128_id_t;
 
 static inline leb128_id_t leb128s_element(struct leb128s *s) {
     int32_t tag = leb128s_i32(s); OR_ABORT(s, 0);
@@ -164,7 +171,7 @@ static inline void leb128s_write_i32(struct leb128s *s, int32_t val) {
         s->error = LEB128S_ERROR_ALLOC;
     }
     else {
-        s->offset += leb128_write_i32(s->buf, val);
+        s->offset += leb128_write_i32(s->buf + s->offset, val);
     }
 }
 /* This is used a lot so wrap it into a macro. */
@@ -189,6 +196,9 @@ static inline void leb128s_write_bytes(struct leb128s *s, uint32_t len, const ui
         }
     }
 }
+
+/* Note that these do not write T_TAG. They can be used to write array
+   elements, which are not tagged individually. */
 
 static inline void leb128s_write_tag_u32(struct leb128s *s, const struct tag_u32 *msg) {
 

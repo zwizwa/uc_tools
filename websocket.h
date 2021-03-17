@@ -72,7 +72,24 @@ static inline ws_err_t ws_read_msg_body(struct ws_req *c, struct ws_message *m,
         if (4 != (rv = c->c.read(&c->c, m->xorkey, 4))) goto error_rv;
         if (m->len != (rv = c->c.read(&c->c, m->buf, m->len))) goto error_rv;
         ws_unmask(m);
-        return c->push(c, m);
+        if (m->opcode == 2) {
+            /* Binary */
+            return c->push(c, m);
+        }
+        if (m->opcode == 8) {
+            LOG("closing websocket\n");
+            return 0;
+        }
+        /* https://tools.ietf.org/id/draft-ietf-hybi-thewebsocketprotocol-09.html
+           0x0 denotes a continuation frame
+           0x1 denotes a text frame
+           0x2 denotes a binary frame
+           0x3-0x7 are reserved for further non-control frames
+           0x8 denotes a connection close
+           0x9 denotes a ping
+           0xA denotes a pong
+           0xB-F are reserved for further control frames */
+        LOG("unsupported opcode %d\n", m->opcode);
     }
 
   error_rv:
@@ -110,16 +127,33 @@ static inline ws_err_t ws_read_msg(struct ws_req *c) {
 }
 
 static inline ws_err_t ws_write_msg(struct ws_req *c, const struct ws_message *m) {
-    ASSERT(m->len < 126); // Only small size for now
-    uint8_t hdr[2] = {
-        (m->fin << 7) | (m->opcode & 0xF),
-        (m->mask << 7) | m->len
-    };
     intptr_t rv;
-    if (2 != (rv = c->c.write(&c->c, hdr, 2))) goto error_rv;
+    if (m->len < 126) {
+        uint8_t hdr[2] = {
+            (m->fin << 7) | (m->opcode & 0xF),
+            (m->mask << 7) | m->len
+        };
+        if (2 != (rv = c->c.write(&c->c, hdr, 2))) goto error_rv;
+    }
+    else if (m->len < 0xFFFF) {
+        uint8_t hdr[4] = {
+            (m->fin << 7) | (m->opcode & 0xF),
+            (m->mask << 7) | 126 /* medium size code */
+        };
+        write_be(hdr + 2, m->len, 2);
+        if (4 != (rv = c->c.write(&c->c, hdr, 4))) goto error_rv;
+    }
+    else {
+        uint8_t hdr[10] = {
+            (m->fin << 7) | (m->opcode & 0xF),
+            (m->mask << 7) | 127 /* large size code */
+        };
+        write_be(hdr + 2, m->len, 8);
+        if (10 != (rv = c->c.write(&c->c, hdr, 10))) goto error_rv;
+    }
     if (m->len != (rv = c->c.write(&c->c, m->buf, m->len))) goto error_rv;
     rv = 0;
-error_rv:
+  error_rv:
     if (rv) LOG("error: %d\n", rv);
     return rv;
 }

@@ -107,47 +107,73 @@ struct msg_ctx {
     struct tag_u32 msg;
 };
 void reply_tag_u32(const struct tag_u32 *req, const struct tag_u32 *rpl) {
-    uint8_t buf[1024]; // FIXME
+    struct client *c = req->reply_ctx;
+
+    uint8_t buf[1024*16]; // FIXME
     struct leb128s s = {
         .buf = buf,
         .len = sizeof(buf)
     };
-    leb128s_write_tag_u32(&s, rpl);
-    struct msg_ctx *ctx = (void*)req;
-    LOG("FIXME: reply %p\n", ctx);
-    // FIXME: how to get at the server context?
+    leb128s_write_i32(&s, T_TAG);              if(s.error) goto error;
+    leb128s_write_tag_u32_reply(&s, req, rpl); if(s.error) goto error;
+    //log_hex("enc: ", s.offset, buf);
+
+    struct ws_message m = {
+        .opcode = 2,  // binary
+        .fin = 1,
+        .mask = 0,
+        .buf = buf,
+        .len = s.offset,
+    };
+    ws_write_msg(&c->req.ws, &m);
+    return;
+  error:
+    LOG("leb128 write error %x\n", s.error);
+    return;
 }
 
 /* Incoming request from websocket. */
 leb128s_status_t push_tag_u32(struct leb128s *s, struct tag_u32 *msg) {
     msg->reply = reply_tag_u32;
-    // FIXME CALLBACK
-    log_u32("from: ", msg->nb_from, msg->from);
-    log_u32("to:   ", msg->nb_args, msg->args);
-    log_hex("bin:  ", msg->nb_bytes, msg->bytes);
+    msg->reply_ctx = s->env->ctx;
+    if (0) {
+        log_u32("from: ", msg->nb_from, msg->from);
+        log_u32("to:   ", msg->nb_args, msg->args);
+        log_hex("bin:  ", msg->nb_bytes, msg->bytes);
+    }
     handle_tag_u32(msg);
     return 0;
 }
 
 ws_err_t push(struct ws_req *r, struct ws_message *m) {
+    struct client *c = (void*)r;
+
     // m->buf[m->len] = 0; // FIXME: don't do this
     // LOG("push: %s\n", m->buf);
-    LOG("ws_push:");
-    for(int i=0;i<m->len;i++) LOG(" %02x", m->buf[i]);
-    LOG("\n");
+    if (0) {
+        LOG("ws_push:");
+        for(int i=0;i<m->len;i++) LOG(" %02x", m->buf[i]);
+        LOG("\n");
+    }
 
     struct leb128s_env env = {
         .tag_u32 = push_tag_u32,
+        .ctx = c,
     };
 
     struct leb128s s = { .buf = m->buf, .len = m->len, .env = &env };
+
+    /* This calls the push_tag_u32 callback when a T_TAG message is
+       received. */
     leb128_id_t id = leb128s_element(&s);
+
     (void)id;
     if(s.error) {
         LOG("error %d\n", s.error);
     }
     return 0;
 }
+
 void *ws_loop(void *ctx) {
     struct client *c = ctx;
     //for (;;) sleep(1);
@@ -172,7 +198,7 @@ int main(int argc, char **argv) {
     }
     ASSERT_ERRNO(chdir(argv[1]));
 
-    //minmax_open(&map, argv[2], 8);
+    minmax_open(&map, argv[2], 8);
 
     int server_fd = assert_tcp_listen(3456);
     for(;;) {

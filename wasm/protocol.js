@@ -142,8 +142,13 @@ function write_int(env, n) {
 function write_tag(env, msg) {
     write_int(env, msg.from.length); tools.each(msg.from, i => write_int(env, i));
     write_int(env, msg.to.length);   tools.each(msg.to,   i => write_int(env, i));
-    write_int(env, msg.bin.length);
-    write_bytes(env, msg.bin);
+    if (null == msg.bin) {
+        write_int(env, 0);
+    }
+    else {
+        write_int(env, msg.bin.length);
+        write_bytes(env, msg.bin);
+    }
 }
 function term_type(term) {
     if ("number" == typeof(term)) return T_INT; // no floats atm
