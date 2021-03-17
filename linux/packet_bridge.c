@@ -922,21 +922,24 @@ void packet_loop(packet_handle_fn handle,
     //const char progress[] = "-\\|/";
     uint32_t count = 0;
 
-    struct pollfd pfd[ctx->nb_ports];
-    memset(pfd, 0, sizeof(pfd));
-
     for(;;) {
         uint8_t buf[PACKET_BRIDGE_MAX_PACKET_SIZE]; // FIXME: Make this configurable
         int rv;
+        // Store current value before iterating, as nb_ports could de- and increase dynamically.
+        const uint32_t startNbPorts = ctx->nb_ports;
         // LOG("timeout %d\n", ctx->timeout);
-        for (int i=0; i<ctx->nb_ports; i++) {
+
+        // Initialise struct for this current nb of ports
+        struct pollfd pfd[startNbPorts];
+        memset(pfd, 0, sizeof(pfd));
+        for (int i=0; i<startNbPorts; i++) {
             pfd[i].fd = ctx->port[i]->fd;
             pfd[i].events = ctx->port[i]->events ?
                             ctx->port[i]->events : POLLIN;
             pfd[i].revents = 0;
         }
 
-        ASSERT_ERRNO(rv = poll(&pfd[0], ctx->nb_ports, ctx->timeout));
+        ASSERT_ERRNO(rv = poll(&pfd[0], startNbPorts, ctx->timeout));
         ASSERT(rv >= 0);
         // LOG("poll rv: %d\n", rv);
         if (rv == 0) {
@@ -945,7 +948,8 @@ void packet_loop(packet_handle_fn handle,
             handle(ctx, timeout_port, NULL, 0);
         }
         else {
-            for (int i=0; i<ctx->nb_ports; i++) {
+            // Always take smallest value: For decrease no nullpointers are referenced. For increase, handle next iteration when struct is initialised
+            for (int i=0; i<(ctx->nb_ports < startNbPorts ? ctx->nb_ports : startNbPorts); i++) {
                 if( pfd[i].revents & ctx->port[i]->events ||
                     pfd[i].revents & POLLIN) {
                     struct port *in  = ctx->port[i];
