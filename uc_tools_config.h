@@ -8,7 +8,7 @@
 #define CBUF_DEBUG 1
 #define CBUF_DEBUG_INFO_OVERFLOW 0
 
-#define PBUF_DEBUG 1
+#define PBUF_DEBUG_FIELDS 1
 
 
 #endif

@@ -1,7 +1,7 @@
 #ifndef MOD_WEBSERVER
 #define MOD_WEBSERVER
 
-#include "osal.h"
+#include "os_file.h"
 
 #define WEBSERVER_FILE_CHUNK 4096
 #define WEBSERVER_FILE_NAME 64
@@ -31,12 +31,12 @@ const char not_found[] = "404 not found";
 
 webserver_req_status_t serve_get(struct webserver_req *s) {
     struct http_req *h = &s->ws.c;
-    struct osal_file file;
-    if (OSAL_STATUS_OK !=
-        osal_file_open(&file, s->filename, OSAL_FILE_READ)) {
+    struct os_file file;
+    if (OS_FILE_STATUS_OK !=
+        os_file_open(&file, s->filename, OS_FILE_READ)) {
         http_write_404_resp(h);
-        if (OSAL_STATUS_OK !=
-            osal_file_open(&file, "404.html", OSAL_FILE_READ)) {
+        if (OS_FILE_STATUS_OK !=
+            os_file_open(&file, "404.html", OS_FILE_READ)) {
             http_write_str(h, not_found);
             return WEBSERVER_REQ_ERROR;
         }
@@ -47,19 +47,19 @@ webserver_req_status_t serve_get(struct webserver_req *s) {
     }
     uint8_t buf[WEBSERVER_FILE_CHUNK];
     for(;;) {
-        osal_status_t rv = osal_file_read(&file, buf, sizeof(buf));
+        os_file_status_t rv = os_file_read(&file, buf, sizeof(buf));
         if (rv < 1) break;
         h->write(h, buf, rv);
     }
-    osal_file_close(&file);
+    os_file_close(&file);
     return WEBSERVER_REQ_OK;
 }
 
 webserver_req_status_t serve_put(struct webserver_req *s) {
     struct http_req *h = &s->ws.c;
-    struct osal_file file;
-    if (OSAL_STATUS_OK !=
-        osal_file_open(&file, s->filename, OSAL_FILE_WRITE)) {
+    struct os_file file;
+    if (OS_FILE_STATUS_OK !=
+        os_file_open(&file, s->filename, OS_FILE_WRITE)) {
         /* FIXME: What is the proper response here? */
         LOG("Can't open %s for writing.\n", s->filename);
         return WEBSERVER_REQ_ERROR;
@@ -72,11 +72,11 @@ webserver_req_status_t serve_put(struct webserver_req *s) {
         intptr_t rv = h->read(h, buf, sizeof(buf));
         LOG("serve_put, read %d\n", rv);
         if (rv < 1) break;
-        osal_status_t rv1 = osal_file_write(&file, buf, rv);
+        os_file_status_t rv1 = os_file_write(&file, buf, rv);
         if (rv1 < 1) break;
         s->content_length -= rv;
     }
-    osal_file_close(&file);
+    os_file_close(&file);
     http_write_201_resp(h);
     return WEBSERVER_REQ_OK;
 }
@@ -157,9 +157,9 @@ intptr_t header(struct http_req *c, const char *hdr, const char *val) {
     if (!strcmp(hdr, "Sec-WebSocket-Key")) {
         SHA1_CTX ctx;
         sha1_init(&ctx);
-        sha1_update(&ctx, (BYTE*)val, strlen(val));
+        sha1_update(&ctx, (uint8_t*)val, strlen(val));
         const char magic[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-        sha1_update(&ctx, (BYTE*)magic, strlen(magic));
+        sha1_update(&ctx, (uint8_t*)magic, strlen(magic));
         sha1_final(&ctx, s->websocket_sha1);
     }
     else if (!strcmp(hdr, "Content-Length")) {

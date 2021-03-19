@@ -14,7 +14,7 @@ struct pbuf {
     uint32_t count;  /* Number of valid bytes in buffer */
     uint32_t size;   /* Total allocated size of buffer */
     uint8_t *buf;
-#if PBUF_DEBUG
+#if PBUF_DEBUG_FIELDS
     uint32_t watermark;
     uint32_t overflow;
 #endif
@@ -51,7 +51,7 @@ static inline void pbuf_clear(struct pbuf *p) {
 }
 
 static inline void pbuf_update_watermark(struct pbuf *p) {
-#if PBUF_DEBUG
+#if PBUF_DEBUG_FIELDS
     if (p->count > p->watermark) p->watermark = p->count;
 #endif
 }
@@ -64,7 +64,7 @@ static inline void pbuf_put(struct pbuf *p, uint8_t c) {
         p->buf[p->count++] = c;
     }
     else {
-#if PBUF_DEBUG
+#if PBUF_DEBUG_FIELDS
         p->overflow++;
 #endif
     }

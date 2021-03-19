@@ -21,7 +21,7 @@ uint32_t info_bytes(void);
 uint32_t info_read(uint8_t *buf, uint32_t len);
 uint32_t info_read_crlf(uint8_t *buf, uint32_t len);
 
-uint32_t info_bytes();
+uint32_t info_bytes(void);
 
 /* Entry points */
 int infof(const char *fmt, ...);
@@ -36,7 +36,7 @@ void info_str_n(const char *c, int n);
 
 static inline void info_block_data(uint32_t block, uint8_t *data, uint32_t block_size) {
     infof("block %d\n", block);
-    for (int i = 0; i<block_size; i+=32) {
+    for (uint32_t i = 0; i<block_size; i+=32) {
         info_hex_u8(data + i, 32);
         info_putchar('\n');
     }

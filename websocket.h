@@ -151,7 +151,7 @@ static inline ws_err_t ws_write_msg(struct ws_req *c, const struct ws_message *m
         write_be(hdr + 2, m->len, 8);
         if (10 != (rv = c->c.write(&c->c, hdr, 10))) goto error_rv;
     }
-    if (m->len != (rv = c->c.write(&c->c, m->buf, m->len))) goto error_rv;
+    if (m->len != (typeof(m->len))(rv = c->c.write(&c->c, m->buf, m->len))) goto error_rv;
     rv = 0;
   error_rv:
     if (rv) LOG("error: %d\n", rv);
