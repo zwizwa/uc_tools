@@ -214,14 +214,14 @@ int main(int argc, char **argv) {
             pthread_create(&c->thread, NULL, ws_loop, c);
         }
         else {
-            //LOG("s = %d\n", s);
+            LOG("server_serve() -> %d\n", s);
             /* Close the TCP socket. */
             shutdown(c->socket, SHUT_WR);
             for (;;) {
                 uint8_t buf;
                 int rv = read(c->socket, &buf, 1);
                 if (rv <= 0) { break; }
-                LOG("flushing %d\n", buf);
+                // LOG("flushing %d\n", buf);
             }
             close(c->socket);
             //LOG("closed\n", s);

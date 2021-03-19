@@ -18,7 +18,7 @@ typedef void     (*http_close)(struct http_req *);
 struct http_req {
     http_read  read;
     http_write write;
-    http_err_t (*request)(struct http_req *, const char *uri);
+    http_err_t (*request)(struct http_req *, int method, const char *uri);
     http_err_t (*header)(struct http_req *, const char *header, const char *value);
 };
 
@@ -30,6 +30,10 @@ void log_c(const uint8_t *buf, uintptr_t len) {
 #define HTTP_STATUS_EOF            -1
 #define HTTP_STATUS_OVERRUN        -2
 #define HTTP_STATUS_INVALID        -3
+
+#define HTTP_METHOD_GET 1
+#define HTTP_METHOD_PUT 2
+
 
 /* Don't do anything fancy, just read the headers into a buffer. */
 static inline http_err_t http_read_headers(struct http_req *c) {
@@ -53,10 +57,19 @@ static inline http_err_t http_read_headers(struct http_req *c) {
                 /* Only HTTP/1.1 GET is supported. */
                 rv = HTTP_STATUS_INVALID;
                 if (len < (3+1+1+1+8)) { goto error;};
-                if (strncmp(buf,"GET ",3+1)) { goto error;};
+                int method;
+                if (!strncmp(buf,"GET ",3+1)) {
+                    method = HTTP_METHOD_GET;
+                }
+                else if (!strncmp(buf,"PUT ",3+1)) {
+                    method = HTTP_METHOD_PUT;
+                }
+                else {
+                    goto error;
+                };
                 if (strcmp(buf+len-8,"HTTP/1.1")) { goto error;};
                 buf[len-9] = 0;
-                if ((rv = c->request(c, buf+4))) { goto error; }
+                if ((rv = c->request(c, method, buf+4))) { goto error; }
             }
             else {
                 /* Split header and value. */
@@ -86,11 +99,21 @@ static inline http_err_t http_read_headers(struct http_req *c) {
 static inline void http_write_str(struct http_req *s, const char *str) {
     s->write(s, (const uint8_t*)str, strlen(str));
 }
+static inline void http_write_100_resp(struct http_req *s) {
+    http_write_str(s, "HTTP/1.0 100 Continue\r\n\r\n");
+}
+
 static inline void http_write_200_resp(struct http_req *s, const char *type) {
     http_write_str(s, "HTTP/1.0 200 OK\r\nContent-Type: ");
     http_write_str(s, type);
     http_write_str(s, "\r\n\r\n");
 }
+
+static inline void http_write_201_resp(struct http_req *s) {
+    http_write_str(s, "HTTP/1.0 201 Created\r\n\r\n");
+}
+
+
 static inline void http_write_404_resp(struct http_req *s) {
     http_write_str(s, "HTTP/1.0 404 Not Found\r\nContent-Type: text/html; charset=ISO-8859-1\r\n\r\n");
 

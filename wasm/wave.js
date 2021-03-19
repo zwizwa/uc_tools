@@ -102,6 +102,16 @@ var mouse_listeners = {
     mouseout:  event.mouseout,
 
     mousedown: function(ev) {
+        if (ev.buttons & 1) { // left button
+            var win = rel_coords(ev);
+            var level_inc = win.y > (win.h/2) ? 1 : -1;
+            var msg = 
+                new protocol.Message(
+                    [0], // FIXME: we need to know our own address
+                    [0, 0, win.w, win.h, win.x, level_inc]);
+            ws.send(msg);
+        }
+        //console.log(ev.buttons);
         //console.log(ev, x, y);
     },
     keydown: function(ev) {

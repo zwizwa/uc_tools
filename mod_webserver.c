@@ -1,8 +1,7 @@
 #ifndef MOD_WEBSERVER
 #define MOD_WEBSERVER
 
-/* Requirements:
-   stdlib fopen/fclose */
+#include "osal.h"
 
 #define WEBSERVER_FILE_CHUNK 4096
 #define WEBSERVER_FILE_NAME 64
@@ -23,37 +22,66 @@ struct webserver_req {
     /* struct http_req is inside ws. */
     struct ws_req ws;
     webserver_req_status_t (*serve)(struct webserver_req *);
+    intptr_t content_length;
     uint8_t websocket_sha1[SHA1_BLOCK_SIZE];
-    char file[WEBSERVER_FILE_NAME];
+    char filename[WEBSERVER_FILE_NAME];
 };
 
 const char not_found[] = "404 not found";
 
-webserver_req_status_t serve_file(struct webserver_req *s) {
+webserver_req_status_t serve_get(struct webserver_req *s) {
     struct http_req *h = &s->ws.c;
-    FILE *f = NULL;
-    if (s->file[0]) {f = fopen(s->file, "r"); }
-    if (!f) {
+    struct osal_file file;
+    if (OSAL_STATUS_OK !=
+        osal_file_open(&file, s->filename, OSAL_FILE_READ)) {
         http_write_404_resp(h);
-        f = fopen("404.html", "r");
-        if (!f) {
+        if (OSAL_STATUS_OK !=
+            osal_file_open(&file, "404.html", OSAL_FILE_READ)) {
             http_write_str(h, not_found);
             return WEBSERVER_REQ_ERROR;
         }
         /* Fallthrough and write 404.html */
     }
     else {
-        http_write_200_resp(h, http_file_type(s->file));
+        http_write_200_resp(h, http_file_type(s->filename));
     }
     uint8_t buf[WEBSERVER_FILE_CHUNK];
     for(;;) {
-        int rv = fread(buf, 1, sizeof(buf), f);
+        osal_status_t rv = osal_file_read(&file, buf, sizeof(buf));
         if (rv < 1) break;
         h->write(h, buf, rv);
     }
-    fclose(f);
+    osal_file_close(&file);
     return WEBSERVER_REQ_OK;
 }
+
+webserver_req_status_t serve_put(struct webserver_req *s) {
+    struct http_req *h = &s->ws.c;
+    struct osal_file file;
+    if (OSAL_STATUS_OK !=
+        osal_file_open(&file, s->filename, OSAL_FILE_WRITE)) {
+        /* FIXME: What is the proper response here? */
+        LOG("Can't open %s for writing.\n", s->filename);
+        return WEBSERVER_REQ_ERROR;
+    }
+    else {
+        http_write_100_resp(h);
+    }
+    uint8_t buf[WEBSERVER_FILE_CHUNK];
+    while(s->content_length > 0) {
+        intptr_t rv = h->read(h, buf, sizeof(buf));
+        LOG("serve_put, read %d\n", rv);
+        if (rv < 1) break;
+        osal_status_t rv1 = osal_file_write(&file, buf, rv);
+        if (rv1 < 1) break;
+        s->content_length -= rv;
+    }
+    osal_file_close(&file);
+    http_write_201_resp(h);
+    return WEBSERVER_REQ_OK;
+}
+
+
 webserver_req_status_t serve_ws(struct webserver_req *s) {
     struct http_req *h = &s->ws.c;
     http_write_str(
@@ -76,29 +104,55 @@ webserver_req_status_t server_ws_loop(struct webserver_req *s, http_push push) {
     for(;;) { ws_read_msg(&s->ws); }
 }
 
-intptr_t request(struct http_req *c, const char *uri) {
+intptr_t is_local(const char *uri) {
+    if (uri[0] == '/') uri++;
+    for(const char *c = uri; *c; c++) {
+        if (*c == '/')  return 0;
+        if (*c == '\\') return 0;
+    }
+    return 1;
+}
+
+intptr_t put_request(struct http_req *c, const char *uri) {
+    struct webserver_req *s = (void*)c;
+    LOG("W: %s\n", uri);
+    s->filename[0] = 0;
+    if (uri[0] == '/') uri++;
+    if (strlen(uri) < 1) return 0;
+    s->serve = serve_put;
+    int n = sizeof(s->filename);
+    strncpy(s->filename, uri, n);
+    s->filename[n-1] = 0;
+    return 0;
+}
+
+intptr_t get_request(struct http_req *c, const char *uri) {
     struct webserver_req *s = (void*)c;
     LOG("R: %s\n", uri);
-    s->file[0] = 0;
-    s->serve = (!strcmp(uri,"/ws")) ? serve_ws : serve_file;
+    s->filename[0] = 0;
+    s->serve = (!strcmp(uri,"/ws")) ? serve_ws : serve_get;
     if (uri[0] == '/') uri++;
     if (uri[0] == 0) { uri = "index.html"; }
-    else {
-        /* Only serve files inside the current directory. */
-        for(const char *c = uri; *c; c++) {
-            if (*c == '/')  return 0;
-            if (*c == '\\') return 0;
-        }
-    }
-    int n = sizeof(s->file);
-    strncpy(s->file, uri, n);
-    s->file[n-1] = 0;
+    else { if (!is_local(uri)) return 0; }
+    int n = sizeof(s->filename);
+    strncpy(s->filename, uri, n);
+    s->filename[n-1] = 0;
     return 0;
+}
+
+intptr_t request(struct http_req *c, int method, const char *uri) {
+    if (HTTP_METHOD_GET == method) {
+        return get_request(c, uri);
+    }
+    if (HTTP_METHOD_PUT == method) {
+        return put_request(c, uri);
+    }
+    return -1; // FIXME
 }
 
 intptr_t header(struct http_req *c, const char *hdr, const char *val) {
     struct webserver_req *s = (void*)c;
-    // LOG("H: %s = %s\n", hdr, val);
+    LOG("H: %s = %s\n", hdr, val);
     // FIXME: case-insensitive?
     if (!strcmp(hdr, "Sec-WebSocket-Key")) {
         SHA1_CTX ctx;
@@ -107,6 +161,9 @@ intptr_t header(struct http_req *c, const char *hdr, const char *val) {
         const char magic[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
         sha1_update(&ctx, (BYTE*)magic, strlen(magic));
         sha1_final(&ctx, s->websocket_sha1);
+    }
+    else if (!strcmp(hdr, "Content-Length")) {
+        s->content_length = strtold(val, NULL);
     }
     return 0;
 }
