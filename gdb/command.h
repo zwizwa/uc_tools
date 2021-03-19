@@ -60,15 +60,8 @@ static inline uintptr_t command_index_size(void) {
 uintptr_t command_stack_pop(void);
 void      command_stack_push(uintptr_t);
 
-static inline void command_handle(const char *cmd_buf) {
+static inline void command_handle_base(const char *cmd_buf, uintptr_t base) {
 
-    /* Run it if it's in the dictionary. */
-    FOR_COMMAND(c) {
-        if (!strcmp(cmd_buf, (*c)->name)) {
-            (*c)->run();
-            return;
-        }
-    }
     /* Otherwise, convert to number if it parses. */
     uintptr_t word = 0;
     uint32_t len = strlen(cmd_buf);
@@ -78,17 +71,46 @@ static inline void command_handle(const char *cmd_buf) {
             command_stack_push(word);
             return;
         }
-        goto bad;
+        goto bad_number;
     }
-    if (0 == read_dec_nibbles_check_uptr(
-            (const uint8_t*)cmd_buf, strlen(cmd_buf), &word)) {
-        command_stack_push(word);
-        return;
+    if (10 == base) {
+        if (0 == read_dec_nibbles_check_uptr(
+                (const uint8_t*)cmd_buf, strlen(cmd_buf), &word)) {
+            command_stack_push(word);
+            return;
+        }
+    }
+    else if (16 == base) {
+        if (0 == read_hex_nibbles_check_uptr(
+                (const uint8_t*)cmd_buf, len, &word)) {
+            command_stack_push(word);
+            return;
+        }
+        goto bad_number;
     }
 
-bad:
+  bad_number:
+    /* Run it if it's in the dictionary.  Note that in tranditional
+     * Forth style, this should happen before parsing numbers, to be
+     * able to override the implementation of numbers, which
+     * e.g. makes sense for a compiling Forth.  Since this is used
+     * here as a protocol, we really do not want a list search miss
+     * for each number, so it is done when number parsing fails,
+     * meaning that commands that look like numbers are never
+     * found. */
+    FOR_COMMAND(c) {
+        if (!strcmp(cmd_buf, (*c)->name)) {
+            (*c)->run();
+            return;
+        }
+    }
+
     /* Otherwise complain. */
     LOG("?\n");
+}
+
+static inline void command_handle(const char *cmd_buf) {
+    command_handle_base(cmd_buf, 10);
 }
 
 #endif

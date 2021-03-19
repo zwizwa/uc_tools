@@ -521,11 +521,22 @@ DEF_COMMAND(swd_req) {
 
 // FIXME: This doesn't work properly.  DP reads work, but AP reads do
 // not.  It's currently not really necessary so just turn it off.
-#if 0
+#if 1
+
+uint32_t clock_half = 72 * 5; // is 100kHz freq
+
 /* Synchronous. */
-#define SWD_DELAY(s) {                          \
-        if (0) hw_busywait(100);                \
+static inline void delay_half(void) {
+    if (0) {
+        hw_busywait(100);
     }
+    else {
+        uint32_t time = cycle_counter_future_time(clock_half);
+        while(!cycle_counter_expired(time));
+    }
+}
+
+#define SWD_DELAY(s) delay_half()
 
 /* This is the (error) context used for the blocking calls. */
 struct swd_ctx {
@@ -574,7 +585,6 @@ uint32_t swd_transaction(struct swd_ctx *c, uint8_t cmd, uint32_t val) {
 }
 uint32_t swd_cmd(struct swd_ctx *c, uint8_t cmd, uint32_t val) {
     if (!cmd) {
-        LOG("swd_cmd: reset\n");
         swd_reset(c);
         cmd = swd_cmd_hdr(SWD_PORT_DP, SWD_READ, SWD_DP_RD_DPIDR);
     }
@@ -651,6 +661,44 @@ SWD_DEF_READ_COMMAND(swd_mem_ap_read)
 SWD_DEF_WRITE_COMMAND(swd_mem_ap_write)
 
 #undef SWD_DELAY
+
+/* OpenOCD commands.
+
+   openocd/src/jtag/drivers/pdap.c uses a direct mapping of OpenOCD
+   callbacks to RPN commands.
+
+*/
+DEF_COMMAND(sync) {
+    LOG("sync %x\n", command_stack_pop());
+}
+DEF_COMMAND(jtag_to_swd) {
+    struct swd_ctx c = {}; swd_cmd(&c, 0, 0);
+}
+DEF_COMMAND(swd_to_jtag) {
+}
+DEF_COMMAND(line_reset) {
+}
+uint8_t openocd_cmd_pop(void) {
+    /* AP/DP, R/W, Addr, Parity are set by OpenOCD.
+       We just need to add Start, Park. */
+    return command_stack_pop() | 0x81;
+}
+DEF_COMMAND(rd) {
+    uint8_t cmd = openocd_cmd_pop();
+    struct swd_ctx c = {};
+    uint32_t rv = swd_cmd(&c, cmd, 0);
+    LOG("%x\n", rv);
+}
+DEF_COMMAND(wr) {
+    uint8_t cmd  = openocd_cmd_pop();
+    uint32_t arg = command_stack_pop();
+    struct swd_ctx c = {};
+    swd_cmd(&c, cmd, arg);
+    /* Should we print something or not?  The entire queue is
+       synchronized separately, so we don't really need to. */
+}
+
+
 
 #endif
 

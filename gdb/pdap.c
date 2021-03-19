@@ -2,6 +2,10 @@
 
 /* TODO
    - make this console only.  for tag_u32 access, see bp3.c
+   - set up build system to easily develop applications like this
+   - integrate with actual forth
+   - change interpreter to do number interpretation first
+   - make it blocking, so there is backpressure by not handling usb
 */
 
 #define PRODUCT "pdap"
@@ -11,10 +15,6 @@
 struct swd_serv swd_serv;
 void app_poll(void) {
     swd_serv_tick(&swd_serv);
-}
-
-DEF_COMMAND(start) {
-    swd_serv_init(&swd_serv);
 }
 
 instance_status_t app_init(instance_init_t *ctx) {

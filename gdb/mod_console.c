@@ -12,7 +12,7 @@
 #include "instance.h"
 
 /* Support for command.h style commands. */
-struct pbuf console_in; uint8_t console_in_buf[128];
+struct pbuf console_in; uint8_t console_in_buf[64];
 
 /* Temporary buffer for console commands. */
 #ifndef TMP_BUF_SIZE
@@ -20,9 +20,16 @@ struct pbuf console_in; uint8_t console_in_buf[128];
 #endif
 struct pbuf console_tmp; uint8_t console_tmp_buf[TMP_BUF_SIZE];
 
+uintptr_t console_base = 10;
+DEF_COMMAND(hex)     { console_base = 16; }
+DEF_COMMAND(decimal) { console_base = 10; }
+
+intptr_t console_echo = 1;
+DEF_COMMAND(echo)    { console_echo = command_stack_pop(); }
+
 
 void console_handle(const char *cmd) {
-    command_handle(cmd);
+    command_handle_base(cmd, console_base);
 }
 void console_write(const uint8_t *buf, uint32_t len) {
     struct pbuf *p = &console_in;
@@ -59,14 +66,16 @@ void console_write(const uint8_t *buf, uint32_t len) {
 void console_write_echo(const uint8_t *buf, uint32_t len) {
     while(len) {
         uint8_t c = *buf++; len--;
-        /* Who came up with this shit really? */
-        if (c == 127) {
-            char backspace[] = {8,' ',8,0};
-            info_puts(backspace);
-        }
-        else {
-            info_putchar(c);
-            if (c == '\r') { info_putchar('\n'); }
+        if (console_echo) {
+            /* Who came up with this shit really? */
+            if (c == 127) {
+                char backspace[] = {8,' ',8,0};
+                info_puts(backspace);
+            }
+            else {
+                info_putchar(c);
+                if (c == '\r') { info_putchar('\n'); }
+            }
         }
         console_write(&c, 1);
     }
