@@ -8,10 +8,11 @@
 CFLAGS_ERROR=-Werror
 # CFLAGS_ERROR=
 
-# -std=gnu99
+# The path of least resistance is to just use gnu99 on linux.
+# -std=c99
 
 CFLAGS=" \
--std=c99 \
+-std=gnu99 \
 -I$UC_TOOLS/linux \
 -I$UC_TOOLS/ \
 -I$LIBOPENCM3/include \
