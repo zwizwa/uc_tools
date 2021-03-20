@@ -691,24 +691,12 @@ DEF_COMMAND(swd_to_jtag) {
 }
 DEF_COMMAND(line_reset) {
 }
-/* OpenOCD struct swd_driver comments say that ap_delay_hint is the
-   number of idle cycles that may be needed after an AP access to
-   avoid WAITs.  The swd_ones_zeros() below doesn't seem to work, and
-   seems to permanently lock the dap in a state where it doesn't
-   respond.  Instead we perform a dummy DP read. */
-DEF_COMMAND(ap_delay_clk) {
+DEF_COMMAND(idle) {
     uint32_t nb_zeros = command_stack_pop();
     struct swd_ctx c = {};
-    if (0) {
-        swd_ones_zeros(&c, 0, nb_zeros);
-    }
-    else {
-        swd_trans_dp_read(
-            &c,
-            //SWD_DP_RD_CTRLSTAT
-            SWD_DP_RD_DPIDR
-            );
-    }
+    swd_dir(SWD_OUT);
+    swd_ones_zeros(&c, 0, nb_zeros);
+    swd_dir(SWD_IN);
 }
 uint8_t openocd_cmd_pop(void) {
     /* AP/DP, R/W, Addr, Parity are set by OpenOCD.
