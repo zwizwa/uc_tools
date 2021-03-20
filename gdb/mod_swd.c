@@ -82,7 +82,7 @@
 
 #define SWD_GPIO_SWDIO GPIOA,0
 #define SWD_GPIO_SWCLK GPIOA,1
-#define SWD_GPIO_NRST  GPIOA,2
+#define SWD_GPIO_SRST  GPIOA,2
 
 #define SWD_OUT 0
 #define SWD_IN  1
@@ -90,7 +90,7 @@
 INLINE int  swd_get_swdio(void)     { return hw_gpio_read(SWD_GPIO_SWDIO); }
 INLINE void swd_set_swdio(int val)  { hw_gpio_write_v2(SWD_GPIO_SWDIO, val); }
 INLINE void swd_swclk(int val)      { hw_gpio_write_v2(SWD_GPIO_SWCLK, val); }
-INLINE void swd_nrst(int val)       { hw_gpio_write_v2(SWD_GPIO_NRST, val); }
+INLINE void swd_srst(int val)       { hw_gpio_write_v2(SWD_GPIO_SRST, val); }
 INLINE void swd_dir(int in) {
     hw_gpio_config(
         SWD_GPIO_SWDIO, in ?
@@ -727,13 +727,20 @@ DEF_COMMAND(wr) {
     struct swd_ctx c = {};
     swd_cmd(&c, cmd, arg);
 }
-DEF_COMMAND(trst) {
-    command_stack_pop();
-}
 DEF_COMMAND(srst) {
-    command_stack_pop();
+    uint32_t arg = command_stack_pop();
+    // LOG("# %x srst\n", arg);
+    swd_srst(!arg);
 }
-
+#define ESC 033
+void cls(void) {
+    char c[] = {
+        ESC,'[','2','J', // clear screen
+        ESC,'[','H',     // move cursor to upper left
+        0};
+    info_puts(c);
+}
+COMMAND_REGISTER_NAMED("cls", cls);
 
 
 #endif
@@ -744,7 +751,7 @@ instance_status_t swd_init(instance_init_t *ctx) {
     infof("swd_init clk=%d, dio=%d\n", clk, dio);
 
     swd_swclk(0); hw_gpio_config(SWD_GPIO_SWCLK, HW_GPIO_CONFIG_OUTPUT);
-    swd_nrst(1);  hw_gpio_config(SWD_GPIO_NRST,  HW_GPIO_CONFIG_OUTPUT);
+    swd_srst(1);  hw_gpio_config(SWD_GPIO_SRST,  HW_GPIO_CONFIG_OUTPUT);
     swd_set_swdio(1);
     swd_dir(SWD_OUT);
     return 0;

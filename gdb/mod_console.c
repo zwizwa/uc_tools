@@ -155,7 +155,7 @@ COMMAND_REGISTER_NAMED("drop", command_stack_pop);
 
 
 /* Don't use the name 'words' here.  Pick something that people expect. */
-DEF_COMMAND(commands) {
+DEF_COMMAND(help) {
     infof("commands: ");
     FOR_COMMAND(c) { infof("%s ",(*c)->name); };
     infof("\n");
