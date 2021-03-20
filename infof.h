@@ -57,6 +57,8 @@ static inline void info_tagged_hex(const char *tag, const uint8_t *buf, uint32_t
     infof("\n");
 }
 
+
+
 #endif
 
 

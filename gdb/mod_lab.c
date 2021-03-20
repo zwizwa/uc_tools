@@ -136,6 +136,8 @@ const char config_protocol[]     CONFIG_DATA_SECTION = "{driver,lab_board,slip}"
 
 extern const char config_version[];
 
+#include "info_buf.h"
+
 struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .manufacturer    = config_manufacturer,
     .product         = config_product,
@@ -146,5 +148,6 @@ struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .stop            = stop,
     .switch_protocol = slipstub_switch_protocol,
     .monitor         = console_monitor,
+    .info_buf        = &info_buf
 };
 

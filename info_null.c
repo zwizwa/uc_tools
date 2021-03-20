@@ -1,6 +1,8 @@
 /* Implementation of the base functionality needed by infof.c
    FIXME: Change the name of this file to something meaningful. */
 
+#include "info_buf.h"
+
 #if 0
 // Stub for info calls.
 int info_putchar(int c) { return 0; }
@@ -9,19 +11,17 @@ int info_putchar(int c) { return 0; }
 #define KEEP __attribute__((section(".keep")))
 #include <stdint.h>
 #include <string.h>
-#define INFO_LOGSIZE 10
-#define INFO_SIZE (1<<INFO_LOGSIZE)
-#define INFO_MASK (INFO_SIZE-1)
-uint8_t info_buf[INFO_SIZE];
-uint32_t info_write_next = 0;
-uint32_t info_read_next = 0;
+// Put it in a single object, for easy external debugger access
+struct info_buf info_buf = { .logsize = INFO_LOGSIZE };
+
 KEEP void info_clear(void) {
-    memset(info_buf,0,INFO_SIZE);
-    info_write_next = 0;
-    info_read_next = 0;
+    memset(&info_buf,0,sizeof(info_buf));
+    info_buf.logsize = INFO_LOGSIZE;
+    info_buf.write_next = 0;
+    info_buf.read_next = 0;
 }
 KEEP uint32_t info_bytes() {
-    return info_write_next - info_read_next;
+    return info_buf.write_next - info_buf.read_next;
 }
 
 /* This is a quick hack to implement log levels.  Two variables are
@@ -48,12 +48,12 @@ KEEP int info_putchar_inner(int c) {
 #else
     if (info_level_threshold > info_level_current) return 0;
 
-    uint32_t room = INFO_SIZE - (info_write_next - info_read_next);
+    uint32_t room = INFO_SIZE - (info_buf.write_next - info_buf.read_next);
     if (room == 0) return 0;  // drop character and don't overflow the buffer
     if (room == 1) c = '?';   // when almost full, write some kind of indicator
     if (room <= 1) info_overflow_errors++;
-    uint32_t offset = (info_write_next++) & INFO_MASK;
-    info_buf[offset] = c;
+    uint32_t offset = (info_buf.write_next++) & INFO_MASK;
+    info_buf.buf[offset] = c;
     return 0;
 #endif
 }
@@ -85,7 +85,7 @@ KEEP uint32_t info_read(uint8_t *buf, uint32_t len) {
         int32_t todo = info_bytes();
         if (!todo) return nb;
         if (todo < INFO_SIZE) {
-            *buf++ = info_buf[info_read_next & INFO_MASK];
+            *buf++ = info_buf.buf[info_buf.read_next & INFO_MASK];
             len--; nb++;
         }
         else {
@@ -94,7 +94,7 @@ KEEP uint32_t info_read(uint8_t *buf, uint32_t len) {
             *buf++ ='?';
             len--; nb++;
         }
-        info_read_next++;
+        info_buf.read_next++;
     }
 }
 KEEP uint32_t info_read_crlf(uint8_t *buf, uint32_t len) {
@@ -103,7 +103,7 @@ KEEP uint32_t info_read_crlf(uint8_t *buf, uint32_t len) {
         if (len < 2) return nb;
         int32_t todo = info_bytes();
         if (!todo) return nb;
-        uint8_t c = info_buf[info_read_next & INFO_MASK];
+        uint8_t c = info_buf.buf[info_buf.read_next & INFO_MASK];
         if (todo < INFO_SIZE) {
             if (c == '\n') {
                 *buf++ = '\r';
@@ -118,7 +118,7 @@ KEEP uint32_t info_read_crlf(uint8_t *buf, uint32_t len) {
             len--; nb++;
         }
 #endif
-        info_read_next++;
+        info_buf.read_next++;
     }
 }
 #endif

@@ -12,6 +12,8 @@
      compare-sections works fine.  does it somehow not call run()
      after leaving some junk pointers in the queue?
 
+   - probably my bug: there is a buffering issue
+
 
 */
 
