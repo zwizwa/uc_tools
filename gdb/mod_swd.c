@@ -532,7 +532,9 @@ DEF_COMMAND(swd_req) {
 // not.  It's currently not really necessary so just turn it off.
 #if 1
 
-uint32_t clock_half = 72 * 5; // is 100kHz freq
+#define CLOCK_HALF_KHZ(khz) (72000 / ((khz) * 2))
+
+uint32_t clock_half = CLOCK_HALF_KHZ(1000);
 
 /* Synchronous. */
 static inline void delay_half(void) {
@@ -725,6 +727,12 @@ DEF_COMMAND(wr) {
     uint32_t arg = command_stack_pop();
     struct swd_ctx c = {};
     swd_cmd(&c, cmd, arg);
+}
+DEF_COMMAND(trst) {
+    command_stack_pop();
+}
+DEF_COMMAND(srst) {
+    command_stack_pop();
 }
 
 
