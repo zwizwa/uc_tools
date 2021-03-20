@@ -1,7 +1,12 @@
 #ifndef MOD_SWD
 #define MOD_SWD
 
-/* TL&DR: There are a couple of layers to the protocol.
+/* Stand-alone Debug Access Port / Serial Wire Debug interface monitor
+   tool, with OpenOCD support.
+
+   PROTOCOL
+
+   TL&DR: There are a couple of layers to the protocol.
 
    Specific to STM32F103, from high level down to low level:
 
@@ -45,35 +50,29 @@
 
    IMPLEMENTATION
 
-   This was originally written as a SM, but that turned out to be
-   complicated because nesting is deep.  SM is also not necessary
-   because it can run at high rate without extra delays so the unit of
-   work could be one transaction, and in a typical application this
-   will be single-threaded anyway.  So SM might still be useful, but
-   at a coarser level.
+   The SWD bit-level transaction protocol is written as a set of
+   macros and is instantiated as:
 
-   For now, the base macros are left intact, and they are expanded
-   into functions.  This leaves the option open for later to go back
-   to SM in case that is needed.  Note: this is an exercise in doing
-   the nesting in a systematic way, making all dependencies explicit.
+   - a state machine, i.e. sm.h protothread macros
 
-   TODO:
+   - nested function calls for busy bit-bang
 
-   1) All SM macros now also have a nested function form, but
-      MEM-AP reads return errors:
+   The former allows bit level context switching, which might be
+   useful when driving multiple SWD lines at a slower speed.  It was
+   the original implementation, but is currently not used as the
+   context switch overhead makes it very slow, and the absence of
+   function calls makes it awkward to implement a nested protocol.
 
-      bp3: info: res = 4
-      {[4294967295],<<>>}bp3: info: ERROR: flags = 0x00000001
+   The latter provides ordinary C functions to perform the 46 bit SWD
+   transactions without context switching. It is the implementation
+   used to implement all stand alone console commands, which also
+   implement the operations used by the OpenOCD driver.  It is faster
+   and more convenient for development.
 
-      bp3: info: res = 7
-      bp3: info: ERROR: flags = 0x0000000
-
-      Since the SM implementation of auto-incrementing bulk read
-      works, I'm going to let this sit for a bit, maybe just turn off
-      the syncrhonous code for now.
-
-   2) Make it programmable, accessible via USB and write an OpenOCD
-      wrapper for it.  Maybe do that with tag_u32 protocol?
+   For OpenOCD integration, there is a minimal driver that provides a
+   1-1 bridge from OpenOCD swd adapter API to text commands over
+   ttyACM.  Commands are implemented at the bottom of this file.
+   See als openocd/src/jtag/drivers/pdap.c
 
 */
 
