@@ -308,7 +308,7 @@ uint32_t swd_cmd_hdr(uint32_t port, uint32_t read, uint32_t addr) {
             /* RM0008 says it needs two after write, but that doesn't work? */ \
             write_bit(s, 0); /* idle */                                 \
         }                                                               \
-        swd_dir(SWD_IN);                                                \
+        swd_dir(SWD_OUT);                                               \
     }
 
 #define SWD_TRANSACTION(s)                                              \
@@ -696,7 +696,7 @@ DEF_COMMAND(idle) {
     struct swd_ctx c = {};
     swd_dir(SWD_OUT);
     swd_ones_zeros(&c, 0, nb_zeros);
-    swd_dir(SWD_IN);
+    //swd_dir(SWD_IN);
 }
 uint8_t openocd_cmd_pop(void) {
     /* AP/DP, R/W, Addr, Parity are set by OpenOCD.
