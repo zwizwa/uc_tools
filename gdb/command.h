@@ -15,9 +15,10 @@
    pointers to a command struct.  This leaves some freedom to the
    application about how to implement commands.
 */
+typedef void (*command_fn)(void);
 struct command {
     const char *name;
-    void (*run)(void);
+    command_fn run;
 };
 extern const struct command const *_command_start;
 extern const struct command const *_command_endx;
@@ -36,7 +37,7 @@ static inline uintptr_t command_index_size(void) {
     FOR_START_ENDX(&_command_start, &_command_endx, c)
 
 #define COMMAND_REGISTER_NAMED(_name, _cname) \
-    const struct command command_##_cname = { .name = _name, .run = _cname }; \
+    const struct command command_##_cname = { .name = _name, .run = (command_fn)_cname }; \
     const struct command *command_ref_##_cname COMMAND_SECTION = &command_##_cname
 
 #define COMMAND_REGISTER(_cname) \

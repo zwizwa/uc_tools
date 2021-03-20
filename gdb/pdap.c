@@ -1,11 +1,9 @@
 /* PDAP Parallel Debug Access Port interface */
 
 /* TODO
-   - make this console only.  for tag_u32 access, see bp3.c
-   - set up build system to easily develop applications like this
+   - first fix low level issues in blocking mode
    - integrate with actual forth
-   - change interpreter to do number interpretation first
-   - make it blocking, so there is backpressure by not handling usb
+   - make it blocking, so there is backpressure by not handling usb (?)
 */
 
 #define PRODUCT "pdap"

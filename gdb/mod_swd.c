@@ -14,7 +14,7 @@
       TAR, and read DRW.
 
    3. Each of the individual reads and writes to those registers
-      requires two to three SWD transactions: (optionally) select
+      requires two to three SWD : (optionally) select
       bank, perform AP read or write, and perform DP read for result
       or status.
 
@@ -208,6 +208,12 @@ void swd_cmd_init(struct swd_cmd *s, uint8_t cmd, uint32_t val) {
 #define SWD_RESET(s) \
     SWD_RESET_(s,SWD_WRITE_LSB,SWD_ONES_ZEROS)
 
+void log_cmd(uint8_t cmd) {
+    LOG("port = %d\n", 1 & (cmd >> 1));
+    LOG("read = %d\n", 1 & (cmd >> 2));
+    LOG("addr = %d\n", 0b1100 & (cmd >> 1));
+}
+DEF_COMMAND(log_cmd) { log_cmd(command_stack_pop()); }
 
 uint32_t swd_cmd_hdr(uint32_t port, uint32_t read, uint32_t addr) {
     uint32_t hdr =
@@ -270,36 +276,39 @@ uint32_t swd_cmd_hdr(uint32_t port, uint32_t read, uint32_t addr) {
    information such that it can) eliminate the state struct.  The only
    references to s that are left are only necessary when this is
    compiled to SM. */
-#define SWD_TRANSACTION_(s,cmd,res,flags,val,write_bit,read_bit,write_lsb,read_lsb) { \
+#define SWD_TRANSACTION_(s,cmd,ack,flags,val,write_bit,read_bit,write_lsb,read_lsb) { \
         flags = 0;                                                      \
         swd_dir(SWD_OUT);                                               \
         write_lsb(s, cmd, 8);                                           \
         swd_dir(SWD_IN);                                                \
         read_bit(s); /* turn */                                         \
-        res = read_lsb(s, 3);                                           \
-        if (0b001 != res) {                                             \
-            /* not ACK */                                               \
-            LOG("res = %d\n", res);                                     \
-        }                                                               \
-        flags &= ~SWD_FLAGS_PARITY; /* reset */                         \
-        if (cmd & (1 << 2)) {                                           \
-            /* Read */                                                  \
-            val = read_lsb(s, 32);                                      \
-            int parity = read_bit(s);                                   \
-            SWD_INFO_BIT("p:%d\n", parity);                             \
-            if (parity) flags ^= SWD_FLAGS_PARITY;                      \
-            read_bit(s); /* turn */                                     \
+        ack = read_lsb(s, 3);                                           \
+        if (0b001 != ack) {                                             \
+            /* not OK */                                                \
+            val = 0xdecafbad;                                           \
+            LOG("# ack %x\n", ack);                                     \
         }                                                               \
         else {                                                          \
-            /* Write */                                                 \
-            read_bit(s); /* turn */                                     \
-            swd_dir(SWD_OUT);                                           \
-            write_lsb(s, val, 32);                                      \
-            SWD_INFO_BIT("p:%d\n", !!(flags & SWD_FLAGS_PARITY));       \
-            write_bit(s, !!(flags & SWD_FLAGS_PARITY));;                \
+            flags &= ~SWD_FLAGS_PARITY; /* reset */                     \
+            if (cmd & (1 << 2)) {                                       \
+                /* Read */                                              \
+                val = read_lsb(s, 32);                                  \
+                int parity = read_bit(s);                               \
+                SWD_INFO_BIT("p:%d\n", parity);                         \
+                if (parity) flags ^= SWD_FLAGS_PARITY;                  \
+                read_bit(s); /* turn */                                 \
+            }                                                           \
+            else {                                                      \
+                /* Write */                                             \
+                read_bit(s); /* turn */                                 \
+                swd_dir(SWD_OUT);                                       \
+                write_lsb(s, val, 32);                                  \
+                SWD_INFO_BIT("p:%d\n", !!(flags & SWD_FLAGS_PARITY));   \
+                write_bit(s, !!(flags & SWD_FLAGS_PARITY));;            \
+            }                                                           \
+            /* RM0008 says it needs two after write, but that doesn't work? */ \
+            write_bit(s, 0); /* idle */                                 \
         }                                                               \
-        /* RM0008 says it needs two after write, but that doesn't work? */ \
-        write_bit(s, 0); /* idle */                                     \
         swd_dir(SWD_IN);                                                \
     }
 
@@ -575,12 +584,8 @@ void swd_reset(struct swd_ctx *c) {
     SWD_RESET_(c,swd_write_lsb,swd_ones_zeros);
 }
 uint32_t swd_transaction(struct swd_ctx *c, uint8_t cmd, uint32_t val) {
-    uint32_t res = 0, flags = 0;
-    SWD_TRANSACTION_(c,cmd,res,flags,val,
+    SWD_TRANSACTION_(c,cmd,c->res,c->flags,val,
                      swd_write_bit,swd_read_bit,swd_write_lsb,swd_read_lsb);
-    c->res = res;
-    c->flags = flags;
-    swd_log_flags(c);
     return val;
 }
 uint32_t swd_cmd(struct swd_ctx *c, uint8_t cmd, uint32_t val) {
@@ -645,20 +650,27 @@ void swd_command_write(void (*write)(struct swd_ctx *c, uint32_t addr, uint32_t 
     uint32_t addr = command_stack_pop();
     write(&c, addr, val);
 }
-#define SWD_DEF_READ_COMMAND(name) \
-    DEF_COMMAND(name) { swd_command_read(name); }
+#define SWD_DEF_READ_COMMAND(fname,cname) \
+    DEF_COMMAND(fname) { swd_command_read(cname); }
 
-#define SWD_DEF_WRITE_COMMAND(name) \
-    DEF_COMMAND(name) { swd_command_write(name); }
+#define SWD_DEF_WRITE_COMMAND(fname,cname) \
+    DEF_COMMAND(fname) { swd_command_write(cname); }
 
-SWD_DEF_READ_COMMAND(swd_trans_dp_read);
-SWD_DEF_READ_COMMAND(swd_trans_ap_read);
-SWD_DEF_WRITE_COMMAND(swd_trans_dp_write);
-SWD_DEF_WRITE_COMMAND(swd_trans_ap_write);
-SWD_DEF_READ_COMMAND(swd_ap_reg_read)
-SWD_DEF_WRITE_COMMAND(swd_ap_reg_write)
-SWD_DEF_READ_COMMAND(swd_mem_ap_read)
-SWD_DEF_WRITE_COMMAND(swd_mem_ap_write)
+SWD_DEF_READ_COMMAND(dp_rd,swd_trans_dp_read);
+SWD_DEF_READ_COMMAND(ap_rd,swd_trans_ap_read);
+SWD_DEF_WRITE_COMMAND(dp_wr,swd_trans_dp_write);
+SWD_DEF_WRITE_COMMAND(ap_wr,swd_trans_ap_write);
+SWD_DEF_READ_COMMAND(ap_req_rd,swd_ap_reg_read)
+SWD_DEF_WRITE_COMMAND(ap_reg_wr,swd_ap_reg_write)
+SWD_DEF_READ_COMMAND(mem_rd,swd_mem_ap_read)
+SWD_DEF_WRITE_COMMAND(mem_wr,swd_mem_ap_write)
+
+DEF_COMMAND(select) {
+    struct swd_ctx c = {};
+    uint32_t reg = command_stack_pop();
+    uint32_t ap  = command_stack_pop();
+    swd_select(&c, ap, reg);
+}
 
 #undef SWD_DELAY
 
@@ -678,6 +690,25 @@ DEF_COMMAND(swd_to_jtag) {
 }
 DEF_COMMAND(line_reset) {
 }
+/* OpenOCD struct swd_driver comments say that ap_delay_hint is the
+   number of idle cycles that may be needed after an AP access to
+   avoid WAITs.  The swd_ones_zeros() below doesn't seem to work, and
+   seems to permanently lock the dap in a state where it doesn't
+   respond.  Instead we perform a dummy DP read. */
+DEF_COMMAND(ap_delay_clk) {
+    uint32_t nb_zeros = command_stack_pop();
+    struct swd_ctx c = {};
+    if (0) {
+        swd_ones_zeros(&c, 0, nb_zeros);
+    }
+    else {
+        swd_trans_dp_read(
+            &c,
+            //SWD_DP_RD_CTRLSTAT
+            SWD_DP_RD_DPIDR
+            );
+    }
+}
 uint8_t openocd_cmd_pop(void) {
     /* AP/DP, R/W, Addr, Parity are set by OpenOCD.
        We just need to add Start, Park. */
@@ -687,15 +718,13 @@ DEF_COMMAND(rd) {
     uint8_t cmd = openocd_cmd_pop();
     struct swd_ctx c = {};
     uint32_t rv = swd_cmd(&c, cmd, 0);
-    LOG("%x\n", rv);
+    command_stack_push(rv);
 }
 DEF_COMMAND(wr) {
     uint8_t cmd  = openocd_cmd_pop();
     uint32_t arg = command_stack_pop();
     struct swd_ctx c = {};
     swd_cmd(&c, cmd, arg);
-    /* Should we print something or not?  The entire queue is
-       synchronized separately, so we don't really need to. */
 }
 
 

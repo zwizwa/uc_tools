@@ -151,6 +151,7 @@ COMMAND_REGISTER_NAMED("-", forth_sub);
 COMMAND_REGISTER_NAMED("p", forth_print);
 COMMAND_REGISTER_NAMED("@", forth_fetch);
 COMMAND_REGISTER_NAMED("!", forth_store);
+COMMAND_REGISTER_NAMED("drop", command_stack_pop);
 
 
 /* Don't use the name 'words' here.  Pick something that people expect. */
