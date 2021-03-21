@@ -35,12 +35,8 @@ struct ws_message {
 #define WS_LEN_MAX 4096
 
 /* Decouple it from implementation of read and write. */
-typedef uintptr_t ws_err_t; struct ws_req;
-typedef ws_err_t (*http_push)(struct ws_req *, struct ws_message *);
-struct ws_req {
-    struct http_req http;
-    http_push push;
-};
+typedef uintptr_t ws_err_t; struct ws_ctx;
+typedef ws_err_t (*ws_push_fn)(struct blocking_io *, struct ws_message *);
 
 /* Undo the xormask.  The xormask is (I believe), a hack that is part
    of the protocol to work around broken caching proxies. */
@@ -49,13 +45,15 @@ static inline void ws_unmask(struct ws_message *m) {
         m->buf[i] ^= m->xorkey[i & 3];
     }
 }
-static inline ws_err_t ws_read_msg_body(struct ws_req *c, struct ws_message *m,
-                                           uintptr_t len_len) {
+static inline ws_err_t ws_read_msg_body(struct blocking_io *io,
+                                        ws_push_fn push,
+                                        struct ws_message *m,
+                                        uintptr_t len_len) {
     uintptr_t rv = 0;
     if (len_len) {
         /* Large and Medium have an additional length field. */
         uint8_t len[len_len];
-        if (len_len != (rv = c->http.io.read(&c->http.io, len, len_len))) goto error_rv;
+        if (len_len != (rv = io->read(io, len, len_len))) goto error_rv;
         m->len = read_be(len, len_len);
     }
     else {
@@ -69,12 +67,12 @@ static inline ws_err_t ws_read_msg_body(struct ws_req *c, struct ws_message *m,
         ASSERT(m->len <= WS_LEN_MAX);
         uint8_t buf[m->len]; m->buf = buf;
 
-        if (4 != (rv = c->http.io.read(&c->http.io, m->xorkey, 4))) goto error_rv;
-        if (m->len != (rv = c->http.io.read(&c->http.io, m->buf, m->len))) goto error_rv;
+        if (4 != (rv = io->read(io, m->xorkey, 4))) goto error_rv;
+        if (m->len != (rv = io->read(io, m->buf, m->len))) goto error_rv;
         ws_unmask(m);
         if (m->opcode == 2) {
             /* Binary */
-            return c->push(c, m);
+            return push(io, m);
         }
         if (m->opcode == 8) {
             LOG("closing websocket\n");
@@ -96,11 +94,12 @@ static inline ws_err_t ws_read_msg_body(struct ws_req *c, struct ws_message *m,
     LOG("error: %d\n", rv);
     return rv;
 }
-static inline ws_err_t ws_read_msg(struct ws_req *c) {
+static inline ws_err_t ws_read_msg(struct blocking_io *io, ws_push_fn push) {
+
     /* We can read 2 bytes, then we have to dispatch on size. */
     uint8_t buf[2];
     intptr_t rv;
-    if (2 != (rv = c->http.io.read(&c->http.io, buf, 2))) goto error_rv;
+    if (2 != (rv = io->read(io, buf, 2))) goto error_rv;
     struct ws_message m = {};
     m.len        = buf[1] & 0x7f;
     m.opcode     = buf[0] & 0xf;
@@ -109,15 +108,15 @@ static inline ws_err_t ws_read_msg(struct ws_req *c) {
 
     if (m.len == 127) {
         /* Large message. */
-        return ws_read_msg_body(c, &m, 8);
+        return ws_read_msg_body(io, push, &m, 8);
     }
     else if (m.len == 126) {
         /* Medium size message. */
-        return ws_read_msg_body(c, &m, 2);
+        return ws_read_msg_body(io, push, &m, 2);
     }
     else {
         /* Small message, len <= 125 */
-        return ws_read_msg_body(c, &m, 0 /* already have m.len */);
+        return ws_read_msg_body(io, push, &m, 0 /* already have m.len */);
     }
 
   error_rv:
@@ -126,14 +125,14 @@ static inline ws_err_t ws_read_msg(struct ws_req *c) {
 
 }
 
-static inline ws_err_t ws_write_msg(struct ws_req *c, const struct ws_message *m) {
+static inline ws_err_t ws_write_msg(struct blocking_io *io, const struct ws_message *m) {
     intptr_t rv;
     if (m->len < 126) {
         uint8_t hdr[2] = {
             (m->fin << 7) | (m->opcode & 0xF),
             (m->mask << 7) | m->len
         };
-        if (2 != (rv = c->http.io.write(&c->http.io, hdr, 2))) goto error_rv;
+        if (2 != (rv = io->write(io, hdr, 2))) goto error_rv;
     }
     else if (m->len < 0xFFFF) {
         uint8_t hdr[4] = {
@@ -141,7 +140,7 @@ static inline ws_err_t ws_write_msg(struct ws_req *c, const struct ws_message *m
             (m->mask << 7) | 126 /* medium size code */
         };
         write_be(hdr + 2, m->len, 2);
-        if (4 != (rv = c->http.io.write(&c->http.io, hdr, 4))) goto error_rv;
+        if (4 != (rv = io->write(io, hdr, 4))) goto error_rv;
     }
     else {
         uint8_t hdr[10] = {
@@ -149,10 +148,10 @@ static inline ws_err_t ws_write_msg(struct ws_req *c, const struct ws_message *m
             (m->mask << 7) | 127 /* large size code */
         };
         write_be(hdr + 2, m->len, 8);
-        if (10 != (rv = c->http.io.write(&c->http.io, hdr, 10))) goto error_rv;
+        if (10 != (rv = io->write(io, hdr, 10))) goto error_rv;
     }
     if (m->len != (typeof(m->len))
-        (rv =c->http.io.write(&c->http.io, m->buf, m->len))) goto error_rv;
+        (rv = io->write(io, m->buf, m->len))) goto error_rv;
     rv = 0;
   error_rv:
     if (rv) LOG("error: %d\n", rv);

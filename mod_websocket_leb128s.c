@@ -5,6 +5,11 @@
    external i/o handled by mod_webserver.c with an internal tag_u32
    directory tree handler. */
 
+#ifndef WEBSOCKET_MSG_BUF
+#define WEBSOCKET_MSG_BUF (16*1024) // FIXME: This will need to be managed differently
+#endif
+
+
 #include "leb128s.h"
 #include "log_tools.h"
 #include "websocket.h"
@@ -15,10 +20,11 @@ int handle_tag_u32(struct tag_u32 *req);
 struct msg_ctx {
     struct tag_u32 msg;
 };
-void reply_tag_u32(const struct tag_u32 *req, const struct tag_u32 *rpl) {
-    struct client *c = req->reply_ctx;
 
-    uint8_t buf[1024*16]; // FIXME
+void reply_tag_u32(const struct tag_u32 *req, const struct tag_u32 *rpl) {
+    struct blocking_io *io = req->reply_ctx;
+
+    uint8_t buf[WEBSOCKET_MSG_BUF];
     struct leb128s s = {
         .buf = buf,
         .len = sizeof(buf)
@@ -34,7 +40,7 @@ void reply_tag_u32(const struct tag_u32 *req, const struct tag_u32 *rpl) {
         .buf = buf,
         .len = s.offset,
     };
-    ws_write_msg(&c->req.ws, &m);
+    ws_write_msg(io, &m);
     return;
   error:
     LOG("leb128 write error %x\n", s.error);
@@ -54,8 +60,7 @@ leb128s_status_t push_tag_u32(struct leb128s *s, struct tag_u32 *msg) {
     return 0;
 }
 
-ws_err_t push(struct ws_req *r, struct ws_message *m) {
-    struct client *c = (void*)r;
+ws_err_t websocket_push(struct blocking_io *io, struct ws_message *m) {
 
     // m->buf[m->len] = 0; // FIXME: don't do this
     // LOG("push: %s\n", m->buf);
@@ -65,7 +70,7 @@ ws_err_t push(struct ws_req *r, struct ws_message *m) {
 
     struct leb128s_env env = {
         .tag_u32 = push_tag_u32,
-        .ctx = c,
+        .ctx = io,
     };
 
     struct leb128s s = { .buf = m->buf, .len = m->len, .env = &env };

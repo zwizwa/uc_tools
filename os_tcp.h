@@ -4,8 +4,9 @@
 /* Instead of abstracting at the socket api, abstract at a highe
    rlevel and provide a simplified view of a TCP server. */
 
-/* Note that this does not assume that files and sockets have the same
-   read/write API. */
+/* Sockets expose read/write via blocking_io struct. */
+#include "blocking_io.h"
+
 
 /* LwIP socket API
 
@@ -39,6 +40,7 @@ static intptr_t os_tcp_server_init(struct os_tcp_server *s, uint16_t port) {
 }
 
 struct os_tcp_socket {
+    struct blocking_io io;
     int socket;
 };
 static inline intptr_t os_tcp_read(struct os_tcp_socket *s, uint8_t *buf, uintptr_t len) {
@@ -68,35 +70,14 @@ static inline void os_tcp_accept(struct os_tcp_server *s,
 #include "assert_write.h"
 #include "assert_read.h"
 
+/* User apio is the blocking_io, so this can just be cast. */
 struct os_tcp_socket {
+    struct blocking_io io;
     int fd;
 };
 struct os_tcp_server {
     int fd;
 };
-struct os_tcp_accepted {
-    struct os_tcp_socket socket;
-};
-static intptr_t os_tcp_server_init(struct os_tcp_server *s, uint16_t port) {
-    s->fd = assert_tcp_listen(3456);
-    return 0;
-}
-static inline void os_tcp_accept(struct os_tcp_server *serv,
-                                 struct os_tcp_accepted *a) {
-    memset(a,0,sizeof(*a));
-    a->socket.fd = assert_accept(serv->fd);
-}
-static inline void os_tcp_close(struct os_tcp_socket *s) {
-    /* Close the TCP socket. */
-    shutdown(s->fd, SHUT_WR);
-    for (;;) {
-        uint8_t buf;
-        int rv = read(s->fd, &buf, 1);
-        if (rv <= 0) { break; }
-        // LOG("flushing %d\n", buf);
-    }
-    close(s->fd);
-}
 static intptr_t os_tcp_read(struct os_tcp_socket *s, uint8_t *buf, uintptr_t len) {
     LOG("read %d...\r", len);
     // ssize_t rv = assert_read(c->socket, buf, len);
@@ -116,6 +97,27 @@ static intptr_t os_tcp_write(struct os_tcp_socket *s, const uint8_t *buf, uintpt
     assert_write(s->fd, buf, len);
     //for(uintptr_t i=0; i<len; i++) LOG("%c", buf[i]);
     return len;
+}
+static intptr_t os_tcp_server_init(struct os_tcp_server *s, uint16_t port) {
+    s->fd = assert_tcp_listen(3456);
+    return 0;
+}
+static inline void os_tcp_accept(struct os_tcp_server *serv,
+                                 struct os_tcp_socket *client) {
+    client->io.read  = (blocking_read_fn)os_tcp_read;
+    client->io.write = (blocking_write_fn)os_tcp_write;
+    client->fd = assert_accept(serv->fd);
+}
+static inline void os_tcp_close(struct os_tcp_socket *s) {
+    /* Close the TCP socket. */
+    shutdown(s->fd, SHUT_WR);
+    for (;;) {
+        uint8_t buf;
+        int rv = read(s->fd, &buf, 1);
+        if (rv <= 0) { break; }
+        // LOG("flushing %d\n", buf);
+    }
+    close(s->fd);
 }
 
 
