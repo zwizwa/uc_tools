@@ -30,7 +30,7 @@ struct webserver_req {
 const char not_found[] = "404 not found";
 
 webserver_req_status_t serve_get(struct webserver_req *s) {
-    struct http_req *h = &s->ws.c;
+    struct http_req *h = &s->ws.http;
     struct os_file file;
     if (OS_FILE_STATUS_OK !=
         os_file_open(&file, s->filename, OS_FILE_READ)) {
@@ -56,7 +56,7 @@ webserver_req_status_t serve_get(struct webserver_req *s) {
 }
 
 webserver_req_status_t serve_put(struct webserver_req *s) {
-    struct http_req *h = &s->ws.c;
+    struct http_req *h = &s->ws.http;
     struct os_file file;
     if (OS_FILE_STATUS_OK !=
         os_file_open(&file, s->filename, OS_FILE_WRITE)) {
@@ -83,7 +83,7 @@ webserver_req_status_t serve_put(struct webserver_req *s) {
 
 
 webserver_req_status_t serve_ws(struct webserver_req *s) {
-    struct http_req *h = &s->ws.c;
+    struct http_req *h = &s->ws.http;
     http_write_str(
         h, "HTTP/1.1 101 Switching Protocols\r\n"
         "Upgrade: websocket\r\n"
@@ -172,11 +172,10 @@ intptr_t header(struct http_req *c, const char *hdr, const char *val) {
 void server_init(struct webserver_req *s,
                  http_read  read,
                  http_write write) {
-    ZERO(s);
-    s->ws.c.request = request;
-    s->ws.c.header  = header;
-    s->ws.c.read    = read;
-    s->ws.c.write   = write;
+    s->ws.http.request = request;
+    s->ws.http.header  = header;
+    s->ws.http.read    = read;
+    s->ws.http.write   = write;
 }
 
 /* Serve a single request.  If this is a file, the function returns
@@ -189,7 +188,7 @@ webserver_req_status_t server_serve(
     http_write write) {
 
     server_init(s, read, write);
-    http_read_headers(&s->ws.c);
+    http_read_headers(&s->ws.http);
     ASSERT(s->serve);
     webserver_req_status_t status = s->serve(s);
     return status;

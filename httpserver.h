@@ -20,6 +20,7 @@ struct http_req {
     http_write write;
     http_err_t (*request)(struct http_req *, int method, const char *uri);
     http_err_t (*header)(struct http_req *, const char *header, const char *value);
+    void *ctx;
 };
 
 

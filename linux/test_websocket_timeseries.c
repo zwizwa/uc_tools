@@ -7,11 +7,10 @@
 #include "assert_read.h"
 #include "assert_write.h"
 
-#include "tcp_tools.h"
-
 #include "leb128s.h"
 
 #include "os_thread.h"
+#include "os_tcp.h"
 
 /* The name of the map refers to the handler function. */
 #define DEF_MAP DEF_TAG_U32_CONST_MAP_HANDLE
@@ -60,30 +59,8 @@ int handle_tag_u32(struct tag_u32 *req) {
 
 struct client {
     struct webserver_req req;
-    int socket;
+    struct os_tcp_accepted a;
 };
-intptr_t read_(struct http_req *r, uint8_t *buf, uintptr_t len) {
-    struct client *c = (void*)r;
-    LOG("read...\r");
-    // ssize_t rv = assert_read(c->socket, buf, len);
-    // FIXME: This can produce a short read.
-    ssize_t rv = read(c->socket, buf, len);
-    if (rv > 0) {
-        LOG("read ok\r");
-        return rv;
-    }
-    ASSERT_ERRNO(rv);
-    LOG("read EOF, exit thread\n");
-    // Any error terminates the thread
-    // free(c);  // not sure if this is ok before exit.. just leak it.
-    os_thread_exit(NULL);
-}
-intptr_t write_(struct http_req *r, const uint8_t *buf, uintptr_t len) {
-    struct client *c = (void*)r;
-    assert_write(c->socket, buf, len);
-    //for(uintptr_t i=0; i<len; i++) LOG("%c", buf[i]);
-    return len;
-}
 
 /* FIXME: Mutual exclusion access is not implemented in this test.  Do
  * not use two websockets at the same time. */
@@ -179,6 +156,15 @@ OS_THREAD_MAIN(ws_loop, ctx) {
     OS_THREAD_RETURN();
 }
 
+intptr_t read_(struct http_req *r, uint8_t *buf, uintptr_t len) {
+    return os_tcp_read(r->ctx, buf, len);
+}
+intptr_t write_(struct http_req *r, const uint8_t *buf, uintptr_t len) {
+    return os_tcp_write(r->ctx, buf, len);
+}
+
+
+
 // ws = new WebSocket("ws://10.1.3.29:3456");
 // see test_websocket_timeseries.sh
 int main(int argc, char **argv) {
@@ -198,13 +184,18 @@ int main(int argc, char **argv) {
 
     minmax_open(&map, argv[2], 8);
 
-    int server_fd = assert_tcp_listen(3456);
-    for(;;) {
+
+    struct os_tcp_server s;
+    os_tcp_server_init(&s, 1234);
+
+    for (;;) {
+        printf("accepting\n");
         struct client *c = calloc(1, sizeof(*c));
-        c->socket = assert_accept(server_fd);
+        os_tcp_accept(&s, &c->a);
+        c->req.ws.http.ctx = &c->a.socket;
+
         // LOG("accept\n");
-        webserver_req_status_t s =
-            server_serve(&c->req, read_, write_);
+        webserver_req_status_t s = server_serve(&c->req, read_, write_);
 
         /* Spawn a handler loop when a websocket connection was created. */
         if (WEBSERVER_REQ_WEBSOCKET_UP == s) {
@@ -213,15 +204,7 @@ int main(int argc, char **argv) {
         }
         else {
             LOG("server_serve() -> %d\n", s);
-            /* Close the TCP socket. */
-            shutdown(c->socket, SHUT_WR);
-            for (;;) {
-                uint8_t buf;
-                int rv = read(c->socket, &buf, 1);
-                if (rv <= 0) { break; }
-                // LOG("flushing %d\n", buf);
-            }
-            close(c->socket);
+            os_tcp_close(&c->a.socket);
             //LOG("closed\n", s);
             free(c);
         }

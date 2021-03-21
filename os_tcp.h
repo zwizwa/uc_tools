@@ -61,6 +61,59 @@ static inline void os_tcp_accept(struct os_tcp_server *s,
 
 /* Berkeley sockets */
 #else
+#include "tcp_tools.h"
+
+struct os_tcp_socket {
+    int fd;
+};
+struct os_tcp_server {
+    int fd;
+};
+struct os_tcp_accepted {
+    struct os_tcp_socket socket;
+};
+static intptr_t os_tcp_server_init(struct os_tcp_server *s, uint16_t port) {
+    s->fd = assert_tcp_listen(3456);
+    return 0;
+}
+static inline void os_tcp_accept(struct os_tcp_server *serv,
+                                 struct os_tcp_accepted *a) {
+    memset(a,0,sizeof(*a));
+    a->socket.fd = assert_accept(serv->fd);
+}
+static inline void os_tcp_close(struct os_tcp_socket *s) {
+    /* Close the TCP socket. */
+    shutdown(s->fd, SHUT_WR);
+    for (;;) {
+        uint8_t buf;
+        int rv = read(s->fd, &buf, 1);
+        if (rv <= 0) { break; }
+        // LOG("flushing %d\n", buf);
+    }
+    close(s->fd);
+}
+static intptr_t os_tcp_read(struct os_tcp_socket *s, uint8_t *buf, uintptr_t len) {
+    LOG("read...\r");
+    // ssize_t rv = assert_read(c->socket, buf, len);
+    // FIXME: This can produce a short read.
+    ssize_t rv = read(s->fd, buf, len);
+    if (rv > 0) {
+        LOG("read ok\r");
+        return rv;
+    }
+    ASSERT_ERRNO(rv);
+    LOG("read EOF, exit thread\n");
+    // Any error terminates the thread
+    // free(c);  // not sure if this is ok before exit.. just leak it.
+    os_thread_exit(NULL);
+}
+static intptr_t os_tcp_write(struct os_tcp_socket *s, const uint8_t *buf, uintptr_t len) {
+    assert_write(s->fd, buf, len);
+    //for(uintptr_t i=0; i<len; i++) LOG("%c", buf[i]);
+    return len;
+}
+
+
 #endif
 
 
