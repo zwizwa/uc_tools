@@ -75,11 +75,21 @@ struct os_tcp_socket {
     struct blocking_io io;
     int fd;
 };
+#define OS_TCP_SOCKET_INIT {.fd = -1}
+
+/* Move socket into different storage, e.g. for moving from transient
+   stack storage to a memory pool. */
+void os_tcp_socket_move(struct os_tcp_socket *dst, struct os_tcp_socket *src) {
+    memcpy(dst,src,sizeof(*dst));
+    memset(src,0,sizeof(*src));
+}
+
 struct os_tcp_server {
     int fd;
 };
+// FIXME: this is just generic file read.
 static intptr_t os_tcp_read(struct os_tcp_socket *s, uint8_t *buf, uintptr_t len) {
-    LOG("read %d...\r", len);
+    LOG("read...\r");
     // ssize_t rv = assert_read(c->socket, buf, len);
     // FIXME: This can produce a short read.
     ssize_t rv = read(s->fd, buf, len);

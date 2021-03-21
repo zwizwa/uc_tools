@@ -14,7 +14,7 @@
 
 */
 
-#define MMAP_FILE_LOG LOG
+//#define MMAP_FILE_LOG LOG
 #include "mod_test_minmax.c"
 #include "mod_webserver.c"
 #include "mod_websocket_leb128s.c"

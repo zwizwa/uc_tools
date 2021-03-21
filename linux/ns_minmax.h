@@ -5,7 +5,6 @@
 
 #include "mmap_file.h"
 
-#define MINMAX_LOG LOG
 #ifndef MINMAX_LOG
 #define MINMAX_LOG(...)
 #endif

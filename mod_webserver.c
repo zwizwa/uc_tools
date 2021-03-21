@@ -211,6 +211,8 @@ OS_THREAD_MAIN(ws_loop, ctx) {
     for(;;) { ws_read_msg(io, websocket_push); }
 }
 
+struct os_tcp_socket static_socket = OS_TCP_SOCKET_INIT;
+
 void webserver_loop(uint16_t port) {
     struct os_tcp_server server;
     os_tcp_server_init(&server, port);
@@ -221,28 +223,30 @@ void webserver_loop(uint16_t port) {
            transient.  All the other http handling state is transient
            and can go on the stack. */
         struct webserver_req req = {};
-        struct os_tcp_socket *socket = calloc(1, sizeof(*socket));
+        struct os_tcp_socket socket;
 
         LOG("webserver_loop accepting\n");
-        os_tcp_accept(&server, socket);
+        os_tcp_accept(&server, &socket);
         LOG("webserver_loop accepted\n");
 
         // client->req.http.ctx = &client->accepted.socket;
 
         // LOG("accept\n");
-        webserver_req_status_t status = server_serve(&req, &socket->io);
+        webserver_req_status_t status = server_serve(&req, &socket.io);
 
         /* Spawn a handler loop when a websocket connection was created. */
         if (WEBSERVER_REQ_WEBSOCKET_UP == status) {
-            struct blocking_io *io = &socket->io;
             LOG("spawn ws_loop()\n");
+            /* The socket is no longer transient, so move it.  FIXME:
+               Kill any old connections and old threads. */
+            os_tcp_socket_move(&static_socket, &socket);
+            struct blocking_io *io = &static_socket.io;
             OS_THREAD_START(ws_thread, ws_loop, io);
         }
         else {
             LOG("server_serve() -> %d\n", status);
-            os_tcp_close(socket);
+            os_tcp_close(&socket);
             //LOG("closed\n", s);
-            free(socket);
         }
     }
 }

@@ -6,7 +6,7 @@
    directory tree handler. */
 
 #ifndef WEBSOCKET_MSG_BUF
-#define WEBSOCKET_MSG_BUF (16*1024) // FIXME: This will need to be managed differently
+#define WEBSOCKET_MSG_BUF (4*1024) // FIXME: This will need to be managed differently
 #endif
 
 
