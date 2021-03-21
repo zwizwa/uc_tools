@@ -34,7 +34,7 @@ typedef intptr_t os_file_status_t;
 #if defined(FF_DEFINED) // FatFs
 
 #define OS_FILE_READ  FA_READ
-#define OS_FILE_WRITE FA_WRITE
+#define OS_FILE_WRITE (FA_WRITE|FA_CREATE_ALWAYS)
 
 struct os_file {
     FIL f;

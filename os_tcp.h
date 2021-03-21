@@ -43,6 +43,15 @@ struct os_tcp_socket {
     struct blocking_io io;
     int socket;
 };
+#define OS_TCP_SOCKET_INIT {.socket = -1}
+
+/* Move socket into different storage, e.g. for moving from transient
+   stack storage to a memory pool. */
+void os_tcp_socket_move(struct os_tcp_socket *dst, struct os_tcp_socket *src) {
+    memcpy(dst,src,sizeof(*dst));
+    memset(src,0,sizeof(*src));
+}
+
 static inline intptr_t os_tcp_read(struct os_tcp_socket *s, uint8_t *buf, uintptr_t len) {
     return lwip_read(s->socket, buf, len);
 }
@@ -52,15 +61,14 @@ static inline intptr_t os_tcp_write(struct os_tcp_socket *s, const uint8_t *buf,
 static inline void os_tcp_close(struct os_tcp_socket *s) {
     lwip_close(s->socket);
 }
-struct os_tcp_accepted {
-    struct os_tcp_socket socket;
-    struct sockaddr_storage client;
-};
-static inline void os_tcp_accept(struct os_tcp_server *s, 
-                                 struct os_tcp_accepted *a) {
-    socklen_t aclient_len = sizeof(&a->client);
-    a->socket.socket =
-        lwip_accept(s->slisten, (struct sockaddr *)&a->client,
+static inline void os_tcp_accept(struct os_tcp_server *server,
+                                 struct os_tcp_socket *client) {
+    struct sockaddr_storage aclient;
+    socklen_t aclient_len = sizeof(aclient);
+    client->io.read  = (blocking_read_fn)os_tcp_read;
+    client->io.write = (blocking_write_fn)os_tcp_write;
+    client->socket =
+        lwip_accept(server->slisten, (struct sockaddr *)&aclient,
                     &aclient_len);
 }
 
