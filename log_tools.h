@@ -4,14 +4,14 @@
 #include "macros.h"
 
 
-static inline void log_u32(const char *tag, uint32_t nb, const uint32_t *arr) {
+static inline void log_u32(const char *tag, const uint32_t *arr, uint32_t nb) {
     LOG("%s",tag);
-    for(int32_t i=0; i<nb; i++) { LOG(" %d", arr[i]); }
+    for(uint32_t i=0; i<nb; i++) { LOG(" %d", (int)arr[i]); }
     LOG("\n");
 }
-static inline void log_hex(const char *tag, uint32_t nb, const uint8_t *buf) {
+static inline void log_hex(const char *tag, const uint8_t *buf, uint32_t nb) {
     LOG("%s",tag);
-    for(int32_t i=0; i<nb; i++) { LOG(" %02x", buf[i]); }
+    for(uint32_t i=0; i<nb; i++) { LOG(" %02x", buf[i]); }
     LOG("\n");
 }
 

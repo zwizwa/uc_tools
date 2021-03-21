@@ -10,16 +10,16 @@
 
 #include "macros.h"
 
+#include "blocking_io.h"
+
 typedef intptr_t http_err_t;
 
 struct http_req;
-typedef intptr_t (*http_read)(struct http_req *, uint8_t *buf, uintptr_t len);
-typedef intptr_t (*http_write)(struct http_req *, const uint8_t *buf, uintptr_t len);
 typedef void     (*http_close)(struct http_req *);
 
+
 struct http_req {
-    http_read  read;
-    http_write write;
+    struct blocking_io io;
     http_err_t (*request)(struct http_req *, int method, const char *uri);
     http_err_t (*header)(struct http_req *, const char *header, const char *value);
     void *ctx;
@@ -49,7 +49,7 @@ static inline http_err_t http_read_headers(struct http_req *c) {
     uintptr_t nb_lines = 0;
     for(;;) {
         if (len >= sizeof(buf)) return HTTP_STATUS_OVERRUN;
-        rv = c->read(c, (uint8_t*)&buf[len++], 1);
+        rv = c->io.read(&c->io, (uint8_t*)&buf[len++], 1);
         if (rv == 0) return HTTP_STATUS_EOF;
         ASSERT(1 == rv);
         if ((len >= 2) && (buf[len-2] == 0xd) && (buf[len-1] == 0xa)) {
@@ -100,7 +100,7 @@ static inline http_err_t http_read_headers(struct http_req *c) {
 
 
 static inline void http_write_str(struct http_req *s, const char *str) {
-    s->write(s, (const uint8_t*)str, strlen(str));
+    s->io.write(&s->io, (const uint8_t*)str, strlen(str));
 }
 static inline void http_write_100_resp(struct http_req *s) {
     http_write_str(s, "HTTP/1.0 100 Continue\r\n\r\n");

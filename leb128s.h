@@ -67,7 +67,7 @@ static inline struct tag_u32 *leb128s_read_tag_u32(
     struct leb128s *s, struct tag_u32 *msg, int32_t *tags, int32_t nb_tags) {
 
     msg->nb_from = LEB128S_I32(s, NULL);
-    if (msg->nb_from >= nb_tags) goto alloc_error;
+    if (msg->nb_from >= (uint32_t)nb_tags) goto alloc_error;
     msg->from = (uint32_t*)leb128s_i32_array(s, msg->nb_from, tags); OR_ABORT(s, NULL);
 
     if (tags) { // allow skip if NULL
@@ -76,7 +76,7 @@ static inline struct tag_u32 *leb128s_read_tag_u32(
     nb_tags -= msg->nb_from;
 
     msg->nb_args = LEB128S_I32(s, NULL);
-    if (msg->nb_args >= nb_tags) goto alloc_error;
+    if (msg->nb_args >= (uint32_t)nb_tags) goto alloc_error;
     msg->args = (uint32_t*)leb128s_i32_array(s, msg->nb_args, tags); OR_ABORT(s, NULL);
 
     msg->nb_bytes = LEB128S_I32(s, NULL);
@@ -152,7 +152,7 @@ static inline leb128_id_t leb128s_element(struct leb128s *s) {
         break;
     }
     default:
-        ERROR("unknown tag %d\n", tag);
+        ERROR("unknown tag %d\n", (int)tag);
         s->error = LEB128S_ERROR_UNKNOWN_TAG;
         break;
     }

@@ -46,9 +46,9 @@ leb128s_status_t push_tag_u32(struct leb128s *s, struct tag_u32 *msg) {
     msg->reply = reply_tag_u32;
     msg->reply_ctx = s->env->ctx;
     if (0) {
-        log_u32("from: ", msg->nb_from, msg->from);
-        log_u32("to:   ", msg->nb_args, msg->args);
-        log_hex("bin:  ", msg->nb_bytes, msg->bytes);
+        log_u32("from: ", msg->from,  msg->nb_from);
+        log_u32("to:   ", msg->args,  msg->nb_args);
+        log_hex("bin:  ", msg->bytes, msg->nb_bytes);
     }
     handle_tag_u32(msg);
     return 0;
@@ -60,9 +60,7 @@ ws_err_t push(struct ws_req *r, struct ws_message *m) {
     // m->buf[m->len] = 0; // FIXME: don't do this
     // LOG("push: %s\n", m->buf);
     if (0) {
-        LOG("ws_push:");
-        for(int i=0;i<m->len;i++) LOG(" %02x", m->buf[i]);
-        LOG("\n");
+        log_hex("ws_push:", m->buf, m->len);
     }
 
     struct leb128s_env env = {

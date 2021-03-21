@@ -41,8 +41,11 @@ static intptr_t os_tcp_server_init(struct os_tcp_server *s, uint16_t port) {
 struct os_tcp_socket {
     int socket;
 };
-static inline void os_tcp_write(struct os_tcp_socket *s, const uint8_t *buf, uintptr_t len) {
-    lwip_write(s->socket, buf, len);
+static inline intptr_t os_tcp_read(struct os_tcp_socket *s, uint8_t *buf, uintptr_t len) {
+    return lwip_read(s->socket, buf, len);
+}
+static inline intptr_t os_tcp_write(struct os_tcp_socket *s, const uint8_t *buf, uintptr_t len) {
+    return lwip_write(s->socket, buf, len);
 }
 static inline void os_tcp_close(struct os_tcp_socket *s) {
     lwip_close(s->socket);
@@ -95,12 +98,12 @@ static inline void os_tcp_close(struct os_tcp_socket *s) {
     close(s->fd);
 }
 static intptr_t os_tcp_read(struct os_tcp_socket *s, uint8_t *buf, uintptr_t len) {
-    LOG("read...\r");
+    LOG("read %d...\r", len);
     // ssize_t rv = assert_read(c->socket, buf, len);
     // FIXME: This can produce a short read.
     ssize_t rv = read(s->fd, buf, len);
     if (rv > 0) {
-        LOG("read ok\r");
+        LOG("read ok          \r");
         return rv;
     }
     ASSERT_ERRNO(rv);

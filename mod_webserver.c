@@ -60,7 +60,7 @@ webserver_req_status_t serve_get(struct webserver_req *s) {
     for(;;) {
         os_file_status_t rv = os_file_read(&file, buf, sizeof(buf));
         if (rv < 1) break;
-        h->write(h, buf, rv);
+        h->io.write(&h->io, buf, rv);
     }
     os_file_close(&file);
     return WEBSERVER_REQ_OK;
@@ -80,7 +80,7 @@ webserver_req_status_t serve_put(struct webserver_req *s) {
     }
     uint8_t buf[WEBSERVER_FILE_CHUNK];
     while(s->content_length > 0) {
-        intptr_t rv = h->read(h, buf, sizeof(buf));
+        intptr_t rv = h->io.read(&h->io, buf, sizeof(buf));
         LOG("serve_put, read %d\n", rv);
         if (rv < 1) break;
         os_file_status_t rv1 = os_file_write(&file, buf, rv);
@@ -181,12 +181,12 @@ intptr_t header(struct http_req *c, const char *hdr, const char *val) {
 
 
 void server_init(struct webserver_req *s,
-                 http_read  read,
-                 http_write write) {
-    s->ws.http.request = request;
-    s->ws.http.header  = header;
-    s->ws.http.read    = read;
-    s->ws.http.write   = write;
+                 blocking_read_fn  read,
+                 blocking_write_fn write) {
+    s->ws.http.request  = request;
+    s->ws.http.header   = header;
+    s->ws.http.io.read  = read;
+    s->ws.http.io.write = write;
 }
 
 /* Serve a single request.  If this is a file, the function returns
@@ -195,8 +195,8 @@ void server_init(struct webserver_req *s,
    closes. */
 webserver_req_status_t server_serve(
     struct webserver_req *s,
-    http_read read,
-    http_write write) {
+    blocking_read_fn read,
+    blocking_write_fn write) {
 
     server_init(s, read, write);
     http_read_headers(&s->ws.http);
@@ -210,45 +210,57 @@ webserver_req_status_t server_serve(
 
 struct client {
     struct webserver_req req;
-    struct os_tcp_accepted a;
+    struct os_tcp_accepted accepted;
 };
-intptr_t http_read_(struct http_req *r, uint8_t *buf, uintptr_t len) {
+intptr_t http_read_(struct blocking_io *io, uint8_t *buf, uintptr_t len) {
+    struct http_req *r = (void*)io;
     return os_tcp_read(r->ctx, buf, len);
 }
-intptr_t http_write_(struct http_req *r, const uint8_t *buf, uintptr_t len) {
+intptr_t http_write_(struct blocking_io *io, const uint8_t *buf, uintptr_t len) {
+    struct http_req *r = (void*)io;
     return os_tcp_write(r->ctx, buf, len);
 }
 
 OS_THREAD_STACK(ws_thread, 1024);
+struct client websocket_client;
 OS_THREAD_MAIN(ws_loop, ctx) {
     struct client *c = ctx;
     server_ws_loop(&c->req, push);
     OS_THREAD_RETURN();
 }
 
+void webserver_client_hook(struct client *client) {
+}
+
 void webserver_loop(uint16_t port) {
-    struct os_tcp_server s;
-    os_tcp_server_init(&s, port);
+    struct os_tcp_server server;
+    os_tcp_server_init(&server, port);
 
     for (;;) {
-        printf("accepting\n");
-        struct client *c = calloc(1, sizeof(*c));
-        os_tcp_accept(&s, &c->a);
-        c->req.ws.http.ctx = &c->a.socket;
+        LOG("webserver_loop on port %d\n", (int)port);
+        struct client *client = calloc(1, sizeof(*client));
+
+        LOG("webserver_loop accepting\n");
+        os_tcp_accept(&server, &client->accepted);
+        LOG("webserver_loop accepted\n");
+
+        client->req.ws.http.ctx =
+            &client->accepted.socket;
 
         // LOG("accept\n");
-        webserver_req_status_t s = server_serve(&c->req, http_read_, http_write_);
+        webserver_req_status_t status = server_serve(
+            &client->req, http_read_, http_write_);
 
         /* Spawn a handler loop when a websocket connection was created. */
-        if (WEBSERVER_REQ_WEBSOCKET_UP == s) {
+        if (WEBSERVER_REQ_WEBSOCKET_UP == status) {
             LOG("spawn ws_loop()\n");
-            OS_THREAD_START(ws_thread, ws_loop, c);
+            OS_THREAD_START(ws_thread, ws_loop, client);
         }
         else {
-            LOG("server_serve() -> %d\n", s);
-            os_tcp_close(&c->a.socket);
+            LOG("server_serve() -> %d\n", status);
+            os_tcp_close(&client->accepted.socket);
             //LOG("closed\n", s);
-            free(c);
+            free(client);
         }
     }
 }

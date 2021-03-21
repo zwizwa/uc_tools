@@ -39,6 +39,16 @@ int kill(pid_t pid, int sig);
 #define ABORT TRAP exit(1)
 #endif
 
+#elif defined(__CHIBIOS_RT__)
+#ifndef LOG
+#define LOG(...) fprintf(stderr, __VA_ARGS__)
+#endif
+#ifndef ABORT
+#define ABORT while(1) // FIXME
+#endif
+
+
+
 #else
 #ifndef LOG
 

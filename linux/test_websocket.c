@@ -3,10 +3,10 @@
 #include "assert_read.h"
 #include "assert_write.h"
 
-intptr_t read_(struct http_req *c, uint8_t *buf, uintptr_t len) {
+intptr_t read_(struct blocking_io *c, uint8_t *buf, uintptr_t len) {
     return assert_read(0, buf, len);
 }
-intptr_t write_(struct http_req *c, const uint8_t *buf, uintptr_t len) {
+intptr_t write_(struct blocking_io *c, const uint8_t *buf, uintptr_t len) {
     assert_write(1, buf, len);
     //for(uintptr_t i=0; i<len; i++) LOG("%c", buf[i]);
     return len;
