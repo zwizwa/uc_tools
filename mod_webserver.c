@@ -163,7 +163,7 @@ intptr_t request(struct http_req *c, int method, const char *uri) {
 
 intptr_t header(struct http_req *c, const char *hdr, const char *val) {
     struct webserver_req *s = (void*)c;
-    LOG("H: %s = %s\n", hdr, val);
+    // LOG("H: %s = %s\n", hdr, val);
     // FIXME: case-insensitive?
     if (!strcmp(hdr, "Sec-WebSocket-Key")) {
         SHA1_CTX ctx;
@@ -197,9 +197,14 @@ webserver_req_status_t server_serve(
 
     server_init(s, io);
     http_read_headers(&s->http);
-    ASSERT(s->serve);
-    webserver_req_status_t status = s->serve(s);
-    return status;
+    if (!s->serve) {
+        LOG("no s->serve, bad request?\n");
+        return -1;
+    }
+    else {
+        webserver_req_status_t status = s->serve(s);
+        return status;
+    }
 }
 
 
@@ -225,9 +230,9 @@ void webserver_loop(uint16_t port) {
         struct webserver_req req = {};
         struct os_tcp_socket socket;
 
-        LOG("webserver_loop accepting\n");
+        //LOG("webserver_loop accepting\n");
         os_tcp_accept(&server, &socket);
-        LOG("webserver_loop accepted\n");
+        //LOG("webserver_loop accepted\n");
 
         // client->req.http.ctx = &client->accepted.socket;
 
@@ -244,7 +249,7 @@ void webserver_loop(uint16_t port) {
             OS_THREAD_START(ws_thread, ws_loop, io);
         }
         else {
-            LOG("server_serve() -> %d\n", status);
+            //LOG("server_serve() -> %d\n", status);
             os_tcp_close(&socket);
             //LOG("closed\n", s);
         }

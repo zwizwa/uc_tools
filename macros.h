@@ -40,14 +40,7 @@ int kill(pid_t pid, int sig);
 #endif
 
 #elif defined(__CHIBIOS_RT__)
-#ifndef LOG
-#define LOG(...) fprintf(stderr, __VA_ARGS__)
-#endif
-#ifndef ABORT
-#define ABORT while(1) // FIXME
-#endif
-
-
+#include "macros_ch.h"
 
 #else
 #ifndef LOG

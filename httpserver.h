@@ -53,8 +53,10 @@ static inline http_err_t http_read_headers(struct http_req *c) {
     for(;;) {
         if (len >= sizeof(buf)) return HTTP_STATUS_OVERRUN;
         rv = c->io->read(c->io, (uint8_t*)&buf[len++], 1);
-        if (rv == 0) return HTTP_STATUS_EOF;
-        ASSERT(1 == rv);
+        if (rv != 1) {
+            LOG("http_read_headers rv = %d\n", rv);
+            return HTTP_STATUS_EOF;
+        }
         if ((len >= 2) && (buf[len-2] == 0xd) && (buf[len-1] == 0xa)) {
             /* Convert 0d,0a to cstring. */
             len -= 2; buf[len] = 0;
