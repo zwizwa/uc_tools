@@ -58,8 +58,8 @@ static inline os_file_status_t os_file_close(struct os_file *file) {
     return OS_FILE_STATUS_OK;
 }
 
-
-#elif defined(__linux__)
+// Default assumes stdio file API is available
+#else
 #include <stdio.h>
 struct os_file {
     FILE *f;
@@ -87,10 +87,5 @@ static inline os_file_status_t os_file_close(struct os_file *file) {
 }
 
 
-
-#else
-#error Need OSAL
 #endif
-
-
 #endif

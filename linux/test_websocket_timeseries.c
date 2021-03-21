@@ -11,8 +11,7 @@
 
 #include "leb128s.h"
 
-
-#include <pthread.h>
+#include "os_thread.h"
 
 /* The name of the map refers to the handler function. */
 #define DEF_MAP DEF_TAG_U32_CONST_MAP_HANDLE
@@ -61,7 +60,6 @@ int handle_tag_u32(struct tag_u32 *req) {
 
 struct client {
     struct webserver_req req;
-    pthread_t thread;
     int socket;
 };
 intptr_t read_(struct http_req *r, uint8_t *buf, uintptr_t len) {
@@ -78,7 +76,7 @@ intptr_t read_(struct http_req *r, uint8_t *buf, uintptr_t len) {
     LOG("read EOF, exit thread\n");
     // Any error terminates the thread
     // free(c);  // not sure if this is ok before exit.. just leak it.
-    pthread_exit(NULL);
+    os_thread_exit(NULL);
 }
 intptr_t write_(struct http_req *r, const uint8_t *buf, uintptr_t len) {
     struct client *c = (void*)r;
@@ -174,11 +172,11 @@ ws_err_t push(struct ws_req *r, struct ws_message *m) {
     return 0;
 }
 
-void *ws_loop(void *ctx) {
+OS_THREAD_STACK(ws_thread, 1024);
+OS_THREAD_MAIN(ws_loop, ctx) {
     struct client *c = ctx;
-    //for (;;) sleep(1);
     server_ws_loop(&c->req, push);
-    return NULL;
+    OS_THREAD_RETURN();
 }
 
 // ws = new WebSocket("ws://10.1.3.29:3456");
@@ -211,7 +209,7 @@ int main(int argc, char **argv) {
         /* Spawn a handler loop when a websocket connection was created. */
         if (WEBSERVER_REQ_WEBSOCKET_UP == s) {
             LOG("spawn ws_loop()\n");
-            pthread_create(&c->thread, NULL, ws_loop, c);
+            OS_THREAD_START(ws_thread, ws_loop, c);
         }
         else {
             LOG("server_serve() -> %d\n", s);

@@ -236,9 +236,12 @@ uint32_t swd_cmd_hdr(uint32_t port, uint32_t read, uint32_t addr) {
 // The A[3:2] address bits, using same 0,4,8,C numbering as manual.
 #define SWD_DP_RD_DPIDR    0
 #define SWD_DP_RD_CTRLSTAT 0x4
+#define SWD_DP_RD_RDBUFF   0xc
+
+#define SWD_DP_WR_ABORT    0x0
 #define SWD_DP_WR_CTRLSTAT 0x4
 #define SWD_DP_WR_SELECT   0x8
-#define SWD_DP_RD_RDBUFF   0xc
+
 
 #define SWD_CTRLSTAT_CDBGRSTREQ (1 << 26)
 #define SWD_CTRLSTAT_CDBGRSTACK (1 << 27)
@@ -246,6 +249,11 @@ uint32_t swd_cmd_hdr(uint32_t port, uint32_t read, uint32_t addr) {
 #define SWD_CTRLSTAT_CDBGPWRUPACK (1 << 29)
 #define SWD_CTRLSTAT_CSYSPWRUPREQ (1 << 30)
 #define SWD_CTRLSTAT_CSYSPWRUPACK (1 << 31)
+
+#define SWD_ABORT_STKCMPCLR       (1 << 1)
+#define SWD_ABORT_STKERRCLR       (1 << 2)
+#define SWD_ABORT_WDERRCLR        (1 << 3)
+#define SWD_ABORT_ORUNERRCLR      (1 << 4)
 
 #define SWD_MEM_AP_CSW 0x0
 #define SWD_MEM_AP_TAR 0x4
@@ -282,32 +290,25 @@ uint32_t swd_cmd_hdr(uint32_t port, uint32_t read, uint32_t addr) {
         swd_dir(SWD_IN);                                                \
         read_bit(s); /* turn */                                         \
         ack = read_lsb(s, 3);                                           \
-        if (0b001 != ack) {                                             \
-            /* not OK */                                                \
-            val = 0xdecafbad;                                           \
-            LOG("# ack %x\n", ack);                                     \
+        flags &= ~SWD_FLAGS_PARITY; /* reset */                         \
+        if (cmd & (1 << 2)) {                                           \
+            /* Read */                                                  \
+            val = read_lsb(s, 32);                                      \
+            int parity = read_bit(s);                                   \
+            SWD_INFO_BIT("p:%d\n", parity);                             \
+            if (parity) flags ^= SWD_FLAGS_PARITY;                      \
+            read_bit(s); /* turn */                                     \
         }                                                               \
         else {                                                          \
-            flags &= ~SWD_FLAGS_PARITY; /* reset */                     \
-            if (cmd & (1 << 2)) {                                       \
-                /* Read */                                              \
-                val = read_lsb(s, 32);                                  \
-                int parity = read_bit(s);                               \
-                SWD_INFO_BIT("p:%d\n", parity);                         \
-                if (parity) flags ^= SWD_FLAGS_PARITY;                  \
-                read_bit(s); /* turn */                                 \
-            }                                                           \
-            else {                                                      \
-                /* Write */                                             \
-                read_bit(s); /* turn */                                 \
-                swd_dir(SWD_OUT);                                       \
-                write_lsb(s, val, 32);                                  \
-                SWD_INFO_BIT("p:%d\n", !!(flags & SWD_FLAGS_PARITY));   \
-                write_bit(s, !!(flags & SWD_FLAGS_PARITY));;            \
-            }                                                           \
-            /* RM0008 says it needs two after write, but that doesn't work? */ \
-            write_bit(s, 0); /* idle */                                 \
+            /* Write */                                                 \
+            read_bit(s); /* turn */                                     \
+            swd_dir(SWD_OUT);                                           \
+            write_lsb(s, val, 32);                                      \
+            SWD_INFO_BIT("p:%d\n", !!(flags & SWD_FLAGS_PARITY));       \
+            write_bit(s, !!(flags & SWD_FLAGS_PARITY));;                \
         }                                                               \
+        /* RM0008 says it needs two after write, but that doesn't work? */ \
+        write_bit(s, 0); /* idle */                                     \
         swd_dir(SWD_OUT);                                               \
     }
 
@@ -703,17 +704,48 @@ uint8_t openocd_cmd_pop(void) {
        We just need to add Start, Park. */
     return command_stack_pop() | 0x81;
 }
+
+void clear_sticky(struct swd_ctx *c) {
+    swd_trans_dp_write(
+        c, SWD_DP_WR_ABORT,
+        SWD_ABORT_STKCMPCLR | SWD_ABORT_STKERRCLR |
+        SWD_ABORT_WDERRCLR  | SWD_ABORT_ORUNERRCLR);
+}
+
 DEF_COMMAND(rd) {
     uint8_t cmd = openocd_cmd_pop();
     struct swd_ctx c = {};
-    uint32_t rv = swd_cmd(&c, cmd, 0);
+    uint32_t rv;
+  again:
+    rv = swd_cmd(&c, cmd, 0);
+    if (c.res == 1) { // OK
+    }
+    else {
+        if (c.res == 2) { // WAIT
+            LOG("# wait\n");
+            clear_sticky(&c);
+            goto again;
+        }
+        LOG("# res %x\n", c.res);
+    }
     command_stack_push(rv);
 }
 DEF_COMMAND(wr) {
     uint8_t cmd  = openocd_cmd_pop();
     uint32_t arg = command_stack_pop();
     struct swd_ctx c = {};
+  again:
     swd_cmd(&c, cmd, arg);
+    if (c.res == 1) { // OK
+    }
+    else {
+        if (c.res == 2) { // WAIT
+            LOG("# wait\n");
+            clear_sticky(&c);
+            goto again;
+        }
+        LOG("# res %x\n", c.res);
+    }
 }
 DEF_COMMAND(srst) {
     uint32_t arg = command_stack_pop();
