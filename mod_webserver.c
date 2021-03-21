@@ -1,15 +1,26 @@
 #ifndef MOD_WEBSERVER
 #define MOD_WEBSERVER
 
-#include "os_file.h"
+/* This combines the protocol handlers httpserver and websocket with
+   i/o handlers os_tcp and os_file.  Handling of webscoket messages is
+   still abstract. */
 
 #define WEBSERVER_FILE_CHUNK 4096
 #define WEBSERVER_FILE_NAME 64
 
+#include "os_file.h"
+#include "os_thread.h"
+#include "os_tcp.h"
+
+#include "httpserver.h"
 #include "websocket.h"
 #include "macros.h"
 #include "sha1.h"
 #include "base64.h"
+
+
+/* Provided elsewhere. */
+ws_err_t push(struct ws_req *r, struct ws_message *m);
 
 #define WEBSERVER_REQ_OK 0
 #define WEBSERVER_REQ_ERROR -1
@@ -193,6 +204,57 @@ webserver_req_status_t server_serve(
     webserver_req_status_t status = s->serve(s);
     return status;
 }
+
+
+
+
+struct client {
+    struct webserver_req req;
+    struct os_tcp_accepted a;
+};
+intptr_t http_read_(struct http_req *r, uint8_t *buf, uintptr_t len) {
+    return os_tcp_read(r->ctx, buf, len);
+}
+intptr_t http_write_(struct http_req *r, const uint8_t *buf, uintptr_t len) {
+    return os_tcp_write(r->ctx, buf, len);
+}
+
+OS_THREAD_STACK(ws_thread, 1024);
+OS_THREAD_MAIN(ws_loop, ctx) {
+    struct client *c = ctx;
+    server_ws_loop(&c->req, push);
+    OS_THREAD_RETURN();
+}
+
+void webserver_loop(uint16_t port) {
+    struct os_tcp_server s;
+    os_tcp_server_init(&s, port);
+
+    for (;;) {
+        printf("accepting\n");
+        struct client *c = calloc(1, sizeof(*c));
+        os_tcp_accept(&s, &c->a);
+        c->req.ws.http.ctx = &c->a.socket;
+
+        // LOG("accept\n");
+        webserver_req_status_t s = server_serve(&c->req, http_read_, http_write_);
+
+        /* Spawn a handler loop when a websocket connection was created. */
+        if (WEBSERVER_REQ_WEBSOCKET_UP == s) {
+            LOG("spawn ws_loop()\n");
+            OS_THREAD_START(ws_thread, ws_loop, c);
+        }
+        else {
+            LOG("server_serve() -> %d\n", s);
+            os_tcp_close(&c->a.socket);
+            //LOG("closed\n", s);
+            free(c);
+        }
+    }
+}
+
+
+
 
 
 #endif

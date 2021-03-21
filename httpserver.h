@@ -8,6 +8,8 @@
    a callback in parsed form.  ( Fold instead of data. )
 */
 
+#include "macros.h"
+
 typedef intptr_t http_err_t;
 
 struct http_req;

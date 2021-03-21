@@ -1,0 +1,88 @@
+#ifndef MOD_WEBSOCKET_LEB128S
+#define MOD_WEBSOCKET_LEB128S
+
+/* Implements the leb128s protocol on a websocket.  This briges
+   external i/o handled by mod_webserver.c with an internal tag_u32
+   directory tree handler. */
+
+#include "leb128s.h"
+#include "log_tools.h"
+#include "websocket.h"
+#include "tag_u32.h"
+int handle_tag_u32(struct tag_u32 *req);
+
+/* Return path. */
+struct msg_ctx {
+    struct tag_u32 msg;
+};
+void reply_tag_u32(const struct tag_u32 *req, const struct tag_u32 *rpl) {
+    struct client *c = req->reply_ctx;
+
+    uint8_t buf[1024*16]; // FIXME
+    struct leb128s s = {
+        .buf = buf,
+        .len = sizeof(buf)
+    };
+    leb128s_write_i32(&s, T_TAG);              if(s.error) goto error;
+    leb128s_write_tag_u32_reply(&s, req, rpl); if(s.error) goto error;
+    //log_hex("enc: ", s.offset, buf);
+
+    struct ws_message m = {
+        .opcode = 2,  // binary
+        .fin = 1,
+        .mask = 0,
+        .buf = buf,
+        .len = s.offset,
+    };
+    ws_write_msg(&c->req.ws, &m);
+    return;
+  error:
+    LOG("leb128 write error %x\n", s.error);
+    return;
+}
+
+/* Incoming request from websocket. */
+leb128s_status_t push_tag_u32(struct leb128s *s, struct tag_u32 *msg) {
+    msg->reply = reply_tag_u32;
+    msg->reply_ctx = s->env->ctx;
+    if (0) {
+        log_u32("from: ", msg->nb_from, msg->from);
+        log_u32("to:   ", msg->nb_args, msg->args);
+        log_hex("bin:  ", msg->nb_bytes, msg->bytes);
+    }
+    handle_tag_u32(msg);
+    return 0;
+}
+
+ws_err_t push(struct ws_req *r, struct ws_message *m) {
+    struct client *c = (void*)r;
+
+    // m->buf[m->len] = 0; // FIXME: don't do this
+    // LOG("push: %s\n", m->buf);
+    if (0) {
+        LOG("ws_push:");
+        for(int i=0;i<m->len;i++) LOG(" %02x", m->buf[i]);
+        LOG("\n");
+    }
+
+    struct leb128s_env env = {
+        .tag_u32 = push_tag_u32,
+        .ctx = c,
+    };
+
+    struct leb128s s = { .buf = m->buf, .len = m->len, .env = &env };
+
+    /* This calls the push_tag_u32 callback when a T_TAG message is
+       received. */
+    leb128_id_t id = leb128s_element(&s);
+
+    (void)id;
+    if(s.error) {
+        LOG("error %d\n", s.error);
+    }
+    return 0;
+}
+
+
+
+#endif

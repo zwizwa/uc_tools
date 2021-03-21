@@ -62,6 +62,8 @@ static inline void os_tcp_accept(struct os_tcp_server *s,
 /* Berkeley sockets */
 #else
 #include "tcp_tools.h"
+#include "assert_write.h"
+#include "assert_read.h"
 
 struct os_tcp_socket {
     int fd;
