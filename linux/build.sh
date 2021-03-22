@@ -65,7 +65,7 @@ case "$TYPE" in
             echo "Only dynamic linking: ARCH=$ARCH LD=$LD"
             exit 1
         fi
-        set -x
+        # set -x
         $GCC $LDFLAGS -Wl,-Map=$MAP -o $SO $O $O_SYSTEM $A $LDLIBS -shared
         ;;
     *)
