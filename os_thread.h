@@ -24,6 +24,17 @@
 #define OS_THREAD_START(name, main, arg) \
     chThdCreateStatic(name, sizeof(name), HIGHPRIO-1, main, arg)
 
+typedef mutex_t os_mutex_t;
+static inline void os_mutex_init(mutex_t *m) {
+    chMtxObjectInit(m);
+}
+static inline void os_mutex_lock(mutex_t *m) {
+    chMtxLock(m);
+}
+static inline void os_mutex_unlock(mutex_t *m) {
+    chMtxUnlock(m);
+}
+
 // Posix
 #else
 #include <pthread.h>

@@ -26,7 +26,7 @@ int zoom(struct tag_u32 *req) {
             &cursor, &map,
             buf, m->win_w, m->win_h, m->win_x, m->level_inc);
         (void)new_level;
-        MIXMAX_LOG("new_level = %d\n", new_level);
+        MINMAX_LOG("new_level = %d\n", new_level);
         send_reply_tag_u32_status(req, 0, (const uint8_t*)buf, sizeof(buf));
         return 0;
     }

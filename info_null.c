@@ -112,7 +112,7 @@ KEEP uint32_t info_read_crlf(uint8_t *buf, uint32_t len) {
             *buf++ = c;
             len--; nb++;
         }
-#if INFO_LOG_OVERFLOW
+#ifdef INFO_LOG_OVERFLOW
         else {
             *buf++ ='?'; // be verbose about buffer overrun
             len--; nb++;

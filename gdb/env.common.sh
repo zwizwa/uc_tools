@@ -42,7 +42,7 @@ CFLAGS_COMMON=" \
 -ffunction-sections \
 -fdata-sections \
 -MD \
--Wall \
+-Wall -Wundef \
 -Wno-format \
 -Wno-attributes \
 -Wno-multichar \

@@ -1,14 +1,24 @@
 #ifndef OS_TCP_H
 #define OS_TCP_H
 
-/* Instead of abstracting at the socket api, abstract at a highe
-   rlevel and provide a simplified view of a TCP server. */
+/* Instead of abstracting at the socket API, abstract at a higher
+   level and provide a simplified view of a TCP server.
+
+   Note that close/shutdown is abstracted behind a higher level "done"
+   operation.  In the practical cases I've encountered, the difference
+   between RST and FIN-ACK/FIN-ACK doesn't seem to be relevant to the
+   application as long as all data has been exchanged, which typically
+   can be guaranteed in the higher level protocol.
+*/
 
 /* Sockets expose read/write via blocking_io struct. */
 #include "blocking_io.h"
 
 
 /* LwIP socket API
+
+   This currently uses the socket wrapper, but might change to netconn
+   or custom callback-to-thread wrapper.
 
    Note that we do not use LWIP_POSIX_SOCKETS_IO_NAMES, as that is
    implemented with macros and also renames struct members.
@@ -58,8 +68,19 @@ static inline intptr_t os_tcp_read(struct os_tcp_socket *s, uint8_t *buf, uintpt
 static inline intptr_t os_tcp_write(struct os_tcp_socket *s, const uint8_t *buf, uintptr_t len) {
     return lwip_write(s->socket, buf, len);
 }
-static inline void os_tcp_close(struct os_tcp_socket *s) {
+static inline void os_tcp_done(struct os_tcp_socket *s) {
+#if 0
     lwip_close(s->socket);
+#else
+    lwip_shutdown(s->socket, SHUT_WR);
+    for (;;) {
+        uint8_t buf;
+        int rv = lwip_read(s->socket, &buf, 1);
+        if (rv <= 0) { break; }
+        // LOG("flushing %d\n", buf);
+    }
+    lwip_close(s->socket);
+#endif
 }
 static inline void os_tcp_accept(struct os_tcp_server *server,
                                  struct os_tcp_socket *client) {
@@ -126,7 +147,7 @@ static inline void os_tcp_accept(struct os_tcp_server *serv,
     client->io.write = (blocking_write_fn)os_tcp_write;
     client->fd = assert_accept(serv->fd);
 }
-static inline void os_tcp_close(struct os_tcp_socket *s) {
+static inline void os_tcp_done(struct os_tcp_socket *s) {
     /* Close the TCP socket. */
     shutdown(s->fd, SHUT_WR);
     for (;;) {

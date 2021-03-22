@@ -224,9 +224,12 @@ void webserver_loop(uint16_t port) {
 
     LOG("webserver_loop on port %d\n", (int)port);
     for (;;) {
-        /* The socket state is allocated in a pool, as it might not be
-           transient.  All the other http handling state is transient
-           and can go on the stack. */
+        /* In our case, http request state is always transient, so it
+           can go onto the stack.  The socket might be transient, or
+           might be long lived in the case we receive a websocket
+           protocol switch.  Initially we allocate it on the stack,
+           then later it is moved to a different memory pool or static
+           memory when it turns out to be a websocket.  */
         struct webserver_req req = {};
         struct os_tcp_socket socket;
 
@@ -242,15 +245,17 @@ void webserver_loop(uint16_t port) {
         /* Spawn a handler loop when a websocket connection was created. */
         if (WEBSERVER_REQ_WEBSOCKET_UP == status) {
             LOG("spawn ws_loop()\n");
-            /* The socket is no longer transient, so move it.  FIXME:
-               Kill any old connections and old threads. */
+            /* The socket is no longer transient, so move it.  Note
+               that the protocol is no longer http -- we no longer
+               need the request structs here.
+               FIXME: Kill any old connections and old threads. */
             os_tcp_socket_move(&static_socket, &socket);
             struct blocking_io *io = &static_socket.io;
             OS_THREAD_START(ws_thread, ws_loop, io);
         }
         else {
             //LOG("server_serve() -> %d\n", status);
-            os_tcp_close(&socket);
+            os_tcp_done(&socket);
             //LOG("closed\n", s);
         }
     }
