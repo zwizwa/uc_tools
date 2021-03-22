@@ -7,7 +7,7 @@
 
 #include "uc_tools_config.h"
 #include "cbuf.h"
-#include "byteswap.h"
+#include "uct_byteswap.h"
 
 /* Generic packet buffer. */
 struct pbuf {

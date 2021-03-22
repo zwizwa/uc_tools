@@ -49,7 +49,7 @@
    .stopRanging()
 */
 
-#include "byteswap.h"
+#include "uct_byteswap.h"
 
 struct vl53l1x {
     /* Code has been simplified to optimize for happy path.  Errors

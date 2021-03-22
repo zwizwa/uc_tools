@@ -18,7 +18,7 @@
 
 #include "tcp_tools.h"
 #include "macros.h"
-#include "byteswap.h"
+#include "uct_byteswap.h"
 #include <poll.h>
 
 void unregister_client(struct packet_loop_state *s, int i) {

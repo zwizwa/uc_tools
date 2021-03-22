@@ -12,7 +12,7 @@
 
 
 #include "cbuf.h"
-#include "byteswap.h"
+#include "uct_byteswap.h"
 
 /* Ad hoc module for oscillator pulse input, frequency measurement and
  * sub osc output. */

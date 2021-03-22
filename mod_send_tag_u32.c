@@ -8,7 +8,7 @@
 
 #include "tag_u32.h"
 #include "pbuf.h"
-#include "byteswap.h"
+#include "uct_byteswap.h"
 
 #ifndef KEEP
 #define KEEP

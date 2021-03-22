@@ -1,5 +1,7 @@
-#ifndef BYTESWAP_H
-#define BYTESWAP_H
+#ifndef UCT_BYTESWAP_H
+#define UCT_BYTESWAP_H
+
+// This was byteswap.h, but that conflicts with the GNU C Library.
 
 #include <stdint.h>
 #include <string.h>

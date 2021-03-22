@@ -1,5 +1,5 @@
 #include "macros.h"
-#include "byteswap.h"
+#include "uct_byteswap.h"
 #include "gensym.h"
 #include "testfunc.h"
 

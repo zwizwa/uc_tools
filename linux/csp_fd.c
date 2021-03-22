@@ -1,6 +1,6 @@
 /* Library routines for linux file descriptor i/o */
 #include "csp_fd.h"
-#include "byteswap.h"
+#include "uct_byteswap.h"
 #include "packet_tags.h"
 #include <unistd.h>
 

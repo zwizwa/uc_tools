@@ -2,7 +2,7 @@
    Linux process.  */
 
 #include "packet_bridge.h"
-#include "byteswap.h"
+#include "uct_byteswap.h"
 #include "tag_u32.h"
 #include <string.h>
 

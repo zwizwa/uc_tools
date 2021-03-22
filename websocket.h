@@ -17,7 +17,7 @@
 */
 
 #include <stdint.h>
-#include "byteswap.h"
+#include "uct_byteswap.h"
 #include "macros.h"
 #include "httpserver.h"
 

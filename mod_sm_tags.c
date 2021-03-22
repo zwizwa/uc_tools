@@ -27,7 +27,7 @@
 
 #include <stdint.h>
 #include "sm.h"
-#include "byteswap.h"
+#include "uct_byteswap.h"
 #include "packet_tags.h"
 #include "tag_u32.h"
 

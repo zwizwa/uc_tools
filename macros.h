@@ -13,6 +13,7 @@
 
 /*  Only LOG is custom atm.  */
 #ifdef __linux__
+#include <pthread.h>
 #include <sys/types.h>
 #include <signal.h>
 #include <stdio.h>

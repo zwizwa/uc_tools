@@ -2,7 +2,7 @@
 #define TAG_U32_H
 
 #include "packet_tags.h"
-#include "byteswap.h"
+#include "uct_byteswap.h"
 #include "log.h"
 #include <stdint.h>
 
