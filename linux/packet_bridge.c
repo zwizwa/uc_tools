@@ -49,6 +49,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "packet_bridge.h"
 #include "tcp_tools.h"
+#include "raw_serial.h"
 
 #include "macros.h"
 
@@ -81,8 +82,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //#include "/usr/include/asm-generic/termbits.h"
 //#include "/usr/include/asm-generic/ioctls.h"
 
-#include <asm-generic/termbits.h>
-#include <asm-generic/ioctls.h>
 
 #include "assert_write.h"
 
@@ -309,18 +308,8 @@ static void fd_open_tty(int *pfd, const char *dev) {
     ASSERT_ERRNO(fd = open(dev, O_RDWR | O_NONBLOCK));
     // ASSERT_ERRNO(fd = open(dev, O_RDWR));
 
-    struct termios2 tio;
-    ASSERT(0 == ioctl(fd, TCGETS2, &tio));
+    raw_serial_config(fd);
 
-    // http://www.cs.uleth.ca/~holzmann/C/system/ttyraw.c
-    tio.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
-    tio.c_oflag &= ~(OPOST);
-    tio.c_cflag |= (CS8);
-    tio.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
-    tio.c_cc[VMIN] = 1;
-    tio.c_cc[VTIME] = 0;
-
-    ASSERT(0 == ioctl(fd, TCSETS2, &tio));
     *pfd = fd;
 }
 static void handle_signal(int sig) {

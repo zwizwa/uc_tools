@@ -5,8 +5,7 @@
 #include <sys/ioctl.h>
 #include <poll.h>
 #include <unistd.h>
-#include <asm-generic/termbits.h>
-#include <asm-generic/ioctls.h>
+#include "raw_serial.h"
 
 #include "macros.h"
 
@@ -24,18 +23,7 @@ static int bridge(const char *devname) {
     int ser_fd;
     ASSERT_ERRNO(ser_fd = open(devname, O_RDWR | O_NONBLOCK));
 
-    struct termios2 tio;
-    ASSERT(0 == ioctl(ser_fd, TCGETS2, &tio));
-
-    // http://www.cs.uleth.ca/~holzmann/C/system/ttyraw.c
-    tio.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
-    tio.c_oflag &= ~(OPOST);
-    tio.c_cflag |= (CS8);
-    tio.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
-    tio.c_cc[VMIN] = 1;
-    tio.c_cc[VTIME] = 0;
-
-    ASSERT(0 == ioctl(ser_fd, TCSETS2, &tio));
+    raw_serial_config(ser_fd);
 
     struct pollfd pfd[2] = {
         [0] = { .events = POLLIN, .fd = 0  },
