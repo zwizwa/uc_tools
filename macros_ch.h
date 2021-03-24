@@ -4,7 +4,7 @@
 #ifndef LOG
 #define LOG_STDERR(...) do {                                            \
         /* semihosting is slow, so buffer it */                         \
-        char macros_log_buf[100];                                       \
+        char macros_log_buf[128];                                       \
         snprintf(macros_log_buf, sizeof(macros_log_buf), __VA_ARGS__);  \
         fputs(macros_log_buf, stderr);                                  \
     } while(0)
