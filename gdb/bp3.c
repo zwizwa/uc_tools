@@ -15,10 +15,19 @@
 //////////////////////////////////////////////////////////////////////
 
 #include "mod_swd.c"
+#include "hw_swo.h"
+
 
 struct swd_serv swd_serv;
 void app_poll(void) {
     swd_serv_tick(&swd_serv);
+    static uint32_t timer;
+    static uint8_t count;
+    MS_PERIODIC(timer, 1000) {
+        LOG("ITM_STIM8 %d\n", count);
+        while (0 == (ITM_STIM8(0) & 1));
+        ITM_STIM8(0) = count++;
+    }
 }
 
 DEF_COMMAND(start) {
@@ -29,9 +38,19 @@ instance_status_t app_init(instance_init_t *ctx) {
     infof("product: %s\n", PRODUCT);
     INSTANCE_NEED(ctx, &console, &swd);
     _service.add(app_poll);
+
+
+    // nothing to see on SWO still, but probably SWD needs to be
+    // enabled.  on boot the port is in jtag mode.
+
+    // hw_swo_init_1();
+
     return 0;
 }
+
 DEF_INSTANCE(app);
+
+
 
 int map_root(struct tag_u32 *req) {
     const struct tag_u32_entry map[] = {
