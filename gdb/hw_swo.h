@@ -83,7 +83,6 @@ void hw_swo_init_2(void) {
 
 
 
-#if 1
 // partially converted (FIXME)
 void hw_swo_init_3(void) {
 
@@ -111,8 +110,29 @@ void hw_swo_init_3(void) {
     *((volatile unsigned *)(ITM_BASE + 0x40304)) = 0x00000100; /* Formatter and Flush Control Register */
 }
 
-#endif
 
+#define ITM_TCR_TRACE_BUS_ID_SHIFT 16
+
+// adapted from blackmagic/UsingSWO
+void hw_swo_init_4(void) {
+
+    //An example for a STM32F103 for the UART (NRZ) data format that we use;
+
+    /* STM32 specific configuration to enable the TRACESWO IO pin */
+    RCC_APB2ENR |= RCC_APB2ENR_AFIOEN;
+    AFIO_MAPR |= (2 << 24); // Disable JTAG to release TRACESWO
+    DBGMCU_CR |= DBGMCU_CR_TRACE_IOEN; // Enable IO trace pins
+
+    TPIU_ACPR = 31;  // Output bits at 72000000/(31+1)=2.25MHz.
+    TPIU_SPPR = 2;   // Use Async mode (1 for RZ/Manchester)
+    TPIU_FFCR  = 0;   // Disable formatter
+
+    /* Configure instrumentation trace macroblock */
+    ITM_LAR = 0xC5ACCE55;
+    ITM_TCR = 1 << ITM_TCR_TRACE_BUS_ID_SHIFT | ITM_TCR_SYNCENA | ITM_TCR_ITMENA;
+    ITM_TER[0] = 0xFFFFFFFF; // Enable all stimulus ports
+
+}
 
 
 

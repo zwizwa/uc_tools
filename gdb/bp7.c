@@ -1,4 +1,4 @@
-/* Configuration for bp3 board.
+/* Configuration for bp7 board.
    Ad-hoc debugging board.
 
    The idea is to gather generic bits in mod_lab.c to have it work as
@@ -6,7 +6,7 @@
 
 */
 
-#define PRODUCT "bp3"
+#define PRODUCT "bp7"
 #include "mod_lab.c"
 #include "mod_console.c"
 #include "mod_map_forth.c"
@@ -14,23 +14,34 @@
 
 //////////////////////////////////////////////////////////////////////
 
-#include "mod_swd.c"
 #include "hw_swo.h"
 
 
-struct swd_serv swd_serv;
 void app_poll(void) {
-    swd_serv_tick(&swd_serv);
-}
-
-DEF_COMMAND(start) {
-    swd_serv_init(&swd_serv);
+    static uint32_t timer;
+    static uint32_t count;
+    MS_PERIODIC(timer, 10) {
+        uint8_t buf[9] = {[8] = '\r'};
+        write_hex_nibbles(buf, count, 8);
+        for (uint32_t i=0; i<9; i++) {
+            while (0 == (ITM_STIM8(0) & 1));
+            ITM_STIM8(0) = buf[i];
+        }
+        count++;
+    }
 }
 
 instance_status_t app_init(instance_init_t *ctx) {
     infof("product: %s\n", PRODUCT);
-    INSTANCE_NEED(ctx, &console, &swd);
+    INSTANCE_NEED(ctx, &console);
     _service.add(app_poll);
+
+    // nothing to see on SWO still, but probably SWD needs to be
+    // enabled.  on boot the port is in jtag mode.
+
+    // hw_swo_init_1();
+    hw_swo_init_4();
+
     return 0;
 }
 
@@ -54,32 +65,3 @@ int handle_tag_u32(struct tag_u32 *req) {
     return 0;
 }
 
-
-#if 1
-KEEP uint32_t test_shift_right(uint32_t a, uint32_t b) {
-    return a >> b;
-}
-KEEP uint32_t test_shift_left(uint32_t a, uint32_t b) {
-    return a << b;
-}
-#endif
-#if 1
-struct ts {
-    uint32_t top;
-    uint32_t *stack;
-};
-KEEP struct ts test_add(struct ts ts) {
-    ts.top += (*(ts.stack)++);
-    return ts;
-}
-KEEP uint32_t *test_add_v2(uint32_t *stack) {
-    stack[1] += stack[0];
-    stack++;
-    return stack;
-}
-#endif
-
-KEEP void test_forth(void) {
-    command_fun_start();
-    command_fun_start();
-}
