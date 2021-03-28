@@ -23,8 +23,6 @@ struct slipstub_buffers slipstub_buffers;
 
 #include "mod_console.c"
 
-#include "swd_tether.h"
-
 /* Provided by main file. */
 int handle_tag_u32(struct tag_u32 *);
 void setup(void);
@@ -140,7 +138,6 @@ extern const char config_version[];
 
 #include "info_buf.h"
 
-struct swd_tether swd_tether;
 
 struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .manufacturer    = config_manufacturer,
@@ -153,6 +150,5 @@ struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .switch_protocol = slipstub_switch_protocol,
     .monitor         = console_monitor,
     .info_buf        = &info_buf,
-    .swd_tether      = &swd_tether
 };
 

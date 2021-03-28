@@ -213,12 +213,8 @@ struct gdbstub_config {
     /* 17: Log buffer, for external debugger access.  See info_buf.h */
     struct info_buf *info_buf;
 
-    /* 18: SWD Tether API: send/receive messages over SWD bus with
-       target support. */
-    struct swd_tether *swd_tether;
-
-    /* 19: Reserved */
-    void *reserved_18[32-19];
+    /* 18: Reserved */
+    void *reserved_18[32-18];
 };
 
 /* Indices for uint32_t array overlayed on top of config block.  For
