@@ -29,3 +29,17 @@
    second endpoint.
 
 */
+
+#ifndef SWD_TETHER_H
+#define SWD_TETHER_H
+
+#include <stdint.h>
+
+struct swd_tether {
+    uint32_t control;
+    uint8_t buf[64];
+};
+
+extern struct swd_tether swd_tether;
+
+#endif

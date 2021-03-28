@@ -16,18 +16,29 @@
 
 #include "hw_swo.h"
 
+#include "swd_tether.h"
+
+void swd_info_poll(void) {
+    uint32_t nb = info_bytes();
+    if (!nb) return;
+    if (nb > 62) nb = 62;
+    info_read(swd_tether.buf+2, nb);
+    swd_tether.control = nb+2;
+#if 0
+    uint8_t buf[nb];
+    for (uint32_t i=0; i<nb; i++) {
+        while (0 == (ITM_STIM8(0) & 1));
+        ITM_STIM8(0) = buf[i];
+    }
+#endif
+}
 
 void app_poll(void) {
+    swd_info_poll();
     static uint32_t timer;
     static uint32_t count;
-    MS_PERIODIC(timer, 10) {
-        uint8_t buf[9] = {[8] = '\r'};
-        write_hex_nibbles(buf, count, 8);
-        for (uint32_t i=0; i<9; i++) {
-            while (0 == (ITM_STIM8(0) & 1));
-            ITM_STIM8(0) = buf[i];
-        }
-        count++;
+    MS_PERIODIC(timer, 100) {
+        infof("count = %d\n", count++);
     }
 }
 

@@ -158,6 +158,7 @@ extern const struct gdbstub_service _service;
 #define GDBSTUB_CONFIG_USB_ISR (1 << 0)
 
 struct info_buf;
+struct swd_tether;
 
 struct gdbstub_config {
 
@@ -210,10 +211,14 @@ struct gdbstub_config {
     const uint8_t *flash_endx;
 
     /* 17: Log buffer, for external debugger access.  See info_buf.h */
-    const struct info_buf *info_buf;
+    struct info_buf *info_buf;
 
-    /* 18: Reserved */
-    void *reserved_18[32-18];
+    /* 18: SWD Tether API: send/receive messages over SWD bus with
+       target support. */
+    struct swd_tether *swd_tether;
+
+    /* 19: Reserved */
+    void *reserved_18[32-19];
 };
 
 /* Indices for uint32_t array overlayed on top of config block.  For
