@@ -15,7 +15,7 @@ struct os_tcp_server {
     struct sockaddr_storage addr_storage;
     int slisten;
 };
-#define OS_TCP_SOCKET_INIT { .slisten = -1 }
+#define OS_TCP_SOCKET_INIT { .socket = -1 }
 
 static intptr_t os_tcp_server_init(struct os_tcp_server *s, uint16_t port) {
     memset(s,0,sizeof(*s));
@@ -49,7 +49,17 @@ void os_tcp_socket_move(struct os_tcp_socket *dst, struct os_tcp_socket *src) {
 }
 
 static inline intptr_t os_tcp_read(struct os_tcp_socket *s, uint8_t *buf, uintptr_t len) {
-    return lwip_read(s->socket, buf, len);
+    intptr_t have = 0;
+    for(;;) {
+        intptr_t rv = lwip_read(s->socket, buf, len);
+        if (rv < 0) return rv;
+        if (rv == 0) return -123; // FIXME, handle EOF better
+        len -= rv;
+        buf += rv;
+        have += rv;
+        if (!len) return have;
+        LOG("have=%d,len=%d\n",have,len);
+    }
 }
 static inline intptr_t os_tcp_write(struct os_tcp_socket *s, const uint8_t *buf, uintptr_t len) {
     return lwip_write(s->socket, buf, len);

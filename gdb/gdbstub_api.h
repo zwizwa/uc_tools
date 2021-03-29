@@ -211,7 +211,7 @@ struct gdbstub_config {
     const uint8_t *flash_endx;
 
     /* 17: Log buffer, for external debugger access.  See info_buf.h */
-    struct info_buf *info_buf;
+    struct info_buf_hdr *info_buf;
 
     /* 18: Reserved */
     void *reserved_18[32-18];

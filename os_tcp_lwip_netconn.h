@@ -17,18 +17,37 @@ struct os_tcp_socket {
     struct blocking_io io;
     struct netconn *netconn;
     struct netbuf *netbuf;
+    uint32_t offset;
 };
 #define OS_TCP_SOCKET_INIT {}
 
+/* This is used directly in streaming parsers, so make it efficient
+   for small data sizes.  This blocks untill all the bytes are
+   received. */
 static inline intptr_t os_tcp_read(struct os_tcp_socket *s, uint8_t *buf, uintptr_t len) {
-    (void)buf;
-    (void)len;
-    while(len > 0) {
-        /* If we still have a netbuf, empty it first. */
-        /* Get a new netbuf. */
-        ASSERT(0 == netconn_recv(s->netconn, &s->netbuf));
+    intptr_t nb_read = 0;
+    for (;;) {
+        if (s->netbuf) {
+            uint16_t chunk = pbuf_copy_partial(s->netbuf->p, buf, len, s->offset);
+            nb_read   += chunk;
+            s->offset += chunk;
+            buf       += chunk;
+            len       -= chunk;
+            if (len == 0) {
+                /* Read was satisfied. */
+                return nb_read;
+            }
+            /* Read was not satisfied, which means the buffer was fully consumed. */
+            netbuf_delete(s->netbuf);
+            s->netbuf = NULL;
+        }
+        /* No more data, get a new netbuf. */
+        int rv = netconn_recv(s->netconn, &s->netbuf);
+        if (rv) {
+            LOG("netconn_recv rv = %d %s\n", rv, lwip_strerr(rv));
+            return rv;
+        }
     }
-    return -1;
 }
 static inline intptr_t os_tcp_write(struct os_tcp_socket *s, const uint8_t *buf, uintptr_t len) {
     // FIXME: NETCONN_NOCOPY is probably possible.
@@ -49,9 +68,14 @@ void os_tcp_socket_move(struct os_tcp_socket *dst, struct os_tcp_socket *src) {
     memset(src,0,sizeof(*src));
 }
 static inline void os_tcp_done(struct os_tcp_socket *s) {
-    // FIXME: free buffer
-    (void)s->netbuf;
-    netconn_delete(s->netconn);
+    if (s->netbuf) {
+        netbuf_delete(s->netbuf);
+        s->netbuf = 0;
+    }
+    if (s->netconn) {
+        netconn_delete(s->netconn);
+        s->netconn = 0;
+    }
 }
 
 #endif

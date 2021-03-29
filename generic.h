@@ -61,9 +61,11 @@ INLINE uint32_t nb_bits(uint32_t word) {
     return count;
 }
 
+#ifndef islower
 INLINE int islower(int i) {
     return (i >= 'a') && (i <= 'z');
 }
+#endif
 
 
 #endif

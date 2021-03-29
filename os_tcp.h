@@ -16,7 +16,7 @@
 #include "macros.h"
 
 
-#if defined(LWIP_NETCONN) && LWIP_NETCONN
+#if 0 //defined(LWIP_NETCONN) && LWIP_NETCONN
 #include "os_tcp_lwip_netconn.h"
 
 #elif defined(LWIP_SOCKET) && LWIP_SOCKET

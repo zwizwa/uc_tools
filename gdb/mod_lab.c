@@ -138,6 +138,7 @@ extern const char config_version[];
 
 #include "info_buf.h"
 
+extern struct info_buf_hdr info_buf;
 
 struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .manufacturer    = config_manufacturer,

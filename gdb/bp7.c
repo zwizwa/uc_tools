@@ -16,13 +16,10 @@
 
 #include "hw_swo.h"
 
-#include "swd_tether.h"
-
-
 void app_poll(void) {
     static uint32_t timer;
     static uint32_t count;
-    MS_PERIODIC(timer, 100) {
+    MS_PERIODIC(timer, 10) {
         infof("count = %d\n", count++);
     }
 }

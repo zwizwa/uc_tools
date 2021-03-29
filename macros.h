@@ -41,7 +41,7 @@ int kill(pid_t pid, int sig);
 #endif
 
 #elif defined(__CHIBIOS_RT__)
-#include "macros_ch.h"
+#include "os_macros_chibios.h"
 
 #else
 #ifndef LOG

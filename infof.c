@@ -54,6 +54,7 @@ int vinfof(const char *fmt, va_list ap) {
             case 0: break;
             case 'p':
             case 'X':
+            case 'u': // FIXME
             case 'x': fmt++; info_hex(va_arg(ap,int),nb_digits); break;
             case 'd': fmt++; info_decimal(va_arg(ap, int));      break;
             case 's': fmt++; info_str(va_arg(ap,const char*));   break;

@@ -7,21 +7,19 @@
    sizes here are just defaults.  External access needs to check
    .logsize field. */
 
-#ifndef INFO_LOGSIZE
-#define INFO_LOGSIZE 10
-#endif
-
-#define INFO_SIZE (1<<INFO_LOGSIZE)
-#define INFO_MASK ((1 << INFO_LOGSIZE)-1)
-
-struct info_buf {
+/* Note that in the old implementation, INFO_LOGSIZE was a constant.
+   This is too hard to make work in generic code if we quickly want to
+   change the size of the log buffer in one place, so now it points to
+   the struct member. */
+//#define INFO_LOGSIZE 10
+/* This is a header.  The buffer follows. */
+struct info_buf_hdr {
     uint16_t write_next;
     uint16_t read_next;
     uint8_t  logsize;
     uint8_t  reserved[3];
-    uint8_t  buf[INFO_SIZE];
 };
 
-extern struct info_buf info_buf;
+
 
 #endif
