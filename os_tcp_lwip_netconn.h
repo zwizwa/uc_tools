@@ -30,6 +30,11 @@ struct os_tcp_socket {
 /* This is used directly in streaming parsers, so make it efficient
    for small data sizes.  This blocks untill all the bytes are
    received. */
+
+static inline const char *os_tcp_strerr(intptr_t e) {
+    return lwip_strerr(e);
+}
+
 static inline intptr_t os_tcp_read(struct os_tcp_socket *s, uint8_t *buf, uintptr_t len) {
     intptr_t nb_read = 0;
     for (;;) {
@@ -75,7 +80,7 @@ static inline intptr_t os_tcp_accept(struct os_tcp_server *server,
     os_tcp_socket_init(client);
     intptr_t rv = netconn_accept(server->netconn, &client->netconn);
     if (rv) {
-        LOG("os_tcp_accept: error %d %s\n", rv, lwip_strerr(rv));
+        // LOG("os_tcp_accept: error %d %s\n", rv, lwip_strerr(rv));
     }
     return rv;
 }

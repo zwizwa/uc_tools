@@ -235,8 +235,10 @@ void webserver_loop(uint16_t port) {
 
         //LOG("webserver_loop accepting\n");
         intptr_t rv;
-        if (0 == (rv = os_tcp_accept(&server, &socket))) {
-            LOG("accept error %d\n", rv);
+        if (0 != (rv = os_tcp_accept(&server, &socket))) {
+            /* FIXME: This happens frequently on ChibiOS. Find out why. */
+            LOG("accept error %d %s\n", rv, os_tcp_strerr(rv));
+            continue;
         }
         //LOG("webserver_loop accepted\n");
 
@@ -244,9 +246,10 @@ void webserver_loop(uint16_t port) {
 
         // LOG("accept\n");
         webserver_req_status_t status = server_serve(&req, &socket.io);
+        (void)status;
 
         /* Spawn a handler loop when a websocket connection was created. */
-        if (WEBSERVER_REQ_WEBSOCKET_UP == status) {
+        if (0 /*WEBSERVER_REQ_WEBSOCKET_UP == status*/) {
             LOG("spawn ws_loop()\n");
             /* The socket is no longer transient, so move it.  Note
                that the protocol is no longer http -- we no longer

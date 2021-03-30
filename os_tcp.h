@@ -71,11 +71,12 @@ static intptr_t os_tcp_server_init(struct os_tcp_server *s, uint16_t port) {
     s->fd = assert_tcp_listen(3456);
     return 0;
 }
-static inline void os_tcp_accept(struct os_tcp_server *serv,
-                                 struct os_tcp_socket *client) {
+static inline intptr_t os_tcp_accept(struct os_tcp_server *serv,
+                                     struct os_tcp_socket *client) {
     client->io.read  = (blocking_read_fn)os_tcp_read;
     client->io.write = (blocking_write_fn)os_tcp_write;
     client->fd = assert_accept(serv->fd);
+    return 0;
 }
 static inline void os_tcp_done(struct os_tcp_socket *s) {
     /* Close the TCP socket. */
@@ -87,6 +88,9 @@ static inline void os_tcp_done(struct os_tcp_socket *s) {
         // LOG("flushing %d\n", buf);
     }
     close(s->fd);
+}
+static inline const char *os_tcp_strerr(intptr_t e) {
+    return strerr(e);
 }
 
 
