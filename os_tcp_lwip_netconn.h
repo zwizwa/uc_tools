@@ -1,8 +1,13 @@
 #ifndef OS_TCP_LWIP_NETCONN_H
 #define OS_TCP_LWIP_NETCONN_H
 
+/* ChibiOS notes.
+
+   With BMP + ChibiOS + enabling asserts and thread fill (find out how
+   exactly it works), debugger gives SIGSEGV when reading bad
+   addresses e.g. 0x55555555 for uninitialized variable. */
+
 struct os_tcp_server {
-    struct sockaddr_storage addr_storage;
     struct netconn *netconn;
 };
 
@@ -19,6 +24,7 @@ struct os_tcp_socket {
     struct netbuf *netbuf;
     uint32_t offset;
 };
+
 #define OS_TCP_SOCKET_INIT {}
 
 /* This is used directly in streaming parsers, so make it efficient
@@ -40,11 +46,12 @@ static inline intptr_t os_tcp_read(struct os_tcp_socket *s, uint8_t *buf, uintpt
             /* Read was not satisfied, which means the buffer was fully consumed. */
             netbuf_delete(s->netbuf);
             s->netbuf = NULL;
+            s->offset = 0;
         }
         /* No more data, get a new netbuf. */
         int rv = netconn_recv(s->netconn, &s->netbuf);
         if (rv) {
-            LOG("netconn_recv rv = %d %s\n", rv, lwip_strerr(rv));
+            LOG("os_tcp_read: error %d %s\n", rv, lwip_strerr(rv));
             return rv;
         }
     }
@@ -54,11 +61,23 @@ static inline intptr_t os_tcp_write(struct os_tcp_socket *s, const uint8_t *buf,
     ASSERT(0 == netconn_write (s->netconn, buf, len, NETCONN_COPY));
     return len;
 }
-static inline void os_tcp_accept(struct os_tcp_server *server,
-                                 struct os_tcp_socket *client) {
-    client->io.read  = (blocking_read_fn)os_tcp_read;
-    client->io.write = (blocking_write_fn)os_tcp_write;
-    ASSERT(0 == netconn_accept(server->netconn, &client->netconn));
+
+static inline void os_tcp_socket_init(struct os_tcp_socket *s) {
+    s->netconn = 0;
+    s->netbuf = 0;
+    s->offset = 0;
+    s->io.read  = (blocking_read_fn)os_tcp_read;
+    s->io.write = (blocking_write_fn)os_tcp_write;
+}
+
+static inline intptr_t os_tcp_accept(struct os_tcp_server *server,
+                                     struct os_tcp_socket *client) {
+    os_tcp_socket_init(client);
+    intptr_t rv = netconn_accept(server->netconn, &client->netconn);
+    if (rv) {
+        LOG("os_tcp_accept: error %d %s\n", rv, lwip_strerr(rv));
+    }
+    return rv;
 }
 
 /* Move socket into different storage, e.g. for moving from transient

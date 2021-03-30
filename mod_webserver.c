@@ -234,7 +234,10 @@ void webserver_loop(uint16_t port) {
         struct os_tcp_socket socket;
 
         //LOG("webserver_loop accepting\n");
-        os_tcp_accept(&server, &socket);
+        intptr_t rv;
+        if (0 == (rv = os_tcp_accept(&server, &socket))) {
+            LOG("accept error %d\n", rv);
+        }
         //LOG("webserver_loop accepted\n");
 
         // client->req.http.ctx = &client->accepted.socket;

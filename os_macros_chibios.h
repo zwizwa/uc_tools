@@ -27,7 +27,7 @@ int infof(const char *fmt, ...);
 #endif
 
 #ifndef ABORT
-#define ABORT while(1) // FIXME
+#define ABORT chSysHalt("ABORT")
 #endif
 
 #endif
