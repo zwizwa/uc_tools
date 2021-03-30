@@ -46,9 +46,11 @@ static inline intptr_t os_tcp_read(struct os_tcp_socket *s, uint8_t *buf, uintpt
             len       -= chunk;
             if (len == 0) {
                 /* Read was satisfied. */
+                //LOG("os_tcp_read: satisfied %d\n", nb_read);
                 return nb_read;
             }
             /* Read was not satisfied, which means the buffer was fully consumed. */
+            //LOG("os_tcp_read: not satisfied nb_read=%d, left=%d\n", nb_read, len);
             netbuf_delete(s->netbuf);
             s->netbuf = NULL;
             s->offset = 0;

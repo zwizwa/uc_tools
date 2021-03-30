@@ -85,8 +85,10 @@ webserver_req_status_t serve_put(struct webserver_req *s) {
     }
     uint8_t buf[WEBSERVER_FILE_CHUNK];
     while(s->content_length > 0) {
-        intptr_t rv = h->io->read(h->io, buf, sizeof(buf));
-        LOG("serve_put, read %d\n", rv);
+        uintptr_t nb = s->content_length;
+        if (nb > sizeof(buf)) { nb = sizeof(buf); }
+        intptr_t rv = h->io->read(h->io, buf, nb);
+        // LOG("serve_put, read %d\n", rv);
         if (rv < 1) break;
         os_file_status_t rv1 = os_file_write(&file, buf, rv);
         if (rv1 < 1) break;
