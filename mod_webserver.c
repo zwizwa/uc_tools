@@ -251,15 +251,24 @@ void webserver_loop(uint16_t port) {
         (void)status;
 
         /* Spawn a handler loop when a websocket connection was created. */
-        if (0 /*WEBSERVER_REQ_WEBSOCKET_UP == status*/) {
-            LOG("spawn ws_loop()\n");
-            /* The socket is no longer transient, so move it.  Note
-               that the protocol is no longer http -- we no longer
-               need the request structs here.
-               FIXME: Kill any old connections and old threads. */
-            os_tcp_socket_move(&static_socket, &socket);
-            struct blocking_io *io = &static_socket.io;
-            OS_THREAD_START(ws_thread, ws_loop, io);
+        if (WEBSERVER_REQ_WEBSOCKET_UP == status) {
+            if (static_socket.io.read) {
+                /* FIXME: To stop the existing task, we would have to
+                   send it a message and let it self-terminate.  It
+                   might be simpler to just pass it a new socket. */
+                LOG("only one websocket task allowed. ignoring\n");
+                os_tcp_done(&socket);
+            }
+            else {
+                LOG("spawn ws_loop()\n");
+                /* The socket is no longer transient, so move it.  Note
+                   that the protocol is no longer http -- we no longer
+                   need the request structs here.
+                   FIXME: Kill any old connections and old threads. */
+                os_tcp_socket_move(&static_socket, &socket);
+                struct blocking_io *io = &static_socket.io;
+                OS_THREAD_START(ws_thread, ws_loop, io);
+            }
         }
         else {
             //LOG("server_serve() -> %d\n", status);
