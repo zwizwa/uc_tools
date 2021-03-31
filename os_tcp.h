@@ -11,6 +11,32 @@
    can be guaranteed in the higher level protocol.
 */
 
+/* About error handling.
+
+   I want the following:
+
+   - Errors should be type-checked, so no more casting one integer
+     error representation to another without some form of type
+     checking.  This means errors should be pointers.
+
+   - No memory management at the user side: a pointer to an error
+     should be managed by the abstraction.  Note that it is perfectly
+     possible to cast the pointers to integer error codes inside the
+     abstraction.  Just the user should not know about this.
+
+   - No error is represented by boolean false.
+
+   - Errors that cannot be handled just need an error logger.
+
+   - Errors that are meaningful to handle just need a selector /
+     accessor to extract some information about the error.  These can
+     be represented by individual structs and methods.
+
+   - Provide a wrapper API for the "negative error code", by
+     extracting a payload.
+*/
+
+
 /* Sockets expose read/write via blocking_io struct. */
 #include "blocking_io.h"
 #include "macros.h"
@@ -25,77 +51,7 @@
 
 /* Berkeley sockets */
 #else
-#include "tcp_tools.h"
-#include "assert_write.h"
-#include "assert_read.h"
-
-/* User apio is the blocking_io, so this can just be cast. */
-struct os_tcp_socket {
-    struct blocking_io io;
-    int fd;
-};
-#define OS_TCP_SOCKET_INIT {.fd = -1}
-
-/* Move socket into different storage, e.g. for moving from transient
-   stack storage to a memory pool. */
-void os_tcp_socket_move(struct os_tcp_socket *dst, struct os_tcp_socket *src) {
-    memcpy(dst,src,sizeof(*dst));
-    memset(src,0,sizeof(*src));
-}
-
-struct os_tcp_server {
-    int fd;
-};
-// FIXME: this is just generic file read.
-static intptr_t os_tcp_read(struct os_tcp_socket *s, uint8_t *buf, uintptr_t len) {
-    LOG("read...\r");
-    // ssize_t rv = assert_read(c->socket, buf, len);
-    // FIXME: This can produce a short read.
-    ssize_t rv = read(s->fd, buf, len);
-    if (rv > 0) {
-        LOG("read ok          \r");
-        return rv;
-    }
-    ASSERT_ERRNO(rv);
-    LOG("read EOF, exit thread\n");
-    // Any error terminates the thread
-    // free(c);  // not sure if this is ok before exit.. just leak it.
-    os_thread_exit(NULL);
-}
-static intptr_t os_tcp_write(struct os_tcp_socket *s, const uint8_t *buf, uintptr_t len) {
-    assert_write(s->fd, buf, len);
-    //for(uintptr_t i=0; i<len; i++) LOG("%c", buf[i]);
-    return len;
-}
-static intptr_t os_tcp_server_init(struct os_tcp_server *s, uint16_t port) {
-    s->fd = assert_tcp_listen(3456);
-    return 0;
-}
-static inline intptr_t os_tcp_accept(struct os_tcp_server *serv,
-                                     struct os_tcp_socket *client) {
-    client->io.read  = (blocking_read_fn)os_tcp_read;
-    client->io.write = (blocking_write_fn)os_tcp_write;
-    client->fd = assert_accept(serv->fd);
-    return 0;
-}
-static inline void os_tcp_done(struct os_tcp_socket *s) {
-    /* Close the TCP socket. */
-    shutdown(s->fd, SHUT_WR);
-    for (;;) {
-        uint8_t buf;
-        int rv = read(s->fd, &buf, 1);
-        if (rv <= 0) { break; }
-        // LOG("flushing %d\n", buf);
-    }
-    close(s->fd);
-}
-static inline const char *os_tcp_strerr(intptr_t e) {
-    return strerr(e);
-}
-
-
+#include "os_tcp_berkeley.h"
 #endif
-
-
 
 #endif

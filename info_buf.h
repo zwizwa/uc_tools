@@ -3,19 +3,22 @@
 
 #include <stdint.h>
 
-/* Structure is specified, to allow access via external debugger.  The
-   sizes here are just defaults.  External access needs to check
-   .logsize field. */
+/* The header structure is specified as API, to allow access via
+   external debugger.
 
-/* Note that in the old implementation, INFO_LOGSIZE was a constant.
-   This is too hard to make work in generic code if we quickly want to
-   change the size of the log buffer in one place, so now it points to
-   the struct member. */
-//#define INFO_LOGSIZE 10
-/* This is a header.  The buffer follows. */
+   The .write_next and .read_next indices are rolling.  To get the
+   index into the buffer, mask out the lower .logsize bits.
+
+   Note that we only use this on ARMv7-M, where 32bit read/write is
+   atomic.
+
+   See A3.5.3 Atomicity in the ARM architecture, ARMv7-M_ARM.pdf
+*/
+
+/* Buffer follows the header. */
 struct info_buf_hdr {
-    uint16_t write_next;
-    uint16_t read_next;
+    uint32_t write_next;
+    uint32_t read_next;
     uint8_t  logsize;
     uint8_t  reserved[3];
 };

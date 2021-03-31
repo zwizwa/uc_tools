@@ -16,6 +16,10 @@
 
 */
 
+#define WS_READ  BLOCKING_IO_READ
+#define WS_WRITE BLOCKING_IO_WRITE
+
+
 #include <stdint.h>
 #include "uct_byteswap.h"
 #include "macros.h"
@@ -35,7 +39,8 @@ struct ws_message {
 #define WS_LEN_MAX 4096
 
 /* Decouple it from implementation of read and write. */
-typedef uintptr_t ws_err_t; struct ws_ctx;
+typedef os_error_t ws_err_t;
+struct ws_ctx;
 typedef ws_err_t (*ws_push_fn)(struct blocking_io *, struct ws_message *);
 
 /* Undo the xormask.  The xormask is (I believe), a hack that is part
@@ -45,16 +50,18 @@ static inline void ws_unmask(struct ws_message *m) {
         m->buf[i] ^= m->xorkey[i & 3];
     }
 }
+
+
 static inline ws_err_t ws_read_msg_body(struct blocking_io *io,
                                         ws_push_fn push,
                                         struct ws_message *m,
                                         uintptr_t len_len) {
-    uintptr_t rv = 0;
+    os_error_t error = OS_OK;
     if (len_len) {
         /* Large and Medium have an additional length field. */
-        uint8_t len[len_len];
-        if (len_len != (rv = io->read(io, len, len_len))) goto error_rv;
-        m->len = read_be(len, len_len);
+        uint8_t len_buf[len_len];
+        WS_READ(io, len_buf, len_len);
+        m->len = read_be(len_buf, len_len);
     }
     else {
         /* For Small, there is no additional length field, and m->len
@@ -67,8 +74,8 @@ static inline ws_err_t ws_read_msg_body(struct blocking_io *io,
         ASSERT(m->len <= WS_LEN_MAX);
         uint8_t buf[m->len]; m->buf = buf;
 
-        if (4 != (rv = io->read(io, m->xorkey, 4))) goto error_rv;
-        if (m->len != (rv = io->read(io, m->buf, m->len))) goto error_rv;
+        WS_READ(io, m->xorkey, 4);
+        WS_READ(io, m->buf, m->len);
         ws_unmask(m);
         if (m->opcode == 2) {
             /* Binary */
@@ -76,7 +83,7 @@ static inline ws_err_t ws_read_msg_body(struct blocking_io *io,
         }
         if (m->opcode == 8) {
             LOG("closing websocket\n");
-            return 0;
+            return OS_OK;
         }
         /* https://tools.ietf.org/id/draft-ietf-hybi-thewebsocketprotocol-09.html
            0x0 denotes a continuation frame
@@ -90,16 +97,16 @@ static inline ws_err_t ws_read_msg_body(struct blocking_io *io,
         LOG("unsupported opcode %d\n", m->opcode);
     }
 
-  error_rv:
-    LOG("error: %d\n", rv);
-    return rv;
+  error_exit:
+    OS_LOG_ERROR("ws_read_msg_body", error);
+    return error;
 }
 static inline ws_err_t ws_read_msg(struct blocking_io *io, ws_push_fn push) {
+    os_error_t error = OS_OK;
 
     /* We can read 2 bytes, then we have to dispatch on size. */
     uint8_t buf[2];
-    intptr_t rv;
-    if (2 != (rv = io->read(io, buf, 2))) goto error_rv;
+    WS_READ(io, buf, 2);
     struct ws_message m = {};
     m.len        = buf[1] & 0x7f;
     m.opcode     = buf[0] & 0xf;
@@ -119,20 +126,20 @@ static inline ws_err_t ws_read_msg(struct blocking_io *io, ws_push_fn push) {
         return ws_read_msg_body(io, push, &m, 0 /* already have m.len */);
     }
 
-  error_rv:
-    LOG("error: %d\n", rv);
-    return rv;
-
+  error_exit:
+    OS_LOG_ERROR("ws_read_msg", error);
+    return error;
 }
 
 static inline ws_err_t ws_write_msg(struct blocking_io *io, const struct ws_message *m) {
-    intptr_t rv;
+    os_error_t error = OS_OK;
+
     if (m->len < 126) {
         uint8_t hdr[2] = {
             (m->fin << 7) | (m->opcode & 0xF),
             (m->mask << 7) | m->len
         };
-        if (2 != (rv = io->write(io, hdr, 2))) goto error_rv;
+        WS_WRITE(io, hdr, 2);
     }
     else if (m->len < 0xFFFF) {
         uint8_t hdr[4] = {
@@ -140,7 +147,7 @@ static inline ws_err_t ws_write_msg(struct blocking_io *io, const struct ws_mess
             (m->mask << 7) | 126 /* medium size code */
         };
         write_be(hdr + 2, m->len, 2);
-        if (4 != (rv = io->write(io, hdr, 4))) goto error_rv;
+        WS_WRITE(io, hdr, 4);
     }
     else {
         uint8_t hdr[10] = {
@@ -148,14 +155,14 @@ static inline ws_err_t ws_write_msg(struct blocking_io *io, const struct ws_mess
             (m->mask << 7) | 127 /* large size code */
         };
         write_be(hdr + 2, m->len, 8);
-        if (10 != (rv = io->write(io, hdr, 10))) goto error_rv;
+        WS_WRITE(io, hdr, 10);
     }
-    if (m->len != (typeof(m->len))
-        (rv = io->write(io, m->buf, m->len))) goto error_rv;
-    rv = 0;
-  error_rv:
-    if (rv) LOG("error: %d\n", rv);
-    return rv;
+    WS_WRITE(io, m->buf, m->len);
+    return OS_OK;
+
+  error_exit:
+    OS_LOG_ERROR("ws_write_msg", error);
+    return error;
 }
 
 

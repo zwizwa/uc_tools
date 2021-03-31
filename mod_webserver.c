@@ -27,34 +27,44 @@
 /* Provided elsewhere. */
 ws_err_t websocket_push(struct blocking_io *io, struct ws_message *m);
 
-#define WEBSERVER_REQ_OK 0
-#define WEBSERVER_REQ_ERROR -1
-#define WEBSERVER_REQ_WEBSOCKET_UP 1
 
-typedef intptr_t webserver_req_status_t;
+/* Error propagation.
+
+   We don't need to know a whole lot at the toplevel, so we will not
+   propagate low level errors, just log them.
+
+   Errors are encoded as pointers to allow for type checking.
+*/
+
+struct webserver_status {};
+typedef const struct webserver_status *serve_status_t;
+
+#define WEBSERVER_STATUS(n)  ((serve_status_t)(0x2000 + ((n)&0xF)))
+#define WEBSERVER_DONE         WEBSERVER_STATUS(0)
+#define WEBSERVER_ERROR        WEBSERVER_STATUS(1)
+#define WEBSERVER_WEBSOCKET_UP WEBSERVER_STATUS(2)
 
 struct webserver_req;
 struct webserver_req {
     /* struct http_req is inside ws. */
     struct http_req http;
-    webserver_req_status_t (*serve)(struct webserver_req *);
+    serve_status_t (*serve)(struct webserver_req *);
     intptr_t content_length;
+    int cont; // what to do after serving http request
     uint8_t websocket_sha1[SHA1_BLOCK_SIZE];
     char filename[WEBSERVER_FILE_NAME];
 };
 
 const char not_found[] = "404 not found";
 
-webserver_req_status_t serve_get(struct webserver_req *s) {
+serve_status_t serve_get(struct webserver_req *s) {
     struct http_req *h = &s->http;
     struct os_file file;
-    if (OS_FILE_STATUS_OK !=
-        os_file_open(&file, s->filename, OS_FILE_READ)) {
+    if (OS_OK != os_file_open(&file, s->filename, OS_FILE_READ)) {
         http_write_404_resp(h);
-        if (OS_FILE_STATUS_OK !=
-            os_file_open(&file, "404.html", OS_FILE_READ)) {
+        if (OS_OK != os_file_open(&file, "404.html", OS_FILE_READ)) {
             http_write_str(h, not_found);
-            return WEBSERVER_REQ_ERROR;
+            return WEBSERVER_ERROR;
         }
         /* Fallthrough and write 404.html */
     }
@@ -63,22 +73,25 @@ webserver_req_status_t serve_get(struct webserver_req *s) {
     }
     uint8_t buf[WEBSERVER_FILE_CHUNK];
     for(;;) {
-        os_file_status_t rv = os_file_read(&file, buf, sizeof(buf));
-        if (rv < 1) break;
-        h->io->write(h->io, buf, rv);
+        /* FIXME: Handle errors better. */
+        os_result_t result = os_file_read(&file, buf, sizeof(buf));
+        os_error_t err = 0;
+        uintptr_t nb_bytes = 0;
+        if ((err = os_result_unpack(result, &nb_bytes))) break;
+        if (nb_bytes == 0) break;
+        if ((err = h->io->write(h->io, buf, nb_bytes))) break;
     }
     os_file_close(&file);
-    return WEBSERVER_REQ_OK;
+    return WEBSERVER_DONE;
 }
 
-webserver_req_status_t serve_put(struct webserver_req *s) {
+serve_status_t serve_put(struct webserver_req *s) {
     struct http_req *h = &s->http;
     struct os_file file;
-    if (OS_FILE_STATUS_OK !=
-        os_file_open(&file, s->filename, OS_FILE_WRITE)) {
+    if (OS_OK != os_file_open(&file, s->filename, OS_FILE_WRITE)) {
         /* FIXME: What is the proper response here? */
         LOG("Can't open %s for writing.\n", s->filename);
-        return WEBSERVER_REQ_ERROR;
+        return WEBSERVER_ERROR;
     }
     else {
         http_write_100_resp(h);
@@ -87,20 +100,17 @@ webserver_req_status_t serve_put(struct webserver_req *s) {
     while(s->content_length > 0) {
         uintptr_t nb = s->content_length;
         if (nb > sizeof(buf)) { nb = sizeof(buf); }
-        intptr_t rv = h->io->read(h->io, buf, nb);
-        // LOG("serve_put, read %d\n", rv);
-        if (rv < 1) break;
-        os_file_status_t rv1 = os_file_write(&file, buf, rv);
-        if (rv1 < 1) break;
-        s->content_length -= rv;
+        if (OS_OK != h->io->read(h->io, buf, nb)) break;
+        if (OS_OK != os_file_write(&file, buf, nb)) break;
+        s->content_length -= nb;
     }
     os_file_close(&file);
     http_write_201_resp(h);
-    return WEBSERVER_REQ_OK;
+    return WEBSERVER_DONE;
 }
 
 
-webserver_req_status_t serve_ws(struct webserver_req *s) {
+serve_status_t serve_ws(struct webserver_req *s) {
     struct http_req *h = &s->http;
     http_write_str(
         h, "HTTP/1.1 101 Switching Protocols\r\n"
@@ -115,7 +125,7 @@ webserver_req_status_t serve_ws(struct webserver_req *s) {
     http_write_str(h, "\r\n\r\n");
     /* Indicate to caller that serve_ws_msg() needs to be called in a
        loop. This gives caller the chance to spawn a thread. */
-    return WEBSERVER_REQ_WEBSOCKET_UP;
+    return WEBSERVER_WEBSOCKET_UP;
 }
 intptr_t is_local(const char *uri) {
     if (uri[0] == '/') uri++;
@@ -126,44 +136,43 @@ intptr_t is_local(const char *uri) {
     return 1;
 }
 
-intptr_t put_request(struct http_req *c, const char *uri) {
+void put_request(struct http_req *c, const char *uri) {
     struct webserver_req *s = (void*)c;
     LOG("W: %s\n", uri);
     s->filename[0] = 0;
     if (uri[0] == '/') uri++;
-    if (strlen(uri) < 1) return 0;
+    if (strlen(uri) < 1) return;
     s->serve = serve_put;
     int n = sizeof(s->filename);
     strncpy(s->filename, uri, n);
     s->filename[n-1] = 0;
-    return 0;
 }
 
-intptr_t get_request(struct http_req *c, const char *uri) {
+void get_request(struct http_req *c, const char *uri) {
     struct webserver_req *s = (void*)c;
     LOG("R: %s\n", uri);
     s->filename[0] = 0;
     s->serve = (!strcmp(uri,"/ws")) ? serve_ws : serve_get;
     if (uri[0] == '/') uri++;
     if (uri[0] == 0) { uri = "index.html"; }
-    else { if (!is_local(uri)) return 0; }
+    else { if (!is_local(uri)) return; }
     int n = sizeof(s->filename);
     strncpy(s->filename, uri, n);
     s->filename[n-1] = 0;
-    return 0;
 }
 
-intptr_t request(struct http_req *c, int method, const char *uri) {
+http_err_t request(struct http_req *c, int method, const char *uri) {
     if (HTTP_METHOD_GET == method) {
-        return get_request(c, uri);
+        get_request(c, uri);
     }
-    if (HTTP_METHOD_PUT == method) {
-        return put_request(c, uri);
+    else if (HTTP_METHOD_PUT == method) {
+        put_request(c, uri);
     }
-    return -1; // FIXME
+    /* FIXME: Does this need error propagation? */
+    return HTTP_ERR_OK;
 }
 
-intptr_t header(struct http_req *c, const char *hdr, const char *val) {
+http_err_t header(struct http_req *c, const char *hdr, const char *val) {
     struct webserver_req *s = (void*)c;
     // LOG("H: %s = %s\n", hdr, val);
     // FIXME: case-insensitive?
@@ -178,7 +187,7 @@ intptr_t header(struct http_req *c, const char *hdr, const char *val) {
     else if (!strcmp(hdr, "Content-Length")) {
         s->content_length = strtold(val, NULL);
     }
-    return 0;
+    return HTTP_ERR_OK;
 }
 
 
@@ -193,7 +202,7 @@ void server_init(struct webserver_req *s,
    after serving a single file, closing the socket.  If it is a
    websocket, the function will keep serving until the other end
    closes. */
-webserver_req_status_t server_serve(
+serve_status_t server_serve(
     struct webserver_req *s,
     struct blocking_io *io) {
 
@@ -201,10 +210,10 @@ webserver_req_status_t server_serve(
     http_read_headers(&s->http);
     if (!s->serve) {
         LOG("no s->serve, bad request?\n");
-        return -1;
+        return WEBSERVER_ERROR;
     }
     else {
-        webserver_req_status_t status = s->serve(s);
+        serve_status_t status = s->serve(s);
         return status;
     }
 }
@@ -215,7 +224,13 @@ webserver_req_status_t server_serve(
 OS_THREAD_STACK(ws_thread, 1024);
 OS_THREAD_MAIN(ws_loop, ctx) {
     struct blocking_io *io = ctx;
-    for(;;) { ws_read_msg(io, websocket_push); }
+    for(;;) {
+        ws_err_t err = ws_read_msg(io, websocket_push);
+        if (err) {
+            LOG("ws_read_msg -> %d, exiting thread\n", (intptr_t)err /*FIXME*/);
+            OS_THREAD_RETURN();
+        }
+    }
 }
 
 struct os_tcp_socket static_socket = OS_TCP_SOCKET_INIT;
@@ -236,10 +251,10 @@ void webserver_loop(uint16_t port) {
         struct os_tcp_socket socket;
 
         //LOG("webserver_loop accepting\n");
-        intptr_t rv;
-        if (0 != (rv = os_tcp_accept(&server, &socket))) {
+        os_error_t err;
+        if (OS_OK != (err = os_tcp_accept(&server, &socket))) {
             /* FIXME: This happens frequently on ChibiOS. Find out why. */
-            LOG("accept error %d %s\n", rv, os_tcp_strerr(rv));
+            OS_LOG_ERROR("accept", err);
             continue;
         }
         //LOG("webserver_loop accepted\n");
@@ -247,17 +262,23 @@ void webserver_loop(uint16_t port) {
         // client->req.http.ctx = &client->accepted.socket;
 
         // LOG("accept\n");
-        webserver_req_status_t status = server_serve(&req, &socket.io);
-        (void)status;
+        serve_status_t status = server_serve(&req, &socket.io);
 
         /* Spawn a handler loop when a websocket connection was created. */
-        if (WEBSERVER_REQ_WEBSOCKET_UP == status) {
+        if (WEBSERVER_WEBSOCKET_UP == status) {
             if (static_socket.io.read) {
                 /* FIXME: To stop the existing task, we would have to
                    send it a message and let it self-terminate.  It
                    might be simpler to just pass it a new socket. */
                 LOG("only one websocket task allowed. ignoring\n");
                 os_tcp_done(&socket);
+
+                /* FIXME: Check if the websocket sees this. */
+                if (1) {
+                    LOG("FIXME: closing static_socket\n");
+                    os_tcp_done(&static_socket);
+                }
+
             }
             else {
                 LOG("spawn ws_loop()\n");

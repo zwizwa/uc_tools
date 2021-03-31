@@ -8,11 +8,34 @@
    a callback in parsed form.  ( Fold instead of data. )
 */
 
+#define HTTP_READ  BLOCKING_IO_READ
+#define HTTP_WRITE BLOCKING_IO_WRITE
+
 #include "macros.h"
 
 #include "blocking_io.h"
 
-typedef intptr_t http_err_t;
+
+/* The http errors are a combination of os errors and application
+   errors.  We still use the signed integer encoding cast to a
+   pointer to be able to distinguish different types properly. */
+
+struct http_err {};
+typedef const struct http_err *http_err_t;
+
+/* Wrapper for os errors. */
+static inline http_err_t http_err_os(os_error_t e) {
+    return (http_err_t)e;
+}
+/* The other errors are part of this enumeration. */
+#define HTTP_ERR_BASE (-0x1000) /* for remapping if necessary. */
+#define HTTP_ERR(n) ((http_err_t)(((n)&0xF) + HTTP_ERR_BASE))
+
+#define HTTP_ERR_OVERRUN HTTP_ERR(1)
+#define HTTP_ERR_INVALID HTTP_ERR(2)
+
+#define HTTP_ERR_OK http_err_os(OS_OK)
+
 
 struct http_req;
 typedef void     (*http_close)(struct http_req *);
@@ -33,9 +56,7 @@ void log_c(const uint8_t *buf, uintptr_t len) {
     for(uintptr_t i=0; i<len; i++) LOG("%c", buf[i]);
 }
 
-#define HTTP_STATUS_EOF            -1
-#define HTTP_STATUS_OVERRUN        -2
-#define HTTP_STATUS_INVALID        -3
+/* FIXME: These share the OS address space.  Provide an explicit mapper. */
 
 #define HTTP_METHOD_GET 1
 #define HTTP_METHOD_PUT 2
@@ -46,25 +67,22 @@ static inline http_err_t http_read_headers(struct http_req *c) {
     /* We parse one line at a time, which allows us to keep the buffer
        small, and locally managed.  Callbacks can use the memory in
        the extent of the call. */
+    os_error_t error = OS_OK;
     char buf[4096];
     uintptr_t len = 0;
-    intptr_t rv;
     uintptr_t nb_lines = 0;
     for(;;) {
-        if (len >= sizeof(buf)) return HTTP_STATUS_OVERRUN;
-        rv = c->io->read(c->io, (uint8_t*)&buf[len++], 1);
-        if (rv != 1) {
-            LOG("http_read_headers rv = %d\n", rv);
-            return HTTP_STATUS_EOF;
-        }
+        if (len >= sizeof(buf)) return HTTP_ERR_OVERRUN;
+        HTTP_READ(c->io, (uint8_t*)&buf[len++], 1);
         if ((len >= 2) && (buf[len-2] == 0xd) && (buf[len-1] == 0xa)) {
-            /* Convert 0d,0a to cstring. */
+            /* End of line. Convert 0d,0a to cstring. */
             len -= 2; buf[len] = 0;
             if (len == 0) { break; }
             if (0 == nb_lines) {
                 /* Only HTTP/1.1 GET is supported. */
-                rv = HTTP_STATUS_INVALID;
-                if (len < (3+1+1+1+8)) { goto error;};
+                if (len < (3+1+1+1+8)) {
+                    return HTTP_ERR_INVALID;
+                };
                 int method;
                 if (!strncmp(buf,"GET ",3+1)) {
                     method = HTTP_METHOD_GET;
@@ -73,11 +91,16 @@ static inline http_err_t http_read_headers(struct http_req *c) {
                     method = HTTP_METHOD_PUT;
                 }
                 else {
-                    goto error;
+                    return HTTP_ERR_INVALID;
                 };
-                if (strcmp(buf+len-8,"HTTP/1.1")) { goto error;};
+                if (strcmp(buf+len-8,"HTTP/1.1")) {
+                    return HTTP_ERR_INVALID;
+                };
                 buf[len-9] = 0;
-                if ((rv = c->request(c, method, buf+4))) { goto error; }
+                http_err_t req_err;
+                if (HTTP_ERR_OK != (req_err = c->request(c, method, buf+4))) {
+                    return req_err;
+                }
             }
             else {
                 /* Split header and value. */
@@ -85,21 +108,27 @@ static inline http_err_t http_read_headers(struct http_req *c) {
                 for(uintptr_t i=0; i<len; i++) {
                     if (buf[i] == ':') {
                         buf[i] = 0;
-                        if (len < i+2) return HTTP_STATUS_INVALID;
+                        if (len < i+2) {
+                            return HTTP_ERR_INVALID;
+                        }
                         val = buf+i+2;
                         break;
                     }
                 }
-                if ((rv = c->header(c, buf, val))) return rv;
+                http_err_t req_err;
+                if ((req_err = c->header(c, buf, val))) {
+                    return req_err;
+                }
             }
             len = 0;
             nb_lines++;
         }
     }
-    rv = 0;
-  error:
-    if (rv) { LOG("error = %d, len = %d\n", rv, len); }
-    return rv;
+    return HTTP_ERR_OK;
+  error_exit:
+    /* os error handler. */
+    OS_LOG_ERROR("http_read_headers", error);
+    return http_err_os(error);
 }
 
 
