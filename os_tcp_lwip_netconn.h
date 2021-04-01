@@ -24,6 +24,7 @@ struct os_tcp_socket {
     struct netconn *netconn;
     struct netbuf *netbuf;
     uint32_t offset;
+    uint32_t debug;
 };
 
 #define OS_TCP_SOCKET_INIT {}
@@ -58,7 +59,9 @@ static inline os_error_t os_tcp_read(struct os_tcp_socket *s, uint8_t *buf, uint
             s->offset = 0;
         }
         /* No more data, get a new netbuf. */
+        if (s->debug) LOG("os_tcp_read...\n");
         int rv = netconn_recv(s->netconn, &s->netbuf);
+        if (s->debug) LOG("os_tcp_read rv=%d\n", rv);
         if (rv) {
             LOG("os_tcp_read: error %d %s\n", rv, lwip_strerr(rv));
             // FIXME: this still needs merging of LwIP, FatFS and maybe ChibiOS errors
@@ -100,6 +103,26 @@ void os_tcp_socket_move(struct os_tcp_socket *dst, struct os_tcp_socket *src) {
     memcpy(dst,src,sizeof(*dst));
     memset(src,0,sizeof(*src));
 }
+
+
+/* Note that we don't use "close" to allow to distiguish disconnect
+   and full resource cleanup. */
+
+static inline void os_tcp_trace(struct os_tcp_socket *s) {
+    LOG("os_tcp_trace: %p\n", s);
+}
+
+/* Close will only close the connection, but will not free any
+   resources.  This can be used to close from another thread. */
+static inline void os_tcp_disconnect(struct os_tcp_socket *s) {
+    if (s->netconn) {
+        if (s->debug) os_tcp_trace(s);
+        netconn_close(s->netconn);
+    }
+}
+
+/* Free all resources associated with the socket.
+   This also closes the connection. */
 static inline void os_tcp_done(struct os_tcp_socket *s) {
     if (s->netbuf) {
         netbuf_delete(s->netbuf);
@@ -110,5 +133,6 @@ static inline void os_tcp_done(struct os_tcp_socket *s) {
         s->netconn = 0;
     }
 }
+
 
 #endif

@@ -9,6 +9,7 @@
 struct os_tcp_socket {
     struct blocking_io io;
     int fd;
+    int debug;
 };
 #define OS_TCP_SOCKET_INIT {.fd = -1}
 
@@ -66,6 +67,11 @@ static inline void os_tcp_done(struct os_tcp_socket *s) {
         // LOG("flushing %d\n", buf);
     }
     close(s->fd);
+}
+static inline void os_tcp_disconnect(struct os_tcp_socket *s) {
+    /* FIXME: is this correct?  This is used to close from another
+       thread, such that a blocking receive will receive an error. */
+    shutdown(s->fd, SHUT_WR);
 }
 static inline const char *os_strerror(os_error_t e) {
     return strerror((intptr_t)e);

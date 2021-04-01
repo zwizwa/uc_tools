@@ -16,13 +16,14 @@
 #if defined(__CHIBIOS_RT__)
 
 #define OS_THREAD_STACK(name,nb) \
+    thread_t *name##_thread;     \
     THD_WORKING_AREA(name,nb)
 #define OS_THREAD_MAIN(name,arg) \
     THD_FUNCTION(name,arg)
 #define OS_THREAD_RETURN() \
     return
 #define OS_THREAD_START(name, main, arg) \
-    chThdCreateStatic(name, sizeof(name), HIGHPRIO-1, main, arg)
+    name##_thread = chThdCreateStatic(name, sizeof(name), HIGHPRIO-1, main, arg)
 
 typedef mutex_t os_mutex_t;
 static inline void os_mutex_init(mutex_t *m) {
@@ -34,6 +35,9 @@ static inline void os_mutex_lock(mutex_t *m) {
 static inline void os_mutex_unlock(mutex_t *m) {
     chMtxUnlock(m);
 }
+
+#define OS_THREAD_WAIT(name) \
+    chThdWait(name##_thread)
 
 // Posix
 #else
@@ -56,6 +60,10 @@ static inline void os_thread_exit(void *retval)  {
 
 #define OS_THREAD_FUNCTION(name,arg) void *name(void *arg)
 #define OS_THREAD_RETURN() return NULL
+
+#define OS_THREAD_WAIT(name) \
+    pthread_wait(&name)
+
 
 #endif
 

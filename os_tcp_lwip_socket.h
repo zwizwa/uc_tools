@@ -1,6 +1,8 @@
 #ifndef OS_TCP_LWIP_SOCKET_H
 #define OS_TCP_LWIP_SOCKET_H
 
+// BIT ROTTED - needs some changes for error types, compare with other impls.
+
 
 /* LwIP socket API
 

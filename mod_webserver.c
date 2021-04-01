@@ -267,29 +267,29 @@ void webserver_loop(uint16_t port) {
         /* Spawn a handler loop when a websocket connection was created. */
         if (WEBSERVER_WEBSOCKET_UP == status) {
             if (static_socket.io.read) {
-                /* FIXME: To stop the existing task, we would have to
-                   send it a message and let it self-terminate.  It
-                   might be simpler to just pass it a new socket. */
-                LOG("only one websocket task allowed. ignoring\n");
-                os_tcp_done(&socket);
-
-                /* FIXME: Check if the websocket sees this. */
-                if (1) {
-                    LOG("FIXME: closing static_socket\n");
-                    os_tcp_done(&static_socket);
-                }
-
+                /* The initialized status of static_socket is used to
+                   indicate that a thread is running.  We need to
+                   synchronously terminate it, then restart it with
+                   the new socket.  The simplest thing to do on
+                   ChibiOS/LwIP for now is to close the socket, then
+                   wait for the thread to terminate.  Note that in
+                   LwIP this needs LWIP_NETCONN_FULLDUPLEX==1, which
+                   is an experimental feature. */
+                LOG("closing existing websocket, waiting for thread to terminate.\n");
+                os_tcp_disconnect(&static_socket);
+                OS_THREAD_WAIT(ws_thread);
+                LOG("thread exited, closing socket.\n");
+                os_tcp_done(&static_socket);
             }
-            else {
-                LOG("spawn ws_loop()\n");
-                /* The socket is no longer transient, so move it.  Note
-                   that the protocol is no longer http -- we no longer
-                   need the request structs here.
-                   FIXME: Kill any old connections and old threads. */
-                os_tcp_socket_move(&static_socket, &socket);
-                struct blocking_io *io = &static_socket.io;
-                OS_THREAD_START(ws_thread, ws_loop, io);
-            }
+            LOG("spawn ws_loop()\n");
+            /* The socket is no longer transient, so move it.  Note
+               that the protocol is no longer http -- we no longer
+               need the request structs here.
+               FIXME: Kill any old connections and old threads. */
+            os_tcp_socket_move(&static_socket, &socket);
+            static_socket.debug = 1;
+            struct blocking_io *io = &static_socket.io;
+            OS_THREAD_START(ws_thread, ws_loop, io);
         }
         else {
             //LOG("server_serve() -> %d\n", status);
