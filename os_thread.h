@@ -62,7 +62,7 @@ static inline void os_thread_exit(void *retval)  {
 #define OS_THREAD_RETURN() return NULL
 
 #define OS_THREAD_WAIT(name) \
-    pthread_wait(&name)
+    pthread_join(&name, NULL)
 
 
 #endif

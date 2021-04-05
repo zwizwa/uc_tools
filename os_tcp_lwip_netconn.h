@@ -71,8 +71,8 @@ static inline os_error_t os_tcp_read(struct os_tcp_socket *s, uint8_t *buf, uint
 }
 static inline os_error_t os_tcp_write(struct os_tcp_socket *s, const uint8_t *buf, uintptr_t len) {
     // FIXME: NETCONN_NOCOPY is probably possible.
-    ASSERT(0 == netconn_write (s->netconn, buf, len, NETCONN_COPY));
-    return OS_OK;
+    // FIXME: map errors
+    return (os_error_t)(intptr_t)netconn_write(s->netconn, buf, len, NETCONN_COPY);
 }
 
 static inline void os_tcp_socket_init(struct os_tcp_socket *s) {
