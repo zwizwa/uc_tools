@@ -32,4 +32,3 @@ int main(int argc, char **argv) {
     minmax_open(&map, argv[2], 8);
     webserver_loop(3456);
 }
-
