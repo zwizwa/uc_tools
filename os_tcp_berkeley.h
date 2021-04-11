@@ -26,12 +26,12 @@ struct os_tcp_server {
 // FIXME: this is just generic file read.
 static os_error_t os_tcp_read(struct blocking_io *io, uint8_t *buf, uintptr_t len) {
     struct os_tcp_socket *s = (void*)io;
-    LOG("read...\r");
+    // LOG("read...\r");
     // ssize_t rv = assert_read(c->socket, buf, len);
     // FIXME: This can produce a short read.
     ssize_t rv = read(s->fd, buf, len);
     if (rv > 0) {
-        LOG("read ok          \r");
+        //LOG("read ok          \r");
         return OS_OK;
     }
     ASSERT_ERRNO(rv);
