@@ -1,0 +1,21 @@
+(lang dune 2.8)
+(name uc_tools)
+
+(generate_opam_files true)
+
+(license BSD-2-Clause)
+
+(maintainers "Tom Schouten <tom@zwizwa.be>")
+(authors "Tom Schouten <tom@zwizwa.be>")
+
+(cram enable)
+
+(package
+ (name uc_tools)
+ (synopsis "Microcontroller Tools")
+ (description "uc_tools is a C library for bare metal microcontroller development, with host-side support code in various languages.")
+ (depends
+  (dune (>= "2.8"))
+  (ocaml (>= "4.11.1"))
+  ))
+

@@ -1,0 +1,4 @@
+(executable
+ (public_name uc_tools)
+ (name main)
+ (libraries uc_tools))
