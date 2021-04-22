@@ -1279,10 +1279,13 @@ struct hw_exti {
 
 // Note that 5-9 and 10-15 use shared interrupts.
 // Grep libopencm3/include/libopencm3/stm32/f1/nvic.h for exti0_isr
-
 //                      rcc_gpio   irq                 pin  gpio   trigger
-#define HW_EXTI_A0_B  { RCC_GPIOA, NVIC_EXTI0_IRQ,      0,  GPIOA, EXTI_TRIGGER_BOTH }  // exti0_isr()
-#define HW_EXTI_B15_B { RCC_GPIOB, NVIC_EXTI15_10_IRQ, 15,  GPIOB, EXTI_TRIGGER_BOTH }  // exti15_10_isr()
+#define HW_EXTI_A0_B  { RCC_GPIOA, NVIC_EXTI0_IRQ,      0,  GPIOA, EXTI_TRIGGER_BOTH }    // exti0_isr()
+#define HW_EXTI_B15_B { RCC_GPIOB, NVIC_EXTI15_10_IRQ, 15,  GPIOB, EXTI_TRIGGER_BOTH }    // exti15_10_isr()
+#define HW_EXTI_A3_F  { RCC_GPIOA, NVIC_EXTI3_IRQ,      3,  GPIOA, EXTI_TRIGGER_FALLING } // exti3_isr()
+#define HW_EXTI_A3_F  { RCC_GPIOA, NVIC_EXTI3_IRQ,      3,  GPIOA, EXTI_TRIGGER_FALLING } // exti3_isr()
+#define HW_EXTI_A10_F { RCC_GPIOA, NVIC_EXTI15_10_IRQ, 10,  GPIOA, EXTI_TRIGGER_FALLING } // exti15_10_isr()
+#define HW_EXTI_B11_F { RCC_GPIOB, NVIC_EXTI15_10_IRQ, 11,  GPIOB, EXTI_TRIGGER_FALLING } // exti15_10_isr()
 
 
 
