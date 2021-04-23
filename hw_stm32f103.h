@@ -1296,12 +1296,23 @@ INLINE void hw_exti_init(struct hw_exti c) {
     //nvic_set_priority(c.irq, 1);
     nvic_enable_irq(c.irq);
 }
+INLINE void hw_exti_enable_request(struct hw_exti c) {
+    uint32_t exti = 1 << c.pin;
+    EXTI_IMR |= exti; // Interrupt Mask Register
+    EXTI_EMR |= exti; // Event Mask Register
+}
+INLINE void hw_exti_disable_request(struct hw_exti c) {
+    uint32_t exti = 1 << c.pin;
+    EXTI_IMR &= ~exti;  // Interrupt Mask Register
+    EXTI_EMR &= ~exti;  // Event Mask Register
+}
+
 INLINE void hw_exti_arm(struct hw_exti c) {
     uint32_t exti = 1 << c.pin;
     exti_select_source(exti, c.gpio);
     exti_set_trigger(exti, c.trigger);
     // hw_gpio_config(c.gpio, c.pin, HW_GPIO_CONFIG_INPUT); // FIXME: do this manually
-    exti_enable_request(exti);
+    hw_exti_enable_request(c);
 }
 INLINE void hw_exti_ack(struct hw_exti c) {
     /// Inline the functions below.  Use bitbanding for rmw, normal write otherwise.
