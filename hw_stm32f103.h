@@ -132,6 +132,16 @@ INLINE void hw_gpio_write_v2(uint32_t gpio, uint32_t pin, uint32_t val) {
     pin += 16 * (!val);
     GPIO_BSRR(gpio) = 1 << pin;
 }
+/* Write 1 to the address to set/reset the pin.  These are convenient
+   from ISR for fast response, requiring only three instructions:
+   pc-relative bitband address load, literal 1 register load, and
+   store to the bitband address. */
+INLINE volatile uint32_t *hw_gpio_high_bitband(uint32_t gpio, uint32_t pin) {
+    return hw_bitband((void*)&GPIO_BSRR(gpio), pin);
+}
+INLINE volatile uint32_t *hw_gpio_low_bitband(uint32_t gpio, uint32_t pin) {
+    return hw_bitband((void*)&GPIO_BRR(gpio), pin);
+}
 
 
 /* Timers */
