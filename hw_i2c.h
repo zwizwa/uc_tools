@@ -16,6 +16,8 @@
 
 #include "slice.h"
 
+#include <string.h>
+
 /* Note that there are two versions of the i2c header. The file for
    STM32F1 is libopencm3/stm32/f1/i2c.h which includes
    libopencm3/stm32/common/i2c_common_v1.h
