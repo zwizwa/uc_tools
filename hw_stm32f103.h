@@ -306,10 +306,12 @@ INLINE void hw_delay_trigger_fixed(struct hw_delay c) {
     hw_delay_arm_fixed(c);
     hw_delay_trigger(c);
 }
-
 INLINE void hw_delay_ack(struct hw_delay c) {
     hw_tim_disable_counter(c.tim);
     TIM_SR(c.tim) &= ~TIM_SR_UIF; /* Clear interrrupt flag. */
+}
+INLINE void hw_delay_disable_counter(struct hw_delay c) {
+    hw_tim_disable_counter(c.tim);
 }
 INLINE void hw_delay_disable_interrupt(struct hw_delay c) {
     timer_disable_irq(c.tim, TIM_DIER_UIE);
