@@ -203,7 +203,7 @@ end
 -- case, we can just catch wraps here.
 
 function logsvg.read_log(filename, sync_re)
-   sync_re = sync_re or "ping (.-)"
+   sync_re = sync_re or "^ping (.-)"
    local str = read_file(filename)
    local lines = {}
    local last = nil
@@ -216,6 +216,7 @@ function logsvg.read_log(filename, sync_re)
       local n = tonumber(stamp,16)
       if not last then
          if string.match(logline, sync_re) then
+            log("sync:" .. stamp .. ":" .. filename .. "\n")
             last  = n
             first = n
          end
