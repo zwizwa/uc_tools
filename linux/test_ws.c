@@ -14,11 +14,12 @@
 
 */
 
-//#define MMAP_FILE_LOG LOG
-#include "mod_test_minmax.c"
+/* The viewmodel only does framing and is oblivious to the base data
+   format.  It assumes the minmax prefix is used. */
+#include "mod_minmax_i16.c"
+#include "mod_minmax_viewmodel.c"
 #include "mod_webserver.c"
 #include "mod_websocket_leb128s.c"
-
 
 // ws = new WebSocket("ws://10.1.3.29:3456");
 // see test_websocket_timeseries.sh

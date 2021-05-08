@@ -1,6 +1,6 @@
 #!/bin/bash
 if [ "$1" != "start" ]; then
-    echo "FIXME: Non-daemon mode is not implemented for $0" && exit 0
+    echo "FIXME: Non-daemon mode is not implemented for $0.  Use \"$0 start\" instead." && exit 0
 fi
 
 

@@ -1,8 +1,32 @@
-#ifndef MOD_TEST_MINMAX
-#define MOD_TEST_MINMAX
+#ifndef MOD_MINMAX_VIEWMODEL
+#define MOD_MINMAX_VIEWMODEL
+
+/* Viewmodel for minmax wave viewer using tag_u32 protocol.
+
+   This is originally written for a remote display, more specifically
+   a DOM/SVG based viewer written in JavaScript, communicating via
+   LEB128/TAG_U32 over webscoket.
+
+   This module provides:
+   - Cursor tracking (such that the view doesn't need this state)
+   - MinMax (mipmap) data retrieval.
+
+*/
+
 
 /* Example that connects mod_minmax.c to a tag_u32 handler. */
-#include "mod_minmax.c"
+
+/* The default is the i16 minmax module.  User can override.
+   Note that we are oblivious to the base type. */
+#ifndef MOD_MINMAX
+#include "mod_minmax_i16.c"
+// #include "mod_minmax_8x1.c"
+#endif
+
+#ifndef MOD_MINMAX_FILE
+#define MOD_MINMAX_FILE "mod_minmax.c"
+#endif
+
 #include "tag_u32.h"
 
 

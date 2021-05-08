@@ -1,6 +1,6 @@
 #define MMAP_FILE_LOG LOG
 
-#include "mod_minmax.c"
+#include "mod_minmax_i16.c"
 
 #include "mmap_file.h"
 #include "macros.h"

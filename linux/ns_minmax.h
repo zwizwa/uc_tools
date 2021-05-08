@@ -10,8 +10,6 @@
 #endif
 
 struct NS(_minmax) { NS(_t) min, max; };
-static inline NS(_t) NS(_max)(NS(_t) a, NS(_t) b) { return a > b ? a : b; }
-static inline NS(_t) NS(_min)(NS(_t) a, NS(_t) b) { return a < b ? a : b; }
 
 /* Computation of min/max multires tree.
 

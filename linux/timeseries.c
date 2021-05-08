@@ -7,7 +7,7 @@
 
 */
 
-#include "mod_minmax.c"
+#include "mod_minmax_i16.c"
 #include "mod_tag_u32_stream.c"
 #include "mod_send_tag_u32.c"
 
