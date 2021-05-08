@@ -24,9 +24,19 @@ import * as ws       from './ws.js'
 var check = tools.check;
 
 function path_set_d(path, arr, stride, offset) {
+    var win_h = path.env.background.getBoundingClientRect().height;
+    var scale = win_h / 0x10000;
+    var mid   = win_h / 2;
+
     var prev_y, path_d;
     for (var i=offset; i<arr.length; i+=stride) {
-        var y = arr[i];
+        /* Scaling is done at this end.  The MinMax code that gets the
+           time slice doesn't actually know how to interpret the data.
+           This is kept abstract so the same code can be used to
+           process multichannel signals. */
+        var val = arr[i];
+        var y = mid - (val * scale);
+
         if (prev_y == null) {
             prev_y = y;
             path_d = 'M0.5,' + y;
@@ -77,7 +87,7 @@ function handle(msg) {
             }
         })
 }
-function rel_coords(ev) {
+function ev_rel_coords(ev) {
     // console.log(ev);
     var br = ev.target.env.background.getBoundingClientRect();
     // console.log(br);
@@ -87,12 +97,12 @@ function rel_coords(ev) {
 
 var mouse_listeners = {
     wheel: function(ev) {
-        var win = rel_coords(ev);
+        var win = ev_rel_coords(ev);
         var level_inc = ev.deltaY > 0 ? 1 : -1;
         var msg = 
             new protocol.Message(
                 [0], // FIXME: we need to know our own address
-                [0, 0, win.w, win.h, win.x, level_inc]);
+                [0, 0, win.w, win.x, level_inc]);
         ws.send(msg);
         //console.log(msg);
     },
@@ -103,12 +113,12 @@ var mouse_listeners = {
 
     mousedown: function(ev) {
         if (ev.buttons & 1) { // left button
-            var win = rel_coords(ev);
+            var win = ev_rel_coords(ev);
             var level_inc = win.y > (win.h/2) ? 1 : -1;
             var msg = 
                 new protocol.Message(
                     [0], // FIXME: we need to know our own address
-                    [0, 0, win.w, win.h, win.x, level_inc]);
+                    [0, 0, win.w, win.x, level_inc]);
             ws.send(msg);
         }
         //console.log(ev.buttons);

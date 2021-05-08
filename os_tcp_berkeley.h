@@ -47,7 +47,7 @@ static os_error_t os_tcp_write(struct blocking_io *io, const uint8_t *buf, uintp
     return OS_OK;
 }
 static os_error_t os_tcp_server_init(struct os_tcp_server *s, uint16_t port) {
-    s->fd = assert_tcp_listen(3456);
+    s->fd = assert_tcp_listen(port);
     return OS_OK;
 }
 static inline os_error_t os_tcp_accept(struct os_tcp_server *serv,

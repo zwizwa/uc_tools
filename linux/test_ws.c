@@ -14,6 +14,8 @@
 
 */
 
+#define MINMAX_EXCLUSIVE()
+
 /* The viewmodel only does framing and is oblivious to the base data
    format.  It assumes the minmax prefix is used. */
 #include "mod_minmax_i16.c"

@@ -1,8 +1,4 @@
 #include "macros.h"
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <sys/mman.h>
 
 static inline const void *assert_mmap_rdonly(
     const char *filename, off_t offset, off_t *psize) {

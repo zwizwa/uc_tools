@@ -13,14 +13,7 @@
 
 /*  Only LOG is custom atm.  */
 #ifdef __linux__
-#include <pthread.h>
-#include <sys/types.h>
-#include <signal.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <unistd.h>
-#include <string.h>
+#include "os_linux.h"
 #ifndef LOG
 #define LOG(...) fprintf(stderr, __VA_ARGS__)
 #endif
@@ -178,6 +171,15 @@ static inline void abort_busyloop(void) {
 
 // I'm allowed.  I've typed this enough now.
 #define ZERO(ptr) memset(ptr, 0, sizeof(*ptr))
+
+
+/* Use for(;;) to run a block of code in a context that is set up /
+   torn down by pre and post statements.  E.g.
+   #define WITH_LOCK(l) WITH_PRE_POST(lock(l),unlock(l))
+   WITH_LOCK(&my_lock) { my_critical_section_code(); }
+*/
+#define WITH_PRE_POST(env,pre,post) \
+    for (int _just_once = ({pre(env); 0;}); _just_once<1; ({post(env); _just_once++;}))
 
 
 #endif

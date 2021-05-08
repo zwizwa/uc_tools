@@ -2,14 +2,8 @@
 #define MMAP_FILE
 
 /* A sane interface for memory-mapped read/write files: growable arrays. */
-
-#define _XOPEN_SOURCE 500 // for ftruncate()
-#define _GNU_SOURCE // for mremap()
 #include "assert_mmap.h"
 #include "assert_write.h"
-#include <stdint.h>
-#include <unistd.h>
-#include <sys/types.h>
 
 
 struct mmap_file {
@@ -50,13 +44,7 @@ static inline off_t mmap_file_grow__(struct mmap_file *ref, off_t size) {
 
         off_t old_size = ref->size;
         MMAP_FILE_LOG("growing: %d -> %d\n", old_size, size);
-#if 0
-        ASSERT_ERRNO(lseek(ref->fd, size-1, SEEK_SET));
-        uint8_t byte = 0;
-        assert_write(ref->fd, &byte, 1);
-#else
         ftruncate(ref->fd, size);
-#endif
         ref->size = size;
         return old_size;
     }
@@ -101,13 +89,29 @@ static inline const void *mmap_file_open_ro(struct mmap_file *ref,
     memset(ref,0,sizeof(*ref));
 
     /* Open the file for read-write, create if necessary. */
-    MMAP_FILE_LOG("opening %s\n", file);
+    MMAP_FILE_LOG("opening %s (ro)\n", file);
     ASSERT_ERRNO(ref->fd = open(file, O_RDONLY, 0664));
     ASSERT_ERRNO(ref->size = lseek(ref->fd, 0, SEEK_END));
 
     ref->buf = mmap(NULL, ref->size, PROT_READ, MAP_SHARED, ref->fd, 0);
     ASSERT(MAP_FAILED != ref->buf);
     return ref->buf;
+}
+
+static inline const void *mmap_file_open_rw(struct mmap_file *ref,
+                                            const char *file,
+                                            uintptr_t nb_bytes) {
+    memset(ref,0,sizeof(*ref));
+
+    /* Open the file for read-write, create if necessary. */
+    MMAP_FILE_LOG("opening %s (rw)\n", file);
+    ASSERT_ERRNO(ref->fd = open(file, O_RDWR | O_CREAT, 0664));
+    ref->size = nb_bytes;
+    ftruncate(ref->fd, nb_bytes);
+    ref->buf = mmap(NULL, ref->size, PROT_READ | PROT_WRITE, MAP_SHARED, ref->fd, 0);
+    ref->size = nb_bytes;
+    ASSERT(MAP_FAILED != ref->buf);
+    return mmap_file_reserve(ref, nb_bytes);
 }
 
 #endif

@@ -12,7 +12,7 @@
 // FIXME: la_uart does not check the 2nd stop bit.  For now that is probably ok.
 #define BIT_STOP    8
 
-// These should be confiugrable
+// These should be configurable
 #define UART_DIV   8   // 2MHz sample rate / 250kBaud UART
 #define SAMPLE_MHZ 2
 

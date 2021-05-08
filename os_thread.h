@@ -41,7 +41,11 @@ static inline void os_mutex_unlock(mutex_t *m) {
 
 // Posix
 #else
-#include <pthread.h>
+#include "os_linux.h"
+
+typedef pthread_mutex_t os_mutex_t;
+static inline void os_mutex_lock(os_mutex_t *m)   { pthread_mutex_lock(m); }
+static inline void os_mutex_unlock(os_mutex_t *m) { pthread_mutex_unlock(m); }
 
 // Emulate static threads
 #define OS_THREAD_STACK(name, nb) \

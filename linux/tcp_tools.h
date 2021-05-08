@@ -17,6 +17,7 @@ static inline void assert_gethostbyname(struct sockaddr_in *address_in, const ch
 }
 
 static inline int assert_tcp_listen(int port) {
+    LOG("listening on 0.0.0.0:%d\n", port);
     int sockfd = 0;
     ASSERT(port > 0);
     ASSERT(port < 0x10000);
@@ -32,7 +33,6 @@ static inline int assert_tcp_listen(int port) {
     ASSERT_ERRNO(bind(sockfd, (struct sockaddr *) &address_in, addrlen));
     int backlog = 5;
     ASSERT_ERRNO(listen(sockfd, backlog));
-    //LOG("listening on 0.0.0.0:%d\n", port);
     return sockfd;
 }
 
