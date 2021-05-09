@@ -29,6 +29,7 @@ const check = tools.check;
    kept abstract so the same code can be used to process multichannel
    signals.  We do specialize numeric and logic drawing. */
 var path_update = {
+    /* Signed 16 bit integer display */
     int16_le: function(path, arr, chan_nb, chan_path /* 0=min, 1=max */) {
         const offset = chan_path + 2 * chan_nb;
         const env    = check(path.env);
@@ -54,7 +55,35 @@ var path_update = {
             }
         }
         path.setAttribute('d',path_d);
+    },
+    /* Bit channel display. */
+    uint8: function(path, arr, chan_nb, chan_path /* 0=min, 1=max */) {
+        const env     = check(path.env);
+        const config  = check(env.config);
+        const stride  = 1;
+        const height  = env.background.getBoundingClientRect().height;
+        const chan_h  = height / config.nb_channels;
+        const mid     = (chan_h / 2) + (chan_nb * chan_h);
+        const y0      = mid + (chan_h/3)
+        const y1      = mid - (chan_h/3)
+
+        let prev_y, path_d;
+        for (let i=chan_path; i<arr.length; i+=stride) {
+            const bit = (arr[i] >> chan_nb) & 1;
+            const y = bit ? y1 : y0;
+
+            if (prev_y == null) {
+                prev_y = y;
+                path_d = 'M0.5,' + y;
+            }
+            else {
+                path_d += 'l1,' + (y - prev_y);
+                prev_y = y;
+            }
+        }
+        path.setAttribute('d',path_d);
     }
+
 }
 
 const selectors = ["#min","#max"]

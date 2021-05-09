@@ -197,7 +197,7 @@ class Message {
         return a;
     }
     uint8() {
-        var a = new UInt8Array(this.bin);
+        var a = new Uint8Array(this.bin);
         // console.log(a);
         return a;
     }

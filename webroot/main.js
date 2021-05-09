@@ -16,10 +16,18 @@ function set_cell(element) {
     cell.innerHTML=""
     cell.appendChild(element)
 }
+function zeros(nb) {
+    // FIXME: This needs to parse the Arraybuffer instead.
+    var arr = []
+    for (var i=0; i<nb; i++) {
+        arr.push(0);
+    }
+    return arr
+}
 // This is linked to the main button.
 function test1() {
     view.wave({
-        nb_channels: 2,
+        nb_channels: 1,
         // how to decode binary message into array
         arr_type: "int16_le",
         // for this type, the binary payload contains min, max samples
@@ -27,14 +35,7 @@ function test1() {
     }).then(el => {
         set_cell(el)
         var msg = new protocol.Message([123],[0,0])
-        msg.int16_le = function() {
-            // FIXME: This needs to parse the Arraybuffer instead.
-            var arr = []
-            for (var i=0; i<800; i++) {
-                arr.push(100+100*Math.sin(i/30));
-            }
-            return arr
-        }
+        msg.int16_le = function() { return zeros(800); }
         el.handle(msg)
     });
 }
@@ -48,14 +49,7 @@ function test2() {
     }).then(el => {
         set_cell(el)
         var msg = new protocol.Message([123],[0,0])
-        msg.int16_le = function() {
-            // FIXME: This needs to parse the Arraybuffer instead.
-            var arr = []
-            for (var i=0; i<800; i++) {
-                arr.push(100+100*Math.sin(i/30));
-            }
-            return arr
-        }
+        msg.int16_le = function() { return zeros(800); }
         el.handle(msg)
     });
 }
