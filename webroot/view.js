@@ -6,12 +6,12 @@
 // templates share the same behavior, which seems more appropriate
 // than the other way around.
 
-function fetch_view(file, id) {
+function fetch_view(file, id, config) {
     return fetch_element(file)
         .then(el => {
             el.setAttribute("id", id)
             var module = el.getAttribute("module")
-            return import('./' + module).then(m => m.init(el))
+            return import('./' + module).then(m => m.init(el, config))
         })
 }
 
@@ -32,8 +32,8 @@ function render(html) {
 }
 
 // Widget instantiation
-function wave() {
-    return fetch_view('wave.svg', 'wave')
+function wave(config) {
+    return fetch_view('wave.svg', 'wave', config)
 }
 
 

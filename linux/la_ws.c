@@ -41,7 +41,7 @@ int la_loop(void) {
     uintptr_t slice_nb= 0;
     for(;;) {
         LOG("\r%03d", slice_nb);
-        uint8_t *buf = circ_buf + SLICE_SIZE * slice_nb;
+        uint8_t *buf = circ_buf + MINMAX_SLICE_SIZE * slice_nb;
         /* Note that we are writing straight into the buffer without
            locking.  If gui requests level 0 data it might get new or
            old. We can't just put the read in a critical section
@@ -49,7 +49,7 @@ int la_loop(void) {
            However, only the data changes, and none of the indexing,
            so the worst that can happen is display glitches.  Deal
            with it later. */
-        assert_read_fixed(0, buf, SLICE_SIZE);
+        assert_read_fixed(0, buf, MINMAX_SLICE_SIZE);
         minmax_update_slice(&map, slice_nb);
         slice_nb = (slice_nb + 1) % NB_SLICES;
     }

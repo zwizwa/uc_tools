@@ -4,21 +4,26 @@
      width="800"
      height="200"
      pointer-events="all">
-  <rect id="background"
-        pointer-events="all"
-        width="800"
-        height="200"
-        stroke="white"
-        fill="grey"/>
-  <path id="max"
-        vector-effect="non-scaling-stroke"
-        fill="none"
-        stroke="black"
-        d=""/>
-  <path id="min"
-        vector-effect="non-scaling-stroke"
-        fill="none"
-        stroke="black"
-        d=""/>
+  <g>
+    <rect id="background"
+          pointer-events="all"
+          width="800"
+          height="200"
+          stroke="white"
+          fill="grey"/>
+    <!-- outline is cloned for multiple channels in init() -->
+    <g id="outline0"> 
+      <path id="max"
+            vector-effect="non-scaling-stroke"
+            fill="none"
+            stroke="black"
+            d=""/>
+      <path id="min"
+            vector-effect="non-scaling-stroke"
+            fill="none"
+            stroke="black"
+            d=""/>
+    </g>
+  </g>
 </svg>
    

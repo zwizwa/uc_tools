@@ -21,14 +21,17 @@ struct NS(_minmax) { NS(_t) min, max; };
    - Stick to int16_t as data type.
 */
 
-#define LEVEL_ENDI 20 // 1M is a nice round number
-#define LEVEL_ENDX (LEVEL_ENDI+1)
+#ifndef MINMAX_LEVEL_ENDI
+#define MINMAX_LEVEL_ENDI 20 // 1M is a nice round number
+#endif
+
+#define MINMAX_LEVEL_ENDX (MINMAX_LEVEL_ENDI+1)
 
 /* A slice is the smallest unit that can accomodate a full
    decomposition, such that the size at coarsest level is 1. */
-#define SLICE_SIZE (1<<LEVEL_ENDI)
+#define MINMAX_SLICE_SIZE (1<<MINMAX_LEVEL_ENDI)
 
-/* Spell it out for LEVEL_ENDI=3
+/* Spell it out for MINMAX_LEVEL_ENDI=3
 
    0 8  (1<<3)
    1 4  (1<<2)
@@ -45,7 +48,7 @@ struct NS(_map) {
     /* Original file is mapped at 0.
        The min/max levels are mapped starting at 1.
        This keeps the nb_at_level invariant. */
-    struct mmap_file level[LEVEL_ENDX];
+    struct mmap_file level[MINMAX_LEVEL_ENDX];
 };
 
 static inline NS(_t)* NS(_original)(struct NS(_map) *s) {
@@ -53,7 +56,7 @@ static inline NS(_t)* NS(_original)(struct NS(_map) *s) {
 }
 static inline struct NS(_minmax)* NS(_level)(struct NS(_map) *s, uintptr_t level) {
     ASSERT(level > 0);
-    ASSERT(level < LEVEL_ENDX);
+    ASSERT(level < MINMAX_LEVEL_ENDX);
     return s->level[level].buf;
 }
 /* Always get the array bounds right to make refactoring simpler.
@@ -91,7 +94,7 @@ static inline intptr_t NS(_open_levels)(struct NS(_map) *s,
     snprintf(tmp, sizeof(tmp), "mkdir -p '%s.d'\n", file);
     system(tmp);
 
-    for (int level=s->level_start; level<LEVEL_ENDX; level++) {
+    for (int level=s->level_start; level<MINMAX_LEVEL_ENDX; level++) {
 
         snprintf(tmp, sizeof(tmp), "%s.d/%02d.minmax", file, level);
 
@@ -124,7 +127,7 @@ static inline intptr_t NS(_open)(struct NS(_map) *s,
                                  const char *file,
                                  uintptr_t level_start) {
     ASSERT(level_start > 1);
-    ASSERT(level_start < LEVEL_ENDX);
+    ASSERT(level_start < MINMAX_LEVEL_ENDX);
     memset(s,0,sizeof(*s));
     s->level_start = level_start;
     mmap_file_open_ro(&s->level[0], file);
@@ -136,22 +139,22 @@ static inline intptr_t NS(_open_buf)(struct NS(_map) *s,
                                      uintptr_t level_start,
                                      uintptr_t nb_slices) {
     ASSERT(level_start > 1);
-    ASSERT(level_start < LEVEL_ENDX);
+    ASSERT(level_start < MINMAX_LEVEL_ENDX);
     memset(s,0,sizeof(*s));
     s->level_start = level_start;
-    mmap_file_open_rw(&s->level[0], file, nb_slices * SLICE_SIZE * sizeof(NS(_t)));
+    mmap_file_open_rw(&s->level[0], file, nb_slices * MINMAX_SLICE_SIZE * sizeof(NS(_t)));
     return NS(_open_levels)(s, file);
 }
 
 static inline intptr_t NS(_update_slice)(struct NS(_map) *s,
                                          uintptr_t slice_nb) {
 
-    uintptr_t offset = slice_nb * SLICE_SIZE;
+    uintptr_t offset = slice_nb * MINMAX_SLICE_SIZE;
 
-    for (int level=s->level_start; level<LEVEL_ENDX; level++) {
+    for (int level=s->level_start; level<MINMAX_LEVEL_ENDX; level++) {
 
         uintptr_t offset_at_level = offset >> level;
-        off_t nb_at_level = SLICE_SIZE >> level;
+        off_t nb_at_level = MINMAX_SLICE_SIZE >> level;
 
         struct NS(_minmax) *mm = NS(_level)(s, level) + offset_at_level;
 
@@ -214,7 +217,7 @@ int16_t NS(_cursor_zoom)(
     {
         int16_t next_level = c->level + level_inc;
         if (next_level < 0) next_level = 0;
-        if (next_level >= LEVEL_ENDX) next_level = LEVEL_ENDX-1;
+        if (next_level >= MINMAX_LEVEL_ENDX) next_level = MINMAX_LEVEL_ENDX-1;
         c->level = next_level;
     }
 

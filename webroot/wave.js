@@ -23,30 +23,35 @@ import * as ws       from './ws.js'
 // Catch null and undefined early.
 var check = tools.check;
 
-function path_set_d(path, arr, stride, offset) {
-    var win_h = path.env.background.getBoundingClientRect().height;
-    var scale = win_h / 0x10000;
-    var mid   = win_h / 2;
 
-    var prev_y, path_d;
-    for (var i=offset; i<arr.length; i+=stride) {
-        /* Scaling is done at this end.  The MinMax code that gets the
-           time slice doesn't actually know how to interpret the data.
-           This is kept abstract so the same code can be used to
-           process multichannel signals. */
-        var val = arr[i];
-        var y = mid - (val * scale);
+/* Scaling is done at this end.  The MinMax code that gets the time
+   slice doesn't actually know how to interpret the data.  This is
+   kept abstract so the same code can be used to process multichannel
+   signals.  We do specialize numeric and logic drawing. */
+var path_update = {
+    int16_le: function(path, arr, config, path_nb, path_name) {
+        var offset = check(config.offset[path_name])
+        var stride = config.stride;
+        var win_h = path.env.background.getBoundingClientRect().height;
+        var scale = win_h / 0x10000;
+        var mid   = win_h / 2;
 
-        if (prev_y == null) {
-            prev_y = y;
-            path_d = 'M0.5,' + y;
+        var prev_y, path_d;
+        for (var i=offset; i<arr.length; i+=stride) {
+            var val = arr[i];
+            var y = mid - (val * scale);
+
+            if (prev_y == null) {
+                prev_y = y;
+                path_d = 'M0.5,' + y;
+            }
+            else {
+                path_d += 'l1,' + (y - prev_y);
+                prev_y = y;
+            }
         }
-        else {
-            path_d += 'l1,' + (y - prev_y);
-            prev_y = y;
-        }
+        path.setAttribute('d',path_d);
     }
-    path.setAttribute('d',path_d);
 }
 
 const selectors = ["#min","#max"]
@@ -59,12 +64,22 @@ function path_handle(el, msg) {
             // payload.
             // console.log('status',status);
 
-            // The binary payload contains interleaved min, max values
-            // as uint16_t little endian.
-            var arr  = msg.int16_le();
-
-            path_set_d(check(el.querySelector("#min")), arr, 2, 0)
-            path_set_d(check(el.querySelector("#max")), arr, 2, 1)
+            // The binary payload can be interleaved min, max values
+            // as uint16_t little endian (arr_type == "int16_le"), or
+            // 8 bit logic array.
+            var config = check(el.env.config);
+            var arr_type = check(config.arr_type);
+            // Interpret the binary array.
+            var arr = msg[arr_type]();
+            var update = path_update[arr_type];
+            for (var path_nb = 0; path_nb < check(config.nb_channels); path_nb++) {
+                tools.each(
+                    ["min","max"],
+                    path_name => {
+                        var path_el = check(el.querySelector("#" + path_name))
+                        update(path_el, arr, config, path_nb, path_name)
+                    });
+            }
 
             // The convention is that we need to reply if the return
             // path is not empty.  We do expect it to be empty because
@@ -137,13 +152,20 @@ function add_listeners(el, listeners) {
         el.addEventListener(key, listeners[key])
     }
 }
-function init(el, env) {
-    el.env = env
-    el.handle = handle
-    console.log("wave.js init")
+function init(el, config) {
+    // We are called from a module="wave.js" reference in the svg.
+    // el is the SVG
+    console.log("wave.js init");
+    console.log(el);
+    // The tag_u32 message handler.
+    el.handle = handle;
+    // JavaScript events are sent to specific nodes.  We tag them all
+    // with the context they need to perform event handling.
     var env = {
+        config: config,
         background: check(el.querySelector("#background"))
     };
+    el.env = env
     tools.each(
         // Events go to path elements or the background rect.
         ["#background","#min","#max"],
@@ -151,7 +173,15 @@ function init(el, env) {
             var el1 = check(el.querySelector(sel))
             el1.env = env;
             add_listeners(el1, mouse_listeners);
-        })
+        });
+
+    // SVG contains only one outline.  Add more if needed.
+    var outline0 = el.querySelector("#outline0");
+    for (var c=1; c<config.nb_channels; c++) {
+        var outline = outline0.cloneNode(true); //deep
+        outline.setAttribute("id", "outline" + c);
+        el.appendChild(outline);
+    }
     return el; // chaining...
 }
 
