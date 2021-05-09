@@ -196,6 +196,11 @@ class Message {
         // console.log(a);
         return a;
     }
+    uint8() {
+        var a = new UInt8Array(this.bin);
+        // console.log(a);
+        return a;
+    }
 }
 
 // Apply a protocol message to a function, consuming the top address

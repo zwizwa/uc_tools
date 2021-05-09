@@ -9,6 +9,8 @@
 #define MINMAX_LOG(...)
 #endif
 
+/* Order is important.  This is an overlay for flat arrays where
+   offset 0=min, 1=max. */
 struct NS(_minmax) { NS(_t) min, max; };
 
 /* Computation of min/max multires tree.

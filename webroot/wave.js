@@ -21,7 +21,7 @@ import * as event    from './event.js'
 import * as ws       from './ws.js'
 
 // Catch null and undefined early.
-var check = tools.check;
+const check = tools.check;
 
 
 /* Scaling is done at this end.  The MinMax code that gets the time
@@ -29,17 +29,19 @@ var check = tools.check;
    kept abstract so the same code can be used to process multichannel
    signals.  We do specialize numeric and logic drawing. */
 var path_update = {
-    int16_le: function(path, arr, config, path_nb, path_name) {
-        var offset = check(config.offset[path_name])
-        var stride = config.stride;
-        var win_h = path.env.background.getBoundingClientRect().height;
-        var scale = win_h / 0x10000;
-        var mid   = win_h / 2;
+    int16_le: function(path, arr, path_nb, path_curve_nb /* 0=min, 1=max */) {
+        const offset = path_curve_nb + 2 * path_nb
+        const env    = check(path.env)
+        const config = check(env.config)
+        const stride = check(config.nb_channels) * 2;
+        const height = env.background.getBoundingClientRect().height;
+        const scale  = height / 0x10000;
+        const mid    = height / 2;
 
-        var prev_y, path_d;
-        for (var i=offset; i<arr.length; i+=stride) {
-            var val = arr[i];
-            var y = mid - (val * scale);
+        let prev_y, path_d;
+        for (let i=offset; i<arr.length; i+=stride) {
+            const val = arr[i];
+            const y = mid - (val * scale);
 
             if (prev_y == null) {
                 prev_y = y;
@@ -67,17 +69,19 @@ function path_handle(el, msg) {
             // The binary payload can be interleaved min, max values
             // as uint16_t little endian (arr_type == "int16_le"), or
             // 8 bit logic array.
-            var config = check(el.env.config);
-            var arr_type = check(config.arr_type);
+            const config = check(el.env.config);
+            const arr_type = check(config.arr_type);
             // Interpret the binary array.
-            var arr = msg[arr_type]();
-            var update = path_update[arr_type];
-            for (var path_nb = 0; path_nb < check(config.nb_channels); path_nb++) {
+            const arr = msg[arr_type]();
+            const update = path_update[arr_type];
+            for (let path_nb = 0; path_nb < check(config.nb_channels); path_nb++) {
                 tools.each(
-                    ["min","max"],
-                    path_name => {
-                        var path_el = check(el.querySelector("#" + path_name))
-                        update(path_el, arr, config, path_nb, path_name)
+                    // path_curve: 0=min, 1=max.
+                    // numbers are more convenient for computing offsets.
+                    [0,1],
+                    path_curve => {
+                        const path_el = check(el.querySelector(selectors[path_curve]))
+                        update(path_el, arr, path_nb, path_curve)
                     });
             }
 
@@ -104,7 +108,7 @@ function handle(msg) {
 }
 function ev_rel_coords(ev) {
     // console.log(ev);
-    var br = ev.target.env.background.getBoundingClientRect();
+    const br = ev.target.env.background.getBoundingClientRect();
     // console.log(br);
     return {x: ev.clientX - br.left, w: br.width,
             y: ev.clientY - br.top,  h: br.height}
@@ -112,9 +116,9 @@ function ev_rel_coords(ev) {
 
 var mouse_listeners = {
     wheel: function(ev) {
-        var win = ev_rel_coords(ev);
-        var level_inc = ev.deltaY > 0 ? 1 : -1;
-        var msg = 
+        const win = ev_rel_coords(ev);
+        const level_inc = ev.deltaY > 0 ? 1 : -1;
+        const msg = 
             new protocol.Message(
                 [0], // FIXME: we need to know our own address
                 [0, 0, win.w, win.x, level_inc]);
@@ -128,9 +132,9 @@ var mouse_listeners = {
 
     mousedown: function(ev) {
         if (ev.buttons & 1) { // left button
-            var win = ev_rel_coords(ev);
-            var level_inc = win.y > (win.h/2) ? 1 : -1;
-            var msg = 
+            const win = ev_rel_coords(ev);
+            const level_inc = win.y > (win.h/2) ? 1 : -1;
+            const msg = 
                 new protocol.Message(
                     [0], // FIXME: we need to know our own address
                     [0, 0, win.w, win.x, level_inc]);
@@ -161,7 +165,7 @@ function init(el, config) {
     el.handle = handle;
     // JavaScript events are sent to specific nodes.  We tag them all
     // with the context they need to perform event handling.
-    var env = {
+    const env = {
         config: config,
         background: check(el.querySelector("#background"))
     };
@@ -170,15 +174,15 @@ function init(el, config) {
         // Events go to path elements or the background rect.
         ["#background","#min","#max"],
         sel => {
-            var el1 = check(el.querySelector(sel))
+            const el1 = check(el.querySelector(sel))
             el1.env = env;
             add_listeners(el1, mouse_listeners);
         });
 
     // SVG contains only one outline.  Add more if needed.
-    var outline0 = el.querySelector("#outline0");
-    for (var c=1; c<config.nb_channels; c++) {
-        var outline = outline0.cloneNode(true); //deep
+    const outline0 = el.querySelector("#outline0");
+    for (let c=1; c<config.nb_channels; c++) {
+        const outline = outline0.cloneNode(true); //deep
         outline.setAttribute("id", "outline" + c);
         el.appendChild(outline);
     }
