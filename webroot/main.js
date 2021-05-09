@@ -19,7 +19,7 @@ function set_cell(element) {
 // This is linked to the main button.
 function test1() {
     view.wave({
-        nb_channels: 1,
+        nb_channels: 2,
         // how to decode binary message into array
         arr_type: "int16_le",
         // for this type, the binary payload contains min, max samples

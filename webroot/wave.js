@@ -29,14 +29,15 @@ const check = tools.check;
    kept abstract so the same code can be used to process multichannel
    signals.  We do specialize numeric and logic drawing. */
 var path_update = {
-    int16_le: function(path, arr, path_nb, path_curve_nb /* 0=min, 1=max */) {
-        const offset = path_curve_nb + 2 * path_nb
-        const env    = check(path.env)
-        const config = check(env.config)
+    int16_le: function(path, arr, chan_nb, chan_path /* 0=min, 1=max */) {
+        const offset = chan_path + 2 * chan_nb;
+        const env    = check(path.env);
+        const config = check(env.config);
         const stride = check(config.nb_channels) * 2;
         const height = env.background.getBoundingClientRect().height;
-        const scale  = height / 0x10000;
-        const mid    = height / 2;
+        const chan_h = height / config.nb_channels;
+        const scale  = chan_h / 0x10000;
+        const mid    = (chan_h / 2) + (chan_nb * chan_h);
 
         let prev_y, path_d;
         for (let i=offset; i<arr.length; i+=stride) {
@@ -74,14 +75,15 @@ function path_handle(el, msg) {
             // Interpret the binary array.
             const arr = msg[arr_type]();
             const update = path_update[arr_type];
-            for (let path_nb = 0; path_nb < check(config.nb_channels); path_nb++) {
+            for (let chan_nb = 0; chan_nb < check(config.nb_channels); chan_nb++) {
+                const outline_el = check(el.querySelector("#outline" + chan_nb));
                 tools.each(
-                    // path_curve: 0=min, 1=max.
+                    // chan_path: 0=min, 1=max.
                     // numbers are more convenient for computing offsets.
                     [0,1],
-                    path_curve => {
-                        const path_el = check(el.querySelector(selectors[path_curve]))
-                        update(path_el, arr, path_nb, path_curve)
+                    chan_path => {
+                        const path_el = check(outline_el.querySelector(selectors[chan_path]));
+                        update(path_el, arr, chan_nb, chan_path);
                     });
             }
 
@@ -133,6 +135,8 @@ var mouse_listeners = {
     mousedown: function(ev) {
         if (ev.buttons & 1) { // left button
             const win = ev_rel_coords(ev);
+            // FIXME: do this differently when there are multiple
+            // channels.  or revise.  it's not very intuitive.
             const level_inc = win.y > (win.h/2) ? 1 : -1;
             const msg = 
                 new protocol.Message(
@@ -169,21 +173,26 @@ function init(el, config) {
         config: config,
         background: check(el.querySelector("#background"))
     };
-    el.env = env
-    tools.each(
-        // Events go to path elements or the background rect.
-        ["#background","#min","#max"],
-        sel => {
-            const el1 = check(el.querySelector(sel))
-            el1.env = env;
-            add_listeners(el1, mouse_listeners);
-        });
+    el.env = env;
+
+    // Wire it it.
+    function connect(el1) {
+        el1.env = env;
+        add_listeners(el1, mouse_listeners);
+    }
+    connect(env.background);
+    function connect_outline(outline) {
+        connect(check(outline.querySelector("#min")));
+        connect(check(outline.querySelector("#max")));
+    }
+    const outline0 = check(el.querySelector("#outline0"));
+    connect_outline(outline0);
 
     // SVG contains only one outline.  Add more if needed.
-    const outline0 = el.querySelector("#outline0");
     for (let c=1; c<config.nb_channels; c++) {
         const outline = outline0.cloneNode(true); //deep
         outline.setAttribute("id", "outline" + c);
+        connect_outline(outline);
         el.appendChild(outline);
     }
     return el; // chaining...
