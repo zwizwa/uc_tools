@@ -15,6 +15,12 @@ os_mutex_t minmax_lock;
 #define MINMAX_EXCLUSIVE() \
     WITH_PRE_POST(&minmax_lock, os_mutex_lock, os_mutex_unlock)
 
+/* Startup sequence:
+   - the elf generated from this file starts first
+   - it opens a TCP socket with a web server where browser can connect
+   - this serves WEBSERVER_INDEX_HTML as root document
+   - which starts la_ws.js to set up a web socket and basic ui. */
+#define WEBSERVER_INDEX_HTML "la_ws.html"
 
 //#define MMAP_FILE_LOG LOG
 #include "mod_minmax_8x1.c"
@@ -24,8 +30,9 @@ os_mutex_t minmax_lock;
 
 
 OS_THREAD_STACK(http_thread, 1024);
+uint16_t tcp_port = 0;
 OS_THREAD_MAIN(http_loop, ctx) {
-    webserver_loop(4567);
+    webserver_loop(tcp_port);
     return 0;
 }
 
@@ -34,7 +41,7 @@ OS_THREAD_MAIN(http_loop, ctx) {
    So once slice is half a second.
    30 seconds is probably enough. */
 
-#define NB_SLICES 60
+uintptr_t nb_slices;
 
 int la_loop(void) {
     uint8_t *circ_buf = map.level[0].buf;
@@ -51,7 +58,7 @@ int la_loop(void) {
            with it later. */
         assert_read_fixed(0, buf, MINMAX_SLICE_SIZE);
         minmax_update_slice(&map, slice_nb);
-        slice_nb = (slice_nb + 1) % NB_SLICES;
+        slice_nb = (slice_nb + 1) % nb_slices;
     }
     return 0;
 }
@@ -61,14 +68,16 @@ int la_loop(void) {
 // see test_websocket_timeseries.sh
 
 int main(int argc, char **argv) {
-    if (argc != 3) {
-        LOG("usage: %s <documentroot> <test.raw>\n", argv[0]);
+    if (argc != 5) {
+        LOG("usage: %s <documentroot> <buffer> <nb_slices> <tcp_port>\n", argv[0]);
         return 1;
     }
+
+    nb_slices = atoi(argv[3]);
+    tcp_port = atoi(argv[4]);
+    minmax_open_buf(&map, argv[2], 8, nb_slices);
+
     ASSERT_ERRNO(chdir(argv[1]));
-
-    minmax_open_buf(&map, argv[2], 8, NB_SLICES);
-
     OS_THREAD_START(http_thread, http_loop, NULL);
 
     return la_loop();

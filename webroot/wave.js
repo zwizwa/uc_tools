@@ -60,12 +60,12 @@ var path_update = {
     uint8: function(path, arr, chan_nb, chan_path /* 0=min, 1=max */) {
         const env     = check(path.env);
         const config  = check(env.config);
-        const stride  = 1;
+        const stride  = 2;
         const height  = env.background.getBoundingClientRect().height;
         const chan_h  = height / config.nb_channels;
         const mid     = (chan_h / 2) + (chan_nb * chan_h);
-        const y0      = mid + (chan_h/3)
-        const y1      = mid - (chan_h/3)
+        const y0      = mid + (chan_h/4)
+        const y1      = mid - (chan_h/4)
 
         let prev_y, path_d;
         for (let i=chan_path; i<arr.length; i+=stride) {

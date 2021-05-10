@@ -13,6 +13,13 @@
 #define WEBSERVER_FILE_NAME 64
 #endif
 
+/* This is the main configuration to start the web application.
+   The idea is to have many web apps share the same webroot (library),
+   but index.html determines how they start up. */
+#ifndef WEBSERVER_INDEX_HTML
+#define WEBSERVER_INDEX_HTML "index.html"
+#endif
+
 #include "os_file.h"
 #include "os_thread.h"
 #include "os_tcp.h"
@@ -154,7 +161,10 @@ void get_request(struct http_req *c, const char *uri) {
     s->filename[0] = 0;
     s->serve = (!strcmp(uri,"/ws")) ? serve_ws : serve_get;
     if (uri[0] == '/') uri++;
-    if (uri[0] == 0) { uri = "index.html"; }
+    if (uri[0] == 0) {
+        uri = WEBSERVER_INDEX_HTML;
+        LOG("-> %s\n", uri);
+    }
     else { if (!is_local(uri)) return; }
     int n = sizeof(s->filename);
     strncpy(s->filename, uri, n);

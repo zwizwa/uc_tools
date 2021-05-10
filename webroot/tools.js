@@ -17,5 +17,11 @@ function check(obj) {
     return obj;
 }
 
+function set_cell(id, element) {
+    let cell = document.getElementById(id)
+    cell.innerHTML=""
+    cell.appendChild(element)
+}
 
-export { each, check };
+
+export { each, check, set_cell };

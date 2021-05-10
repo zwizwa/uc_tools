@@ -37,14 +37,4 @@ function wave(config) {
 }
 
 
-// FIXME: Should this be here?
-// In index.html the main cell is defined, which is where the app will render.
-function set_cell(element) {
-    var cell = document.getElementById("cell")
-    cell.innerHTML=""
-    cell.appendChild(element)
-}
-
-
-
-export { wave, set_cell }
+export { wave }
