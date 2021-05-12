@@ -57,19 +57,27 @@ int32_t info_level_threshold = 0;
 int32_t info_level_current = 0;
 
 uint32_t info_overflow_errors = 0;
-KEEP int info_putchar_inner(int c) {
+
+KEEP int info_write(uint8_t *buf, uintptr_t size) {
+    for(uintptr_t i=0; i<size; i++) {
+        uint8_t c = buf[i];
+        uint32_t room = INFO_SIZE - (info_buf.hdr.write_next - info_buf.hdr.read_next);
+        if (room == 0) return 0;  // drop character and don't overflow the buffer
+        if (room == 1) c = '?';   // when almost full, write some kind of indicator
+        if (room <= 1) info_overflow_errors++;
+        uint32_t offset = (info_buf.hdr.write_next++) & INFO_MASK;
+        info_buf.buf[offset] = c;
+    }
+    return 0;
+}
+
+KEEP int info_putchar_raw(int c) {
 #if 0 // A quick way to turn off logging
     return 0;
 #else
     if (info_level_threshold > info_level_current) return 0;
-
-    uint32_t room = INFO_SIZE - (info_buf.hdr.write_next - info_buf.hdr.read_next);
-    if (room == 0) return 0;  // drop character and don't overflow the buffer
-    if (room == 1) c = '?';   // when almost full, write some kind of indicator
-    if (room <= 1) info_overflow_errors++;
-    uint32_t offset = (info_buf.hdr.write_next++) & INFO_MASK;
-    info_buf.buf[offset] = c;
-    return 0;
+    uint8_t buf = c;
+    return info_write(&buf, 1);
 #endif
 }
 
@@ -80,11 +88,11 @@ void (*info_newline_hook)(int (*putchar)(int c));
 int info_putchar(int c) {
     if (info_last_was_newline) {
         if (info_newline_hook) {
-            info_newline_hook(info_putchar_inner);
+            info_newline_hook(info_putchar_raw);
         }
     }
     info_last_was_newline = (c == '\n');
-    return info_putchar_inner(c);
+    return info_putchar_raw(c);
 }
 
 /* This is counterproductive: when overflow happens, it is usually due
