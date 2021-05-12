@@ -43,9 +43,9 @@ static inline int is_digit(int d) {
 
 /* The escape character is abstracted here to allow the valid C
    identifier character '_' to be used by tracef. */
-int vinfof_with_escape(char escape, const char *fmt, va_list ap) {
+int vinfof(const char *fmt, va_list ap) {
     while (*fmt) {
-        if (*fmt == escape) {
+        if (*fmt == '%') {
             fmt++;
             /* Ignore '0'; always print leading zeros for %x, by default: %08x.
                For %d all numeric arguments are ignored. */
@@ -62,10 +62,8 @@ int vinfof_with_escape(char escape, const char *fmt, va_list ap) {
             case 'c': fmt++; info_putchar(va_arg(ap, int));      break;
             /* Nonstandard: raw binary strings as hex. */
             case 'b': fmt++; info_hex_u8(va_arg(ap, uint8_t*), nb_digits); break;
-            /* To print spaces with vtracef. */
-            case '_': fmt++; info_putchar(' ');                  break;
             default:
-                info_putchar(escape);
+                info_putchar('%');
                 info_putchar(*fmt);
                 fmt++;
                 break;
@@ -78,11 +76,12 @@ int vinfof_with_escape(char escape, const char *fmt, va_list ap) {
     return 0; // this is not used.
 }
 
-int vinfof(const char *fmt, va_list ap) {
-    return vinfof_with_escape('%', fmt, ap);
-}
+extern int32_t info_level_threshold;
+extern int32_t info_level_current;
 
 int infof(const char *fmt, ...) {
+    /* Bypass everything if not enabled. */
+    if (info_level_threshold > info_level_current) return 0;
     va_list ap;
     va_start(ap, fmt);
     int rv = vinfof(fmt, ap);

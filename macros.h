@@ -182,4 +182,12 @@ static inline void abort_busyloop(void) {
     for (int _just_once = ({pre(env); 0;}); _just_once<1; ({post(env); _just_once++;}))
 
 
+
+#ifndef likely
+#define likely(x)      __builtin_expect(!!(x), 1)
+#endif
+#ifndef unlikely
+#define unlikely(x)    __builtin_expect(!!(x), 0)
+#endif
+
 #endif

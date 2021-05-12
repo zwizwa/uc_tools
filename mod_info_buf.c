@@ -17,6 +17,11 @@ struct info_buf {
     uint8_t buf[INFO_SIZE];
 };
 
+#ifndef likely
+#define likely(x)      __builtin_expect(!!(x), 1)
+#endif
+
+
 #if 0
 // Stub for info calls.
 int info_putchar(int c) { return 0; }
@@ -59,14 +64,21 @@ int32_t info_level_current = 0;
 uint32_t info_overflow_errors = 0;
 
 KEEP int info_write(uint8_t *buf, uintptr_t size) {
-    for(uintptr_t i=0; i<size; i++) {
-        uint8_t c = buf[i];
-        uint32_t room = INFO_SIZE - (info_buf.hdr.write_next - info_buf.hdr.read_next);
-        if (room == 0) return 0;  // drop character and don't overflow the buffer
-        if (room == 1) c = '?';   // when almost full, write some kind of indicator
-        if (room <= 1) info_overflow_errors++;
-        uint32_t offset = (info_buf.hdr.write_next++) & INFO_MASK;
-        info_buf.buf[offset] = c;
+    /* Do one check, then write the buffer if it fits in a tight loop. */
+    uint32_t room = INFO_SIZE - (info_buf.hdr.write_next - info_buf.hdr.read_next);
+    if (likely(room > size)) {
+        for(uintptr_t i=0; i<size; i++) {
+            uint32_t offset = (info_buf.hdr.write_next++) & INFO_MASK;
+            info_buf.buf[offset] = buf[i];
+        }
+    }
+    else {
+        info_overflow_errors++;
+        if (room) {
+            /* Write an indicator that there was an overflow. */
+            uint32_t offset = (info_buf.hdr.write_next++) & INFO_MASK;
+            info_buf.buf[offset] = '?';
+        }
     }
     return 0;
 }

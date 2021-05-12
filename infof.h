@@ -46,9 +46,13 @@ static inline void info_block_data(uint32_t block, uint8_t *data, uint32_t block
 static inline void info_puts(char *buf) {
     while(*buf)info_putchar(*buf++);
 }
+#if 1
+int info_write(uint8_t *buf, uintptr_t size);
+#else
 static inline void info_write(uint8_t *buf, uint32_t len) {
     while(len--) info_putchar(*buf++);
 }
+#endif
 
 static inline void info_tagged_hex(const char *tag, const uint8_t *buf, uint32_t len) {
     infof("%s", tag);
