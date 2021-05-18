@@ -49,7 +49,7 @@ int vinfof(const char *fmt, va_list ap) {
             fmt++;
             /* Ignore '0'; always print leading zeros for %x, by default: %08x.
                For %d all numeric arguments are ignored. */
-            int nb_digits = 1;
+            int nb_digits = 8;
             while (is_digit(*fmt)) {nb_digits = *fmt-'0'; fmt++;}
             switch(*fmt) {
             case 0: break;
