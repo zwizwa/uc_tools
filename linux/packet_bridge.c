@@ -84,6 +84,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 #include "assert_write.h"
+#include "assert_execvp.h"
 
 
 /* A note on USB bulk transfers:
@@ -317,41 +318,7 @@ static void handle_signal(int sig) {
     exit(1);
 }
 static void fd_open_command(int *in_fd, int *out_fd, const char **argv) {
-    // This is confusing, so using long names.
-    int ignore;
-    const int read_end = 0;
-    const int write_end = 1;
-    int parent_to_child[2];
-    int child_to_parent[2];
-    ASSERT_ERRNO(pipe(parent_to_child));
-    ASSERT_ERRNO(pipe(child_to_parent));
-
-    int pid = fork();
-
-    /* CHILD */
-    if (!pid){
-        /* replace stdio with pipes and leave stderr as-is. */
-        close(0); ignore = dup(parent_to_child[read_end]);
-        close(1); ignore = dup(child_to_parent[write_end]);
-        (void)ignore;
-
-        /* No longer needed */
-        close(parent_to_child[read_end]);
-        close(parent_to_child[write_end]);
-        close(child_to_parent[read_end]);
-        close(child_to_parent[write_end]);
-
-        /* execvp requires NULL-terminated array
-           FIXME: only supporting single command, no args */
-        ASSERT_ERRNO(execvp(argv[0], (char **)&argv[0]));
-        /* not reached (exec success or assert error exit) */
-    }
-
-    signal(SIGCHLD, handle_signal);
-
-    /* PARENT */
-    *in_fd  = child_to_parent[read_end];  close(child_to_parent[write_end]);
-    *out_fd = parent_to_child[write_end]; close(parent_to_child[read_end]);
+    assert_execvp(in_fd, out_fd, argv, handle_signal);
 }
 
 #if 0
