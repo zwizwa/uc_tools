@@ -1,5 +1,6 @@
 #ifndef ASSERT_EXECVP_H
 #define ASSERT_EXECVP_H
+#include "macros.h"
 #include "os_linux.h"
 
 static void assert_execvp(int *in_fd, int *out_fd, const char **argv,
@@ -31,6 +32,8 @@ static void assert_execvp(int *in_fd, int *out_fd, const char **argv,
 
         /* execvp requires NULL-terminated array
            FIXME: only supporting single command, no args */
+        ASSERT(argv);
+        ASSERT(argv[0]);
         ASSERT_ERRNO(execvp(argv[0], (char **)&argv[0]));
         /* not reached (exec success or assert error exit) */
     }
