@@ -14,15 +14,14 @@
 
 */
 
+
 #include "macros.h"
 #include "os_linux.h"
 #include "os_thread.h"
 #include "assert_execvp.h"
 #include <stdint.h>
 
-// see test_lua51.c for comments on Lua C library API
-#include <lua5.1/lua.h>
-#include <lua5.1/lauxlib.h>
+#include "lua_tools.h"
 
 os_mutex_t minmax_lock;
 #define MINMAX_EXCLUSIVE() \
@@ -162,20 +161,51 @@ static int cmd_start_http(lua_State *L) {
     return 0;
 }
 
+os_error_t dummy_read(struct blocking_io *io, uint8_t *buf, uintptr_t len) {
+    return NULL;
+}
+os_error_t dummy_write(struct blocking_io *io, const uint8_t *buf, uintptr_t len) {
+    //LOG("dummy_write: %d\n", len);
+    for (uintptr_t i=0; i<len; i++) LOG(" %02x", buf[i]);
+    return NULL;
+}
+static struct blocking_io dummy_io = {
+    .read = dummy_read,
+    .write = dummy_write,
+};
+static int cmd_send(lua_State *L) {
+    struct blocking_io *io = NULL;
+    if (!io) {
+        io = &dummy_io;
+    }
+    const char *payload = assert_lua_tostring(L, -1);
+    uint32_t args[] = {1,2,3};
+    struct tag_u32 msg = {
+        .reply = (void*)dummy_write, .reply_ctx = io,
+        .args = args, .nb_args = ARRAY_SIZE(args),
+        .bytes = (const void*)payload, .nb_bytes = strlen(payload),
+    };
+    //(void)&msg;
+    send_tag_u32(&msg);
+    LOG("\n");
+    lua_pop(L,1);
+    return 0;
+}
 
 int luaopen_la_lua51 (lua_State *L) {
     lua_newtable(L);
-#define FUN(_name) { \
+#define CMD(_name) { \
     lua_pushcfunction (L, cmd_##_name); \
     lua_setfield (L, -2, #_name); \
     }
-    FUN(name);
-    FUN(start);
-    FUN(mark);
-    FUN(status);
-    FUN(arm);
-    FUN(get_trigger);
-    FUN(start_http);
-#undef FUN
+    CMD(name);
+    CMD(start);
+    CMD(mark);
+    CMD(status);
+    CMD(arm);
+    CMD(get_trigger);
+    CMD(start_http);
+    CMD(send);
+#undef CMD
     return 1;
 }

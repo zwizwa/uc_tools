@@ -23,6 +23,7 @@ struct msg_ctx {
 
 void reply_tag_u32(const struct tag_u32 *req, const struct tag_u32 *rpl) {
     struct blocking_io *io = req->reply_ctx;
+    ASSERT(io);
 
     uint8_t buf[WEBSOCKET_MSG_BUF];
     struct leb128s s = {
@@ -45,6 +46,11 @@ void reply_tag_u32(const struct tag_u32 *req, const struct tag_u32 *rpl) {
   error:
     LOG("leb128 write error %x\n", s.error);
     return;
+}
+void send_tag_u32(const struct tag_u32 *msg) {
+    /* Just build it on top of reply_tag_u32 using an empty request. */
+    struct tag_u32 req = { .reply = msg->reply, .reply_ctx = msg->reply_ctx };
+    reply_tag_u32(&req, msg);
 }
 
 /* Incoming request from websocket. */

@@ -8,6 +8,8 @@ HERE=$(dirname $0)
 TEST_LUA=test_la_lua51.lua
 exec gdb 2>&1 \
      --quiet \
+     --eval-command="set confirm off" \
      --eval-command="file $HERE/$SO" \
+     --eval-command="break cmd_send" \
      --eval-command="run /usr/bin/lua-5.1 $TEST_LUA" \
      --eval-command="bt"
