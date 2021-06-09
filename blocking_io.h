@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "os_error.h"
+#include "os_thread.h"
 
 
 struct blocking_io;
@@ -20,6 +21,11 @@ typedef os_error_t (*blocking_write_fn)(struct blocking_io *, const uint8_t *buf
 struct blocking_io {
     blocking_read_fn  read;
     blocking_write_fn write;
+    /* Typically, read() is only called by a single dispatcher, but
+       write() is often used to incrementally write a message, so we
+       need a mutex to make sure message boundaries are enforced
+       across multiple writing threads. */
+    os_mutex_t write_lock;
 };
 
 

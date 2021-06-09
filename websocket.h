@@ -131,7 +131,8 @@ static inline ws_err_t ws_read_msg(struct blocking_io *io, ws_push_fn push) {
     return error;
 }
 
-static inline ws_err_t ws_write_msg(struct blocking_io *io, const struct ws_message *m) {
+static inline ws_err_t ws_write_msg_nolock(struct blocking_io *io,
+                                           const struct ws_message *m) {
     os_error_t error = OS_OK;
 
     if (m->len < 126) {
@@ -164,6 +165,16 @@ static inline ws_err_t ws_write_msg(struct blocking_io *io, const struct ws_mess
     OS_LOG_ERROR("ws_write_msg", error);
     return error;
 }
+
+static inline ws_err_t ws_write_msg(struct blocking_io *io,
+                                    const struct ws_message *m) {
+    os_mutex_lock(&io->write_lock);
+    ws_err_t rv = ws_write_msg_nolock(io, m);
+    os_mutex_unlock(&io->write_lock);
+    return rv;
+}
+
+
 
 
 #endif

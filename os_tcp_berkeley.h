@@ -55,6 +55,7 @@ static inline os_error_t os_tcp_accept(struct os_tcp_server *serv,
     client->io.read  = os_tcp_read;
     client->io.write = os_tcp_write;
     client->fd = assert_accept(serv->fd);
+    os_mutex_init(&client->io.write_lock);
     return OS_OK;
 }
 static inline void os_tcp_done(struct os_tcp_socket *s) {
@@ -72,6 +73,7 @@ static inline void os_tcp_disconnect(struct os_tcp_socket *s) {
     /* FIXME: is this correct?  This is used to close from another
        thread, such that a blocking receive will receive an error. */
     shutdown(s->fd, SHUT_WR);
+    os_mutex_destroy(&s->io.write_lock);
 }
 static inline const char *os_strerror(os_error_t e) {
     return strerror((intptr_t)e);

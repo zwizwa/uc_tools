@@ -3,8 +3,8 @@
 #include "macros.h"
 #include "os_linux.h"
 
-static void assert_execvp(int *in_fd, int *out_fd, const char **argv,
-                          void (*handle_sigchld)(int sig)) {
+static void assert_fork_execvp(int *in_fd, int *out_fd, const char **argv,
+                               void (*handle_sigchld)(int sig)) {
 
     /* In/out naming is confusing, so use x_to_y naming. */
     int ignore;

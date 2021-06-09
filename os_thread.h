@@ -29,6 +29,10 @@ typedef mutex_t os_mutex_t;
 static inline void os_mutex_init(mutex_t *m) {
     chMtxObjectInit(m);
 }
+static inline void os_mutex_free(mutex_t *m) {
+    // FIXME: Is there something to do to undo init?  We will need to
+    // be able to do init,free,init,free,... on the same object.
+}
 static inline void os_mutex_lock(mutex_t *m) {
     chMtxLock(m);
 }
@@ -44,8 +48,12 @@ static inline void os_mutex_unlock(mutex_t *m) {
 #include "os_linux.h"
 
 typedef pthread_mutex_t os_mutex_t;
-static inline void os_mutex_lock(os_mutex_t *m)   { pthread_mutex_lock(m); }
-static inline void os_mutex_unlock(os_mutex_t *m) { pthread_mutex_unlock(m); }
+static inline void os_mutex_lock(os_mutex_t *m)    { pthread_mutex_lock(m); }
+static inline void os_mutex_unlock(os_mutex_t *m)  { pthread_mutex_unlock(m); }
+
+static inline void os_mutex_init(os_mutex_t *m)    { pthread_mutex_init(m, NULL); }
+static inline void os_mutex_destroy(os_mutex_t *m) { pthread_mutex_destroy(m); }
+
 
 // Emulate static threads
 #define OS_THREAD_STACK(name, nb) \

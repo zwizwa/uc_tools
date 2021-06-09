@@ -81,6 +81,7 @@ static inline void os_tcp_socket_init(struct os_tcp_socket *s) {
     s->offset = 0;
     s->io.read  = (blocking_read_fn)os_tcp_read;
     s->io.write = (blocking_write_fn)os_tcp_write;
+    os_mutex_init(&s->io.mutex);
 }
 
 static inline os_error_t os_tcp_err(intptr_t rv) {
@@ -112,6 +113,9 @@ static inline void os_tcp_trace(struct os_tcp_socket *s) {
     LOG("os_tcp_trace: %p\n", s);
 }
 
+// FIXME: Not clear from inspection where os_mutex_destroy() should
+// go.  However on ChibiOS this is a NOP.
+
 /* Close will only close the connection, but will not free any
    resources.  This can be used to close from another thread. */
 static inline void os_tcp_disconnect(struct os_tcp_socket *s) {
@@ -132,6 +136,7 @@ static inline void os_tcp_done(struct os_tcp_socket *s) {
         netconn_delete(s->netconn);
         s->netconn = 0;
     }
+    os_mutex_destroy(&s->io.mutex);
 }
 
 

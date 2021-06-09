@@ -318,7 +318,7 @@ static void handle_signal(int sig) {
     exit(1);
 }
 static void fd_open_command(int *in_fd, int *out_fd, const char **argv) {
-    assert_execvp(in_fd, out_fd, argv, handle_signal);
+    assert_fork_execvp(in_fd, out_fd, argv, handle_signal);
 }
 
 #if 0

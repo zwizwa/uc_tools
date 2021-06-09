@@ -133,7 +133,7 @@ static int cmd_start(lua_State *L) {
     minmax_open_buf(&map, "/tmp/la_lua51.bin", 8, nb_slices);
     LOG("starting %s\n", program);
     const char *argv[] = {program, NULL};
-    assert_execvp(&in_fd, &out_fd, argv, NULL);
+    assert_fork_execvp(&in_fd, &out_fd, argv, NULL);
     lua_pop(L,1);
     OS_THREAD_START(la_thread, la_loop, NULL);
     return 0;
