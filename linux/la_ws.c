@@ -95,48 +95,47 @@ struct analyzer analyzer;
 #endif
 
 
+/* Triiggered waveform display is not trivial.  I approached this the
+   wrong way initially, not realizing that we need to use properties
+   of the waveform _and_ the view to compute screen updates.
+
+   There are 3 time instances that are important:
+
+   t_trig  is the trigger time stamp, e.g. caused by a transition
+   t_hold  is the time >t_trig after which a new trigger can happen
+   t_disp  is the time >t_trig representing the edge of the screen
+
+   We assume that t_hold >= t_disp, i.e. for display triggering it
+   doesn't make sense to re-trigger before reaching the end of the
+   screen.  This condition is maintained _outside_ of push_samples().
+
+   For the main loop, do as little work as possible on every
+   iteration. A large part of this is to not perform indirect accesses
+   and only do it once an event is detected.
+
+   Events are computed after the main loop.  It's ok to use that
+   granularity as long as the loop runs across the minimal buffer
+   size to not introduce more delay at the event level.
+*/
+
+
 
 /* Data processing. */
-static inline uintptr_t push_sample(
+static inline uintptr_t push_samples(
     struct analyzer *s,
-    const uint8_t *buf, uintptr_t slice_size, uintptr_t time) {
+    const uint8_t *buf, uintptr_t nb_samples, uintptr_t time) {
 
-    /* Some notes to convince you that triggered displays are not
-       trivial, because we need to use properties of the waveform
-       _and_ the view to compute screen updates.
-
-       There are 3 time instances that are important:
-
-       t_trig  is the trigger time stamp
-       t_hold  is the time >t_trig where a new trigger can happen
-       t_disp  is the time >t_trig representing the edge of the screen
-
-       For now we can assume that t_hold >= t_disp, i.e. for display
-       triggering it doesn't make sense to re-trigger before reaching
-       the end of the screen.  This condition is maintained _outside_
-       of push_sample().
-
-       Other than that, hold is essential on its own, but it is
-       important to see that it is just a hack that makes sense for
-       analog scopes.  You almost always want proper end-of-packet
-       detection instead.
-
-       But for now, just use edge detection + hold time for
-       triggering.  The idea is to keep it simple.
-
-       For the main loop, do as little work as possible on every
-       iteration. A large part of this is to not perform indirect
-       accesses and only do it once an event is detected. */
-
-    uintptr_t t_hold = event_index(&s->stack, 0).time + s->holdoff;
+    uintptr_t t_hold = event_index(&s->stack, 0)->time + s->holdoff;
+    intptr_t  t_hold_diff = time - t_hold;
     uintptr_t last_sample = s->last_sample;
-    intptr_t t_diff = time - t_hold;
 
-    for(uintptr_t i=0; i<slice_size; i++) {
+    for(uintptr_t i=0; i<nb_samples; i++) {
         uint8_t sample = buf[i];
-        if (t_diff >= 0) {
-            uint8_t falling_edges = (~sample) && (sample ^ last_sample);
-            if (1 & falling_edges) {
+        if (t_hold_diff >= 0) {
+            uint8_t falling_edge_events =
+                (~sample) && (sample ^ last_sample);
+
+            if (1 & falling_edge_events) {
 
                 /* Hold time expired + edge detected.  This is a
                    proper trigger event.  Record it. */
@@ -144,8 +143,7 @@ static inline uintptr_t push_sample(
                 event_push(&s->stack, e);
 
                 /* Recompute loop variables. */
-                t_hold = time + s->holdoff;
-                t_diff = time - t_hold;
+                t_hold_diff = s->holdoff;
             }
         }
         else {
@@ -157,10 +155,43 @@ static inline uintptr_t push_sample(
                skip ahead i and t_diff here. */
         }
         last_sample = sample;
-        t_diff++;
+        t_hold_diff--;
     }
     s->last_sample = last_sample;
     return time;
+}
+
+static inline void send_events(
+    struct analyzer *s, uintptr_t t_endx, uintptr_t post_trigger_samples) {
+
+    /* Go over all events, and pick the most recent one that is
+       complete and not yet sent.  Mark that one and everything before
+       as sent. */
+    for (uintptr_t i=0; i<ARRAY_SIZE(analyzer.stack.stack); i++) {
+        event_element_t *e = event_index(&analyzer.stack, i);
+
+        if (e->handled) {
+            /* Event was handled before.  We don't need to look at
+               anything older. */
+            break;
+        }
+
+        if (e->time + post_trigger_samples <= t_endx) {
+            /* Send out event only if all the post-trigger data has
+               arrived. */
+            e->handled = 1;
+            struct blocking_io *ws_io = NULL; // FIXME
+            if (ws_io) {
+                struct tag_u32 msg = {
+                    .reply_ctx = ws_io,
+                };
+                send_tag_u32(&msg);
+            }
+            break;
+        }
+
+        /* Try next */
+    }
 }
 
 int la_loop(void) {
@@ -180,21 +211,9 @@ int la_loop(void) {
            with it later. */
         assert_read_fixed(in_fd, buf, slice_size);
 
-        time = push_sample(&analyzer, buf, slice_size, time);
+        time = push_samples(&analyzer, buf, slice_size, time);
 
-        /* Go over all events, and pick the most recent one that is
-           complete and not yet sent.  Mark that one and everything
-           before as sent. */
-
-        /* Pick up any of the display packets that the analyzer has
-           left and send them to the display. */
-        struct blocking_io *ws_io = NULL; // FIXME
-        if (ws_io) {
-            struct tag_u32 msg = {
-                .reply_ctx = ws_io,
-            };
-            send_tag_u32(&msg);
-        }
+        send_events(&analyzer, time, 123 /* FIXME */);
 
         minmax_update_slice(&map, slice_nb);
         slice_nb = (slice_nb + 1) % nb_slices;

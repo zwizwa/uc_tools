@@ -45,9 +45,9 @@ static inline void NS(_init)(NS(_stack_t) *l) {
     l->top = 0;
 }
 /* 0=top, 1=2nd etc... */
-static inline NS(_element_t) NS(_index)(NS(_stack_t) *l, uintptr_t offset) {
+static inline NS(_element_t)* NS(_index)(NS(_stack_t) *l, uintptr_t offset) {
     l->top = (l->top - offset - 1) % NS_STACK_SIZE(l);
-    return l->stack[l->top];
+    return &l->stack[l->top];
 }
 
 
