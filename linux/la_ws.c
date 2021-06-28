@@ -161,6 +161,8 @@ static inline uintptr_t push_samples(
     return time;
 }
 
+struct os_tcp_socket static_socket;
+
 static inline void send_events(
     struct analyzer *s, uintptr_t t_endx, uintptr_t post_trigger_samples) {
 
