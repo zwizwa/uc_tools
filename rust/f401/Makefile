@@ -1,12 +1,15 @@
 # See https://rust-embedded.github.io/cortex-m-quickstart/cortex_m_quickstart/
 # Idempotent install script: install.sh
 
-ELF=f4.f407.elf
+BN=blackpill
+ELF=$(BN).f401.elf
+BIN=$(BN).f401.bin
 
 .PHONY: all
 all:
 	cargo build --release
-	ln -sf target/thumbv7m-none-eabihf/release/bluepill $(ELF)
+	ln -sf target/thumbv7em-none-eabihf/release/blackpill $(ELF)
+	arm-none-eabi-objcopy -O binary $(ELF) $(BIN)
 #	md5sum $(ELF)
 #	arm-none-eabi-objdump -d $(ELF)
 
@@ -22,7 +25,6 @@ clean:
 	arm-none-eabi-objdump -d $< >$@.tmp
 	mv $@.tmp $@
 
-
-
-
-
+.PHONY: flash
+flash:
+	dfu-util -a 0 --dfuse-address 0x08000000 -D blackpill.f401.bin 

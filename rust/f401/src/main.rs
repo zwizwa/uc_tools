@@ -36,8 +36,10 @@ fn main() -> ! {
     // get handles to the hardware
     let peripherals = stm32f401::Peripherals::take().unwrap();
     let gpioc = &peripherals.GPIOC;
+    // MODER: mode register
+    gpioc.moder.write(|w| w.moder13().output());
     loop{
-        // BSRR is the bit set/reset register.
+        // BSRR: bit set/reset register.
         gpioc.bsrr.write(|w| w.bs13().set_bit()); cortex_m::asm::delay(2000000);
         gpioc.bsrr.write(|w| w.br13().set_bit()); cortex_m::asm::delay(2000000);
     }

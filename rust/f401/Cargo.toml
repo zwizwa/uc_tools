@@ -29,6 +29,6 @@ opt-level = 's'
 path = "src/lib.rs"
 
 [[bin]]
-name = "bluepill"
+name = "blackpill"
 path = "src/main.rs"
 
