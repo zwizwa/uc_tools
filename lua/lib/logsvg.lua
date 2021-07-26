@@ -149,7 +149,11 @@ function logsvg.render(e, logs)
    end
 
    local g = render_g(e)
+
+   -- This likely means that the ping synchronization message is
+   -- missing.  FIXME: Create a better error message.
    assert(#merged_log > 0)
+
    local t_total = merged_log[#merged_log][2] -- adj_time field
    local y_total = t_total / e.ticks_per_pixel
    -- As a side effect of rendering, y contains the total y adjust
