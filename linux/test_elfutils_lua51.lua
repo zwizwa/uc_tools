@@ -11,7 +11,12 @@ function test()
 
    print(getmetatable(elf))
 
-   elfutils.getsym(elf, "main")
+   local addr = elfutils.sym2addr(elf, "start")
+   print(addr)
+   local sym = elfutils.addr2sym(elf, addr)
+   print(sym)
+
+
 
 end
 

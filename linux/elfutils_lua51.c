@@ -52,6 +52,11 @@ static const char *L_string(lua_State *L, int index) {
     ASSERT(c);
     return c;
 }
+static const lua_Number L_number(lua_State *L, int index) {
+    ASSERT(lua_isnumber(L, index));
+    lua_Number n = lua_tonumber(L, index);
+    return n;
+}
 
 static void elf_error(void) {
     int e = elf_errno();
@@ -65,7 +70,7 @@ static int cmd_open(lua_State *L) {
     elf_version(EV_NONE);
     ASSERT(EV_NONE != elf_version(EV_CURRENT));
     int fd;
-    LOG("opening %s\n", filename);
+    // LOG("opening %s\n", filename);
     ASSERT_ERRNO(fd = open(filename, O_RDONLY));
     // LOG("fd = %d\n", fd);
     Elf_Cmd cmd = ELF_C_READ;
@@ -98,7 +103,7 @@ static int cmd_open(lua_State *L) {
         const char *name = elf_strptr(ud->elf, ud->ehdr.e_shstrndx, shdr.sh_name);
         ASSERT(name);
 
-        LOG("%2d %s (0x%x)\n", i, name, shdr.sh_type);
+        // LOG("%2d %s (0x%x)\n", i, name, shdr.sh_type);
 
         if (!strcmp(".strtab", name)) {
             /* The string table used in the symbol table. */
@@ -127,7 +132,7 @@ static int cmd_open(lua_State *L) {
 
 /* Another attempt at simpler C iterators. */
 #define FOR_ITER(iter_name, iter_inst, ...)                             \
-    for(iter_name##_type iter_inst = iter_name##_new(__VA_ARGS__) ;     \
+    for(iter_name##_t iter_inst = iter_name##_new(__VA_ARGS__) ;        \
         iter_name##_valid(&iter_inst);                                  \
         iter_name##_next(&iter_inst))
 
@@ -137,7 +142,7 @@ typedef struct {
     size_t ndx_sym;
     GElf_Sym sym;
     struct elf_userdata *ud;
-} sym_iter_type;
+} sym_iter_t;
 static inline void sym_iter_next(sym_iter_t *i) {
     i->name = NULL;
     if (gelf_getsym(i->data_sym, i->ndx_sym, &i->sym) == NULL) return;
@@ -155,12 +160,30 @@ static inline int sym_iter_valid(sym_iter_t *i) {
     return !!i->name;
 }
 
-static int cmd_getsym(lua_State *L) {
+/* Note that we're embedding into floating point!.  That's ok for
+   32bit, but won't work for all 64bit addresses. */
+static int cmd_sym2addr(lua_State *L) {
     struct elf_userdata *ud = L_elf(L, -2);
-    const char *sym_name = L_string(L, -1);
-    (void)sym_name;
+    const char *name = L_string(L, -1);
     FOR_ITER(sym_iter, i, ud) {
-        LOG("%08x %s\n", i.sym.st_value, i.name);
+        // LOG("%08x %s\n", i.sym.st_value, i.name);
+        if (!strcmp(i.name, name)) {
+            lua_pushnumber(L, i.sym.st_value);
+            return 1;
+        }
+    }
+    return 0;
+}
+static int cmd_addr2sym(lua_State *L) {
+    struct elf_userdata *ud = L_elf(L, -2);
+    lua_Number addr = L_number(L, -1);
+    FOR_ITER(sym_iter, i, ud) {
+        // LOG("%08x %s\n", i.sym.st_value, i.name);
+        typeof(i.sym.st_value) addr1 = addr;
+        if (addr1 == i.sym.st_value) {
+            lua_pushstring(L, i.name);
+            return 1;
+        }
     }
     return 0;
 }
@@ -177,8 +200,9 @@ int luaopen_elfutils_lua51 (lua_State *L) {
     }
     CMD(name);
     CMD(open);
-    CMD(getsym);
-    
+    CMD(sym2addr);
+    CMD(addr2sym);
+
 #undef CMD
     return 1;
 }
