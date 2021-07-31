@@ -34,8 +34,9 @@ static int cmd_name(lua_State *L) {
 struct elf_userdata {
     int fd;
     Elf *elf;
-    // translated copy of the ELF header
-    GElf_Ehdr ehdr;
+    GElf_Ehdr ehdr;   // translated copy of the ELF header
+    Elf_Scn *scn_sym; // symbol section
+    size_t strtab_ndx;
 };
 
 /* Argument accessors are unforgiving atm, they trigger abort on type
@@ -93,38 +94,27 @@ static int cmd_open(lua_State *L) {
         GElf_Shdr shdr = {};
         gelf_getshdr(scn, &shdr);
 
+        /* Section names are in e_shstrndx which we've resolved. */
         const char *name = elf_strptr(ud->elf, ud->ehdr.e_shstrndx, shdr.sh_name);
         ASSERT(name);
 
+        LOG("%2d %s (0x%x)\n", i, name, shdr.sh_type);
 
-        // defines are in elf.h
-        // just handling things i find in practice
-        switch(shdr.sh_type) {
-        case SHT_PROGBITS: /* 1 */
-        case SHT_SYMTAB: /* 2 */
-        case SHT_STRTAB: /* 3 */
-        case SHT_RELA: /* 4 */
-        case SHT_DYNAMIC: /* 6 */
-        case SHT_NOTE: /* 7 */
-        case SHT_NOBITS: /* 8 */
-        case SHT_DYNSYM: /* 11 */
-        case SHT_INIT_ARRAY: /* 14 */
-        case SHT_FINI_ARRAY: /* 15 */
-        case SHT_GNU_HASH: /* 0x6ffffff6 */
-        case SHT_GNU_verneed: /* 0x6ffffffe */
-        case SHT_GNU_versym:  /* 0x6fffffff */
-        default: {
-            LOG("%2d %s (0x%x)\n",
-                i,
-                name,
-                shdr.sh_type);
-            break;
+        if (!strcmp(".strtab", name)) {
+            /* The string table used in the symbol table. */
+            ud->strtab_ndx = i;
         }
+        if (!strcmp(".symtab", name)) {
+            /* Symbol table. */
+            ud->scn_sym = scn;
         }
 
         i++;
     }
 #endif
+
+    ASSERT(ud->scn_sym);
+    ASSERT(ud->strtab_ndx);
 
     // Add a metatable...
     luaL_getmetatable(L, "elf");
@@ -135,9 +125,21 @@ static int cmd_open(lua_State *L) {
     return 1;
 }
 
-static int cmd_test(lua_State *L) {
-    struct elf_userdata *ud = L_elf(L, -1);
-    (void)ud;
+static int cmd_getsym(lua_State *L) {
+    struct elf_userdata *ud = L_elf(L, -2);
+    const char *sym_name = L_string(L, -1);
+    (void)sym_name;
+
+    Elf_Data *data_sym;
+    ASSERT(data_sym = elf_getdata(ud->scn_sym, 0));
+    size_t ndx_sym = 0;
+    GElf_Sym sym;
+    while (gelf_getsym(data_sym, ndx_sym, &sym) == &sym) {
+        const char *name = elf_strptr(ud->elf, ud->strtab_ndx, sym.st_name);
+        ASSERT(name);
+        LOG("%d %s\n", ndx_sym, name);
+        ndx_sym++;
+    }
     return 0;
 }
 
@@ -153,7 +155,8 @@ int luaopen_elfutils_lua51 (lua_State *L) {
     }
     CMD(name);
     CMD(open);
-    CMD(test);
+    CMD(getsym);
+    
 #undef CMD
     return 1;
 }

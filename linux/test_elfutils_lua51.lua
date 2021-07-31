@@ -11,6 +11,8 @@ function test()
 
    print(getmetatable(elf))
 
+   elfutils.getsym(elf, "main")
+
 end
 
 
