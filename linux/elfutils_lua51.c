@@ -125,20 +125,42 @@ static int cmd_open(lua_State *L) {
     return 1;
 }
 
+/* Another attempt at simpler C iterators. */
+#define FOR_ITER(iter_name, iter_inst, ...)                             \
+    for(iter_name##_type iter_inst = iter_name##_new(__VA_ARGS__) ;     \
+        iter_name##_valid(&iter_inst);                                  \
+        iter_name##_next(&iter_inst))
+
+typedef struct {
+    const char *name;
+    Elf_Data *data_sym;
+    size_t ndx_sym;
+    GElf_Sym sym;
+    struct elf_userdata *ud;
+} sym_iter_type;
+static inline void sym_iter_next(sym_iter_t *i) {
+    i->name = NULL;
+    if (gelf_getsym(i->data_sym, i->ndx_sym, &i->sym) == NULL) return;
+    i->name = elf_strptr(i->ud->elf, i->ud->strtab_ndx, i->sym.st_name);
+    ASSERT(i->name);
+    i->ndx_sym++;
+}
+static inline sym_iter_t sym_iter_new(struct elf_userdata *ud) {
+    sym_iter_t i = { .ud = ud };
+    ASSERT(i.data_sym = elf_getdata(ud->scn_sym, 0));
+    sym_iter_next(&i);
+    return i;
+}
+static inline int sym_iter_valid(sym_iter_t *i) {
+    return !!i->name;
+}
+
 static int cmd_getsym(lua_State *L) {
     struct elf_userdata *ud = L_elf(L, -2);
     const char *sym_name = L_string(L, -1);
     (void)sym_name;
-
-    Elf_Data *data_sym;
-    ASSERT(data_sym = elf_getdata(ud->scn_sym, 0));
-    size_t ndx_sym = 0;
-    GElf_Sym sym;
-    while (gelf_getsym(data_sym, ndx_sym, &sym) == &sym) {
-        const char *name = elf_strptr(ud->elf, ud->strtab_ndx, sym.st_name);
-        ASSERT(name);
-        LOG("%d %s\n", ndx_sym, name);
-        ndx_sym++;
+    FOR_ITER(sym_iter, i, ud) {
+        LOG("%08x %s\n", i.sym.st_value, i.name);
     }
     return 0;
 }
