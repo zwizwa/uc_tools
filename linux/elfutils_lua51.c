@@ -1,7 +1,14 @@
 #include <unistd.h>
 
 // Lua5.1 wrapper for elfutils libelf/libdw.
-// Very ad-hoc, implements minimal functionality needed for debugging.
+
+// Very ad-hoc, implements minimal functionality needed for
+// instrumentation.  Note that there are Rust wrappers (of course),
+// which are probably a better starting point for an analysis tool,
+// but I currently do not want that dependency.  This is written for
+// monitoring an embedded system that already has a Lua based
+// framework around it.
+
 
 // Libelf requires some knowledge of the structure of ELF files.
 // https://en.wikipedia.org/wiki/Executable_and_Linkable_Format
@@ -198,8 +205,10 @@ static int cmd_addr2sym(lua_State *L) {
 static void log_indent(int level) {
     for (int i=0; i<level; i++) { LOG(" "); }
 }
-// See /usr/include/llvm-3.8/llvm/Support/Dwarf.def
 // This is the list that occurs in current CM3 image.
+// I did the tag number -> name mapping using /usr/include/llvm-3.8/llvm/Support/Dwarf.def
+// But it is also in /usr/include/dwarf.h from libdw-dev
+
 #define FOR_DW_TAG(m)                           \
     m(compile_unit)                             \
     m(base_type)                                \
@@ -225,24 +234,87 @@ static void log_indent(int level) {
     m(GNU_call_site)                            \
     m(GNU_call_site_parameter)                  \
 
+#define FOR_DW_AT(m)                            \
+    m(producer)                                 \
+    m(language)                                 \
+    m(name)                                     \
+    m(comp_dir)                                 \
+    m(ranges)                                   \
+    m(low_pc)                                   \
+    m(high_pc)                                  \
+    m(stmt_list)                                \
+    m(byte_size)                                \
+    m(encoding)                                 \
+    m(location)                                 \
+    m(decl_file)                                \
+    m(decl_line)                                \
+    m(type)                                     \
+    m(data_member_location)                     \
+    m(sibling)                                  \
+    m(const_value)                              \
+    m(inline)                                   \
+    m(prototyped)                               \
+    m(upper_bound)                              \
+    m(abstract_origin)                          \
+    m(artificial)                               \
+    m(declaration)                              \
+    m(external)                                 \
+    m(frame_base)                               \
+    m(entry_pc)                                 \
+    m(call_file)                                \
+    m(call_line)                                \
+    m(GNU_call_site_value)                      \
+    m(GNU_call_site_target)                     \
+    m(GNU_tail_call)                            \
+    m(GNU_all_tail_call_sites)                  \
+    m(GNU_all_call_sites)                       \
+    m(GNU_macros)                               \
 
-#define CASE_LOG(name) \
+#define CASE_LOG_DW(name) \
     case DW_TAG_##name: LOG(#name "\n"); break;
+#define CASE_LOG_AT(name) \
+    case DW_AT_##name: LOG(#name "\n"); break;
+
+int walk_attrs(Dwarf_Attribute *attr, void *ctx) {
+    switch(attr->code) {
+        FOR_DW_AT(CASE_LOG_AT)
+    default:
+        LOG("attr 0x%x 0x%x\n", attr->code, attr->form);
+    }
+    //attr->valp
+    return DWARF_CB_OK;
+}
 
 static void walk_die_tree(Dwarf_Die *die, int level) {
     Dwarf_Die die_ = {};
     for(;;) {
         int tag = dwarf_tag(die);
         log_indent(level);
+
+        /* name */
+        const char *name = dwarf_diename(die);
+        if (!name) name = "";
+        LOG("%s:", name);
+
+        /* type */
         switch(tag) {
-        FOR_DW_TAG(CASE_LOG)
+        FOR_DW_TAG(CASE_LOG_DW)
         default:
             LOG("(0x%x)\n", tag); // see dwarf.h
         }
+
+        /* attributes */
+        // see also dwarf_attr, search by name
+        dwarf_getattrs(die, walk_attrs, NULL, 0);
+
+
+        /* children */
         Dwarf_Die child = {};
         if (!dwarf_child(die, &child)) {
             walk_die_tree(&child, level+1);
         }
+
+        /* siblings */
         if (dwarf_siblingof(die, &die_) == 0) {
             die = &die_;
             continue;
