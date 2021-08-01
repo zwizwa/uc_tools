@@ -17,6 +17,7 @@ function test()
    print(sym)
 
 
+   elfutils.doodle(elf)
 
 end
 

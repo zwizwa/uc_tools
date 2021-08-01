@@ -13,14 +13,24 @@
 // elfutils
 #include <libelf.h>
 #include <elfutils/libdw.h>
+#include <dwarf.h>
 
 // uc_tools
 #include "macros.h"
+
+// DWARF is a tree of Debugging Information Entries (DIEs) per
+// Compilation Unit (cu).
+
 
 // apt-get install liblua5.1-0-dev libdw-dev libelf-dev
 
 // To link this on Linux, it doesn't seem necessary to resolve all the
 // symbols at .so link time.  Lua binary provides them on ldopen.
+
+// More links:
+// https://sourceware.org/elfutils/ (project page)
+// https://github.com/cuviper/elfutils (github mirror)
+// https://simonkagstrom.livejournal.com/51001.html
 
 
 
@@ -35,8 +45,9 @@ struct elf_userdata {
     int fd;
     Elf *elf;
     GElf_Ehdr ehdr;   // translated copy of the ELF header
-    Elf_Scn *scn_sym; // symbol section
+    Elf_Scn *symtab_scn; // symbol section
     size_t strtab_ndx;
+    Dwarf *dwarf;
 };
 
 /* Argument accessors are unforgiving atm, they trigger abort on type
@@ -89,37 +100,32 @@ static int cmd_open(lua_State *L) {
     ASSERT(gelf_getehdr(elf, &ud->ehdr));
     ASSERT(ud->ehdr.e_shstrndx);
 
-
-#if 1
-
-    size_t i = 0;
+    size_t ndx = 0;
     Elf_Scn *scn;
-    while((scn = elf_getscn(elf, i))) {
+    while((scn = elf_getscn(elf, ndx))) {
 
         GElf_Shdr shdr = {};
         gelf_getshdr(scn, &shdr);
 
-        /* Section names are in e_shstrndx which we've resolved. */
+        /* Section names are in the string section with index
+           e_shstrndx linked from the ELF header. */
         const char *name = elf_strptr(ud->elf, ud->ehdr.e_shstrndx, shdr.sh_name);
         ASSERT(name);
 
         // LOG("%2d %s (0x%x)\n", i, name, shdr.sh_type);
 
-        if (!strcmp(".strtab", name)) {
-            /* The string table used in the symbol table. */
-            ud->strtab_ndx = i;
-        }
-        if (!strcmp(".symtab", name)) {
-            /* Symbol table. */
-            ud->scn_sym = scn;
-        }
+        /* Cache some section information as index or pointer,
+           depending on how it is used later. */
+        if      (!strcmp(".strtab", name)) { ud->strtab_ndx = ndx; }
+        else if (!strcmp(".symtab", name)) { ud->symtab_scn = scn; }
 
-        i++;
+        ndx++;
     }
-#endif
-
-    ASSERT(ud->scn_sym);
+    ASSERT(ud->symtab_scn);
     ASSERT(ud->strtab_ndx);
+
+    // Initialize DWARF index
+    ASSERT(ud->dwarf = dwarf_begin_elf(elf, DWARF_C_READ, NULL));
 
     // Add a metatable...
     luaL_getmetatable(L, "elf");
@@ -152,7 +158,7 @@ static inline void sym_iter_next(sym_iter_t *i) {
 }
 static inline sym_iter_t sym_iter_new(struct elf_userdata *ud) {
     sym_iter_t i = { .ud = ud };
-    ASSERT(i.data_sym = elf_getdata(ud->scn_sym, 0));
+    ASSERT(i.data_sym = elf_getdata(ud->symtab_scn, 0));
     sym_iter_next(&i);
     return i;
 }
@@ -187,7 +193,79 @@ static int cmd_addr2sym(lua_State *L) {
     }
     return 0;
 }
+// Walk DWARF
 
+static void log_indent(int level) {
+    for (int i=0; i<level; i++) { LOG(" "); }
+}
+// See /usr/include/llvm-3.8/llvm/Support/Dwarf.def
+// This is the list that occurs in current CM3 image.
+#define FOR_DW_TAG(m)                           \
+    m(compile_unit)                             \
+    m(base_type)                                \
+    m(typedef)                                  \
+    m(structure_type)                           \
+    m(member)                                   \
+    m(subprogram)                               \
+    m(formal_parameter)                         \
+    m(volatile_type)                            \
+    m(enumerator)                               \
+    m(enumeration_type)                         \
+    m(pointer_type)                             \
+    m(const_type)                               \
+    m(subroutine_type)                          \
+    m(array_type)                               \
+    m(subrange_type)                            \
+    m(union_type)                               \
+    m(variable)                                 \
+    m(lexical_block)                            \
+    m(label)                                    \
+    m(inlined_subroutine)                       \
+    m(unspecified_parameters)                   \
+    m(GNU_call_site)                            \
+    m(GNU_call_site_parameter)                  \
+
+
+#define CASE_LOG(name) \
+    case DW_TAG_##name: LOG(#name "\n"); break;
+
+static void walk_die_tree(Dwarf_Die *die, int level) {
+    Dwarf_Die die_ = {};
+    for(;;) {
+        int tag = dwarf_tag(die);
+        log_indent(level);
+        switch(tag) {
+        FOR_DW_TAG(CASE_LOG)
+        default:
+            LOG("(0x%x)\n", tag); // see dwarf.h
+        }
+        Dwarf_Die child = {};
+        if (!dwarf_child(die, &child)) {
+            walk_die_tree(&child, level+1);
+        }
+        if (dwarf_siblingof(die, &die_) == 0) {
+            die = &die_;
+            continue;
+        }
+        break;
+    }
+}
+
+static int cmd_doodle(lua_State *L) {
+    struct elf_userdata *ud = L_elf(L, -1);
+    Dwarf_Off off=0, next_off=0, abbrev_offset=0;
+    size_t header_size=0;
+    uint8_t address_size=0, offset_size=0;
+    while(dwarf_nextcu(ud->dwarf, off,
+                       &next_off, &header_size, &abbrev_offset,
+                       &address_size, &offset_size) == 0) {
+        Dwarf_Die cu_die;
+        ASSERT(dwarf_offdie(ud->dwarf, off + header_size, &cu_die));
+        walk_die_tree(&cu_die, 0);
+        off = next_off;
+    }
+    return 0;
+}
 
 int luaopen_elfutils_lua51 (lua_State *L) {
     // FIXME: Add __gc method, maybe also some __name style method to allow pretty printing?
@@ -202,6 +280,8 @@ int luaopen_elfutils_lua51 (lua_State *L) {
     CMD(open);
     CMD(sym2addr);
     CMD(addr2sym);
+    CMD(doodle);
+
 
 #undef CMD
     return 1;
