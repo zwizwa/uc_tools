@@ -1,6 +1,7 @@
 #include <unistd.h>
 
 // Lua5.1 wrapper for elfutils libelf/libdw.
+// apt-get install liblua5.1-0-dev libdw-dev libelf-dev
 
 // Very ad-hoc, implements minimal functionality needed for
 // instrumentation.  Note that there are Rust wrappers (of course),
@@ -44,16 +45,11 @@ static void L_error(lua_State *L, const char *fmt, ...) {
 // Compilation Unit (cu).
 
 
-// apt-get install liblua5.1-0-dev libdw-dev libelf-dev
-
-// To link this on Linux, it doesn't seem necessary to resolve all the
-// symbols at .so link time.  Lua binary provides them on ldopen.
-
 // More links:
 // https://sourceware.org/elfutils/ (project page)
 // https://github.com/cuviper/elfutils (github mirror)
 // https://simonkagstrom.livejournal.com/51001.html
-
+// http://www.dwarfstd.org/doc/DWARF4.pdf
 
 
 static int cmd_name(lua_State *L) {
@@ -62,8 +58,10 @@ static int cmd_name(lua_State *L) {
     return 1;
 }
 
-/* This is the object passed around in Lua. */
-struct elf_userdata {
+// FIXME: these are currently not garbage-collected because there is
+// an interdependency.  Practically this is only used in transient
+// tests.
+struct elf_ud {
     int fd;
     Elf *elf;
     GElf_Ehdr ehdr;   // translated copy of the ELF header
@@ -71,12 +69,24 @@ struct elf_userdata {
     size_t strtab_ndx;
     Dwarf *dwarf;
 };
+struct die_ud {
+    Dwarf_Die die;
+};
+
+#define T_ELF "elfutils.elf"
+#define T_DIE "elfutils.die"
+
 
 /* Argument accessors are unforgiving atm, they trigger abort on type
    error.  FIXME: Probably best to raise a Lua error instead. */
-static struct elf_userdata *L_elf(lua_State *L, int index) {
-    ASSERT(luaL_checkudata(L, index, "elf"));
-    struct elf_userdata *ud = lua_touserdata(L, index);
+static struct elf_ud *L_elf(lua_State *L, int index) {
+    ASSERT(luaL_checkudata(L, index, T_ELF));
+    struct elf_ud *ud = lua_touserdata(L, index);
+    return ud;
+}
+static struct die_ud *L_die(lua_State *L, int index) {
+    ASSERT(luaL_checkudata(L, index, T_DIE));
+    struct die_ud *ud = lua_touserdata(L, index);
     return ud;
 }
 static const char *L_string(lua_State *L, int index) {
@@ -97,6 +107,14 @@ static void elf_error(lua_State *L) {
     ERROR("elf_errmsg: %s, elf_errno: %d\n", m, e);
 }
 
+static struct die_ud *push_die(lua_State *L) {
+    struct die_ud *ud = lua_newuserdata(L, sizeof(*ud));
+    ASSERT(ud);
+    memset(ud,0,sizeof(*ud));
+    luaL_getmetatable(L, T_DIE);
+    lua_setmetatable(L, -2);
+    return ud;
+}
 
 static int cmd_open(lua_State *L) {
     const char *filename = L_string(L, -1);
@@ -111,7 +129,7 @@ static int cmd_open(lua_State *L) {
     // LOG("elf = %p\n", elf);
     if (!elf) elf_error(L);
     ASSERT(elf);
-    struct elf_userdata *ud = lua_newuserdata(L, sizeof(*ud));
+    struct elf_ud *ud = lua_newuserdata(L, sizeof(*ud));
     ASSERT(ud);
     memset(ud,0,sizeof(*ud));
 
@@ -150,10 +168,10 @@ static int cmd_open(lua_State *L) {
     ASSERT(ud->dwarf = dwarf_begin_elf(elf, DWARF_C_READ, NULL));
 
     // Add a metatable...
-    luaL_getmetatable(L, "elf");
+    luaL_getmetatable(L, T_ELF);
     lua_setmetatable(L, -2);
     // ... so we can later use this call to type-check.
-    ASSERT(luaL_checkudata(L, -1, "elf"));
+    ASSERT(luaL_checkudata(L, -1, T_ELF));
 
     return 1;
 }
@@ -169,7 +187,7 @@ typedef struct {
     Elf_Data *data_sym;
     size_t ndx_sym;
     GElf_Sym sym;
-    struct elf_userdata *ud;
+    struct elf_ud *ud;
     lua_State *L;
 } sym_iter_t;
 static inline void sym_iter_next(sym_iter_t *i) {
@@ -180,7 +198,7 @@ static inline void sym_iter_next(sym_iter_t *i) {
     ASSERT(i->name);
     i->ndx_sym++;
 }
-static inline sym_iter_t sym_iter_new(struct elf_userdata *ud, lua_State *L) {
+static inline sym_iter_t sym_iter_new(struct elf_ud *ud, lua_State *L) {
     sym_iter_t i = { .ud = ud, .L = L };
     ASSERT(i.data_sym = elf_getdata(ud->symtab_scn, 0));
     sym_iter_next(&i);
@@ -193,7 +211,7 @@ static inline int sym_iter_valid(sym_iter_t *i) {
 /* Note that we're embedding into floating point!.  That's ok for
    32bit, but won't work for all 64bit addresses. */
 static int cmd_sym2addr(lua_State *L) {
-    struct elf_userdata *ud = L_elf(L, -2);
+    struct elf_ud *ud = L_elf(L, -2);
     const char *name = L_string(L, -1);
     FOR_ITER(sym_iter, i, ud, L) {
         // LOG("%08x %s\n", i.sym.st_value, i.name);
@@ -205,7 +223,7 @@ static int cmd_sym2addr(lua_State *L) {
     return 0;
 }
 static int cmd_addr2sym(lua_State *L) {
-    struct elf_userdata *ud = L_elf(L, -2);
+    struct elf_ud *ud = L_elf(L, -2);
     lua_Number addr = L_number(L, -1);
     FOR_ITER(sym_iter, i, ud, L) {
         // LOG("%08x %s\n", i.sym.st_value, i.name);
@@ -299,36 +317,20 @@ static void log_indent(int level) {
 }
 
 struct die_walk;
+
 struct die_walk {
     Dwarf_Die die;
     int verbose;
     lua_State *L;
     int level;
-    int (*handle_attr)(struct die_walk *, Dwarf_Attribute *attr);
     const char *name;
+    int nb_retvals;
 };
 typedef struct die_walk die_walk_t;
 
-static int walk_attrs(Dwarf_Attribute *attr, void *ctx) {
-    die_walk_t *s = ctx;
-    if (s->handle_attr) {
-        return s->handle_attr(s, attr);
-    }
-    return DWARF_CB_OK;
-}
-static int log_attr(struct die_walk *s, Dwarf_Attribute *attr) {
-    if (s->verbose) {
-        switch(attr->code) {
-            FOR_DW_AT(CASE_LOG_AT)
-        default:
-            LOG("attr 0x%x 0x%x\n", attr->code, attr->form);
-        }
-    }
-    //attr->valp
-    return DWARF_CB_OK;
-}
-
-static void walk_die_tree(die_walk_t *s) {
+#define WALK_OK 0
+#define WALK_ABORT 1
+static int walk_die_tree(die_walk_t *s) {
     for(;;) {
         int tag = dwarf_tag(&s->die);
         if (s->verbose) {
@@ -340,6 +342,14 @@ static void walk_die_tree(die_walk_t *s) {
         if (!name) name = "";
         if (s->verbose) LOG("%s:", name);
 
+        /* lookup is implemented as this early abort hack. */
+        if (s->name && (!strcmp(name, s->name))) {
+            struct die_ud *ud = push_die(s->L);
+            ud->die = s->die;
+            s->nb_retvals++;
+            return WALK_ABORT;
+        }
+
         /* type */
         if (s->verbose) {
             switch(tag) {
@@ -349,21 +359,13 @@ static void walk_die_tree(die_walk_t *s) {
             }
         }
 
-        /* attributes */
-        if (!s->name) {
-            // Name filter not active
-            dwarf_getattrs(&s->die, walk_attrs, s, 0);
-        }
-        else if (!strcmp(s->name, name)) {
-            // Filter based on name
-            dwarf_getattrs(&s->die, walk_attrs, s, 0);
-        }
-
         /* children */
         Dwarf_Die parent = s->die;
         if (!dwarf_child(&parent, &s->die)) {
             s->level++;
-            walk_die_tree(s);
+            if (WALK_ABORT == walk_die_tree(s)) {
+                return WALK_ABORT;
+            }
             s->level--;
         }
         s->die = parent;
@@ -376,10 +378,11 @@ static void walk_die_tree(die_walk_t *s) {
         }
         break;
     }
+    return WALK_OK;
 }
 
 /* Walk the entire DIE tree, starting at the list of CUs. */
-static int die_walk(die_walk_t *s, struct elf_userdata *ud) {
+static int die_walk(die_walk_t *s, struct elf_ud *ud) {
     lua_State *L = s->L;
     Dwarf_Off off=0, next_off=0, abbrev_offset=0;
     size_t header_size=0;
@@ -395,9 +398,53 @@ static int die_walk(die_walk_t *s, struct elf_userdata *ud) {
     return 0;
 }
 
-/* Trying to find a very simple way to access the data structure.
-   First thing: collect all DIE by name? */
-static int record_attr(die_walk_t *s, Dwarf_Attribute *attr) {
+/* leb128 decode of Dwarf_Block */
+static uint32_t block_u32(Dwarf_Block *b) {
+    // FIXME: THIS IS WRONG.
+    // Currently just a special case.
+    // ASSERT(b->length == 5);
+    // ASSERT(b->data[0] == 3); // is actually LEB128
+    // FIXME: assuming same endianness!
+    return *((uint32_t*)(b->data+1));
+}
+
+/* Convert die attribute to something usable from Lua.  I could not
+   find good documenation for this, so had to grep libdw source for
+   DW_FORM_ literals to make sense of things. */
+struct log_attr_ctx {
+    lua_State *L;
+};
+static int log_attr(Dwarf_Attribute *attr, void *ctx) {
+    struct log_attr_ctx *s = ctx;
+    lua_State *L = s->L;
+    switch(attr->form) {
+    case DW_FORM_strp:
+        LOG("%s", dwarf_formstring(attr));
+        break;
+    case DW_FORM_ref4: {
+        Dwarf_Die die_mem;
+        ASSERT(dwarf_formref_die(attr, &die_mem));
+        LOG("<die>");
+        break;
+    }
+    case DW_FORM_data1: {
+        Dwarf_Sword sval;
+        ASSERT(0 == dwarf_formsdata(attr, &sval));
+        LOG("%d", sval);
+        break;
+    }
+    case DW_FORM_exprloc: {
+        Dwarf_Block block;
+        ASSERT(0 == dwarf_formblock(attr, &block));
+        uint32_t addr = block_u32(&block);
+        LOG("0x%08x", addr);
+        break;
+    }
+    default:
+        LOG("?");
+        break;
+    }
+    LOG(":0x%x ", attr->form);
     switch(attr->code) {
         FOR_DW_AT(CASE_LOG_AT)
     default:
@@ -407,27 +454,40 @@ static int record_attr(die_walk_t *s, Dwarf_Attribute *attr) {
     return DWARF_CB_OK;
 }
 
-
 static int cmd_sym2die(lua_State *L) {
-    struct elf_userdata *ud = L_elf(L, -2);
+    struct elf_ud *ud = L_elf(L, -2);
     const char *name = L_string(L, -1);
     die_walk_t s = {
-        .verbose = 0, .L = L, .level = 0, .handle_attr = record_attr,
-        .name = name
+        .L = L,  // for return data and errors
+        .name = name // if defined, return only this DIE
     };
-    return die_walk(&s, ud);
+    die_walk(&s, ud);
+    return s.nb_retvals;
+}
+
+// Note: for all DIE objects, we require the elf to be supplied as
+// well.  This is one way to guard against bad gc paths.
+static int cmd_die_log(lua_State *L) {
+    struct elf_ud *elf_ud = L_elf(L, -2);
+    struct die_ud *die_ud = L_die(L, -1);
+    struct log_attr_ctx ctx = { .L = L };
+    (void)elf_ud;
+    dwarf_getattrs(&die_ud->die, log_attr, &ctx, 0);
+    return DWARF_CB_OK;
 }
 
 
+
 static int cmd_doodle(lua_State *L) {
-    struct elf_userdata *ud = L_elf(L, -1);
-    die_walk_t s = { .verbose = 0, .L = L, .level = 0, .handle_attr = log_attr };
+    struct elf_ud *ud = L_elf(L, -1);
+    die_walk_t s = { .L = L, .verbose = 1 };
     return die_walk(&s, ud);
 }
 
 int luaopen_elfutils_lua51 (lua_State *L) {
     // FIXME: Add __gc method, maybe also some __name style method to allow pretty printing?
-    luaL_newmetatable(L, "elf");
+    luaL_newmetatable(L, T_ELF);
+    luaL_newmetatable(L, T_DIE);
 
     lua_newtable(L);
 #define CMD(_name) { \
@@ -441,6 +501,7 @@ int luaopen_elfutils_lua51 (lua_State *L) {
     CMD(sym2die);
     CMD(doodle);
 
+    CMD(die_log);
 
 #undef CMD
     return 1;

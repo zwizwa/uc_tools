@@ -18,7 +18,9 @@ function test()
 
 
    -- elfutils.doodle(elf)
-   elfutils.sym2die(elf, "poll_functions")
+   local die = elfutils.sym2die(elf, "poll_functions")
+   print(die)
+   elfutils.die_log(elf, die)
 
 end
 
