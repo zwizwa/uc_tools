@@ -9,7 +9,6 @@
 // monitoring an embedded system that already has a Lua based
 // framework around it.
 
-
 // Libelf requires some knowledge of the structure of ELF files.
 // https://en.wikipedia.org/wiki/Executable_and_Linkable_Format
 
@@ -22,7 +21,23 @@
 #include <elfutils/libdw.h>
 #include <dwarf.h>
 
+#include <stdarg.h>
+
 // uc_tools
+// macros.h will use this one.  it only works inside the body of a
+// function that has L defined.
+#define ERROR(...) L_error(L, __VA_ARGS__)
+static void L_error(lua_State *L, const char *fmt, ...) {
+    char msg[1024];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(msg, sizeof(msg), fmt, ap);
+    va_end(ap);
+    lua_pushstring(L, msg);
+    lua_error(L);
+}
+
+
 #include "macros.h"
 
 // DWARF is a tree of Debugging Information Entries (DIEs) per
@@ -76,7 +91,7 @@ static const lua_Number L_number(lua_State *L, int index) {
     return n;
 }
 
-static void elf_error(void) {
+static void elf_error(lua_State *L) {
     int e = elf_errno();
     const char *m = elf_errmsg(e);
     ERROR("elf_errmsg: %s, elf_errno: %d\n", m, e);
@@ -94,7 +109,7 @@ static int cmd_open(lua_State *L) {
     Elf_Cmd cmd = ELF_C_READ;
     Elf *elf = elf_begin(fd, cmd, NULL);
     // LOG("elf = %p\n", elf);
-    if (!elf) elf_error();
+    if (!elf) elf_error(L);
     ASSERT(elf);
     struct elf_userdata *ud = lua_newuserdata(L, sizeof(*ud));
     ASSERT(ud);
@@ -155,16 +170,18 @@ typedef struct {
     size_t ndx_sym;
     GElf_Sym sym;
     struct elf_userdata *ud;
+    lua_State *L;
 } sym_iter_t;
 static inline void sym_iter_next(sym_iter_t *i) {
+    lua_State *L = i->L;
     i->name = NULL;
     if (gelf_getsym(i->data_sym, i->ndx_sym, &i->sym) == NULL) return;
     i->name = elf_strptr(i->ud->elf, i->ud->strtab_ndx, i->sym.st_name);
     ASSERT(i->name);
     i->ndx_sym++;
 }
-static inline sym_iter_t sym_iter_new(struct elf_userdata *ud) {
-    sym_iter_t i = { .ud = ud };
+static inline sym_iter_t sym_iter_new(struct elf_userdata *ud, lua_State *L) {
+    sym_iter_t i = { .ud = ud, .L = L };
     ASSERT(i.data_sym = elf_getdata(ud->symtab_scn, 0));
     sym_iter_next(&i);
     return i;
@@ -178,7 +195,7 @@ static inline int sym_iter_valid(sym_iter_t *i) {
 static int cmd_sym2addr(lua_State *L) {
     struct elf_userdata *ud = L_elf(L, -2);
     const char *name = L_string(L, -1);
-    FOR_ITER(sym_iter, i, ud) {
+    FOR_ITER(sym_iter, i, ud, L) {
         // LOG("%08x %s\n", i.sym.st_value, i.name);
         if (!strcmp(i.name, name)) {
             lua_pushnumber(L, i.sym.st_value);
@@ -190,7 +207,7 @@ static int cmd_sym2addr(lua_State *L) {
 static int cmd_addr2sym(lua_State *L) {
     struct elf_userdata *ud = L_elf(L, -2);
     lua_Number addr = L_number(L, -1);
-    FOR_ITER(sym_iter, i, ud) {
+    FOR_ITER(sym_iter, i, ud, L) {
         // LOG("%08x %s\n", i.sym.st_value, i.name);
         typeof(i.sym.st_value) addr1 = addr;
         if (addr1 == i.sym.st_value) {
