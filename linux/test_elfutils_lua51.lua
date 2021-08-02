@@ -17,7 +17,8 @@ function test()
    print(sym)
 
 
-   elfutils.doodle(elf)
+   -- elfutils.doodle(elf)
+   elfutils.sym2die(elf, "poll_functions")
 
 end
 

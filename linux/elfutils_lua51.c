@@ -217,11 +217,13 @@ static int cmd_addr2sym(lua_State *L) {
     }
     return 0;
 }
-// Walk DWARF
 
-static void log_indent(int level) {
-    for (int i=0; i<level; i++) { LOG(" "); }
-}
+
+// DWARF walker.
+//
+// It seems simplest to implement a single walker, and instrument it
+// with some ad-hoc pugin behavior.
+
 // This is the list that occurs in current CM3 image.
 // I did the tag number -> name mapping using /usr/include/llvm-3.8/llvm/Support/Dwarf.def
 // But it is also in /usr/include/dwarf.h from libdw-dev
@@ -292,7 +294,110 @@ static void log_indent(int level) {
 #define CASE_LOG_AT(name) \
     case DW_AT_##name: LOG(#name "\n"); break;
 
-int walk_attrs(Dwarf_Attribute *attr, void *ctx) {
+static void log_indent(int level) {
+    for (int i=0; i<level; i++) { LOG(" "); }
+}
+
+struct die_walk;
+struct die_walk {
+    Dwarf_Die die;
+    int verbose;
+    lua_State *L;
+    int level;
+    int (*handle_attr)(struct die_walk *, Dwarf_Attribute *attr);
+    const char *name;
+};
+typedef struct die_walk die_walk_t;
+
+static int walk_attrs(Dwarf_Attribute *attr, void *ctx) {
+    die_walk_t *s = ctx;
+    if (s->handle_attr) {
+        return s->handle_attr(s, attr);
+    }
+    return DWARF_CB_OK;
+}
+static int log_attr(struct die_walk *s, Dwarf_Attribute *attr) {
+    if (s->verbose) {
+        switch(attr->code) {
+            FOR_DW_AT(CASE_LOG_AT)
+        default:
+            LOG("attr 0x%x 0x%x\n", attr->code, attr->form);
+        }
+    }
+    //attr->valp
+    return DWARF_CB_OK;
+}
+
+static void walk_die_tree(die_walk_t *s) {
+    for(;;) {
+        int tag = dwarf_tag(&s->die);
+        if (s->verbose) {
+            log_indent(s->level);
+        }
+
+        /* name */
+        const char *name = dwarf_diename(&s->die);
+        if (!name) name = "";
+        if (s->verbose) LOG("%s:", name);
+
+        /* type */
+        if (s->verbose) {
+            switch(tag) {
+                FOR_DW_TAG(CASE_LOG_DW)
+            default:
+                LOG("(0x%x)\n", tag); // see dwarf.h
+            }
+        }
+
+        /* attributes */
+        if (!s->name) {
+            // Name filter not active
+            dwarf_getattrs(&s->die, walk_attrs, s, 0);
+        }
+        else if (!strcmp(s->name, name)) {
+            // Filter based on name
+            dwarf_getattrs(&s->die, walk_attrs, s, 0);
+        }
+
+        /* children */
+        Dwarf_Die parent = s->die;
+        if (!dwarf_child(&parent, &s->die)) {
+            s->level++;
+            walk_die_tree(s);
+            s->level--;
+        }
+        s->die = parent;
+
+        /* siblings */
+        Dwarf_Die sibling;
+        if (dwarf_siblingof(&s->die, &sibling) == 0) {
+            s->die = sibling;
+            continue;
+        }
+        break;
+    }
+}
+
+/* Walk the entire DIE tree, starting at the list of CUs. */
+static int die_walk(die_walk_t *s, struct elf_userdata *ud) {
+    lua_State *L = s->L;
+    Dwarf_Off off=0, next_off=0, abbrev_offset=0;
+    size_t header_size=0;
+    uint8_t address_size=0, offset_size=0;
+
+    while(dwarf_nextcu(ud->dwarf, off,
+                       &next_off, &header_size, &abbrev_offset,
+                       &address_size, &offset_size) == 0) {
+        ASSERT(dwarf_offdie(ud->dwarf, off + header_size, &s->die));
+        walk_die_tree(s);
+        off = next_off;
+    }
+    return 0;
+}
+
+/* Trying to find a very simple way to access the data structure.
+   First thing: collect all DIE by name? */
+static int record_attr(die_walk_t *s, Dwarf_Attribute *attr) {
     switch(attr->code) {
         FOR_DW_AT(CASE_LOG_AT)
     default:
@@ -302,58 +407,22 @@ int walk_attrs(Dwarf_Attribute *attr, void *ctx) {
     return DWARF_CB_OK;
 }
 
-static void walk_die_tree(Dwarf_Die *die, int level) {
-    Dwarf_Die die_ = {};
-    for(;;) {
-        int tag = dwarf_tag(die);
-        log_indent(level);
 
-        /* name */
-        const char *name = dwarf_diename(die);
-        if (!name) name = "";
-        LOG("%s:", name);
-
-        /* type */
-        switch(tag) {
-        FOR_DW_TAG(CASE_LOG_DW)
-        default:
-            LOG("(0x%x)\n", tag); // see dwarf.h
-        }
-
-        /* attributes */
-        // see also dwarf_attr, search by name
-        dwarf_getattrs(die, walk_attrs, NULL, 0);
-
-
-        /* children */
-        Dwarf_Die child = {};
-        if (!dwarf_child(die, &child)) {
-            walk_die_tree(&child, level+1);
-        }
-
-        /* siblings */
-        if (dwarf_siblingof(die, &die_) == 0) {
-            die = &die_;
-            continue;
-        }
-        break;
-    }
+static int cmd_sym2die(lua_State *L) {
+    struct elf_userdata *ud = L_elf(L, -2);
+    const char *name = L_string(L, -1);
+    die_walk_t s = {
+        .verbose = 0, .L = L, .level = 0, .handle_attr = record_attr,
+        .name = name
+    };
+    return die_walk(&s, ud);
 }
+
 
 static int cmd_doodle(lua_State *L) {
     struct elf_userdata *ud = L_elf(L, -1);
-    Dwarf_Off off=0, next_off=0, abbrev_offset=0;
-    size_t header_size=0;
-    uint8_t address_size=0, offset_size=0;
-    while(dwarf_nextcu(ud->dwarf, off,
-                       &next_off, &header_size, &abbrev_offset,
-                       &address_size, &offset_size) == 0) {
-        Dwarf_Die cu_die;
-        ASSERT(dwarf_offdie(ud->dwarf, off + header_size, &cu_die));
-        walk_die_tree(&cu_die, 0);
-        off = next_off;
-    }
-    return 0;
+    die_walk_t s = { .verbose = 0, .L = L, .level = 0, .handle_attr = log_attr };
+    return die_walk(&s, ud);
 }
 
 int luaopen_elfutils_lua51 (lua_State *L) {
@@ -369,6 +438,7 @@ int luaopen_elfutils_lua51 (lua_State *L) {
     CMD(open);
     CMD(sym2addr);
     CMD(addr2sym);
+    CMD(sym2die);
     CMD(doodle);
 
 
