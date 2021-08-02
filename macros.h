@@ -125,8 +125,7 @@ static inline void abort_busyloop(void) {
 #ifndef ASSERT
 #define ASSERT(assertion) ({ \
             if(!(assertion)) { \
-                LOG("%s: %d: ASSERT FAIL: " #assertion "\n", __FILE__, __LINE__); \
-                ABORT; \
+                ERROR("%s: %d: ASSERT FAIL: " #assertion "\n", __FILE__, __LINE__); \
             } })
 #endif
 #ifndef ASSERT_EQ
@@ -134,8 +133,7 @@ static inline void abort_busyloop(void) {
             __typeof__(a) _a = (a); \
             __typeof__(b) _b = (b); \
             if(_a != _b) { \
-                LOG("ASSERT FAIL: " #a "(%d) == " #b "(%d)\n", _a, _b); \
-                ABORT; \
+                ERROR("ASSERT FAIL: " #a "(%d) == " #b "(%d)\n", _a, _b); \
             } })
 #endif
 #ifndef ASSERT_GT
@@ -143,8 +141,7 @@ static inline void abort_busyloop(void) {
             __typeof__(a) _a = (a); \
             __typeof__(b) _b = (b); \
             if(_a <= _b) { \
-                LOG("ASSERT FAIL: " #a "(%d) <= " #b "(%d)\n", _a, _b); \
-                ABORT; \
+                ERROR("ASSERT FAIL: " #a "(%d) <= " #b "(%d)\n", _a, _b); \
             } })
 #endif
 
