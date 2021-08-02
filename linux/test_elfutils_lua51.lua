@@ -1,6 +1,12 @@
 #!/usr/bin/lua
 local elfutils = require("elfutils_lua51")
 
+-- See dwarf.h
+local DW_AT = {
+   location = 0x02,
+   name  = 0x03,
+   type = 0x49,
+}
 
 function test()
    io.stdout:write(elfutils.name() .. "\n")
@@ -21,6 +27,9 @@ function test()
    local die = elfutils.sym2die(elf, "poll_functions")
    print(die)
    elfutils.die_log(elf, die)
+   print(elfutils.die_attr(die, DW_AT.type))
+   print(elfutils.die_attr(die, DW_AT.name))
+   print(string.format("%x", elfutils.die_attr(die, DW_AT.location)))
 
 end
 

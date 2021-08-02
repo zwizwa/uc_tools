@@ -359,6 +359,10 @@ static int walk_die_tree(die_walk_t *s) {
             }
         }
 
+        /* attributes are not done during the walk to not complicate
+           things.  do it in two steps: find a die using a walk, then
+           print attributes. */
+
         /* children */
         Dwarf_Die parent = s->die;
         if (!dwarf_child(&parent, &s->die)) {
@@ -465,15 +469,43 @@ static int cmd_sym2die(lua_State *L) {
     return s.nb_retvals;
 }
 
-// Note: for all DIE objects, we require the elf to be supplied as
-// well.  This is one way to guard against bad gc paths.
 static int cmd_die_log(lua_State *L) {
-    struct elf_ud *elf_ud = L_elf(L, -2);
     struct die_ud *die_ud = L_die(L, -1);
     struct log_attr_ctx ctx = { .L = L };
-    (void)elf_ud;
     dwarf_getattrs(&die_ud->die, log_attr, &ctx, 0);
     return DWARF_CB_OK;
+}
+
+// To keep the code simple here, we implement only single attribute
+// access.  E.g. we don't really need to create a full rendering of
+// all DWARF data in Lua, we just need to provide some accessors.  So
+// let's write them manually, then maybe later automate using macros.
+
+int cmd_die_attr(lua_State *L) {
+    struct die_ud *die_ud = L_die(L, -2);
+    unsigned int code     = L_number(L, -1);  // DW_AT_* codes
+    Dwarf_Attribute attr;
+    ASSERT(dwarf_attr(&die_ud->die, code, &attr));
+    switch(attr.form) {
+    case DW_FORM_strp:
+        lua_pushstring(L, dwarf_formstring(&attr));
+        break;
+    case DW_FORM_ref4: {
+        struct die_ud *ud = push_die(L);
+        ASSERT(dwarf_formref_die(&attr, &ud->die));
+        break;
+    }
+    case DW_FORM_exprloc: {
+        Dwarf_Block block;
+        ASSERT(0 == dwarf_formblock(&attr, &block));
+        uint32_t addr = block_u32(&block);
+        lua_pushnumber(L, addr);
+        break;
+    }
+    default:
+        return 0;
+    }
+    return 1;
 }
 
 
@@ -502,6 +534,8 @@ int luaopen_elfutils_lua51 (lua_State *L) {
     CMD(doodle);
 
     CMD(die_log);
+
+    CMD(die_attr);
 
 #undef CMD
     return 1;
