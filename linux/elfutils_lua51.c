@@ -14,8 +14,7 @@
 
 // Note that there are Rust wrappers (of course), which are probably a
 // better starting point for an analysis tool, but I currently do not
-// want that dependency.  This is written for monitoring an embedded
-// system that already has a Lua based framework around it.
+// want that dependency.
 
 // Libelf requires some knowledge of the structure of ELF files.
 // https://en.wikipedia.org/wiki/Executable_and_Linkable_Format
@@ -315,9 +314,11 @@ struct die_walk {
     int verbose;
     lua_State *L;
     int level;
-    const char *name;
     int nb_retvals;
     struct elf_shared *elf_shared;
+    /* search filters. */
+    const char *search_name;
+    unsigned int search_tag;
 };
 typedef struct die_walk die_walk_t;
 
@@ -336,7 +337,10 @@ static int walk_die_tree(die_walk_t *s) {
         if (s->verbose) LOG("%s:", name);
 
         /* lookup is implemented as this early abort hack. */
-        if (s->name && (!strcmp(name, s->name))) {
+        if (s->search_name
+            && (!strcmp(name, s->search_name))
+            && (s->search_tag == tag)) {
+
             struct die_ud *ud = push_die(s->L, s->elf_shared);
             ud->die = s->die;
             s->nb_retvals++;
@@ -406,17 +410,27 @@ static uint32_t block_u32(Dwarf_Block *b) {
     return *((uint32_t*)(b->data+1));
 }
 
-static int cmd_sym2die(lua_State *L) {
+static int find_die_type(lua_State *L, unsigned int dw_tag) {
     struct elf_ud *ud = L_elf(L, -2);
     const char *name = L_string(L, -1);
     die_walk_t s = {
         .L = L,  // for return data and errors
-        .name = name, // if defined, return only this DIE
-        .elf_shared = ud->shared
+        .elf_shared = ud->shared,  // used by die_ud constructor
+        .search_name = name, // if defined, return only this DIE
+        .search_tag = dw_tag
     };
     die_walk(&s, ud);
     return s.nb_retvals;
 }
+static int cmd_die_find_variable(lua_State *L) {
+    return find_die_type(L, DW_TAG_variable);
+}
+static int cmd_die_find_structure_type(lua_State *L) {
+    return find_die_type(L, DW_TAG_variable);
+}
+
+
+
 struct die_attrs_ctx {
     lua_State *L;
     lua_Integer index;
@@ -566,7 +580,10 @@ static void deref_die_shared(struct elf_shared *s, const char *typ) {
     s->rc--;
     if (!s->rc) {
         /* Object can be removed. */
-        LOG("FIXME: LEAK: elf_shared rc=0 after %s gc\n", typ);
+        dwarf_end(s->dwarf);
+        elf_end(s->elf);
+        close(s->fd);
+        free(s);
     }
 }
 
@@ -622,8 +639,10 @@ int luaopen_elfutils_lua51 (lua_State *L) {
     CMD(open);
     CMD(sym2addr);
     CMD(addr2sym);
-    CMD(sym2die);
     CMD(doodle);
+
+    CMD(die_find_variable);
+    CMD(die_find_structure_type);
 
     CMD(die_child);
     CMD(die_sibling);

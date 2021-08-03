@@ -29,13 +29,15 @@ function test()
    -- local filename = "/bin/bash"
    local elf = elfutils.open(filename)
 
-   local elf_meta = getmetatable(elf)
-   log_desc({elf_meta = elf_meta})
+   if false then
+      local elf_meta = getmetatable(elf)
+      log_desc({elf_meta = elf_meta})
 
-   local addr = elfutils.C.sym2addr(elf, "start")
-   print(addr)
-   local sym = elfutils.C.addr2sym(elf, addr)
-   print(sym)
+      local addr = elfutils.C.sym2addr(elf, "start")
+      print(addr)
+      local sym = elfutils.C.addr2sym(elf, addr)
+      print(sym)
+   end
 
 
    -- elfutils.doodle(elf)
@@ -61,13 +63,18 @@ function test()
       log_desc({die_attrs_type_sibling = die_attrs_type_sibling})
    end
 
-   log_desc({test_recursive_die =
-                elfutils.die_unpack(
-                   elfutils.C.sym2die(elf, "dmx_node_struct"))})
+   if false then
+      log_desc({test_recursive_die =
+                   elfutils.die_unpack(
+                      elfutils.C.sym2die(elf, "dmx_node_struct"))})
+   end
 
    -- test the holy grail
-   log_desc(elfutils.read_variable(elf, "poll_functions"))
-   log("\n")
+   local nb_poll_functions = elfutils.read_variable(elf, "nb_poll_functions")
+   -- log_desc({nb_poll_functions = nb_poll_functions})
+   log_desc(nb_poll_functions)
+
+   log_desc(elfutils.read_array(elf, "poll_functions", 2))
 
 end
 

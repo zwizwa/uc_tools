@@ -6,6 +6,7 @@ end
 local function log_desc(thing)
    if not prompt then prompt = require('prompt') end
    log(prompt.describe(thing))
+   log("\n")
 end
 
 -- FIXME: This requires a link from .so to the .dynamic.host.so in linux/
@@ -111,22 +112,66 @@ end
 -- target's data structure as a Lua structure, using type and location
 -- information from the ELF.  Basically emulating GDB's print
 -- function.
-function elfutils.read_variable(elf, name)
-   local die = C.sym2die(elf, name)
-   local typ = C.die_attr(die, DW_AT.type)
-   log_desc({die = die, typ = typ})
+--
+--
+-- The data structure is fairly close to DWARF with node.tag the
+-- DW_TAG_ in symbolic form, all attributes in symbolic form with
+-- values converted to some Lua representation, and node.children a
+-- list of DIE child+siblings.
+--
+-- In good tradition I'm not going to document it further.  To see how
+-- this fits together, log_desc() is your friend.  That's the idea:
+-- make the structure printible so examples can be used to
+-- incrementally create queries instead of trying to decipher a huge
+-- document.
 
-   return {a = {b = 123}}
+local type_deref = {
+   typedef = true,
+}
+function flatten_type(type)
+   if type_deref[type.tag] then
+      return flatten_type(type.type)
+   else
+      assert(type.byte_size)
+      assert(type.tag == "base_type")
+      -- log("flat type:\n"); log_desc(type)
+      return type
+   end
+end
+local base_type_map = {
+   ["long unsigned int"] = "u32"
+}
+
+function elfutils.read_variable(elf, name)
+   local die = C.die_find_variable(elf, name)
+   local node = elfutils.die_unpack(die)
+   local base_type = flatten_type(node.type)
+   local location = node.location
+   assert(node.location)
+   assert(base_type)
+   -- log_desc(base_type)
+   return {location = location,
+           base_type = base_type.name,
+           byte_size = base_type.byte_size}
 end
 
+function elfutils.read_array(elf, name, nb_el)
+   local die = C.die_find_variable(elf, name)
+   local node = elfutils.die_unpack(die)
+   local location = node.location
+   assert(node.location)
+   assert(node.type.tag == "array_type")
+   local element_type = node.type.type
+   -- log_desc({read_array = element_type})
+end
 
--- FIXME: Some deref tools are going to be necessary.  E.g. add a
--- metatable to the expanded lua table such that it becomes possible
--- to recursively expand, map the lua dotted access to die/attr
--- parsing in the C lib.
-
--- Or just always recursively unpack.
-
+-- What I want, eventually, is a reader.  It is probably better to
+-- first flatten the data structure into a "reader program" such that
+-- it can be debugged separately.  A reader program is a specification
+-- for how to find the data by successive pointer dereference +
+-- offsets until a base type is used.
+--
+-- E.g.  {u32_ref,{offset,{ptr_ref,<loc>},<off>}}
 
 
 return elfutils
