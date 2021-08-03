@@ -25,7 +25,6 @@ function test()
    -- log_desc(DW_AT)
    -- log_desc(inv_DW_AT)
 
-
    local filename = "/i/constell8/rdm-bridge/stm32f103/main_nano.x8.f103.elf"
    -- local filename = "/bin/bash"
    local elf = elfutils.open(filename)
@@ -40,24 +39,32 @@ function test()
 
 
    -- elfutils.doodle(elf)
-   local die = elfutils.C.sym2die(elf, "poll_functions")
-   print(die)
-   elfutils.C.die_log(elf, die)
 
-   log_desc({die_attr_list = elfutils.C.die_attr_list(die)})
+   if false then
 
-   print(elfutils.C.die_attr(die, DW_AT.type))
-   print(elfutils.C.die_attr(die, DW_AT.name))
-   print(string.format("%x", elfutils.C.die_attr(die, DW_AT.location)))
+      local die = elfutils.C.sym2die(elf, "poll_functions")
+      print(die)
 
-   local die_attrs = elfutils.die_attrs(die)
-   log_desc({die_attrs = die_attrs})
-   local die_attrs_type = elfutils.die_attrs(die_attrs.type)
-   log_desc({die_attrs_type = die_attrs_type})
-   local die_attrs_type_type = elfutils.die_attrs(die_attrs_type.type)
-   local die_attrs_type_sibling = elfutils.die_attrs(die_attrs_type.sibling)
-   log_desc({die_attrs_type_type = die_attrs_type_type})
-   log_desc({die_attrs_type_sibling = die_attrs_type_sibling})
+      log_desc({die_attr_list = elfutils.C.die_attr_list(die)})
+
+      print(elfutils.C.die_attr(die, DW_AT.type))
+      print(elfutils.C.die_attr(die, DW_AT.name))
+      print(string.format("%x", elfutils.C.die_attr(die, DW_AT.location)))
+
+      local die_attrs = elfutils.die_attrs(die)
+      log_desc({die_attrs = die_attrs})
+      local die_attrs_type = elfutils.die_attrs(die_attrs.type)
+      log_desc({die_attrs_type = die_attrs_type})
+      local die_attrs_type_type = elfutils.die_attrs(die_attrs_type.type)
+      local die_attrs_type_sibling = elfutils.die_attrs(die_attrs_type.sibling)
+      log_desc({die_attrs_type_type = die_attrs_type_type})
+      log_desc({die_attrs_type_sibling = die_attrs_type_sibling})
+   end
+
+   log_desc({test_recursive_die =
+                elfutils.die_attrs(
+                   elfutils.C.sym2die(elf, "dmx_node_struct"),
+                   10)})
 
    -- test the holy grail
    log_desc(elfutils.read_variable(elf, "poll_functions"))

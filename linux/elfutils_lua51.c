@@ -385,49 +385,6 @@ static uint32_t block_u32(Dwarf_Block *b) {
     return *((uint32_t*)(b->data+1));
 }
 
-struct log_attr_ctx {
-    lua_State *L;
-};
-static int log_attr(Dwarf_Attribute *attr, void *ctx) {
-    struct log_attr_ctx *s = ctx;
-    lua_State *L = s->L;
-    switch(attr->form) {
-    case DW_FORM_strp:
-        LOG("%s", dwarf_formstring(attr));
-        break;
-    case DW_FORM_ref4: {
-        Dwarf_Die die_mem;
-        ASSERT(dwarf_formref_die(attr, &die_mem));
-        LOG("<die>");
-        break;
-    }
-    case DW_FORM_data1: {
-        Dwarf_Sword sval;
-        ASSERT(0 == dwarf_formsdata(attr, &sval));
-        LOG("%d", sval);
-        break;
-    }
-    case DW_FORM_exprloc: {
-        Dwarf_Block block;
-        ASSERT(0 == dwarf_formblock(attr, &block));
-        uint32_t addr = block_u32(&block);
-        LOG("0x%08x", addr);
-        break;
-    }
-    default:
-        LOG("?");
-        break;
-    }
-    LOG(":0x%x ", attr->form);
-    switch(attr->code) {
-        FOR_DW_AT(CASE_LOG_AT)
-    default:
-        LOG("attr 0x%x 0x%x\n", attr->code, attr->form);
-    }
-    //attr->valp
-    return DWARF_CB_OK;
-}
-
 static int cmd_sym2die(lua_State *L) {
     struct elf_ud *ud = L_elf(L, -2);
     const char *name = L_string(L, -1);
@@ -438,14 +395,6 @@ static int cmd_sym2die(lua_State *L) {
     die_walk(&s, ud);
     return s.nb_retvals;
 }
-
-static int cmd_die_log(lua_State *L) {
-    struct die_ud *die_ud = L_die(L, -1);
-    struct log_attr_ctx ctx = { .L = L };
-    dwarf_getattrs(&die_ud->die, log_attr, &ctx, 0);
-    return DWARF_CB_OK;
-}
-
 struct die_attrs_ctx {
     lua_State *L;
     lua_Integer index;
@@ -501,7 +450,8 @@ int cmd_die_attr(lua_State *L) {
         lua_pushnumber(L, addr);
         break;
     }
-    case DW_FORM_data1: {
+    case DW_FORM_data1:
+    case DW_FORM_data2: {
         Dwarf_Sword sval;
         ASSERT(0 == dwarf_formsdata(&attr, &sval));
         lua_pushnumber(L, sval);
@@ -530,7 +480,7 @@ struct number_table {
 const struct number_table DW_AT_table[] = { FOR_DW_AT(DW_AT_FIELD) };
 
 // Then export that as a Lua table.
-static int cmd_make_DW_AT(lua_State *L) {
+static int cmd_get_DW_AT(lua_State *L) {
     lua_newtable(L);
     for(int i=0; i<ARRAY_SIZE(DW_AT_table); i++) {
         lua_pushnumber(L, DW_AT_table[i].code);
@@ -548,15 +498,30 @@ static int cmd_doodle(lua_State *L) {
 
 static void new_metatable(lua_State *L, const char *t_name) {
     // FIXME: Add __gc method.
-    // FIXME: I want prompt to print the type name. How to do this properly?  __name is not enough.
     luaL_newmetatable(L, t_name);
-    luaL_getmetatable(L, t_name);
-    lua_pushstring(L, t_name);
-    lua_setfield(L, -2, "__name"); 
-    lua_pop(L, -1);
+
+    // FIXME: I want prompt to print the type name. How to do this
+    // properly?  __name is not enough.
+    if (1) {
+        luaL_getmetatable(L, t_name);
+        lua_pushstring(L, t_name); lua_setfield(L, -2, "__name"); 
+        lua_pop(L, -1);
+    }
+
+}
+
+static int cmd_get_metatables(lua_State *L) {
+    lua_newtable(L);
+    /* The T_ are global names that can later be changed if necessary.
+       We also return a table that is stored lexically which the lua
+       code uses to type-dispatch. */
+    luaL_getmetatable(L, T_ELF); lua_setfield(L, -2, "elf");
+    luaL_getmetatable(L, T_DIE); lua_setfield(L, -2, "die");
+    return 1;
 }
 
 int luaopen_elfutils_lua51 (lua_State *L) {
+
     new_metatable(L, T_ELF);
     new_metatable(L, T_DIE);
 
@@ -572,12 +537,11 @@ int luaopen_elfutils_lua51 (lua_State *L) {
     CMD(sym2die);
     CMD(doodle);
 
-    CMD(die_log);
-
     CMD(die_attr);
     CMD(die_attr_list);
 
-    CMD(make_DW_AT);
+    CMD(get_DW_AT);
+    CMD(get_metatables);
 
 #undef CMD
     return 1;

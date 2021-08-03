@@ -20,13 +20,15 @@ local elfutils = {}
 -- simple C code, then write Lua wrappers for data structure
 -- manipulation.
 elfutils.C = C
+elfutils.metatables = {}
 
 local function setup_tables()
-   elfutils.DW_AT = C.make_DW_AT()
+   elfutils.DW_AT = C.get_DW_AT()
    elfutils.inv_DW_AT = {}
    for name,code in pairs(elfutils.DW_AT) do
       elfutils.inv_DW_AT[code] = name
    end
+   elfutils.metatables = C.get_metatables()
 end
 
 setup_tables()
@@ -41,16 +43,24 @@ end
 
 -- Unpack a DIE
 -- FIXME: Is it important to keep the order of the attributes?
-function elfutils.die_attrs(die)
+-- For now we just map them onto an (unsorted) table.
+function elfutils.die_attrs(die, depth)
    local attr_list = C.die_attr_list(die)
    local attrs = {}
    for i, at_code in ipairs(attr_list) do
       local at_name = inv_DW_AT[at_code]
-      if not at_name then
-         error("at_code " .. at_code .. "not supported")
+      if at_name ~= 'sibling' then -- ignore the toplevel organization links
+         if not at_name then
+            error("at_code " .. at_code .. "not supported")
+         end
+         local at_val = C.die_attr(die, at_code)
+         if (elfutils.metatables.die == getmetatable(at_val)
+                and type(depth) == 'number'
+                and depth > 0) then
+            at_val = elfutils.die_attrs(at_val, depth-1)
+         end
+         attrs[at_name] = at_val
       end
-      local at_val = C.die_attr(die, at_code)
-      attrs[at_name] = at_val
    end
    return attrs
 end
@@ -67,6 +77,14 @@ function elfutils.read_variable(elf, name)
 
    return {a = {b = 123}}
 end
+
+
+-- FIXME: Some deref tools are going to be necessary.  E.g. add a
+-- metatable to the expanded lua table such that it becomes possible
+-- to recursively expand, map the lua dotted access to die/attr
+-- parsing in the C lib.
+
+-- Or just always recursively unpack.
 
 
 
