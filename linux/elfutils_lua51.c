@@ -91,16 +91,26 @@ static int cmd_name(lua_State *L) {
     return 1;
 }
 
-struct elf_ud {
+/* Note that we need to manage elf_shared separately, because it is an
+   internal object that is referenced by elf_ud (explicitly), and
+   die_ud (implicitly, but made explicit for RC). */
+
+struct elf_shared  {
     int fd;
     Elf *elf;
-    GElf_Ehdr ehdr;   // translated copy of the ELF header
+    GElf_Ehdr ehdr;      // translated copy of the ELF header
     Elf_Scn *symtab_scn; // symbol section
     size_t strtab_ndx;
     Dwarf *dwarf;
+    int rc; // FIXME: not yet implemented
 };
+struct elf_ud {
+    struct elf_shared *shared;
+};
+
 struct die_ud {
     Dwarf_Die die;
+    struct elf_shared *elf;
 };
 
 #define T_ELF "elfutils.elf"
@@ -137,12 +147,15 @@ static void elf_error(lua_State *L) {
     ERROR("elf_errmsg: %s, elf_errno: %d\n", m, e);
 }
 
-static struct die_ud *push_die(lua_State *L) {
+static struct die_ud *push_die(lua_State *L, struct elf_shared *elf_shared) {
+    ASSERT(elf_shared);
     struct die_ud *ud = lua_newuserdata(L, sizeof(*ud));
     ASSERT(ud);
     memset(ud,0,sizeof(*ud));
+    ud->elf = elf_shared;
     luaL_getmetatable(L, T_DIE);
     lua_setmetatable(L, -2);
+    elf_shared->rc++;
     return ud;
 }
 
@@ -164,17 +177,18 @@ static int cmd_open(lua_State *L) {
     // shared elf structure (from elf and die references) + a gc
     // method that decreases count and frees if necessary.
 
-    ASSERT(elf);
     struct elf_ud *ud = lua_newuserdata(L, sizeof(*ud));
     ASSERT(ud);
     memset(ud,0,sizeof(*ud));
-
-    ud->elf = elf;
-    ud->fd = fd;
+    ud->shared = calloc(sizeof(*ud->shared),1);
+    ASSERT(ud->shared);
+    ud->shared->rc = 1;
+    ud->shared->elf = elf;
+    ud->shared->fd = fd;
 
     // Get translated copy of the ELF file header
-    ASSERT(gelf_getehdr(elf, &ud->ehdr));
-    ASSERT(ud->ehdr.e_shstrndx);
+    ASSERT(gelf_getehdr(elf, &ud->shared->ehdr));
+    ASSERT(ud->shared->ehdr.e_shstrndx);
 
     size_t ndx = 0;
     Elf_Scn *scn;
@@ -185,23 +199,26 @@ static int cmd_open(lua_State *L) {
 
         /* Section names are in the string section with index
            e_shstrndx linked from the ELF header. */
-        const char *name = elf_strptr(ud->elf, ud->ehdr.e_shstrndx, shdr.sh_name);
+        const char *name =
+            elf_strptr(ud->shared->elf,
+                       ud->shared->ehdr.e_shstrndx,
+                       shdr.sh_name);
         ASSERT(name);
 
         // LOG("%2d %s (0x%x)\n", i, name, shdr.sh_type);
 
         /* Cache some section information as index or pointer,
            depending on how it is used later. */
-        if      (!strcmp(".strtab", name)) { ud->strtab_ndx = ndx; }
-        else if (!strcmp(".symtab", name)) { ud->symtab_scn = scn; }
+        if      (!strcmp(".strtab", name)) { ud->shared->strtab_ndx = ndx; }
+        else if (!strcmp(".symtab", name)) { ud->shared->symtab_scn = scn; }
 
         ndx++;
     }
-    ASSERT(ud->symtab_scn);
-    ASSERT(ud->strtab_ndx);
+    ASSERT(ud->shared->symtab_scn);
+    ASSERT(ud->shared->strtab_ndx);
 
     // Initialize DWARF index
-    ASSERT(ud->dwarf = dwarf_begin_elf(elf, DWARF_C_READ, NULL));
+    ASSERT(ud->shared->dwarf = dwarf_begin_elf(elf, DWARF_C_READ, NULL));
 
     // Add a metatable...
     luaL_getmetatable(L, T_ELF);
@@ -228,15 +245,18 @@ typedef struct {
 } sym_iter_t;
 static inline void sym_iter_next(sym_iter_t *i) {
     lua_State *L = i->L;
+    ASSERT(i->ud);
     i->name = NULL;
     if (gelf_getsym(i->data_sym, i->ndx_sym, &i->sym) == NULL) return;
-    i->name = elf_strptr(i->ud->elf, i->ud->strtab_ndx, i->sym.st_name);
+    i->name = elf_strptr(i->ud->shared->elf,
+                         i->ud->shared->strtab_ndx,
+                         i->sym.st_name);
     ASSERT(i->name);
     i->ndx_sym++;
 }
 static inline sym_iter_t sym_iter_new(struct elf_ud *ud, lua_State *L) {
     sym_iter_t i = { .ud = ud, .L = L };
-    ASSERT(i.data_sym = elf_getdata(ud->symtab_scn, 0));
+    ASSERT(i.data_sym = elf_getdata(ud->shared->symtab_scn, 0));
     sym_iter_next(&i);
     return i;
 }
@@ -297,6 +317,7 @@ struct die_walk {
     int level;
     const char *name;
     int nb_retvals;
+    struct elf_shared *elf_shared;
 };
 typedef struct die_walk die_walk_t;
 
@@ -316,7 +337,7 @@ static int walk_die_tree(die_walk_t *s) {
 
         /* lookup is implemented as this early abort hack. */
         if (s->name && (!strcmp(name, s->name))) {
-            struct die_ud *ud = push_die(s->L);
+            struct die_ud *ud = push_die(s->L, s->elf_shared);
             ud->die = s->die;
             s->nb_retvals++;
             return WALK_ABORT;
@@ -364,10 +385,10 @@ static int die_walk(die_walk_t *s, struct elf_ud *ud) {
     size_t header_size=0;
     uint8_t address_size=0, offset_size=0;
 
-    while(dwarf_nextcu(ud->dwarf, off,
+    while(dwarf_nextcu(ud->shared->dwarf, off,
                        &next_off, &header_size, &abbrev_offset,
                        &address_size, &offset_size) == 0) {
-        ASSERT(dwarf_offdie(ud->dwarf, off + header_size, &s->die));
+        ASSERT(dwarf_offdie(ud->shared->dwarf, off + header_size, &s->die));
         walk_die_tree(s);
         off = next_off;
     }
@@ -390,7 +411,8 @@ static int cmd_sym2die(lua_State *L) {
     const char *name = L_string(L, -1);
     die_walk_t s = {
         .L = L,  // for return data and errors
-        .name = name // if defined, return only this DIE
+        .name = name, // if defined, return only this DIE
+        .elf_shared = ud->shared
     };
     die_walk(&s, ud);
     return s.nb_retvals;
@@ -414,13 +436,14 @@ static int cmd_die_attr_list(lua_State *L) {
     return 1;
 }
 
-static int cmd_die_id(lua_State *L) {
+static int cmd_die_cuoffset(lua_State *L) {
     struct die_ud *die_ud = L_die(L, -1);
-    // FIXME: what to use here?
-    // uintptr_t id = die_ud->die.addr;
-    uintptr_t id = dwarf_cuoffset(&die_ud->die);
-    // LOG("id = %d\n", id);
-    lua_pushnumber(L, id);
+    lua_pushnumber(L, dwarf_cuoffset(&die_ud->die));
+    return 1;
+}
+static int cmd_die_tag(lua_State *L) {
+    struct die_ud *die_ud = L_die(L, -1);
+    lua_pushnumber(L, dwarf_tag(&die_ud->die));
     return 1;
 }
 // The tree is linked up as a single child link per die, where each
@@ -430,7 +453,7 @@ static int cmd_die_child(lua_State *L) {
     struct die_ud *in = L_die(L, -1);
     Dwarf_Die child;
     if (0 == dwarf_child(&in->die, &child)) {
-        struct die_ud *out = push_die(L);
+        struct die_ud *out = push_die(L, in->elf);
         out->die = child;
         return 1;
     }
@@ -440,7 +463,7 @@ static int cmd_die_sibling(lua_State *L) {
     struct die_ud *in = L_die(L, -1);
     Dwarf_Die sibling;
     if (0 == dwarf_siblingof(&in->die, &sibling)) {
-        struct die_ud *out = push_die(L);
+        struct die_ud *out = push_die(L, in->elf);
         out->die = sibling;
         return 1;
     }
@@ -472,7 +495,7 @@ int cmd_die_attr(lua_State *L) {
         lua_pushstring(L, dwarf_formstring(&attr));
         break;
     case DW_FORM_ref4: {
-        struct die_ud *ud = push_die(L);
+        struct die_ud *ud = push_die(L, die_ud->elf);
         ASSERT(dwarf_formref_die(&attr, &ud->die));
         break;
     }
@@ -503,21 +526,31 @@ int cmd_die_attr(lua_State *L) {
 }
 
 
-// Reify the iteration macro as a Lua data structure.
-// To keep it simple, expand it as a C array first.
+// Reify the iteration macros as a Lua data structure.  To keep it
+// simple, expand them as a C array first.
 struct number_table {
     const char *name;
     const unsigned int code;
 };
-#define DW_AT_FIELD(name) { #name, DW_AT_##name },
-const struct number_table DW_AT_table[] = { FOR_DW_AT(DW_AT_FIELD) };
+#define DW_AT_FIELD(name)  { #name, DW_AT_##name },
+#define DW_TAG_FIELD(name) { #name, DW_TAG_##name },
+const struct number_table DW_AT_table[]  = { FOR_DW_AT(DW_AT_FIELD) };
+const struct number_table DW_TAG_table[] = { FOR_DW_TAG(DW_TAG_FIELD) };
 
-// Then export that as a Lua table.
+// Then export those as a Lua tables.
 static int cmd_get_DW_AT(lua_State *L) {
     lua_newtable(L);
     for(int i=0; i<ARRAY_SIZE(DW_AT_table); i++) {
         lua_pushnumber(L, DW_AT_table[i].code);
         lua_setfield(L, -2, DW_AT_table[i].name);
+    }
+    return 1;
+}
+static int cmd_get_DW_TAG(lua_State *L) {
+    lua_newtable(L);
+    for(int i=0; i<ARRAY_SIZE(DW_TAG_table); i++) {
+        lua_pushnumber(L, DW_TAG_table[i].code);
+        lua_setfield(L, -2, DW_TAG_table[i].name);
     }
     return 1;
 }
@@ -529,7 +562,28 @@ static int cmd_doodle(lua_State *L) {
     return die_walk(&s, ud);
 }
 
-static void new_metatable(lua_State *L, const char *t_name) {
+static void deref_die_shared(struct elf_shared *s, const char *typ) {
+    s->rc--;
+    if (!s->rc) {
+        /* Object can be removed. */
+        LOG("FIXME: LEAK: elf_shared rc=0 after %s gc\n", typ);
+    }
+}
+
+static int gc_elf(lua_State *L) {
+    struct elf_ud *ud = L_elf(L, -1);
+    //LOG("gc_elf %p\n", ud);
+    deref_die_shared(ud->shared, "elf");
+    return 0;
+}
+static int gc_die(lua_State *L) {
+    struct die_ud *ud = L_die(L, -1);
+    //LOG("gc_die %p\n", ud);
+    deref_die_shared(ud->elf, "die");
+    return 0;
+}
+
+static void new_metatable(lua_State *L, const char *t_name, int (*gc)(lua_State *)) {
     // FIXME: Add __gc method.
     luaL_newmetatable(L, t_name);
 
@@ -537,7 +591,8 @@ static void new_metatable(lua_State *L, const char *t_name) {
     // properly?  __name is not enough.
     if (1) {
         luaL_getmetatable(L, t_name);
-        lua_pushstring(L, t_name); lua_setfield(L, -2, "__name"); 
+        lua_pushstring(L, t_name); lua_setfield(L, -2, "__name");
+        lua_pushcfunction(L, gc);  lua_setfield(L, -2, "__gc");
         lua_pop(L, -1);
     }
 
@@ -555,8 +610,8 @@ static int cmd_get_metatables(lua_State *L) {
 
 int luaopen_elfutils_lua51 (lua_State *L) {
 
-    new_metatable(L, T_ELF);
-    new_metatable(L, T_DIE);
+    new_metatable(L, T_ELF, gc_elf);
+    new_metatable(L, T_DIE, gc_die);
 
     lua_newtable(L);
 #define CMD(_name) { \
@@ -574,9 +629,11 @@ int luaopen_elfutils_lua51 (lua_State *L) {
     CMD(die_sibling);
     CMD(die_attr);
     CMD(die_attr_list);
-    CMD(die_id);
+    CMD(die_cuoffset);
+    CMD(die_tag);
 
     CMD(get_DW_AT);
+    CMD(get_DW_TAG);
     CMD(get_metatables);
 
 

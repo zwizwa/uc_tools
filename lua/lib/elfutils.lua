@@ -22,18 +22,30 @@ local elfutils = {}
 elfutils.C = C
 elfutils.metatables = {}
 
+local function inv_table(tab)
+   local inv_tab = {}
+   for name,code in pairs(tab) do
+      inv_tab[code] = name
+   end
+   return inv_tab
+end
+
 local function setup_tables()
    elfutils.DW_AT = C.get_DW_AT()
-   elfutils.inv_DW_AT = {}
-   for name,code in pairs(elfutils.DW_AT) do
-      elfutils.inv_DW_AT[code] = name
-   end
+   elfutils.inv_DW_AT = inv_table(elfutils.DW_AT)
+
+   elfutils.DW_TAG = C.get_DW_TAG()
+   elfutils.inv_DW_TAG = inv_table(elfutils.DW_TAG)
+
    elfutils.metatables = C.get_metatables()
 end
 
 setup_tables()
 local DW_AT = elfutils.DW_AT
 local inv_DW_AT = elfutils.inv_DW_AT
+
+local DW_TAG = elfutils.DW_TAG
+local inv_DW_TAG = elfutils.inv_DW_TAG
 
 
 
@@ -44,13 +56,25 @@ end
 -- Unpack a DIE
 local function die_unpack_memoize(die, nodes)
    -- The DIE reference structure is a graph, so we need to memoize.
-   local id = C.die_id(die)
+   --
+   -- FIXME: ID is only unique inside a compilation unit, but that
+   -- seems to be ok.
+   local id = C.die_cuoffset(die)
    assert(id)
    local already_have = nodes[id]
    if already_have then
       return already_have
    end
-   local node = { attrs = {}, children = {} }
+   local node = { }
+
+   -- Unpack the tag and attributes into the die table. Previously
+   -- there was an 'attrs' sub table for the latter to distiguish from
+   -- 'children' but the structure is deep enough already.
+
+   node.tag = inv_DW_TAG[C.die_tag(die)]
+   assert(node.tag)
+
+   local attrs = node
    nodes[id] = node
    -- Attributes
    local attr_list = C.die_attr_list(die)
@@ -64,12 +88,13 @@ local function die_unpack_memoize(die, nodes)
          if (elfutils.metatables.die == getmetatable(at_val)) then
             at_val = die_unpack_memoize(at_val, nodes)
          end
-         node.attrs[at_name] = at_val
+         attrs[at_name] = at_val
       end
    end
    -- Children
    local child = C.die_child(die)
    while child do
+      if not node.children then node.children = {} end
       table.insert(node.children, die_unpack_memoize(child, nodes))
       child = C.die_sibling(child)
    end
@@ -77,7 +102,7 @@ local function die_unpack_memoize(die, nodes)
    return node
 end
 
-function elfutils.die_unpack(die, nodes)
+function elfutils.die_unpack(die)
    return die_unpack_memoize(die, {})
 end
 
