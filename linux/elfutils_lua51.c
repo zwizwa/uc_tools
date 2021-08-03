@@ -541,6 +541,25 @@ int cmd_die_attr(lua_State *L) {
 }
 
 
+// Reify the iteration macro as a Lua data structure.
+// To keep it simple, expand it as a C array first.
+struct number_table {
+    const char *name;
+    const unsigned int code;
+};
+#define DW_AT_FIELD(name) { #name, DW_AT_##name },
+const struct number_table DW_AT_table[] = { FOR_DW_AT(DW_AT_FIELD) };
+
+// Then export that as a Lua table.
+static int cmd_make_DW_AT(lua_State *L) {
+    lua_newtable(L);
+    for(int i=0; i<ARRAY_SIZE(DW_AT_table); i++) {
+        lua_pushnumber(L, DW_AT_table[i].code);
+        lua_setfield(L, -2, DW_AT_table[i].name);
+    }
+    return 1;
+}
+
 
 static int cmd_doodle(lua_State *L) {
     struct elf_ud *ud = L_elf(L, -1);
@@ -568,6 +587,8 @@ int luaopen_elfutils_lua51 (lua_State *L) {
     CMD(die_log);
 
     CMD(die_attr);
+
+    CMD(make_DW_AT);
 
 #undef CMD
     return 1;
