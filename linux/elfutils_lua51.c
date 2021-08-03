@@ -4,11 +4,18 @@
 // apt-get install liblua5.1-0-dev libdw-dev libelf-dev
 
 // Very ad-hoc, implements minimal functionality needed for
-// instrumentation.  Note that there are Rust wrappers (of course),
-// which are probably a better starting point for an analysis tool,
-// but I currently do not want that dependency.  This is written for
-// monitoring an embedded system that already has a Lua based
-// framework around it.
+// instrumentation:
+
+// This was originally developed for a Lua test system that
+// orchestrates a network of target devices, and reads out state as
+// postcondition.  Getting variable locations from ELF symbol table
+// and type information from DWARF makes it possible to avoid target
+// accessors for state that is normally hidden.
+
+// Note that there are Rust wrappers (of course), which are probably a
+// better starting point for an analysis tool, but I currently do not
+// want that dependency.  This is written for monitoring an embedded
+// system that already has a Lua based framework around it.
 
 // Libelf requires some knowledge of the structure of ELF files.
 // https://en.wikipedia.org/wiki/Executable_and_Linkable_Format
@@ -44,12 +51,34 @@ static void L_error(lua_State *L, const char *fmt, ...) {
 // DWARF is a tree of Debugging Information Entries (DIEs) per
 // Compilation Unit (cu).
 
+// I found this difficult to understand until it suddenly snapped into
+// place.  The main hindrance was the lack of documentation for
+// libdw.h but it is possible to piece it together with DWARF4.pdf,
+// dwarfdump, and grepping for DW_AT_* in the libdw source.  The code
+// in here is sturctured in the following way to keep it simple:
+//
+// - the ELF is exposed as an object with Elf and Dwarf objects opened
+//   and accessible.
+//
+// - dataststucture walker: CU list -> DIE trie for each. this is used
+//   to find a DIE by attribute (e.g. name for now).
+//
+// - attribute accessors: this is used to translate a DIE attribute to
+//   either a primitive Lua value, or a referenced DIE.
+//
+// - attribute access is by numerical DW_AT_* codes that are
+//   duplicated in the Lua source, which is less work than making
+//   everything symbolic at the C level.
+//
+// - all the rest can then be done in Lua
+
 
 // More links:
 // https://sourceware.org/elfutils/ (project page)
 // https://github.com/cuviper/elfutils (github mirror)
 // https://simonkagstrom.livejournal.com/51001.html
 // http://www.dwarfstd.org/doc/DWARF4.pdf
+// https://manpages.debian.org/testing/dwarfdump/dwarfdump.1.en.html
 
 
 static int cmd_name(lua_State *L) {
@@ -58,9 +87,6 @@ static int cmd_name(lua_State *L) {
     return 1;
 }
 
-// FIXME: these are currently not garbage-collected because there is
-// an interdependency.  Practically this is only used in transient
-// tests.
 struct elf_ud {
     int fd;
     Elf *elf;
@@ -128,6 +154,12 @@ static int cmd_open(lua_State *L) {
     Elf *elf = elf_begin(fd, cmd, NULL);
     // LOG("elf = %p\n", elf);
     if (!elf) elf_error(L);
+
+    // FIXME: elf should probably be lightuserdata such that the
+    // memory is never freed.  what we really want is refcounting of a
+    // shared elf structure (from elf and die references) + a gc
+    // method that decreases count and frees if necessary.
+
     ASSERT(elf);
     struct elf_ud *ud = lua_newuserdata(L, sizeof(*ud));
     ASSERT(ud);
@@ -539,4 +571,10 @@ int luaopen_elfutils_lua51 (lua_State *L) {
 
 #undef CMD
     return 1;
+}
+
+// FIXME: Is there a sane way to set up paths?
+// This handles require("lib.elfutils_lua51")
+int luaopen_lib_elfutils_lua51 (lua_State *L) {
+    return luaopen_elfutils_lua51 (L);
 }
