@@ -1,36 +1,67 @@
 #!/usr/bin/lua
 local elfutils = require("lib.elfutils")
 
-local prompt = require('prompt')
-local function log(str) io.stderr:write(str) end
-local function log_desc(thing) log(prompt.describe(thing)) end
+-- Logging.
+local prompt
+local function log(str)
+   io.stderr:write(str)
+end
+local function log_desc(thing)
+   if not prompt then prompt = require('prompt') end
+   log(prompt.describe(thing))
+   log("\n")
+end
 
-log_desc(elfutils.DW_AT)
+
 
 
 -- FIXME: This is currently specific to proprietary elf.
 function test()
+   -- log_desc(elfutils)
+
    local DW_AT = elfutils.DW_AT
+   local inv_DW_AT = elfutils.inv_DW_AT
+
+   -- log_desc(DW_AT)
+   -- log_desc(inv_DW_AT)
+
 
    local filename = "/i/constell8/rdm-bridge/stm32f103/main_nano.x8.f103.elf"
    -- local filename = "/bin/bash"
    local elf = elfutils.open(filename)
 
-   print(getmetatable(elf))
+   local elf_meta = getmetatable(elf)
+   log_desc({elf_meta = elf_meta})
 
-   local addr = elfutils.sym2addr(elf, "start")
+   local addr = elfutils.C.sym2addr(elf, "start")
    print(addr)
-   local sym = elfutils.addr2sym(elf, addr)
+   local sym = elfutils.C.addr2sym(elf, addr)
    print(sym)
 
 
    -- elfutils.doodle(elf)
-   local die = elfutils.sym2die(elf, "poll_functions")
+   local die = elfutils.C.sym2die(elf, "poll_functions")
    print(die)
-   elfutils.die_log(elf, die)
-   print(elfutils.die_attr(die, DW_AT.type))
-   print(elfutils.die_attr(die, DW_AT.name))
-   print(string.format("%x", elfutils.die_attr(die, DW_AT.location)))
+   elfutils.C.die_log(elf, die)
+
+   log_desc({die_attr_list = elfutils.C.die_attr_list(die)})
+
+   print(elfutils.C.die_attr(die, DW_AT.type))
+   print(elfutils.C.die_attr(die, DW_AT.name))
+   print(string.format("%x", elfutils.C.die_attr(die, DW_AT.location)))
+
+   local die_attrs = elfutils.die_attrs(die)
+   log_desc({die_attrs = die_attrs})
+   local die_attrs_type = elfutils.die_attrs(die_attrs.type)
+   log_desc({die_attrs_type = die_attrs_type})
+   local die_attrs_type_type = elfutils.die_attrs(die_attrs_type.type)
+   local die_attrs_type_sibling = elfutils.die_attrs(die_attrs_type.sibling)
+   log_desc({die_attrs_type_type = die_attrs_type_type})
+   log_desc({die_attrs_type_sibling = die_attrs_type_sibling})
+
+   -- test the holy grail
+   log_desc(elfutils.read_variable(elf, "poll_functions"))
+   log("\n")
 
 end
 

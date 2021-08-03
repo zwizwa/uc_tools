@@ -31,9 +31,14 @@
 
 #include <stdarg.h>
 
-// uc_tools
-// macros.h will use this one.  it only works inside the body of a
-// function that has L defined.
+// These might be useful for other things, so are in a separate file.
+#include "elfutils_tags.h"
+
+
+// uc_tools/ macros.h will use this, expanded from ASSERT.
+// The 'L' variable needs to be in lexical scope.
+// I don't like this, but currently no quick way to fix it in macros.h
+// FIXME: Parameterize macros.h later to let error abort take an explicit context.
 #define ERROR(...) L_error(L, __VA_ARGS__)
 static void L_error(lua_State *L, const char *fmt, ...) {
     char msg[1024];
@@ -44,7 +49,6 @@ static void L_error(lua_State *L, const char *fmt, ...) {
     lua_pushstring(L, msg);
     lua_error(L);
 }
-
 
 #include "macros.h"
 
@@ -274,70 +278,6 @@ static int cmd_addr2sym(lua_State *L) {
 // It seems simplest to implement a single walker, and instrument it
 // with some ad-hoc pugin behavior.
 
-// This is the list that occurs in current CM3 image.
-// I did the tag number -> name mapping using /usr/include/llvm-3.8/llvm/Support/Dwarf.def
-// But it is also in /usr/include/dwarf.h from libdw-dev
-
-#define FOR_DW_TAG(m)                           \
-    m(compile_unit)                             \
-    m(base_type)                                \
-    m(typedef)                                  \
-    m(structure_type)                           \
-    m(member)                                   \
-    m(subprogram)                               \
-    m(formal_parameter)                         \
-    m(volatile_type)                            \
-    m(enumerator)                               \
-    m(enumeration_type)                         \
-    m(pointer_type)                             \
-    m(const_type)                               \
-    m(subroutine_type)                          \
-    m(array_type)                               \
-    m(subrange_type)                            \
-    m(union_type)                               \
-    m(variable)                                 \
-    m(lexical_block)                            \
-    m(label)                                    \
-    m(inlined_subroutine)                       \
-    m(unspecified_parameters)                   \
-    m(GNU_call_site)                            \
-    m(GNU_call_site_parameter)                  \
-
-#define FOR_DW_AT(m)                            \
-    m(producer)                                 \
-    m(language)                                 \
-    m(name)                                     \
-    m(comp_dir)                                 \
-    m(ranges)                                   \
-    m(low_pc)                                   \
-    m(high_pc)                                  \
-    m(stmt_list)                                \
-    m(byte_size)                                \
-    m(encoding)                                 \
-    m(location)                                 \
-    m(decl_file)                                \
-    m(decl_line)                                \
-    m(type)                                     \
-    m(data_member_location)                     \
-    m(sibling)                                  \
-    m(const_value)                              \
-    m(inline)                                   \
-    m(prototyped)                               \
-    m(upper_bound)                              \
-    m(abstract_origin)                          \
-    m(artificial)                               \
-    m(declaration)                              \
-    m(external)                                 \
-    m(frame_base)                               \
-    m(entry_pc)                                 \
-    m(call_file)                                \
-    m(call_line)                                \
-    m(GNU_call_site_value)                      \
-    m(GNU_call_site_target)                     \
-    m(GNU_tail_call)                            \
-    m(GNU_all_tail_call_sites)                  \
-    m(GNU_all_call_sites)                       \
-    m(GNU_macros)                               \
 
 #define CASE_LOG_DW(name) \
     case DW_TAG_##name: LOG(#name "\n"); break;
@@ -437,6 +377,7 @@ static int die_walk(die_walk_t *s, struct elf_ud *ud) {
 /* leb128 decode of Dwarf_Block */
 static uint32_t block_u32(Dwarf_Block *b) {
     // FIXME: THIS IS WRONG.
+    // FIXME: Are the LEB128 functions from libdw accessible?
     // Currently just a special case.
     // ASSERT(b->length == 5);
     // ASSERT(b->data[0] == 3); // is actually LEB128
@@ -444,9 +385,6 @@ static uint32_t block_u32(Dwarf_Block *b) {
     return *((uint32_t*)(b->data+1));
 }
 
-/* Convert die attribute to something usable from Lua.  I could not
-   find good documenation for this, so had to grep libdw source for
-   DW_FORM_ literals to make sense of things. */
 struct log_attr_ctx {
     lua_State *L;
 };
@@ -508,10 +446,39 @@ static int cmd_die_log(lua_State *L) {
     return DWARF_CB_OK;
 }
 
-// To keep the code simple here, we implement only single attribute
-// access.  E.g. we don't really need to create a full rendering of
-// all DWARF data in Lua, we just need to provide some accessors.  So
-// let's write them manually, then maybe later automate using macros.
+struct die_attrs_ctx {
+    lua_State *L;
+    lua_Integer index;
+};
+static int push_attr_code(Dwarf_Attribute *attr, void *vctx) {
+    struct die_attrs_ctx *ctx = vctx;
+    lua_pushnumber(ctx->L, ctx->index++);
+    lua_pushnumber(ctx->L, attr->code);
+    lua_settable(ctx->L, -3);
+    return DWARF_CB_OK;
+}
+static int cmd_die_attr_list(lua_State *L) {
+    struct die_ud *die_ud = L_die(L, -1);
+    struct die_attrs_ctx ctx = {.L = L, .index = 1};
+    lua_newtable(L);
+    dwarf_getattrs(&die_ud->die, push_attr_code, &ctx, 0);
+    return 1;
+}
+
+
+
+/* Convert die attribute to something usable from Lua.
+   To add support for other DW_FORM_ types do the following:
+
+   1. Use the symbolic names for the DW_AT_ and DW_FORM_ codes in
+      dwarf.h
+
+   2. Look up the DW_AT_ code in DWARF4.pdf - that will give you an
+      idea of how the value is encoded.
+
+   3. Grep the libdw code for the specific DW_FORM_ name that needs to
+      be decoded to see which dwarf_form* function should be
+      called. */
 
 int cmd_die_attr(lua_State *L) {
     struct die_ud *die_ud = L_die(L, -2);
@@ -534,8 +501,20 @@ int cmd_die_attr(lua_State *L) {
         lua_pushnumber(L, addr);
         break;
     }
+    case DW_FORM_data1: {
+        Dwarf_Sword sval;
+        ASSERT(0 == dwarf_formsdata(&attr, &sval));
+        lua_pushnumber(L, sval);
+        break;
+    }
+    case DW_FORM_flag_present: {
+        bool flag;
+        ASSERT(0 == dwarf_formflag(&attr, &flag));
+        lua_pushnumber(L, flag);
+        break;
+    }
     default:
-        return 0;
+        ERROR("die_attr code=0x%x unsupported form=0x%x", attr.code, attr.form);
     }
     return 1;
 }
@@ -567,10 +546,19 @@ static int cmd_doodle(lua_State *L) {
     return die_walk(&s, ud);
 }
 
+static void new_metatable(lua_State *L, const char *t_name) {
+    // FIXME: Add __gc method.
+    // FIXME: I want prompt to print the type name. How to do this properly?  __name is not enough.
+    luaL_newmetatable(L, t_name);
+    luaL_getmetatable(L, t_name);
+    lua_pushstring(L, t_name);
+    lua_setfield(L, -2, "__name"); 
+    lua_pop(L, -1);
+}
+
 int luaopen_elfutils_lua51 (lua_State *L) {
-    // FIXME: Add __gc method, maybe also some __name style method to allow pretty printing?
-    luaL_newmetatable(L, T_ELF);
-    luaL_newmetatable(L, T_DIE);
+    new_metatable(L, T_ELF);
+    new_metatable(L, T_DIE);
 
     lua_newtable(L);
 #define CMD(_name) { \
@@ -587,6 +575,7 @@ int luaopen_elfutils_lua51 (lua_State *L) {
     CMD(die_log);
 
     CMD(die_attr);
+    CMD(die_attr_list);
 
     CMD(make_DW_AT);
 
