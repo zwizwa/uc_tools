@@ -42,27 +42,43 @@ function elfutils.open(filename)
 end
 
 -- Unpack a DIE
--- FIXME: Is it important to keep the order of the attributes?
--- For now we just map them onto an (unsorted) table.
-function elfutils.die_attrs(die, depth)
+local function die_unpack_memoize(die, nodes)
+   -- The DIE reference structure is a graph, so we need to memoize.
+   local id = C.die_id(die)
+   assert(id)
+   local already_have = nodes[id]
+   if already_have then
+      return already_have
+   end
+   local node = { attrs = {}, children = {} }
+   nodes[id] = node
+   -- Attributes
    local attr_list = C.die_attr_list(die)
-   local attrs = {}
    for i, at_code in ipairs(attr_list) do
       local at_name = inv_DW_AT[at_code]
-      if at_name ~= 'sibling' then -- ignore the toplevel organization links
+      if at_name ~= 'sibling' then
          if not at_name then
             error("at_code " .. at_code .. "not supported")
          end
          local at_val = C.die_attr(die, at_code)
-         if (elfutils.metatables.die == getmetatable(at_val)
-                and type(depth) == 'number'
-                and depth > 0) then
-            at_val = elfutils.die_attrs(at_val, depth-1)
+         if (elfutils.metatables.die == getmetatable(at_val)) then
+            at_val = die_unpack_memoize(at_val, nodes)
          end
-         attrs[at_name] = at_val
+         node.attrs[at_name] = at_val
       end
    end
-   return attrs
+   -- Children
+   local child = C.die_child(die)
+   while child do
+      table.insert(node.children, die_unpack_memoize(child, nodes))
+      child = C.die_sibling(child)
+   end
+
+   return node
+end
+
+function elfutils.die_unpack(die, nodes)
+   return die_unpack_memoize(die, {})
 end
 
 

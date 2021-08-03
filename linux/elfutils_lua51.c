@@ -414,6 +414,38 @@ static int cmd_die_attr_list(lua_State *L) {
     return 1;
 }
 
+static int cmd_die_id(lua_State *L) {
+    struct die_ud *die_ud = L_die(L, -1);
+    // FIXME: what to use here?
+    // uintptr_t id = die_ud->die.addr;
+    uintptr_t id = dwarf_cuoffset(&die_ud->die);
+    // LOG("id = %d\n", id);
+    lua_pushnumber(L, id);
+    return 1;
+}
+// The tree is linked up as a single child link per die, where each
+// child has a sibling link. Don't create the userdata until we know
+// that we have something.
+static int cmd_die_child(lua_State *L) {
+    struct die_ud *in = L_die(L, -1);
+    Dwarf_Die child;
+    if (0 == dwarf_child(&in->die, &child)) {
+        struct die_ud *out = push_die(L);
+        out->die = child;
+        return 1;
+    }
+    return 0;
+}
+static int cmd_die_sibling(lua_State *L) {
+    struct die_ud *in = L_die(L, -1);
+    Dwarf_Die sibling;
+    if (0 == dwarf_siblingof(&in->die, &sibling)) {
+        struct die_ud *out = push_die(L);
+        out->die = sibling;
+        return 1;
+    }
+    return 0;
+}
 
 
 /* Convert die attribute to something usable from Lua.
@@ -435,6 +467,7 @@ int cmd_die_attr(lua_State *L) {
     Dwarf_Attribute attr;
     ASSERT(dwarf_attr(&die_ud->die, code, &attr));
     switch(attr.form) {
+    case DW_FORM_string:
     case DW_FORM_strp:
         lua_pushstring(L, dwarf_formstring(&attr));
         break;
@@ -537,11 +570,15 @@ int luaopen_elfutils_lua51 (lua_State *L) {
     CMD(sym2die);
     CMD(doodle);
 
+    CMD(die_child);
+    CMD(die_sibling);
     CMD(die_attr);
     CMD(die_attr_list);
+    CMD(die_id);
 
     CMD(get_DW_AT);
     CMD(get_metatables);
+
 
 #undef CMD
     return 1;

@@ -62,9 +62,8 @@ function test()
    end
 
    log_desc({test_recursive_die =
-                elfutils.die_attrs(
-                   elfutils.C.sym2die(elf, "dmx_node_struct"),
-                   10)})
+                elfutils.die_unpack(
+                   elfutils.C.sym2die(elf, "dmx_node_struct"))})
 
    -- test the holy grail
    log_desc(elfutils.read_variable(elf, "poll_functions"))
