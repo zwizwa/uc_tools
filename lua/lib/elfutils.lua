@@ -142,6 +142,27 @@ local base_type_map = {
    ["long unsigned int"] = "u32"
 }
 
+-- FIXME: We assume all words are little endian for now.  This is
+-- probably encoded somewhere.
+function read_le_word(read_memory, addr, nb)
+   assert(addr)
+   assert(nb)
+   local bytes = read_memory(addr, nb)
+   assert(bytes)
+   local dir = -1  -- FIXME generalize to big-endian
+   local offset = nb
+   local accu = 0
+   while nb > 0 do
+      accu = accu * 256 + bytes[offset]
+      offset = offset + dir
+      nb = nb - 1
+   end
+   log(string.format("0x%x -> 0x%x\n", addr, accu))
+   return accu
+end
+
+
+
 function elfutils.read_variable(elf, name)
    local die = C.die_find_variable(elf, name)
    local node = elfutils.die_unpack(die)
@@ -166,23 +187,19 @@ local function read_type(read_memory, type, addr)
    return reader(read_memory, type, addr)
 end
 
--- FIXME: We assume all words are little endian for now.  This is
--- probably encoded somewhere.
-function read_le_word(read_memory, addr, nb)
-   assert(addr)
-   assert(nb)
-   local bytes = read_memory(addr, nb)
-   assert(bytes)
-   local dir = -1  -- FIXME generalize to big-endian
-   local offset = nb
-   local accu = 0
-   while nb > 0 do
-      accu = accu * 256 + bytes[offset]
-      offset = offset + dir
-      nb = nb - 1
-   end
-   return accu
+function type_reader.typedef(read_memory, type, addr)
+   assert(type.type)
+   -- Unpack the typedef
+   return read_type(read_memory, type.type, addr)
 end
+
+function type_reader.base_type(read_memory, type, addr)
+   -- log_desc(type)
+   assert(type.byte_size)
+   -- FIXME: Assume it's an uint.
+   return read_le_word(read_memory, addr, type.byte_size)
+end
+
 
 function type_reader.pointer_type(read_memory, type, addr)
    -- FIXME: Data structure should probably preserve type, so we can
@@ -217,7 +234,13 @@ end
 function elfutils.read_array(read_memory, elf, name, nb_el)
    local die = C.die_find_variable(elf, name)
    local node = elfutils.die_unpack(die)
-   assert(node.type.tag == "array_type")
+   -- We support array_type and pointer_type.
+   if     node.type.tag == "array_type" then
+   elseif node.type.tag == "pointer_type" then
+   else
+      log_desc(node.type)
+      error("elfutils.read_array bad type: " .. node.type.tag)
+   end
    local array_addr = node.location
    assert(array_addr)
    local element_type = node.type.type
@@ -227,7 +250,7 @@ function elfutils.read_array(read_memory, elf, name, nb_el)
    local array = {}
    for i=0,nb_el-1 do
       local element_addr = array_addr + i * element_type.byte_size
-      log(string.format("%d 0x%x\n", i, element_addr))
+      -- log(string.format("array %d 0x%x\n", i, element_addr))
       local element_val = read_type(read_memory, element_type, element_addr)
       assert(element_val)
       table.insert(array, element_val)
