@@ -234,14 +234,15 @@ end
 function elfutils.read_array(read_memory, elf, name, nb_el)
    local die = C.die_find_variable(elf, name)
    local node = elfutils.die_unpack(die)
+   local array_addr
+   log_desc(node.type)
    -- We support array_type and pointer_type.
-   if     node.type.tag == "array_type" then
-   elseif node.type.tag == "pointer_type" then
+   if     node.type.tag == "array_type"   then array_addr = node.location
+   elseif node.type.tag == "pointer_type" then array_addr = read_le_word(read_memory, node.location, 4)
    else
       log_desc(node.type)
       error("elfutils.read_array bad type: " .. node.type.tag)
    end
-   local array_addr = node.location
    assert(array_addr)
    local element_type = node.type.type
    assert(element_type.byte_size) -- FIXME: is this always defined?
