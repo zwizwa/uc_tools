@@ -150,19 +150,89 @@ function elfutils.read_variable(elf, name)
    assert(node.location)
    assert(base_type)
    -- log_desc(base_type)
-   return {location = location,
+   return {location  = location,
            base_type = base_type.name,
            byte_size = base_type.byte_size}
 end
 
-function elfutils.read_array(elf, name, nb_el)
+local type_reader = {}
+local function read_type(read_memory, type, addr)
+   assert(type)
+   assert(type.tag)
+   local reader = type_reader[type.tag]
+   if not reader then
+      error("elfutils.read_type, unsupported type: " .. type.tag)
+   end
+   return reader(read_memory, type, addr)
+end
+
+-- FIXME: We assume all words are little endian for now.  This is
+-- probably encoded somewhere.
+function read_le_word(read_memory, addr, nb)
+   assert(addr)
+   assert(nb)
+   local bytes = read_memory(addr, nb)
+   assert(bytes)
+   local dir = -1  -- FIXME generalize to big-endian
+   local offset = nb
+   local accu = 0
+   while nb > 0 do
+      accu = accu * 256 + bytes[offset]
+      offset = offset + dir
+      nb = nb - 1
+   end
+   return accu
+end
+
+function type_reader.pointer_type(read_memory, type, addr)
+   -- FIXME: Data structure should probably preserve type, so we can
+   -- dereference if needed.
+   assert(type)
+   assert(type.byte_size)
+   return read_le_word(read_memory, addr, type.byte_size)
+end
+
+function type_reader.structure_type(read_memory, type, addr)
+   assert(type.tag == "structure_type")
+   assert(type.children)
+   -- log_desc(type)
+   local struct = {}
+   for i,member in ipairs(type.children) do
+      assert(member.tag == "member")
+      local element_addr = addr + member.data_member_location
+      assert(member.type)
+      local element_val = read_type(read_memory, member.type, element_addr)
+      assert(member.name)
+      -- The choice here is to preserve the order and have a more
+      -- verbose representation, or just use an unordered Lua table.
+      -- The latter seems much more useful.
+      --
+      -- table.insert(struct, {member.name, element_val})
+      struct[member.name] = element_val
+   end
+
+   return struct
+end
+
+function elfutils.read_array(read_memory, elf, name, nb_el)
    local die = C.die_find_variable(elf, name)
    local node = elfutils.die_unpack(die)
-   local location = node.location
-   assert(node.location)
    assert(node.type.tag == "array_type")
+   local array_addr = node.location
+   assert(array_addr)
    local element_type = node.type.type
-   -- log_desc({read_array = element_type})
+   assert(element_type.byte_size) -- FIXME: is this always defined?
+   assert(element_type.tag)
+   local tag = element_type.tag -- FIXME: this should probably be collapsed
+   local array = {}
+   for i=0,nb_el-1 do
+      local element_addr = array_addr + i * element_type.byte_size
+      log(string.format("%d 0x%x\n", i, element_addr))
+      local element_val = read_type(read_memory, element_type, element_addr)
+      assert(element_val)
+      table.insert(array, element_val)
+   end
+   return array
 end
 
 -- What I want, eventually, is a reader.  It is probably better to
@@ -172,6 +242,9 @@ end
 -- offsets until a base type is used.
 --
 -- E.g.  {u32_ref,{offset,{ptr_ref,<loc>},<off>}}
+--
+-- EDIT: Let's try not to design too much.  First try it in "pull"
+-- fashion using an abstract reader.
 
 
 return elfutils
