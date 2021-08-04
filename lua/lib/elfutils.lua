@@ -157,7 +157,7 @@ function read_le_word(read_memory, addr, nb)
       offset = offset + dir
       nb = nb - 1
    end
-   log(string.format("0x%x -> 0x%x\n", addr, accu))
+   -- log(string.format("0x%x -> 0x%x\n", addr, accu))
    return accu
 end
 
@@ -235,10 +235,26 @@ function elfutils.read_array(read_memory, elf, name, nb_el)
    local die = C.die_find_variable(elf, name)
    local node = elfutils.die_unpack(die)
    local array_addr
-   log_desc(node.type)
-   -- We support array_type and pointer_type.
-   if     node.type.tag == "array_type"   then array_addr = node.location
-   elseif node.type.tag == "pointer_type" then array_addr = read_le_word(read_memory, node.location, 4)
+   --log_desc(node.type)
+   if node.type.tag == "array_type" then
+      -- Plain array
+      array_addr = node.location
+      -- log_desc(node)
+      -- Structure found from log_desc() inspection, not manual.
+      -- FIXME: This is likely not universal.  Works for now.
+      assert(node.type.children[1].type.name == "sizetype")
+      local upper_bound = node.type.children[1].upper_bound
+      assert(upper_bound)
+      if not nb_el then
+         nb_el = upper_bound + 1
+      else
+         assert(upper_bound + 1 >= nb_el)
+      end
+   elseif node.type.tag == "pointer_type" then
+      -- Pointer to array.  We only know it is an array because caller
+      -- tells us it is.  Caller needs to provide size
+      assert(nb_el)
+      array_addr = read_le_word(read_memory, node.location, 4)
    else
       log_desc(node.type)
       error("elfutils.read_array bad type: " .. node.type.tag)
