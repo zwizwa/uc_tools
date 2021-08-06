@@ -108,6 +108,34 @@ function elfutils.die_unpack(die)
 end
 
 
+-- Unpack everything
+function elfutils.compilation_units(elf)
+   local cu_dies = elfutils.C.compilation_units(elf)
+   local unpacked = {}
+   for i,cu_die in ipairs(cu_dies) do
+      unpacked[i] = elfutils.die_unpack(cu_die)
+   end
+   return unpacked
+end
+
+function elfutils.filtermap(elf, f)
+   local lst = {}
+   local cu_dies = elfutils.C.compilation_units(elf)
+   local unpacked = {}
+   for i,cu_die in ipairs(cu_dies) do
+      local cu = elfutils.die_unpack(cu_die)
+      if cu.children then
+         for i,die in ipairs(cu.children) do
+            local val = f(die)
+            if val then
+               table.insert(lst, val)
+            end
+         end
+      end
+   end
+   return lst
+end
+
 -- The holy grail: given just a name, figure out how to dump a
 -- target's data structure as a Lua structure, using type and location
 -- information from the ELF.  Basically emulating GDB's print
@@ -231,6 +259,26 @@ function type_reader.structure_type(read_memory, type, addr)
    return struct
 end
 
+-- Structure found from log_desc() inspection, not manual.
+function elfutils.array_upper_bound(type)
+   assert(type.tag == "array_type")
+   -- FIXME: This is likely not universal.  Works for now.
+   -- FIXME: access this by type instead of index=1
+   local t1 = type.children[1]
+   if t1.type and t1.type.name == "sizetype" then
+      local upper_bound = t1.upper_bound
+      assert(upper_bound)
+      return upper_bound
+   elseif t1.tag == "subrange_type" then
+      -- FIXME: What is this case?  A reference to an array without
+      -- type info maybe?
+      return 0
+   else
+      log_desc(type)
+      error("array_upper_bound_bad_type")
+   end
+end
+
 function elfutils.read_array(read_memory, elf, name, nb_el)
    local die = C.die_find_variable(elf, name)
    local node = elfutils.die_unpack(die)
@@ -240,10 +288,7 @@ function elfutils.read_array(read_memory, elf, name, nb_el)
       -- Plain array
       array_addr = node.location
       -- log_desc(node)
-      -- Structure found from log_desc() inspection, not manual.
-      -- FIXME: This is likely not universal.  Works for now.
-      assert(node.type.children[1].type.name == "sizetype")
-      local upper_bound = node.type.children[1].upper_bound
+      local upper_bound = elfutils.array_upper_bound(node.type)
       assert(upper_bound)
       if not nb_el then
          nb_el = upper_bound + 1

@@ -383,6 +383,7 @@ static int walk_die_tree(die_walk_t *s) {
 }
 
 /* Walk the entire DIE tree, starting at the list of CUs. */
+// FIXME: This can probably be moved to Lua
 static int die_walk(die_walk_t *s, struct elf_ud *ud) {
     lua_State *L = s->L;
     Dwarf_Off off=0, next_off=0, abbrev_offset=0;
@@ -398,6 +399,30 @@ static int die_walk(die_walk_t *s, struct elf_ud *ud) {
     }
     return 0;
 }
+
+/* To provide CU access to Lua it seems simplest to dump it as a list.
+   This avoids a userdata object to represent the iterator state. */
+static int cmd_compilation_units(lua_State *L) {
+    struct elf_ud *elf_ud = L_elf(L, -1);
+    Dwarf_Off off=0, next_off=0, abbrev_offset=0;
+    size_t header_size=0;
+    uint8_t address_size=0, offset_size=0;
+    lua_newtable(L);
+    Dwarf_Die die;
+    int index = 1;
+    while(dwarf_nextcu(elf_ud->shared->dwarf, off,
+                       &next_off, &header_size, &abbrev_offset,
+                       &address_size, &offset_size) == 0) {
+        ASSERT(dwarf_offdie(elf_ud->shared->dwarf, off + header_size, &die));
+        lua_pushnumber(L, index++);
+        struct die_ud *die_ud = push_die(L, elf_ud->shared);
+        die_ud->die = die;
+        lua_settable(L, -3);
+        off = next_off;
+    }
+    return 1;
+}
+
 
 /* leb128 decode of Dwarf_Block */
 static uint32_t block_u32(Dwarf_Block *b) {
@@ -520,8 +545,11 @@ int cmd_die_attr(lua_State *L) {
         lua_pushnumber(L, addr);
         break;
     }
+    /* FIXME: For these the sdata/udata distinction needs to be
+       clarified from context.  For now, interpret as sdata. */
     case DW_FORM_data1:
-    case DW_FORM_data2: {
+    case DW_FORM_data2:
+    case DW_FORM_data4: {
         Dwarf_Sword sval;
         ASSERT(0 == dwarf_formsdata(&attr, &sval));
         lua_pushnumber(L, sval);
@@ -531,6 +559,24 @@ int cmd_die_attr(lua_State *L) {
         bool flag;
         ASSERT(0 == dwarf_formflag(&attr, &flag));
         lua_pushnumber(L, flag);
+        break;
+    }
+    case DW_FORM_sec_offset: {
+        Dwarf_Word uval;
+        ASSERT(0 == dwarf_formudata(&attr, &uval));
+        lua_pushnumber(L, uval);
+        break;
+    }
+    case DW_FORM_addr: {
+        Dwarf_Addr addr;
+        ASSERT(0 == dwarf_formaddr(&attr, &addr));
+        lua_pushnumber(L, addr);
+        break;
+    }
+    case DW_FORM_sdata: {
+        Dwarf_Sword sval;
+        ASSERT(0 == dwarf_formsdata(&attr, &sval));
+        lua_pushnumber(L, sval);
         break;
     }
     default:
@@ -640,6 +686,8 @@ int luaopen_elfutils_lua51 (lua_State *L) {
     CMD(sym2addr);
     CMD(addr2sym);
     CMD(doodle);
+
+    CMD(compilation_units);
 
     CMD(die_find_variable);
     CMD(die_find_structure_type);
