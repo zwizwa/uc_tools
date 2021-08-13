@@ -185,7 +185,7 @@ struct port *port_open_tundev(const char *dev, int flags) {
 /***** 1.2. UDP PORT */
 
 static ssize_t udp_read(struct udp_port *p, uint8_t *buf, ssize_t len) {
-    //LOG("udp_read\n");
+    // LOG("udp_read buffer len=%d\n", len);
     ssize_t rlen = 0;
     int flags = 0;
     struct sockaddr_in peer = {};
@@ -198,13 +198,13 @@ static ssize_t udp_read(struct udp_port *p, uint8_t *buf, ssize_t len) {
     /* Associate to the last peer that sends to us.  This is to make
        setup simpler. */
     /*
-    if (!same_addr(&p->peer, &peer)) {
-        LOG("peer:"); log_addr(&peer);
-    }
+      if (!same_addr(&p->peer, &peer)) {
+      LOG("peer:"); log_addr(&peer);
+      }
     */
     memcpy(&p->peer, &peer, sizeof(peer));
 
-    //LOG("udp_read %d\n", rlen);
+    //LOG("udp_read rlen=%d\n", rlen);
     return rlen;
 
 }
@@ -232,6 +232,10 @@ struct port *port_open_udp(uint16_t port) {
             .sin_family = AF_INET
         };
         ASSERT_ERRNO(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)));
+
+        // FIXME: DO NOT SET THIS BY DEFAULT!
+        // ASSERT_ERRNO(setsockopt(fd, SOL_SOCKET, SO_BROADCAST, &(int){ 1 }, sizeof(int)));
+
         socklen_t addrlen = sizeof(address);
         ASSERT_ERRNO(bind(fd, (struct sockaddr *)&address, addrlen));
         LOG("udp: port %d\n", port);
@@ -1015,6 +1019,7 @@ ssize_t packet_next(struct port *p, int timeout,
         /* The read calls the underlying OS read method only once, so we
          * are guaranteed to not block. */
         rlen = p->read(p, buf, buf_size);
+
         if (rlen) goto done;
 
         /* There was an OS read, but no packet was produced.  Retry
@@ -1104,6 +1109,29 @@ struct port *port_open_(const char *spec_ro) {
         assert_gethostbyname(&up->peer, host);
         up->peer.sin_port = htons(port);
         up->peer.sin_family = AF_INET;
+
+
+        return p;
+    }
+
+    /* Same as above, but will bind the port.  I don't remember why
+       the previous one did not bind port, but I do not want to break
+       anything, so this is a new setting. */
+    if (!strcmp(tok, "UDP-BIND")) {
+        ASSERT(tok = strtok(NULL, delim));
+        const char *host = tok;
+        ASSERT(tok = strtok(NULL, delim));
+        uint16_t port = atoi(tok);
+        ASSERT(NULL == (tok = strtok(NULL, delim)));
+        //LOG("UDP:%s:%d\n", host, port);
+
+        struct port *p = port_open_udp(port);
+        struct udp_port *up = (void*)p;
+
+        assert_gethostbyname(&up->peer, host);
+        up->peer.sin_port = htons(port);
+        up->peer.sin_family = AF_INET;
+
 
         return p;
     }
