@@ -222,7 +222,6 @@ static ssize_t udp_write(struct udp_port *p, uint8_t *buf, ssize_t len) {
                       sizeof(p->peer)));
     return wlen;
 }
-
 struct port *port_open_udp(uint16_t port) {
     int fd;
     ASSERT_ERRNO(fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP));
@@ -1103,7 +1102,7 @@ struct port *port_open_(const char *spec_ro) {
         ASSERT(NULL == (tok = strtok(NULL, delim)));
         //LOG("UDP:%s:%d\n", host, port);
 
-        struct port *p = port_open_udp(0); // don't spec port here
+        struct port *p = port_open_udp(0); // don't bind
         struct udp_port *up = (void*)p;
 
         assert_gethostbyname(&up->peer, host);
@@ -1114,10 +1113,10 @@ struct port *port_open_(const char *spec_ro) {
         return p;
     }
 
-    /* Same as above, but will bind the port.  I don't remember why
-       the previous one did not bind port, but I do not want to break
-       anything, so this is a new setting. */
+    // UDP-BIND:<bind_port>:<host>:<port>
     if (!strcmp(tok, "UDP-BIND")) {
+        ASSERT(tok = strtok(NULL, delim));
+        uint16_t bind_port = atoi(tok);
         ASSERT(tok = strtok(NULL, delim));
         const char *host = tok;
         ASSERT(tok = strtok(NULL, delim));
@@ -1125,7 +1124,7 @@ struct port *port_open_(const char *spec_ro) {
         ASSERT(NULL == (tok = strtok(NULL, delim)));
         //LOG("UDP:%s:%d\n", host, port);
 
-        struct port *p = port_open_udp(port);
+        struct port *p = port_open_udp(bind_port);
         struct udp_port *up = (void*)p;
 
         assert_gethostbyname(&up->peer, host);
