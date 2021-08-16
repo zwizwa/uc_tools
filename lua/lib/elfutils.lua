@@ -191,19 +191,6 @@ end
 
 
 
-function elfutils.read_variable(elf, name)
-   local die = C.die_find_variable(elf, name)
-   local node = elfutils.die_unpack(die)
-   local base_type = flatten_type(node.type)
-   local location = node.location
-   assert(node.location)
-   assert(base_type)
-   -- log_desc(base_type)
-   return {location  = location,
-           base_type = base_type.name,
-           byte_size = base_type.byte_size}
-end
-
 local type_reader = {}
 local function read_type(read_memory, type, addr)
    assert(type)
@@ -213,6 +200,11 @@ local function read_type(read_memory, type, addr)
       error("elfutils.read_type, unsupported type: " .. type.tag)
    end
    return reader(read_memory, type, addr)
+end
+
+function type_reader.volatile_type(read_memory, type, addr)
+   assert(type.type)
+   return read_type(read_memory, type.type, addr)
 end
 
 function type_reader.typedef(read_memory, type, addr)
@@ -259,6 +251,31 @@ function type_reader.structure_type(read_memory, type, addr)
    return struct
 end
 
+
+function type_reader.union_type(read_memory, type, addr)
+   assert(type.tag == "union_type")
+   assert(type.children)
+   --log(#type.children)
+   -- log_desc(type)
+   local union = {}
+
+   -- FIXME: What to do here?
+   -- Instead of
+   --   for i,member in ipairs(type.children) do
+   -- as in struct, just unpack the first member?
+   local member = type.children[1]
+   assert(member)
+   assert(member.tag == "member")
+   local element_addr = addr
+   assert(member.type)
+   local element_val = read_type(read_memory, member.type, element_addr)
+   assert(member.name)
+   local union = {}
+   union[member.name] = element_val
+   return union
+end
+
+
 -- Structure found from log_desc() inspection, not manual.
 function elfutils.array_upper_bound(type)
    assert(type.tag == "array_type")
@@ -278,6 +295,13 @@ function elfutils.array_upper_bound(type)
       error("array_upper_bound_bad_type")
    end
 end
+
+-- FIXME: Currently not needed, but needs to be shared with
+-- elfutils.read_array()
+function type_reader.array_type(read_memory, type, addr)
+   return "<type_reader.array_type.FIXME>"
+end
+
 
 function elfutils.read_array(read_memory, elf, name, nb_el)
    local die = C.die_find_variable(elf, name)
@@ -319,6 +343,31 @@ function elfutils.read_array(read_memory, elf, name, nb_el)
    end
    return array
 end
+
+-- FIXME: Old stub
+-- function elfutils.read_variable(elf, name)
+--    local die = C.die_find_variable(elf, name)
+--    local node = elfutils.die_unpack(die)
+--    local base_type = flatten_type(node.type)
+--    local location = node.location
+--    assert(node.location)
+--    assert(base_type)
+--    -- log_desc(base_type)
+--    return {location  = location,
+--            base_type = base_type.name,
+--            byte_size = base_type.byte_size}
+-- end
+function elfutils.read_variable(read_memory, elf, name)
+   local die = C.die_find_variable(elf, name)
+   local node = elfutils.die_unpack(die)
+
+   assert(node.type)
+   assert(node.location)
+   local val = read_type(read_memory, node.type, node.location)
+
+   return val
+end
+
 
 -- What I want, eventually, is a reader.  It is probably better to
 -- first flatten the data structure into a "reader program" such that
