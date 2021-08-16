@@ -222,22 +222,28 @@ static ssize_t udp_write(struct udp_port *p, uint8_t *buf, ssize_t len) {
                       sizeof(p->peer)));
     return wlen;
 }
-struct port *port_open_udp(uint16_t port) {
+/* Don't expose this function as public API. */
+struct port_open_udp_opts {
+    uint16_t bind_port;
+    int broadcast;
+};
+struct port *port_open_udp_opts(const struct port_open_udp_opts *opts) {
     int fd;
     ASSERT_ERRNO(fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP));
-    if(port) {
+    if(opts->bind_port) {
         struct sockaddr_in address = {
-            .sin_port = htons(port),
+            .sin_port = htons(opts->bind_port),
             .sin_family = AF_INET
         };
         ASSERT_ERRNO(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)));
 
-        // FIXME: DO NOT SET THIS BY DEFAULT!
-        // ASSERT_ERRNO(setsockopt(fd, SOL_SOCKET, SO_BROADCAST, &(int){ 1 }, sizeof(int)));
+        if (opts->broadcast) {
+            ASSERT_ERRNO(setsockopt(fd, SOL_SOCKET, SO_BROADCAST, &(int){ 1 }, sizeof(int)));
+        }
 
         socklen_t addrlen = sizeof(address);
         ASSERT_ERRNO(bind(fd, (struct sockaddr *)&address, addrlen));
-        LOG("udp: port %d\n", port);
+        LOG("udp: port %d\n", opts->bind_port);
     }
     else {
         LOG("udp: not bound\n");
@@ -252,6 +258,11 @@ struct port *port_open_udp(uint16_t port) {
     p->p.pop = 0;
 
     return &p->p;
+}
+/* This is public API.  Don't change behavior. */
+struct port *port_open_udp(uint16_t bind_port) {
+    struct port_open_udp_opts opts = { .bind_port = bind_port };
+    return port_open_udp_opts(&opts);
 }
 
 /***** 1.3 TIMERFD */
@@ -1123,8 +1134,11 @@ struct port *port_open_(const char *spec_ro) {
         uint16_t port = atoi(tok);
         ASSERT(NULL == (tok = strtok(NULL, delim)));
         //LOG("UDP:%s:%d\n", host, port);
-
-        struct port *p = port_open_udp(bind_port);
+        struct port_open_udp_opts opts = {
+            .bind_port = bind_port,
+            //.broadcast = 1
+        };
+        struct port *p = port_open_udp_opts(&opts);
         struct udp_port *up = (void*)p;
 
         assert_gethostbyname(&up->peer, host);
