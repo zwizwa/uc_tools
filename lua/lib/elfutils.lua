@@ -172,106 +172,129 @@ local base_type_map = {
 
 -- FIXME: We assume all words are little endian for now.  This is
 -- probably encoded somewhere.
-function read_le_word(read_memory, addr, nb)
+function read_le_word(env, addr, nb)
+   assert(env)
+   assert(env.read_memory)
    assert(addr)
    assert(nb)
-   local bytes = read_memory(addr, nb)
-   assert(bytes)
-   local dir = -1  -- FIXME generalize to big-endian
-   local offset = nb
-   local accu = 0
-   while nb > 0 do
-      accu = accu * 256 + bytes[offset]
-      offset = offset + dir
-      nb = nb - 1
+   local function read_it()
+      local bytes = env.read_memory(addr, nb)
+      assert(bytes)
+      local dir = -1  -- FIXME generalize to big-endian
+      local offset = nb
+      local accu = 0
+      while nb > 0 do
+         accu = accu * 256 + bytes[offset]
+         offset = offset + dir
+         nb = nb - 1
+      end
+      -- log(string.format("0x%x -> 0x%x\n", addr, accu))
+      return accu
    end
-   -- log(string.format("0x%x -> 0x%x\n", addr, accu))
-   return accu
+   -- Note: most words will end up as members in structs and will
+   -- already be behind a thunk, so that's why we make this strict
+   -- here.
+   --if env.lazy then
+   --   return read_it
+   --else
+   return read_it()
+   --end
 end
 
 
 
 local type_reader = {}
-local function read_type(read_memory, type, addr)
+local function read_type(env, type, addr)
    assert(type)
    assert(type.tag)
    local reader = type_reader[type.tag]
    if not reader then
       error("elfutils.read_type, unsupported type: " .. type.tag)
    end
-   return reader(read_memory, type, addr)
+   return reader(env, type, addr)
 end
 
-function type_reader.volatile_type(read_memory, type, addr)
+function type_reader.volatile_type(env, type, addr)
    assert(type.type)
-   return read_type(read_memory, type.type, addr)
+   return read_type(env, type.type, addr)
 end
 
-function type_reader.typedef(read_memory, type, addr)
+function type_reader.typedef(env, type, addr)
    assert(type.type)
    -- Unpack the typedef
-   return read_type(read_memory, type.type, addr)
+   return read_type(env, type.type, addr)
 end
 
-function type_reader.base_type(read_memory, type, addr)
+function type_reader.base_type(env, type, addr)
    -- log_desc(type)
    assert(type.byte_size)
    -- FIXME: Assume it's an uint.
-   return read_le_word(read_memory, addr, type.byte_size)
+   return read_le_word(env, addr, type.byte_size)
 end
 
 
-function type_reader.pointer_type(read_memory, type, addr)
+function type_reader.pointer_type(env, type, addr)
    -- FIXME: Data structure should probably preserve type, so we can
    -- dereference if needed.
    assert(type)
    assert(type.byte_size)
-   return read_le_word(read_memory, addr, type.byte_size)
+   return read_le_word(env, addr, type.byte_size)
 end
 
-function type_reader.structure_type(read_memory, type, addr)
+function type_reader.structure_type(env, type, addr)
    assert(type.tag == "structure_type")
    assert(type.children)
    -- log_desc(type)
    local struct = {}
    for i,member in ipairs(type.children) do
       assert(member.tag == "member")
-      local element_addr = addr + member.data_member_location
       assert(member.type)
-      local element_val = read_type(read_memory, member.type, element_addr)
       assert(member.name)
-      -- The choice here is to preserve the order and have a more
-      -- verbose representation, or just use an unordered Lua table.
-      -- The latter seems much more useful.
-      --
-      -- table.insert(struct, {member.name, element_val})
-      struct[member.name] = element_val
+      local function read_it()
+         local element_addr = addr + member.data_member_location
+         local element_val = read_type(env, member.type, element_addr)
+         -- log(string.format("struct 0x%x %d %s\n", element_addr, member.data_member_location, member.name))
+         -- The choice here is to preserve the order and have a more
+         -- verbose representation, or just use an unordered Lua table.
+         -- The latter seems much more useful.
+         --
+         -- table.insert(struct, {member.name, element_val})
+         return element_val
+      end
+      if env.lazy then
+         struct[member.name] = read_it
+      else
+         struct[member.name] = read_it()
+      end
    end
 
    return struct
 end
 
 
-function type_reader.union_type(read_memory, type, addr)
+function type_reader.union_type(env, type, addr)
    assert(type.tag == "union_type")
    assert(type.children)
    --log(#type.children)
    -- log_desc(type)
    local union = {}
 
-   -- FIXME: What to do here?
-   -- Instead of
-   --   for i,member in ipairs(type.children) do
-   -- as in struct, just unpack the first member?
-   local member = type.children[1]
-   assert(member)
-   assert(member.tag == "member")
-   local element_addr = addr
-   assert(member.type)
-   local element_val = read_type(read_memory, member.type, element_addr)
-   assert(member.name)
-   local union = {}
-   union[member.name] = element_val
+   for i,member in ipairs(type.children) do
+      assert(member)
+      assert(member.tag == "member")
+      assert(member.type)
+      assert(member.name)
+      local function read_it()
+         local element_addr = addr
+         local element_val = read_type(env, member.type, element_addr)
+         return element_val
+      end
+      if env.lazy then
+         union[member.name] = read_it
+      else
+         union[member.name] = read_it()
+      end
+   end
    return union
 end
 
@@ -296,15 +319,52 @@ function elfutils.array_upper_bound(type)
    end
 end
 
--- FIXME: Currently not needed, but needs to be shared with
--- elfutils.read_array()
-function type_reader.array_type(read_memory, type, addr)
-   return "<type_reader.array_type.FIXME>"
+-- The question here is do we return 1-base or 0-base array.  From
+-- experience, working with 0-base arrays in lua is a royal pain, so
+-- don't bother.
+
+function elfutils.do_array_read(env, array_addr, element_type, nb_el)
+   assert(array_addr)
+   -- log_desc(element_type)
+   assert(element_type.byte_size) -- FIXME: is this always defined?
+   assert(element_type.tag)
+   local tag = element_type.tag -- FIXME: this should probably be collapsed
+   local array = {}
+   for i=0,nb_el-1 do
+      local element_size = element_type.byte_size
+      function read_it()
+         local element_addr = array_addr + i * element_size
+         -- log(string.format("array %d 0x%x\n", i, element_addr))
+         local element_val = read_type(env, element_type, element_addr)
+         assert(element_val)
+         return element_val
+      end
+      if env.lazy then
+         array[i+1] = read_it
+      else
+         array[i+1] = read_it()
+      end
+   end
+   return array
 end
 
+-- FIXME: Currently not needed, but needs to be shared with
+-- elfutils.read_array()
+function type_reader.array_type(env, type, addr)
+   assert(env)
+   assert(type.tag == "array_type")
+   local upper_bound = elfutils.array_upper_bound(type)
+   assert(upper_bound)
+   local nb_el = upper_bound + 1
+   assert(type.type)
+   return elfutils.do_array_read(env, addr, type.type, nb_el)
+end
 
-function elfutils.read_array(read_memory, elf, name, nb_el)
-   local die = C.die_find_variable(elf, name)
+function elfutils.read_array(env, name, nb_el)
+   assert(env)
+   assert(env.elf)
+   assert(env.read_memory)
+   local die = C.die_find_variable(env.elf, name)
    local node = elfutils.die_unpack(die)
    local array_addr
    --log_desc(node.type)
@@ -323,25 +383,13 @@ function elfutils.read_array(read_memory, elf, name, nb_el)
       -- Pointer to array.  We only know it is an array because caller
       -- tells us it is.  Caller needs to provide size
       assert(nb_el)
-      array_addr = read_le_word(read_memory, node.location, 4)
+      array_addr = read_le_word(env, node.location, 4)
    else
       log_desc(node.type)
       error("elfutils.read_array bad type: " .. node.type.tag)
    end
-   assert(array_addr)
    local element_type = node.type.type
-   assert(element_type.byte_size) -- FIXME: is this always defined?
-   assert(element_type.tag)
-   local tag = element_type.tag -- FIXME: this should probably be collapsed
-   local array = {}
-   for i=0,nb_el-1 do
-      local element_addr = array_addr + i * element_type.byte_size
-      -- log(string.format("array %d 0x%x\n", i, element_addr))
-      local element_val = read_type(read_memory, element_type, element_addr)
-      assert(element_val)
-      table.insert(array, element_val)
-   end
-   return array
+   return elfutils.do_array_read(env, array_addr, element_type, nb_el)
 end
 
 -- FIXME: Old stub
@@ -357,13 +405,15 @@ end
 --            base_type = base_type.name,
 --            byte_size = base_type.byte_size}
 -- end
-function elfutils.read_variable(read_memory, elf, name)
-   local die = C.die_find_variable(elf, name)
+function elfutils.read_variable(env, name)
+   assert(env)
+   assert(env.elf)
+   local die = C.die_find_variable(env.elf, name)
    local node = elfutils.die_unpack(die)
 
    assert(node.type)
    assert(node.location)
-   local val = read_type(read_memory, node.type, node.location)
+   local val = read_type(env, node.type, node.location)
 
    return val
 end

@@ -546,13 +546,15 @@ int cmd_die_attr(lua_State *L) {
         break;
     }
     /* FIXME: For these the sdata/udata distinction needs to be
-       clarified from context.  For now, interpret as sdata. */
+       clarified from context.  We do not have a way to do that.  The
+       sane default seems to be to interpret as udata.  If not, struct
+       member offsets and sizes get read as sdata which is wrong. */
     case DW_FORM_data1:
     case DW_FORM_data2:
     case DW_FORM_data4: {
-        Dwarf_Sword sval;
-        ASSERT(0 == dwarf_formsdata(&attr, &sval));
-        lua_pushnumber(L, sval);
+        Dwarf_Word uval;
+        ASSERT(0 == dwarf_formudata(&attr, &uval));
+        lua_pushnumber(L, uval);
         break;
     }
     case DW_FORM_flag_present: {
