@@ -136,16 +136,21 @@ function elfutils.filtermap(elf, f)
    return lst
 end
 
--- The holy grail: given just a name, figure out how to dump a
--- target's data structure as a Lua structure, using type and location
--- information from the ELF.  Basically emulating GDB's print
--- function.
---
---
--- The data structure is fairly close to DWARF with node.tag the
--- DW_TAG_ in symbolic form, all attributes in symbolic form with
--- values converted to some Lua representation, and node.children a
--- list of DIE child+siblings.
+-- The idea is to make this as transparent as possible: give just a
+-- name (and e.g. array size), and return a usable Lua structure.  We
+-- go for convenience and simplicity over detailed control.  All the
+-- DIE data is available so just roll your own if you need to.
+
+-- There are 2 modes:
+-- - recursive read (default)
+-- - lazy read, where variables and members are represented by reader
+--  functions.
+
+
+-- How to red this code: The Lua data structure is fairly close to
+-- DWARF with node.tag the DW_TAG_ in symbolic form, all attributes in
+-- symbolic form with values converted to some Lua representation, and
+-- node.children a list of DIE child+siblings.
 --
 -- In good tradition I'm not going to document it further.  To see how
 -- this fits together, log_desc() is your friend.  That's the idea:
@@ -177,33 +182,28 @@ function read_le_word(env, addr, nb)
    assert(env.read_memory)
    assert(addr)
    assert(nb)
-   local function read_it()
-      local bytes = env.read_memory(addr, nb)
-      assert(bytes)
-      local dir = -1  -- FIXME generalize to big-endian
-      local offset = nb
-      local accu = 0
-      while nb > 0 do
-         accu = accu * 256 + bytes[offset]
-         offset = offset + dir
-         nb = nb - 1
-      end
-      -- log(string.format("0x%x -> 0x%x\n", addr, accu))
-      return accu
+
+   local bytes = env.read_memory(env, addr, nb)
+   assert(bytes)
+   local dir = -1  -- FIXME generalize to big-endian
+   local offset = nb
+   local accu = 0
+   while nb > 0 do
+      accu = accu * 256 + bytes[offset]
+      offset = offset + dir
+      nb = nb - 1
    end
-   -- Note: most words will end up as members in structs and will
-   -- already be behind a thunk, so that's why we make this strict
-   -- here.
-   --if env.lazy then
-   --   return read_it
-   --else
-   return read_it()
-   --end
+   -- log(string.format("0x%x -> 0x%x\n", addr, accu))
+   return accu
+
 end
 
 
+-- Methods to read data types as they are named in the DWARF
+-- structure.
 
 local type_reader = {}
+
 local function read_type(env, type, addr)
    assert(type)
    assert(type.tag)
@@ -232,7 +232,6 @@ function type_reader.base_type(env, type, addr)
    return read_le_word(env, addr, type.byte_size)
 end
 
-
 function type_reader.pointer_type(env, type, addr)
    -- FIXME: Data structure should probably preserve type, so we can
    -- dereference if needed.
@@ -250,7 +249,7 @@ function type_reader.structure_type(env, type, addr)
       assert(member.tag == "member")
       assert(member.type)
       assert(member.name)
-      local function read_it()
+      local function reader()
          local element_addr = addr + member.data_member_location
          local element_val = read_type(env, member.type, element_addr)
          -- log(string.format("struct 0x%x %d %s\n", element_addr, member.data_member_location, member.name))
@@ -262,15 +261,14 @@ function type_reader.structure_type(env, type, addr)
          return element_val
       end
       if env.lazy then
-         struct[member.name] = read_it
+         struct[member.name] = reader
       else
-         struct[member.name] = read_it()
+         struct[member.name] = reader()
       end
    end
 
    return struct
 end
-
 
 function type_reader.union_type(env, type, addr)
    assert(type.tag == "union_type")
@@ -284,19 +282,31 @@ function type_reader.union_type(env, type, addr)
       assert(member.tag == "member")
       assert(member.type)
       assert(member.name)
-      local function read_it()
+      local function reader()
          local element_addr = addr
          local element_val = read_type(env, member.type, element_addr)
          return element_val
       end
       if env.lazy then
-         union[member.name] = read_it
+         union[member.name] = reader
       else
-         union[member.name] = read_it()
+         union[member.name] = reader()
       end
    end
    return union
 end
+
+function type_reader.array_type(env, type, addr)
+   assert(env)
+   assert(type.tag == "array_type")
+   local upper_bound = elfutils.array_upper_bound(type)
+   assert(upper_bound)
+   local nb_el = upper_bound + 1
+   assert(type.type)
+   return elfutils.array_read_elements(env, addr, type.type, nb_el)
+end
+
+
 
 
 -- Structure found from log_desc() inspection, not manual.
@@ -323,7 +333,7 @@ end
 -- experience, working with 0-base arrays in lua is a royal pain, so
 -- don't bother.
 
-function elfutils.do_array_read(env, array_addr, element_type, nb_el)
+function elfutils.array_read_elements(env, array_addr, element_type, nb_el)
    assert(array_addr)
    -- log_desc(element_type)
    assert(element_type.byte_size) -- FIXME: is this always defined?
@@ -332,7 +342,7 @@ function elfutils.do_array_read(env, array_addr, element_type, nb_el)
    local array = {}
    for i=0,nb_el-1 do
       local element_size = element_type.byte_size
-      function read_it()
+      function reader()
          local element_addr = array_addr + i * element_size
          -- log(string.format("array %d 0x%x\n", i, element_addr))
          local element_val = read_type(env, element_type, element_addr)
@@ -340,30 +350,19 @@ function elfutils.do_array_read(env, array_addr, element_type, nb_el)
          return element_val
       end
       if env.lazy then
-         array[i+1] = read_it
+         array[i+1] = reader
       else
-         array[i+1] = read_it()
+         array[i+1] = reader()
       end
    end
    return array
 end
 
--- FIXME: Currently not needed, but needs to be shared with
--- elfutils.read_array()
-function type_reader.array_type(env, type, addr)
-   assert(env)
-   assert(type.tag == "array_type")
-   local upper_bound = elfutils.array_upper_bound(type)
-   assert(upper_bound)
-   local nb_el = upper_bound + 1
-   assert(type.type)
-   return elfutils.do_array_read(env, addr, type.type, nb_el)
-end
-
+-- This can read both actual array_type, but also pointer_type
+-- interpreted as array, where user needs to provide nb_el.
 function elfutils.read_array(env, name, nb_el)
    assert(env)
    assert(env.elf)
-   assert(env.read_memory)
    local die = C.die_find_variable(env.elf, name)
    local node = elfutils.die_unpack(die)
    local array_addr
@@ -389,22 +388,9 @@ function elfutils.read_array(env, name, nb_el)
       error("elfutils.read_array bad type: " .. node.type.tag)
    end
    local element_type = node.type.type
-   return elfutils.do_array_read(env, array_addr, element_type, nb_el)
+   return elfutils.array_read_elements(env, array_addr, element_type, nb_el)
 end
 
--- FIXME: Old stub
--- function elfutils.read_variable(elf, name)
---    local die = C.die_find_variable(elf, name)
---    local node = elfutils.die_unpack(die)
---    local base_type = flatten_type(node.type)
---    local location = node.location
---    assert(node.location)
---    assert(base_type)
---    -- log_desc(base_type)
---    return {location  = location,
---            base_type = base_type.name,
---            byte_size = base_type.byte_size}
--- end
 function elfutils.read_variable(env, name)
    assert(env)
    assert(env.elf)
@@ -418,17 +404,6 @@ function elfutils.read_variable(env, name)
    return val
 end
 
-
--- What I want, eventually, is a reader.  It is probably better to
--- first flatten the data structure into a "reader program" such that
--- it can be debugged separately.  A reader program is a specification
--- for how to find the data by successive pointer dereference +
--- offsets until a base type is used.
---
--- E.g.  {u32_ref,{offset,{ptr_ref,<loc>},<off>}}
---
--- EDIT: Let's try not to design too much.  First try it in "pull"
--- fashion using an abstract reader.
 
 
 return elfutils
