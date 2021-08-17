@@ -29,6 +29,7 @@ struct gdbstub_config _config_default __attribute__ ((section (".config_header")
 // EDIT: Also works on narrower bare-bones boards.
 
 extern struct gdbstub bootloader_stub;
+void ensure_started(struct gdbstub *stub);
 
 #define LED GPIOC,13
 static uint32_t counter = 0;
@@ -61,7 +62,9 @@ int main(void) {
        boot ROM, so we can use it as an application start toggle. */
     /* FIXME: Find out why this is not 100% reliable. */
     uint32_t boot1 = hw_gpio_read(GPIOB,2);
-    if (GDBSTUB_BOOT1_START(boot1) && !flash_null(_config.start)) _config.start();
+    if (GDBSTUB_BOOT1_START(boot1) && !flash_null(_config.start)) {
+        ensure_started(&bootloader_stub);
+    }
 
 
     /* For now, the loop takeover routine is implemented on a per

@@ -61,7 +61,7 @@ static inline void set_started(struct gdbstub *stub, int started) {
     }
 }
 
-static inline void ensure_started(struct gdbstub *stub) {
+void ensure_started(struct gdbstub *stub) {
     if (started(stub)) return; // idempotent
     _config.start();
     set_started(stub, 1);
