@@ -388,7 +388,14 @@ function elfutils.read_array(env, name, nb_el)
       error("elfutils.read_array bad type: " .. node.type.tag)
    end
    local element_type = node.type.type
-   return elfutils.array_read_elements(env, array_addr, element_type, nb_el)
+   local function read_it()
+      return elfutils.array_read_elements(env, array_addr, element_type, nb_el)
+   end
+   if env.lazy then
+      return read_it
+   else
+      return read_it()
+   end
 end
 
 function elfutils.read_variable(env, name)
@@ -399,9 +406,16 @@ function elfutils.read_variable(env, name)
 
    assert(node.type)
    assert(node.location)
-   local val = read_type(env, node.type, node.location)
 
-   return val
+   local function read_it()
+      local val = read_type(env, node.type, node.location)
+      return val
+   end
+   if env.lazy then
+      return read_it
+   else
+      return read_it()
+   end
 end
 
 
