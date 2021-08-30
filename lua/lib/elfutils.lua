@@ -83,7 +83,7 @@ local function die_unpack_memoize(die, nodes)
       local at_name = inv_DW_AT[at_code]
       if at_name ~= 'sibling' then
          if not at_name then
-            error("at_code " .. at_code .. "not supported")
+            error("attribute code " .. at_code .. " not supported")
          end
          local at_val = C.die_attr(die, at_code)
          if (elfutils.metatables.die == getmetatable(at_val)) then

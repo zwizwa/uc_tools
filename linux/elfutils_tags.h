@@ -42,6 +42,8 @@
     m(high_pc)                                  \
     m(stmt_list)                                \
     m(byte_size)                                \
+    m(bit_offset)                               \
+    m(bit_size)                                 \
     m(encoding)                                 \
     m(location)                                 \
     m(decl_file)                                \
