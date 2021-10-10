@@ -7,7 +7,11 @@
 
 #ifdef CYCLE_COUNTER_NO_INLINE
 
-uint32_t cycle_counter(void) { return 0; }
+uint32_t cycle_counter_register = 0;
+
+uint32_t cycle_counter(void) {
+    return cycle_counter_register;
+}
 void enable_cycle_counter(void) {
     LOG("WARNING: cycle_counter is a stub\n");
 }
