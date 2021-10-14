@@ -384,9 +384,11 @@ static ssize_t pop_read(port_pop_fn pop,
     //LOG("packetn_read %d\n", p->count);
     ssize_t rv = read(p->p.fd, &p->buf[p->count], room);
     if (rv > 0) {
-        //LOG("pop_read:\n");
-        //log_hex(&p->buf[p->count], rv);
-        // log_str(&p->buf[p->count], rv);
+        if (p->p.verbose) {
+            LOG("pop_read:\n");
+            log_hex(&p->buf[p->count], rv);
+            // log_str(&p->buf[p->count], rv);
+        }
     }
     //LOG("packetn_read done %d\n", rv);
     if (rv == -1) {

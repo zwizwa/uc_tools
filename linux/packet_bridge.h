@@ -44,6 +44,7 @@ struct port {
     int fd;              // main file descriptor
     int fd_out;          // optional, if different from main fd
     short events;
+    int verbose:1;
     port_read_fn read;
     port_write_fn write;
     port_pop_fn pop;     // only for buffered ports

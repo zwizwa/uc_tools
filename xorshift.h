@@ -19,9 +19,11 @@ static inline uint32_t srandom_u32(uint32_t *x) {
 #define XORSHIFT_STATIC 0
 #endif
 
+#define XORSHIFT_INIT 2463534242
+
 #if XORSHIFT_STATIC
 static inline uint32_t random_u32(void) {
-    static uint32_t x = 2463534242;
+    static uint32_t x = XORSHIFT_INIT;
     return srandom_u32(&x);
 }
 #endif
