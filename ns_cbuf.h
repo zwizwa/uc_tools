@@ -73,7 +73,9 @@ static inline uint32_t NS(_room)(const NS(_queue_t) *b) {
     return b->size - 1 - NS(_elements)(b);
 }
 static inline int NS(_empty)(const NS(_queue_t) *b) {
-    return 0 == NS(_elements)(b);
+    // return 0 == NS(_elements)(b);
+    // Optimized, as this tends to be in critical path:
+    return b->write == b->read;
 }
 static inline int NS(_full)(const NS(_queue_t) *b) {
     return 0 == NS(_room)(b);
