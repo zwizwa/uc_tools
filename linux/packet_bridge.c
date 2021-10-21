@@ -168,7 +168,7 @@ struct port *port_open_tundev(const char *dev, int flags) {
     int fd;
     ASSERT_ERRNO(fd = open("/dev/net/tun", O_RDWR));
     struct ifreq ifr = { .ifr_flags = flags };
-    strncpy(ifr.ifr_name, dev, IFNAMSIZ);
+    snprintf(ifr.ifr_name, IFNAMSIZ, "%s", dev);
     ASSERT_ERRNO(ioctl(fd, TUNSETIFF, (void *) &ifr));
     LOG("tap: %s\n", dev);
     struct port *port;
