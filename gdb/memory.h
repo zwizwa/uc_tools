@@ -163,6 +163,7 @@ static inline int32_t hw_flash_write_and_erase(
     uint32_t len) {
 
     return 0;
+}
 
 #endif // defined (STM32F1)
 

@@ -1234,7 +1234,7 @@ INLINE int hw_usart_getchar_nsr(uint32_t usart) {
     // SR flags RXNE and ORE cause interrupt
     int32_t  sr = USART_SR(usart);   // clears ORE if followed by DR read
     uint32_t dr = USART_DR(usart);   // clears RXNE
-    if (sr & 0xF) return (-1 << 12) | ((sr & 0xF) << 8) | (dr & 0xFF);
+    if (sr & 0xF) return (((uint32_t)(-1)) << 12) | ((sr & 0xF) << 8) | (dr & 0xFF);
     return dr & USART_DR_MASK;
 }
 INLINE int hw_usart_recv_ready(uint32_t usart) {
