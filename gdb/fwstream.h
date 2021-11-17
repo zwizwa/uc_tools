@@ -150,7 +150,11 @@ fwstream_push(struct fwstream *s, uintptr_t chunk_nb, const uint8_t *chunk_data)
         if (endx <= start) return FWSTREAM_ERR_FW_ENDX;
         uint32_t size_bytes = endx - start;
         uint32_t size_padded = fwstream_size_padded(size_bytes);
-        if (s->max_size && (size_padded > s->max_size)) return FWSTREAM_ERR_FW_SIZE;
+        if (s->max_size && (size_padded > s->max_size)) {
+            LOG("fwstream: max_size=0x%x, size_padded=0x%x\n",
+                s->max_size, size_padded);
+            return FWSTREAM_ERR_FW_SIZE;
+        }
         s->control_chunk = size_padded / s->chunk_size;
 
         LOG("fwstream: partition: %x %x %d (0x%x)\n",
@@ -207,6 +211,10 @@ fwstream_push(struct fwstream *s, uintptr_t chunk_nb, const uint8_t *chunk_data)
         return 0;
     }
     else {
+        /* This is not a great error message.  Likely what happened
+           here is that we're trying to overwrite the running
+           partition, and s->write() won't allow that.  It's probably
+           best to add a check earlier on so we won't end up here. */
         return FWSTREAM_ERR_NOT_WRITTEN;
     }
 }
