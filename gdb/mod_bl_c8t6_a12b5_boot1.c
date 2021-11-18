@@ -88,12 +88,12 @@ int main(void) {
         if ((bootloader_stub.flags & GDBSTUB_FLAG_STARTED) && (_config.loop)) {
             bootloader_stub.flags |= GDBSTUB_FLAG_LOOP;
             _config.loop(&bootloader_tick);
-            // NOT REACHED
+            /* If .loop() is implemented correctly this should not
+               return.  However, in case it does, we fall through to
+               bootloader_tick() below. */
         }
-        /* By default, just poll USB in the main loop. */
-        else {
-            bootloader_tick();
-        }
+        /* By default, poll USB in the main loop. */
+        bootloader_tick();
     }
     return 0;
 }

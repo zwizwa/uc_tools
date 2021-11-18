@@ -109,6 +109,12 @@ void start(void) {
     if (p) p->config->start();
 }
 
+void main_loop(gdbstub_fn_poll bl_poll_fn) {
+    const struct partition_config *p = choose_partition(&part[0], &part[1]);
+    if (p && p->config->loop) p->config->loop(bl_poll_fn);
+}
+
+
 #ifndef MANUFACTURER
 #define MANUFACTURER "Zwizwa"
 #endif
@@ -135,6 +141,7 @@ struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .version         = config_version,
     .start           = start,
     .switch_protocol = switch_protocol,
+    .loop            = main_loop,
 };
 
 
