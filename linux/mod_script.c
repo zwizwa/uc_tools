@@ -35,13 +35,6 @@
    This also implements so called "parsing words", which are commands
    that modify the meaning of the next word, such as filenames.
 
-   4. WHY?
-
-   This is "what it wants to be", flowing from the initial decision to
-   put a stack-based command language on the target (not much room,
-   easy to implement).  From that point onward some extensions are
-   added that stay true to the semantics.
-
 */
 
 
@@ -185,39 +178,34 @@ void interpret_command_slice(struct interp *env, const uint8_t *bytes, size_t le
     interpret_command(env, cmd);
 }
 
+// FIXME: Implement comments
 void interpret(struct interp *env, uint8_t *bytes, size_t len) {
-    /* We need to send full "words", meaning commands or numbers.
-       Some assumptions to keep this simple:
-       - All commands are truncated to RDM_MAX_DATA_LENGTH
-       - The end of the array acts as a terminator if it is not whitespace-terminated.
-    */
     uint8_t *word_start = bytes;
     uint8_t nb_chars = 0;
-    for(;;) {
-        if (word_start + nb_chars >= bytes + len) {
-            if (nb_chars > 0) {
-                interpret_command_slice(env, word_start, nb_chars);
-            }
-            break;
-        }
-        if(isspace(word_start[nb_chars])) {
-            if (nb_chars == 0) {
-                // just skip it
-                word_start++;
-                continue;
-            }
-            else {
-                // we have a command
-                interpret_command_slice(env, word_start, nb_chars);
-                word_start += nb_chars;
-                nb_chars = 0;
-                continue;
-            }
-        }
-        else {
-            nb_chars++;
-        }
+
+  next:
+    if (word_start + nb_chars >= bytes + len) {
+        /* Delimited by end. */
+        if (nb_chars > 0) { goto call;  }
+        return;
     }
+    uint8_t c = word_start[nb_chars];
+    if(isspace(c)){
+        /* Delimited by space. */
+        if (nb_chars > 0) { goto call; }
+        else { word_start++; }
+    }
+    else {
+        /* Keep collecting characters. */
+        nb_chars++;
+    }
+    goto next;
+
+  call:
+    interpret_command_slice(env, word_start, nb_chars);
+    word_start += nb_chars;
+    nb_chars = 0;
+    goto next;
 }
 
 /* Wrapper around 1-argument arg_command */
