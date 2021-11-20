@@ -60,35 +60,40 @@ struct command {
     int nb_args;
 };
 struct interp {
-    /* String stack for parsing commands. */
-    const struct command *command;
+    /* String stack. */
     struct args *args;
-    int nb_args;
+    /* Current string parsing command. */
+    const struct command *command;
+    int need_args;
 };
 
 
-/* We implement "parsing words" by pushing strings to a separate
-   stack.  Once all arguments are collected the command is
-   executed. */
-int push_arg(struct interp *env, const char *cmd) {
-    int rv = -1;
-    ASSERT(env->command);
+/* We implement "parsing words" by pushing strings to the string
+   stack.  Once all arguments are collected the command is executed.
+   The string stack can be used for other things. */
+void push_string(struct interp *env, const char *cmd) {
     struct args *a = malloc(sizeof(*a));
     a->arg = malloc(1 + strlen(cmd));
     strcpy(a->arg, cmd);
     a->next = env->args;
     env->args = a;
-    env->nb_args++;
-    if (env->nb_args == env->command->nb_args) {
+}
+void drop_string(struct interp *env) {
+    struct args *a = env->args;
+    env->args = a->next;
+    free(a->arg);
+    free(a);
+}
+int push_arg(struct interp *env, const char *cmd) {
+    int rv = -1;
+    ASSERT(env->command);
+    push_string(env, cmd);
+    if (0 == (--env->need_args)) {
         rv = env->command->fun(env);
-        while(env->args) {
-            struct args *a = env->args;
-            env->args = a->next;
-            free(a->arg);
-            free(a);
+        for(int i=0; i<env->command->nb_args; i++) {
+            drop_string(env);
         }
         env->command = NULL;
-        env->nb_args = 0;
     }
     return rv;
 }
@@ -139,6 +144,7 @@ int interpret_host_command(struct interp *env, const char *cmd) {
             /* If this is a parsing command, we need to save the
                command info and wait for more string arguments. */
             env->command = c;
+            env->need_args = c->nb_args;
         }
         return 1;
     }
