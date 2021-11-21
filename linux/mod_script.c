@@ -84,16 +84,21 @@ void drop_string(struct interp *env) {
     free(a->arg);
     free(a);
 }
+void drop_command(struct interp *env) {
+    if (!env->command) return;
+    for(int i=0; i<env->command->nb_args; i++) {
+        drop_string(env);
+    }
+    env->command = NULL;
+}
+
 int push_arg(struct interp *env, const char *cmd) {
     int rv = -1;
     ASSERT(env->command);
     push_string(env, cmd);
     if (0 == (--env->need_args)) {
         rv = env->command->fun(env);
-        for(int i=0; i<env->command->nb_args; i++) {
-            drop_string(env);
-        }
-        env->command = NULL;
+        drop_command(env);
     }
     return rv;
 }
