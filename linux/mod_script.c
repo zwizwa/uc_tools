@@ -68,6 +68,20 @@ struct interp {
 };
 
 
+/* User provides primitive interpretation (which e.g. could do RPC),
+   and a list of commands implemented as C functions running
+   locally with access to the string stack (args). */
+
+/* Primitive target command. */
+int interpret_primitive_command(struct interp *env, const char *cmd);
+
+/* Primitive host command. */
+extern struct command commands[];
+
+
+
+
+
 /* We implement "parsing words" by pushing strings to the string
    stack.  Once all arguments are collected the command is executed.
    The string stack can be used for other things. */
@@ -121,13 +135,8 @@ const struct command *find_command(const char *name, const struct command *comma
     return NULL;
 }
 
-void interpret(struct interp *env, uint8_t *bytes, size_t len);
+void interpret(struct interp *env, const uint8_t *bytes, size_t len);
 
-/* Primitive target command. */
-int interpret_primitive_command(struct interp *env, const char *cmd);
-
-/* Primitive host command. */
-extern struct command commands[];
 int interpret_host_command(struct interp *env, const char *cmd) {
     /* This is mode-dependent */
     if (env->command) {
@@ -177,6 +186,7 @@ int interpret_script_command(struct interp *env, const char *cmd) {
     return 1;
 }
 int interpret_command(struct interp *env, const char *cmd) {
+    // LOG("interpret_command: '%s'\n", cmd);
     return
         interpret_host_command(env, cmd) ||
         interpret_script_command(env, cmd) ||
@@ -188,35 +198,40 @@ void interpret_command_slice(struct interp *env, const uint8_t *bytes, size_t le
     cmd[len] = 0;
     interpret_command(env, cmd);
 }
-
-// FIXME: Implement comments
-void interpret(struct interp *env, uint8_t *bytes, size_t len) {
-    uint8_t *word_start = bytes;
+void interpret(struct interp *env, const uint8_t *bytes, size_t len) {
+    const uint8_t *endx = bytes + len;
+    const uint8_t *word_start = bytes;
     uint8_t nb_chars = 0;
+    const int end = -1;
 
-  next:
-    if (word_start + nb_chars >= bytes + len) {
-        /* Delimited by end. */
-        if (nb_chars > 0) { goto call;  }
-        return;
-    }
-    uint8_t c = word_start[nb_chars];
-    if(isspace(c)){
-        /* Delimited by space. */
-        if (nb_chars > 0) { goto call; }
-        else { word_start++; }
-    }
-    else {
-        /* Keep collecting characters. */
-        nb_chars++;
-    }
-    goto next;
+    for(;;) {
+        /* Read next character. */
+        int c = (word_start + nb_chars < endx) ?
+            word_start[nb_chars] : end;
 
-  call:
-    interpret_command_slice(env, word_start, nb_chars);
-    word_start += nb_chars;
-    nb_chars = 0;
-    goto next;
+        if(('\\' == c) || (end == c) || isspace(c)) {
+            /* Found a word delimiter. */
+            if (nb_chars > 0) {
+                interpret_command_slice(env, word_start, nb_chars);
+            }
+            /* That was it. */
+            if (end == c) {
+                return;
+            }
+            /* Skip past word to start collecting again. */
+            word_start += nb_chars + 1;
+            nb_chars = 0;
+            /* If there was a comment, skip it. */
+            if ('\\' == c) {
+                do { word_start++; }
+                while ((word_start < endx) && word_start[0] != '\n');
+            }
+        }
+        else {
+            /* Keep collecting characters. */
+            nb_chars++;
+        }
+    }
 }
 
 /* Wrapper around 1-argument arg_command */
