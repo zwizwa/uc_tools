@@ -65,6 +65,8 @@ struct interp {
     /* Current string parsing command. */
     const struct command *command;
     int need_args;
+    /* Current word */
+    char word[1024];
 };
 
 
@@ -159,26 +161,20 @@ int interpret_host_command(struct interp *env, const char *cmd) {
         return 1;
     }
 }
-void interpret_file(struct interp *env, FILE *f) {
-    char word[1024]; // Arbitrary word size limit.
-    uint8_t nb_chars = 0;
+int accept_word(struct interp *env, FILE *f) {
+    int nb_chars = 0;
+    int done = 0;
     for(;;) {
         /* Read next character. */
         int c = fgetc(f);
-
+        // LOG("read '%c' %d\n", c, c);
         if(('\\' == c) || (EOF == c) || isspace(c)) {
             /* Found a word delimiter. */
             if (nb_chars > 0) {
-                word[nb_chars] = 0;
-                interpret_command(env, word);
+                env->word[nb_chars] = 0;
+                done = 1;
             }
-            /* That was it. */
-            if (EOF == c) {
-                return;
-            }
-            /* Start collecting again. */
-            nb_chars = 0;
-            /* If there was a comment, skip it. */
+            /* If there is a comment trailing the word, skip it. */
             if ('\\' == c) {
                 do { c = fgetc(f); }
                 while ((EOF != c) && ('\n' != c));
@@ -186,11 +182,27 @@ void interpret_file(struct interp *env, FILE *f) {
         }
         else {
             /* Keep collecting characters. */
-            word[nb_chars++] = c;
-            ASSERT(nb_chars < sizeof(word));
+            env->word[nb_chars++] = c;
+            ASSERT(nb_chars < sizeof(env->word));
+        }
+        if (done) {
+            return nb_chars;
+        }
+        if (EOF == c) {
+            ASSERT(nb_chars == 0);
+            return 0;
         }
     }
 }
+
+void interpret_file(struct interp *env, FILE *f) {
+    int nb_chars;
+    while ((nb_chars = accept_word(env, f))) {
+        // LOG("accepted '%s'\n", word);
+        interpret_command(env, env->word);
+    }
+}
+
 /* Composite host command script. */
 int interpret_script_command(struct interp *env, const char *cmd) {
     const char *dir = getenv("SCRIPT_DIR");
@@ -203,13 +215,13 @@ int interpret_script_command(struct interp *env, const char *cmd) {
     strcpy(file + dir_len + 1, cmd);
     FILE *f = fopen(file, "r");
     if (!f) return 0;
-    // LOG("host_command: %s\n", file);
+    // LOG("host_command '%s'\n", file);
     interpret_file(env, f);
     fclose(f);
     return 1;
 }
 int interpret_command(struct interp *env, const char *cmd) {
-    // LOG("# '%s'\n", cmd);
+    // LOG("interpret '%s'\n", cmd);
     return
         interpret_host_command(env, cmd) ||
         interpret_script_command(env, cmd) ||
