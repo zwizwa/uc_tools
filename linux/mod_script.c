@@ -78,8 +78,8 @@ int interpret_primitive_command(struct interp *env, const char *cmd);
 /* Primitive host command. */
 extern struct command commands[];
 
-
-
+/* We provide interpreter on top of that + file scripts. */
+int interpret_command(struct interp *env, const char *cmd);
 
 
 /* We implement "parsing words" by pushing strings to the string
@@ -105,7 +105,6 @@ void drop_command(struct interp *env) {
     }
     env->command = NULL;
 }
-
 int push_arg(struct interp *env, const char *cmd) {
     int rv = -1;
     ASSERT(env->command);
@@ -116,7 +115,6 @@ int push_arg(struct interp *env, const char *cmd) {
     }
     return rv;
 }
-
 const char *get_arg(struct interp *env, int n) {
     ASSERT(n >= 0);
     struct args *a = env->args;
@@ -134,8 +132,6 @@ const struct command *find_command(const char *name, const struct command *comma
     }
     return NULL;
 }
-
-void interpret(struct interp *env, const uint8_t *bytes, size_t len);
 
 int interpret_host_command(struct interp *env, const char *cmd) {
     /* This is mode-dependent */
@@ -163,6 +159,38 @@ int interpret_host_command(struct interp *env, const char *cmd) {
         return 1;
     }
 }
+void interpret_file(struct interp *env, FILE *f) {
+    char word[1024]; // Arbitrary word size limit.
+    uint8_t nb_chars = 0;
+    for(;;) {
+        /* Read next character. */
+        int c = fgetc(f);
+
+        if(('\\' == c) || (EOF == c) || isspace(c)) {
+            /* Found a word delimiter. */
+            if (nb_chars > 0) {
+                word[nb_chars] = 0;
+                interpret_command(env, word);
+            }
+            /* That was it. */
+            if (EOF == c) {
+                return;
+            }
+            /* Start collecting again. */
+            nb_chars = 0;
+            /* If there was a comment, skip it. */
+            if ('\\' == c) {
+                do { c = fgetc(f); }
+                while ((EOF != c) && ('\n' != c));
+            }
+        }
+        else {
+            /* Keep collecting characters. */
+            word[nb_chars++] = c;
+            ASSERT(nb_chars < sizeof(word));
+        }
+    }
+}
 /* Composite host command script. */
 int interpret_script_command(struct interp *env, const char *cmd) {
     const char *dir = getenv("SCRIPT_DIR");
@@ -175,63 +203,23 @@ int interpret_script_command(struct interp *env, const char *cmd) {
     strcpy(file + dir_len + 1, cmd);
     FILE *f = fopen(file, "r");
     if (!f) return 0;
-    fseek(f, 0, SEEK_END);
-    long bufsize = ftell(f);
-    uint8_t buf[bufsize];
-    fseek(f, 0, SEEK_SET);  /* same as rewind(f); */
-    fread(buf, 1, bufsize, f);
-    fclose(f);
     // LOG("host_command: %s\n", file);
-    interpret(env, buf, bufsize);
+    interpret_file(env, f);
+    fclose(f);
     return 1;
 }
 int interpret_command(struct interp *env, const char *cmd) {
-    // LOG("interpret_command: '%s'\n", cmd);
+    // LOG("# '%s'\n", cmd);
     return
         interpret_host_command(env, cmd) ||
         interpret_script_command(env, cmd) ||
         interpret_primitive_command(env, cmd);
 }
-void interpret_command_slice(struct interp *env, const uint8_t *bytes, size_t len) {
-    char cmd[len+1];
-    memcpy(cmd, bytes, len);
-    cmd[len] = 0;
-    interpret_command(env, cmd);
-}
 void interpret(struct interp *env, const uint8_t *bytes, size_t len) {
-    const uint8_t *endx = bytes + len;
-    const uint8_t *word_start = bytes;
-    uint8_t nb_chars = 0;
-    const int end = -1;
-
-    for(;;) {
-        /* Read next character. */
-        int c = (word_start + nb_chars < endx) ?
-            word_start[nb_chars] : end;
-
-        if(('\\' == c) || (end == c) || isspace(c)) {
-            /* Found a word delimiter. */
-            if (nb_chars > 0) {
-                interpret_command_slice(env, word_start, nb_chars);
-            }
-            /* That was it. */
-            if (end == c) {
-                return;
-            }
-            /* Skip past word to start collecting again. */
-            word_start += nb_chars + 1;
-            nb_chars = 0;
-            /* If there was a comment, skip it. */
-            if ('\\' == c) {
-                do { word_start++; }
-                while ((word_start < endx) && word_start[0] != '\n');
-            }
-        }
-        else {
-            /* Keep collecting characters. */
-            nb_chars++;
-        }
-    }
+    FILE *f = fmemopen((void*)bytes, len, "r");
+    ASSERT(f);
+    interpret_file(env, f);
+    fclose(f);
 }
 
 /* Wrapper around 1-argument arg_command */
