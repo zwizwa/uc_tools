@@ -65,6 +65,8 @@ struct interp {
     /* Current string parsing command. */
     const struct command *command;
     int need_args;
+    /* Current word stream. */
+    FILE *f;
     /* Current word */
     char word[1024];
 };
@@ -161,12 +163,12 @@ int interpret_host_command(struct interp *env, const char *cmd) {
         return 1;
     }
 }
-int accept_word(struct interp *env, FILE *f) {
+int accept_word(struct interp *env) {
     int nb_chars = 0;
     int done = 0;
     for(;;) {
         /* Read next character. */
-        int c = fgetc(f);
+        int c = fgetc(env->f);
         // LOG("read '%c' %d\n", c, c);
         if(('\\' == c) || (EOF == c) || isspace(c)) {
             /* Found a word delimiter. */
@@ -176,7 +178,7 @@ int accept_word(struct interp *env, FILE *f) {
             }
             /* If there is a comment trailing the word, skip it. */
             if ('\\' == c) {
-                do { c = fgetc(f); }
+                do { c = fgetc(env->f); }
                 while ((EOF != c) && ('\n' != c));
             }
         }
@@ -197,10 +199,15 @@ int accept_word(struct interp *env, FILE *f) {
 
 void interpret_file(struct interp *env, FILE *f) {
     int nb_chars;
-    while ((nb_chars = accept_word(env, f))) {
+    /* push */
+    FILE *prev = env->f;
+    env->f = f;
+    while ((nb_chars = accept_word(env))) {
         // LOG("accepted '%s'\n", word);
         interpret_command(env, env->word);
     }
+    /* pop */
+    env->f = prev;
 }
 
 /* Composite host command script. */
