@@ -28,8 +28,8 @@ intptr_t console_echo = 1;
 DEF_COMMAND(echo)    { console_echo = command_stack_pop(); }
 
 
-void console_handle(const char *cmd) {
-    command_handle_base(cmd, console_base);
+uintptr_t console_handle(const char *cmd) {
+    return command_handle_base(cmd, console_base);
 }
 void console_write(const uint8_t *buf, uint32_t len) {
     struct pbuf *p = &console_in;

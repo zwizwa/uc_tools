@@ -61,7 +61,8 @@ static inline uintptr_t command_index_size(void) {
 uintptr_t command_stack_pop(void);
 void      command_stack_push(uintptr_t);
 
-static inline void command_handle_base(const char *cmd_buf, uintptr_t base) {
+/* RV: 0 is ok, anything else is error code. */
+static inline uintptr_t command_handle_base(const char *cmd_buf, uintptr_t base) {
 
     /* Otherwise, convert to number if it parses. */
     uintptr_t word = 0;
@@ -70,7 +71,7 @@ static inline void command_handle_base(const char *cmd_buf, uintptr_t base) {
         if (0 == read_hex_nibbles_check_uptr(
                 (const uint8_t*)cmd_buf + 2, len-2, &word)) {
             command_stack_push(word);
-            return;
+            return 0;
         }
         goto bad_number;
     }
@@ -78,14 +79,14 @@ static inline void command_handle_base(const char *cmd_buf, uintptr_t base) {
         if (0 == read_dec_nibbles_check_uptr(
                 (const uint8_t*)cmd_buf, strlen(cmd_buf), &word)) {
             command_stack_push(word);
-            return;
+            return 0;
         }
     }
     else if (16 == base) {
         if (0 == read_hex_nibbles_check_uptr(
                 (const uint8_t*)cmd_buf, len, &word)) {
             command_stack_push(word);
-            return;
+            return 0;
         }
         goto bad_number;
     }
@@ -102,12 +103,13 @@ static inline void command_handle_base(const char *cmd_buf, uintptr_t base) {
     FOR_COMMAND(c) {
         if (!strcmp(cmd_buf, (*c)->name)) {
             (*c)->run();
-            return;
+            return 0;
         }
     }
 
     /* Otherwise complain. */
     LOG("?\n");
+    return 1;
 }
 
 static inline void command_handle(const char *cmd_buf) {
