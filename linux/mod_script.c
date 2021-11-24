@@ -102,16 +102,16 @@ void interpret_enter(struct interpreter *env, FILE *f, const char *name) {
     ASSERT(frame);
     frame->next = env->return_stack;
     frame->thread = f;
-    asprintf(&frame->name, "%s", name);
-    ASSERT(frame->name);
+    frame->name = NULL;
+    if (name) { asprintf(&frame->name, "%s", name); }
     env->return_stack = frame;
 }
 void interpret_leave(struct interpreter *env) {
     ASSERT(env->return_stack);
     struct return_stack *frame = env->return_stack;
     //LOG("leave: %s\n", frame->name);
-    fclose(frame->thread);
-    free(frame->name);
+    if (frame->thread) { fclose(frame->thread); }
+    if (frame->name) { free(frame->name); }
     env->return_stack = frame->next;
     free(frame);
 }
