@@ -44,7 +44,14 @@ void console_write(const uint8_t *buf, uint32_t len) {
              * Otherwise treat as delimiter. */
             if (p->count > 0) {
                 pbuf_zero_terminate(p);
-                console_handle((const char*)p->buf);
+                if (0 != console_handle((const char*)p->buf)) {
+                    /* Was in console_handle() before, but moved here
+                       because it is only necessary for interactive
+                       console on the target where the error cannot be
+                       propagated elsewhere. */
+                    LOG("?\n");
+                }
+
                 pbuf_clear(p);
             }
             break;

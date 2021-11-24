@@ -107,13 +107,12 @@ static inline uintptr_t command_handle_base(const char *cmd_buf, uintptr_t base)
         }
     }
 
-    /* Otherwise complain. */
-    LOG("?\n");
+    /* Undefined */
     return 1;
 }
 
-static inline void command_handle(const char *cmd_buf) {
-    command_handle_base(cmd_buf, 10);
+static inline uintptr_t command_handle(const char *cmd_buf) {
+    return command_handle_base(cmd_buf, 10);
 }
 
 #endif
