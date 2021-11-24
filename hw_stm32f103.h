@@ -126,6 +126,9 @@ INLINE void hw_gpio_high(uint32_t gpio, uint32_t pin) {
 INLINE void hw_gpio_low(uint32_t gpio, uint32_t pin) {
     GPIO_BRR(gpio) = 1 << pin;
 }
+INLINE void hw_gpio_toggle(uint32_t gpio, uint32_t pin) {
+    GPIO_ODR(gpio) = GPIO_IDR(gpio) ^ (1 << pin);
+}
 
 /* Write bit using BSRR only. */
 INLINE void hw_gpio_write_v2(uint32_t gpio, uint32_t pin, uint32_t val) {
