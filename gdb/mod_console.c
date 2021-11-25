@@ -141,6 +141,12 @@ void forth_add(void) {
 void forth_sub(void) {
     uint32_t v = command_stack_pop(); command_stack_push(command_stack_pop() - v);
 }
+void forth_ltz(void) {
+    /* Note this needs the casts to signed. */
+    int32_t v = command_stack_pop();
+    int32_t cond = (v < 0) ? -1 : 0;
+    command_stack_push(cond);
+}
 void forth_print(void) {
     infof("%x\n", command_stack_pop());
 }
@@ -153,12 +159,17 @@ void forth_store(void) {
     uint32_t val = command_stack_pop();
     *addr = val;
 }
-COMMAND_REGISTER_NAMED("+", forth_add);
-COMMAND_REGISTER_NAMED("-", forth_sub);
-COMMAND_REGISTER_NAMED("p", forth_print);
-COMMAND_REGISTER_NAMED("@", forth_fetch);
-COMMAND_REGISTER_NAMED("!", forth_store);
+void forth_dup(void) {
+    command_stack_push(command_stack[command_stack_top & COMMAND_STACK_MASK]);
+}
+COMMAND_REGISTER_NAMED("+",    forth_add);
+COMMAND_REGISTER_NAMED("-",    forth_sub);
+COMMAND_REGISTER_NAMED("0<",   forth_ltz);
+COMMAND_REGISTER_NAMED("p",    forth_print);
+COMMAND_REGISTER_NAMED("@",    forth_fetch);
+COMMAND_REGISTER_NAMED("!",    forth_store);
 COMMAND_REGISTER_NAMED("drop", command_stack_pop);
+COMMAND_REGISTER_NAMED("dup",  forth_dup);
 
 
 /* Don't use the name 'words' here.  Pick something that people expect. */

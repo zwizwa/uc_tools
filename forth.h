@@ -12,6 +12,7 @@ union word {
     /* Changed to uintptr to make it run on 64 bit. */
     uintptr_t u;
     uintptr_t *up;
+    intptr_t s;
     uint8_t b;
     char c;
     code_fn code;

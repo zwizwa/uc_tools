@@ -209,7 +209,7 @@ static void add(w* _) { SND.u += TOP.u; pop(); }
 static void and(w* _) { SND.u &= TOP.u; pop(); }
 static void or (w* _) { SND.u |= TOP.u; pop(); }
 static void xor(w* _) { SND.u ^= TOP.u; pop(); }
-
+static void ltz(w* _) { TOP.s = (TOP.s < 0) ? -1 : 0; }
 
 // ?RX ( -- c T | F )
 // Return input character and true, or a false if no input.
@@ -375,7 +375,7 @@ FORTH_WORDS
     //{"SWAP",    (w)TODO},
     //{"OVER",    (w)TODO},
     //Logic
-    //{"0<",      (w)TODO},
+    {"0<",      (w)ltz},
     {"and",     (w)and},
     {"or",      (w)or},
     {"xor",     (w)xor},
