@@ -75,6 +75,15 @@ FW_TMP="$FW.tmp"
 CONTROL="$ELF.control.bin.tmp"
 ELF_SHA1=$(sha1sum $ELF | cut -b -40)
 
+# The control block that is added into the new elf contains the hash
+# of the original elf.  Optionally save this so it can be used during
+# debugging: test system connects target, retreives sha1 and uses it
+# to reference the original elf
+if [ ! -z "$ELF_SHA1_DIR" ]; then
+    mkdir -p "$ELF_SHA1_DIR"
+    cp -av "$ELF" "${ELF_SHA1_DIR}/${ELF_SHA1}.elf"
+fi
+
 cleanup() {
     rm -f "$BIN" "$FW_BIN" "$CONTROL" "$FW_TMP"
 }
@@ -92,11 +101,7 @@ cp -a "$ELF" "$FW_TMP"
 "$OBJCOPY" --update-section .control="$CONTROL" "$FW_TMP"
 mv "$FW_TMP" "$FW"
 
-## FIXME: Try to solve it in the linker script.
-# Change the config section such that it is padded to zeros spanning
-# the full 2K.  This is importannt to keep the CRC well-defined,
-# because the gap between sections is not defined during programming.
-# "$OBJCOPY" --section=.config -O binary /tmp/foo.bin
+
 
 cleanup
 

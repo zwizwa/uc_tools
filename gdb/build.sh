@@ -53,7 +53,7 @@ set -e
 CLOSURE_VARS="
 O C D A ARCH FIRMWARE DATA LD_GETN LD MAP ELF BIN DASM HEX BIN2FW ADDR
 UC_TOOLS TYPE GCC CFLAGS CFLAGS_EXTRA UC_TOOLS_GDB_DIR FW
-VERSION_LINK VERSION_LINK_GEN
+VERSION_LINK VERSION_LINK_GEN ELF_SHA1_DIR
 "
 dump_closure_default
 
@@ -187,7 +187,7 @@ case "$TYPE" in
         # binaries are necessary, derive them from ELF files.
         assert_vars ARCH ELF FW BIN2FW
         . $UC_TOOLS/gdb/env.$ARCH.sh
-        $UC_TOOLS/gdb/elf2fw.sh $ELF $FW
+        $UC_TOOLS/gdb/elf2fw.sh $ELF $FW $ELF_SHA1_DIR
         ;;
     data)
         # Convert binary to elf to be loaded at address.  Note that

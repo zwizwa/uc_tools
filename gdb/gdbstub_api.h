@@ -159,6 +159,7 @@ extern const struct gdbstub_service _service;
 
 struct info_buf;
 struct swd_tether;
+struct gdbstub_control;
 
 struct gdbstub_config {
 
@@ -213,8 +214,11 @@ struct gdbstub_config {
     /* 17: Log buffer, for external debugger access.  See info_buf.h */
     struct info_buf_hdr *info_buf;
 
+    /* 18: Firmware control block. */
+    struct gdbstub_control *control;
+
     /* 18: Reserved */
-    void *reserved_18[32-18];
+    void *reserved_19[32-19];
 };
 
 /* Indices for uint32_t array overlayed on top of config block.  For
