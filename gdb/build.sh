@@ -46,15 +46,30 @@
 set -e
 # set -x
 
-assert_vars() {
-    for var in $@; do
-        # echo "checking $var=\"$(eval "echo \$$var")\"" >&2
-        if [ -z "$(eval "echo \$$var")" ]; then
-             echo "$var is undefined" >&2
-             exit 1
-        fi
-    done
-}
+. $(dirname $0)/../build_lib.sh
+
+
+
+# Create a closure that captures any non-zero input variables.
+# This can be used to re-run the build for debugging.
+CLOSURE_VARS="
+O C D A ARCH FIRMWARE DATA LD_GETN LD MAP ELF BIN DASM HEX BIN2FW ADDR
+UC_TOOLS TYPE GCC CFLAGS CFLAGS_EXTRA UC_TOOLS_GDB_DIR
+"
+
+# FIXME: Allow this to be user-definable.
+CLOSURE_DIR=/tmp/uc_tools_build
+# Only create closure when directory exists
+if [ -d "$CLOSURE_DIR" ]; then
+    PID=$(basename $(readlink -f /proc/self))
+
+    # Separate them by type.  There is currently no good way to use
+    # the name of the build product, so use the current pid instead.
+    CLOSURE=$CLOSURE_DIR/$TYPE/$PID
+    dump_closure $CLOSURE $CLOSURE_VARS
+    echo CLOSURE=$CLOSURE
+fi
+
 
 # A note about $VERSION
 

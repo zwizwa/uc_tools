@@ -56,8 +56,8 @@ ELF="$1"
 FW="$2"
 [ -z "$FW" ] && FW=$(basename "$ELF" .elf).fw
 
+# Avoid false positives in case script fails
 rm -f "$FW"
-
 
 # Caller is responsible for building this binary from bin2fw.c and is
 # allowed to specify its location.  Otherwise we use default.
@@ -73,6 +73,7 @@ BIN="$ELF.bin.tmp"
 FW_BIN="$ELF.fw.bin.tmp"
 FW_TMP="$FW.tmp"
 CONTROL="$ELF.control.bin.tmp"
+ELF_SHA1=$(sha1sum $ELF | cut -b -40)
 
 cleanup() {
     rm -f "$BIN" "$FW_BIN" "$CONTROL" "$FW_TMP"
@@ -81,7 +82,7 @@ cleanup() {
 cleanup
 
 "$OBJCOPY" -O binary "$ELF" "$BIN"
-"$BIN2FW" "$BIN" "$FW_BIN" "$CONTROL"
+"$BIN2FW" "$BIN" "$FW_BIN" "$CONTROL" "$ELF_SHA1"
 
 hd "$CONTROL" >&2
 

@@ -21,25 +21,36 @@ static inline void write_hex_nibbles(uint8_t *buf, uint32_t word, int nibbles) {
         buf[i] = hex_int2char((word >> shift) & 0xF);
     }
 }
-static inline uint32_t read_hex_nibbles(const uint8_t *buf, int nibbles) {
+static inline uint32_t read_hex_nibbles(const uint8_t *hex_buf, int nibbles) {
     uint32_t word = 0;
     for(int i=0; i<nibbles; i++) {
         word <<= 4;
-        word |= 0xF & hex_char2int_ignore(buf[i]);
+        word |= 0xF & hex_char2int_ignore(hex_buf[i]);
     }
     return word;
 }
 
-static inline int32_t read_hex_nibbles_check(const uint8_t *buf, int nibbles,
+static inline int32_t read_hex_nibbles_check(const uint8_t *hex_buf, int nibbles,
                                              uint32_t *pword) {
     uint32_t word = 0;
     for(int i=0; i<nibbles; i++) {
         word <<= 4;
-        int rv = hex_char2int_check(buf[i]);
+        int rv = hex_char2int_check(hex_buf[i]);
         if (rv < 0) return rv;
         word |= 0xF & rv;
     }
     *pword = word;
+    return 0;
+}
+
+static inline int32_t read_hex_to_bytes_check(
+    const uint8_t *hex_buf, uint8_t *pbytes, uint32_t nb_bytes) {
+    for (uint32_t i=0; i<nb_bytes; i++) {
+        int32_t rv;
+        uint32_t w;
+        if (0 != (rv = read_hex_nibbles_check(hex_buf + 2*i, 2, &w))) return rv;
+        pbytes[i] = w;
+    }
     return 0;
 }
 

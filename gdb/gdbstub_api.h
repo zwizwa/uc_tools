@@ -232,11 +232,12 @@ extern struct gdbstub_config _config; // FLASH
    the gdbstub loader, but it is useful to standardize it here.  See
    e.g. trampoline.c */
 struct gdbstub_control {
-    uint32_t size;     /* sizeof(struct gdbstub_control) */
-    uint32_t version;  /* Control block version/magic.  Currently 0, not used. */
-    uint32_t fw_crc;   /* CRC of firmware image. */
-    uint32_t priority; /* Load priority.  0=lowest. */
-    uint32_t ctrl_crc; /* This should always be the last field. */
+    uint32_t size;         /* sizeof(struct gdbstub_control) */
+    uint32_t version;      /* Control block version/magic.  Currently 0, not used. */
+    uint32_t fw_crc;       /* CRC of firmware image. */
+    uint32_t priority;     /* Load priority.  0=lowest. */
+    uint8_t  elf_sha1[20]; /* SHA-1 hash of elf file with debug symbols. */
+    uint32_t ctrl_crc;     /* This should always be the last field. */
 } __attribute__ ((__packed__));
 
 /* To stop an application, disable all interrupts and call this function. */
