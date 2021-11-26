@@ -14,23 +14,50 @@ assert_vars() {
     done
 }
 
-dump_closure() {
-    local file=$1
-    shift
+# Create a closure that captures any non-zero input variables.  This
+# can be used to re-run the build for simpler build debugging.
 
+dump_closure() {
+    if [ -z "$1" ]; then
+        echo "ERROR: dump_closure <file>"
+        exit 1
+    fi
+    local file="$1"
+    shift
     dump_var() {
         # FIXME: don't add if var is empty
         # echo $1
         local val=$(eval "echo \$$var")
         [ ! -z "$val" ] && echo "export $1=\"$val"\"
     }
-    mkdir -p $(dirname $file)
+    mkdir -p $(dirname "$file")
     cat <<EOF >$file
 #!/bin/sh
 set -ex
 $(for var in $*; do dump_var $var; done)
+export CLOSURE=$file
 cd $(pwd)
 exec $(readlink -f $0)
 EOF
     chmod +x $file
+}
+
+
+# Default behavior for the above
+dump_closure_default() {
+    assert_vars TYPE CLOSURE_VARS
+    # FIXME: Allow this to be user-definable.
+    CLOSURE_DIR=/tmp/uc_tools_build
+    # Don't create new closure if we're already running a closure.
+    [ ! -z "$CLOSURE" ] && CLOSURE_DIR=
+    # Only create closure when directory exists.
+    if [ -d "$CLOSURE_DIR" ]; then
+        # There is currently no good way to use the name of the build
+        # product, so use the current pid instead.  Also, separate
+        # files by type.
+        PID=$(basename $(readlink -f /proc/self))
+        CLOSURE=$CLOSURE_DIR/$TYPE/$PID
+        dump_closure $CLOSURE $CLOSURE_VARS
+        echo CLOSURE=$CLOSURE
+    fi
 }

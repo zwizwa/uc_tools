@@ -84,11 +84,11 @@ int bin2fw(
     control->version = 0;
     control->fw_crc = fw_crc;
     control->size = sizeof(*control);
-    control->ctrl_crc = crc32b((uint8_t*)control, control->size - 4);
     ASSERT(0 ==
            read_hex_to_bytes_check(
                (const uint8_t*)elf_sha1, /* the _check variant won't read past 0 */
                &control->elf_sha1[0], 20));
+    control->ctrl_crc = crc32b((uint8_t*)control, control->size - 4);
 
     /* Write out the .fw image = padded .bin + control block appended. */
     LOG("firmware image: %s\n", fw);
