@@ -3,11 +3,45 @@
 
 /* Structured trace logging, API.
 
-   We assume all tags are known globally and statically, meaning the
-   structure type itself is defined to contain all tags and formats.
-   For most embedded software this is sufficient.  It also makes it
-   possible to let the compiler check that all tags are listed,
-   e.g. so we know what tags a certain image can produce. */
+   The problem this tries to solve is to have a logging/tracing API
+   that is easly converted from exisiting printf-style log messages,
+   and that can be implemented either by print-style log messages, or
+   by a binary serialization protocol.
+
+   I've spent a lot of time on this in the past, never quite got to
+   something that is easy to use at the caller end.  Eventually ended
+   up at the idea of "writer context": a macro that creates a context
+   in which values can be added to a trace log message by calling
+   functions.
+
+   The user can then define tags and types.
+
+   Example:
+
+        TRACE(some_tag, t) {
+            t->some_int(123);
+            t->some_obj(&obj);
+        }
+
+   - The entry point to the trace mechanism is a macro, since we need
+     some symbol manipulation.
+
+   - The only thing the macro does is to introduce scope: it will bind
+     the variable t to a pointer to a stuct of trace_types, which are
+     user defined serialization functions.
+
+   - Not used (for now it's simpler to keep things flat), but possible
+     in future: each tag could in theory have its own name space of
+     trace types.
+
+   - The tag preceeds the variable to make this easy to grep.  E.g. if
+     you know the tag, the statement can be grepped as 'TRACE(some_tag'
+
+   For implementation this file provides a number of macros to declare
+   and define the structure types that create the lists of tags and
+   types.
+
+ */
 
 #include <stdint.h>
 
@@ -17,17 +51,17 @@ extern const struct trace_namespace trace_namespace;
 
 /* Create local 'ns' scope and execute pre/post functions by abusing a
    for(;;) construct and C expression syntax. */
-#define TRACE_NS(ns,t,tag,...)                                          \
-    for(const struct trace_types *t =                                   \
-            ({ns->base->begin(ns->tags->tag); ns->types;});             \
-        t;                                                              \
-        t=({ns->base->end();(typeof(t))0;}))
+#define TRACE_NS(ns,ns_tag,ns_types,...)                                \
+    for(const struct trace_types *ns_types =                            \
+            ({ns->base->begin(ns->tags->ns_tag); ns->types;});          \
+        ns_types;                                                       \
+        ns_types=({ns->base->end();(typeof(ns_types))0;}))
 
-#define TRACE(t,tag,...) \
-    TRACE_NS((&trace_namespace),t,tag,__VA_ARGS__)
+#define TRACE(ns_tag,ns_types,...)                              \
+    TRACE_NS((&trace_namespace),ns_tag,ns_types,__VA_ARGS__)
 
 struct trace_base {
-    void (*begin)(const char *dmx);
+    void (*begin)(const char *);
     void (*end)(void);
 };
 struct trace_tags;
