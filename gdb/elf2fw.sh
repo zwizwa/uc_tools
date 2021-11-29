@@ -54,7 +54,7 @@ set -e
 [ -z "$1" ] && echo "usage: $0 <elf> [<fw>]" && exit
 ELF="$1"
 FW="$2"
-[ -z "$FW" ] && FW=$(basename "$ELF" .elf).fw
+[ -z "$FW" ] && FW=$(basename "$ELF" .elf).fw.elf
 
 # Avoid false positives in case script fails
 rm -f "$FW"
@@ -76,12 +76,11 @@ CONTROL="$ELF.control.bin.tmp"
 ELF_SHA1=$(sha1sum $ELF | cut -b -40)
 
 # The control block that is added into the new elf contains the hash
-# of the original elf.  Optionally save this so it can be used during
-# debugging: test system connects target, retreives sha1 and uses it
-# to reference the original elf
-if [ ! -z "$ELF_SHA1_DIR" ]; then
-    mkdir -p "$ELF_SHA1_DIR"
-    cp -av "$ELF" "${ELF_SHA1_DIR}/${ELF_SHA1}.elf"
+# of the original elf.  The ELF_SHA1_DIR points to a content
+# addressable store (CAS) where we add the file together with a gc
+# root.
+if [ ! -z "$ELF_CAS" ]; then
+    $ELF_CAS/.m.store $ELF $(basename $ELF)
 fi
 
 cleanup() {
