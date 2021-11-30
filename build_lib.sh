@@ -33,7 +33,7 @@ dump_closure() {
     mkdir -p $(dirname "$file")
     cat <<EOF >$file
 #!/bin/sh
-set -ex
+echo "\$0:2: "
 $(for var in $*; do dump_var $var; done)
 export CLOSURE=$file
 cd $(pwd)
@@ -42,6 +42,13 @@ EOF
     chmod +x $file
 }
 
+dump_closure_to_file() {
+    assert_vars CLOSURE_VARS
+    dump_closure "$1" $CLOSURE_VARS
+    # This is for emacs to recompile the file.
+    # Make this configurable? Write it somewhere else?
+    echo "(compile \"$1\")"
+}
 
 # Default behavior for the above
 dump_closure_default() {
@@ -57,7 +64,6 @@ dump_closure_default() {
         # files by type.
         PID=$(basename $(readlink -f /proc/self))
         CLOSURE=$CLOSURE_DIR/$TYPE/$PID
-        dump_closure $CLOSURE $CLOSURE_VARS
-        echo CLOSURE=$CLOSURE
+        dump_closure_to_file $CLOSURE
     fi
 }

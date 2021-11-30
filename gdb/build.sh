@@ -51,11 +51,13 @@ set -e
 
 
 CLOSURE_VARS="
-O C D A ARCH FIRMWARE DATA LD_GETN LD MAP ELF BIN DASM HEX BIN2FW ADDR
+O C D A ARCH FIRMWARE DATA LD_GEN LD MAP ELF BIN DASM HEX BIN2FW ADDR
 UC_TOOLS TYPE GCC CFLAGS CFLAGS_EXTRA UC_TOOLS_GDB_DIR FW
 VERSION_LINK VERSION_LINK_GEN ELF_SHA1_DIR
 "
-dump_closure_default
+
+# FIXME: Dump it next to output instead.
+# dump_closure_default
 
 
 
@@ -85,6 +87,7 @@ assert_vars UC_TOOLS
 case "$TYPE" in
     o)
         assert_vars O C D ARCH FIRMWARE
+        dump_closure_to_file ${O}.build
         . $UC_TOOLS/gdb/env.$ARCH.sh
         [ ! -z "$VERSION" ] && DEFINE_BUILD_VERSION="-DBUILD=\"$VERSION\""
         $GCC \
@@ -101,6 +104,7 @@ case "$TYPE" in
 
     o_data)
         assert_vars O DATA ARCH 
+        dump_closure_to_file ${O}.build
         . $UC_TOOLS/gdb/env.$ARCH.sh
         assert_vars ELFTYPE BINARCH
         $OBJCOPY \
@@ -112,15 +116,18 @@ case "$TYPE" in
     a)
         # Objects is allowed to be empty for empty stub libs
         assert_vars A
+        dump_closure_to_file ${A}.build
         ar -r $A $OBJECTS 2>/dev/null
         #|| echo "ERROR: ar" >&2
         ;;
     ld)
         assert_vars LD_GEN LD
+        dump_closure_to_file ${LD}.build
         $LD_GEN >$LD
         ;;
     elf)
         assert_vars ARCH LD MAP ELF O A
+        dump_closure_to_file ${ELF}.build
         . $UC_TOOLS/gdb/env.$ARCH.sh
         # About versioning: I want incremental builds, and incremental
         # uploads, and I want to _not_ upload when nothing changed.
@@ -165,18 +172,21 @@ case "$TYPE" in
         # loadable section that has the lowest address.  All the rest
         # is filled in and padded with zeros.
         assert_vars ARCH ELF BIN
+        dump_closure_to_file ${BIN}.build
         . $UC_TOOLS/gdb/env.$ARCH.sh
         # $OBJDUMP -d $ELF
         $OBJCOPY -O binary $ELF $BIN
         ;;
     dasm)
         assert_vars ARCH ELF DASM
+        dump_closure_to_file ${DASM}.build
         . $UC_TOOLS/gdb/env.$ARCH.sh
         rm -f $DASM
         $OBJDUMP -d $ELF >$DASM
         ;;
     hex)
         assert_vars ARCH ELF HEX
+        dump_closure_to_file ${HEX}.build
         . $UC_TOOLS/gdb/env.$ARCH.sh
         $OBJCOPY -O ihex $ELF $HEX
         ;;
@@ -186,6 +196,7 @@ case "$TYPE" in
         # intermediate raw binaries due to lack of metatdata.  If raw
         # binaries are necessary, derive them from ELF files.
         assert_vars ARCH ELF FW BIN2FW
+        dump_closure_to_file ${FW}.build
         . $UC_TOOLS/gdb/env.$ARCH.sh
         $UC_TOOLS/gdb/elf2fw.sh $ELF $FW $ELF_SHA1_DIR
         ;;
@@ -195,6 +206,7 @@ case "$TYPE" in
         # onto binary: use objcopy --modify-section to add data to an
         # ELF file after linking.
         assert_vars ARCH BIN DATA ADDR
+        dump_closure_to_file ${DATA}.build
         . $UC_TOOLS/gdb/env.$ARCH.sh
         assert_vars ELFTYPE
         # $OBJDUMP -d $ELF
