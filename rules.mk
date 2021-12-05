@@ -128,7 +128,7 @@ gdb/%.ld: gdb/%.ld.sh
 	export ARCH=f103 ; \
 	export BUILD=gdb/build.sh ; \
 	export C=$< ; \
-	export CFLAGS_EXTRA="-Itools/ -Igdb/ -Ilinux/" ; \
+	export CFLAGS_EXTRA="-Igdb/ -Ilinux/" ; \
 	export D=$(patsubst %.o,%.d,$@) ; \
 	export FIRMWARE=memory ; \
 	export O=$@ ; \
@@ -224,9 +224,9 @@ gdb/lib.f103.a: $(LIB_F103_A_OBJECTS) rules.mk
 %.host.o: %.c $(GEN)
 	@echo $@ ; if [ -f env.sh ] ; then . ./env.sh ; fi ; \
 	export ARCH=host ; \
-	export BUILD=tools/build.sh ; \
+	export BUILD=linux/build.sh ; \
 	export C=$< ; \
-	export CFLAGS_EXTRA=\ -Itools/\ -Igdb/\ -Ilinux/; \
+	export CFLAGS_EXTRA=\ -Igdb/\ -Ilinux/; \
 	export D=$(patsubst %.o,%d,$@) ; \
 	export FIRMWARE=$$(basename $< .c) ; \
 	export O=$@ ; \
@@ -235,10 +235,10 @@ gdb/lib.f103.a: $(LIB_F103_A_OBJECTS) rules.mk
 	$$BUILD 2>&1
 
 
-tools/lib.host.a: $(LIB_HOST_A_OBJECTS)
+linux/lib.host.a: $(LIB_HOST_A_OBJECTS)
 	@echo $@ ; if [ -f env.sh ] ; then . ./env.sh ; fi ; \
-	export A=tools/lib.host.a ; \
-	export BUILD=tools/build.sh ; \
+	export A=linux/lib.host.a ; \
+	export BUILD=linux/build.sh ; \
 	export OBJECTS="$(LIB_HOST_A_OBJECTS)" ; \
 	export TYPE=a ; \
 	export UC_TOOLS=$(UC_TOOLS) ; \
@@ -246,14 +246,14 @@ tools/lib.host.a: $(LIB_HOST_A_OBJECTS)
 
 %.dynamic.host.elf: \
 	%.host.o \
-	tools/lib.host.a \
+	linux/lib.host.a \
 
 	@echo $@ ; if [ -f env.sh ] ; then . ./env.sh ; fi ; \
-	export A=tools/lib.host.a ; \
+	export A=linux/lib.host.a ; \
 	export ARCH=host ; \
-	export BUILD=tools/build.sh ; \
+	export BUILD=linux/build.sh ; \
 	export ELF=$@ ; \
-	export LD=tools/dynamic.host.ld ; \
+	export LD=linux/dynamic.host.ld ; \
 	export MAP=$(patsubst %.elf,%.map,$@) ; \
 	export O=$< ; \
 	export LDLIBS=\ -lgpiod ; \
@@ -270,4 +270,4 @@ ALL_PRODUCTS := \
 	$(LIB_HOST_A_OBJECTS) \
 	$(ALL_ELF) \
 	gdb/lib.f103.a \
-	tools/lib.host.a \
+	linux/lib.host.a \
