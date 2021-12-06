@@ -14,7 +14,7 @@
 
 
 
-CFLAGS=" \
+CFLAGS="$CFLAGS \
 -std=gnu99 \
 -I$UC_TOOLS/linux \
 -I$UC_TOOLS/ \

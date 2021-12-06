@@ -22,6 +22,7 @@ case "$TYPE" in
 
         [ -z "$GCC" ] && . $UC_TOOLS/linux/env.$ARCH.sh
 
+        set -x
         $GCC \
             $CFLAGS \
             $CFLAGS_EXTRA \
