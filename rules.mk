@@ -226,7 +226,7 @@ gdb/lib.f103.a: $(LIB_F103_A_OBJECTS) rules.mk
 	export ARCH=host ; \
 	export BUILD=linux/build.sh ; \
 	export C=$< ; \
-	export CFLAGS_EXTRA=\ -Igdb/\ -Ilinux/; \
+	export CFLAGS_EXTRA=\ -Igdb/\ -Ilinux/ ; \
 	export D=$(patsubst %.o,%d,$@) ; \
 	export FIRMWARE=$$(basename $< .c) ; \
 	export O=$@ ; \
@@ -258,6 +258,23 @@ linux/lib.host.a: $(LIB_HOST_A_OBJECTS)
 	export O=$< ; \
 	export LDLIBS=\ -lgpiod ; \
 	export TYPE=elf ; \
+	export UC_TOOLS=$(UC_TOOLS) ; \
+	$$BUILD 2>&1
+
+%.dynamic.host.so: \
+	%.host.o \
+	linux/lib.host.a \
+
+	@echo $@ ; if [ -f env.sh ] ; then . ./env.sh ; fi ; \
+	export A=linux/lib.host.a ; \
+	export ARCH=host ; \
+	export BUILD=linux/build.sh ; \
+	export SO=$@ ; \
+	export LD=linux/dynamic.host.ld ; \
+	export MAP=$(patsubst %.elf,%.map,$@) ; \
+	export O=$< ; \
+	export LDLIBS=\ -lgpiod ; \
+	export TYPE=so ; \
 	export UC_TOOLS=$(UC_TOOLS) ; \
 	$$BUILD 2>&1
 
