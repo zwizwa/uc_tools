@@ -5,6 +5,7 @@
 ALL_LINUX=\
 linux/elfutils_lua51.dynamic.host.so \
 linux/packet_bridge_main.dynamic.host.elf \
+linux/gdbstub_connect.dynamic.host.elf \
 
 all: $(ALL_LINUX)
 

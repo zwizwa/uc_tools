@@ -16,9 +16,14 @@ UC_TOOLS=$(readlink -f $(dirname "$0")/..)
 CMD="$1"
 [ -z "$CMD" ] && echo "usage: $0 <cmd> [<arg> ...]" && exit 1
 shift
+LINUX=$UC_TOOLS/linux
+ELF=dynamic.host.elf
 case "$CMD" in
     packet_bridge)
-        exec $UC_TOOLS/linux/packet_bridge_main.dynamic.host.elf "$@"
+        exec $LINUX/packet_bridge_main.$ELF "$@"
+        ;;
+    gdbstub_connect)
+        exec $LINUX/gdbstub_connect.$ELF "$@"
         ;;
     *)
         echo "$0: unknown command $CMD"
