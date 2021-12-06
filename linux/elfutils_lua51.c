@@ -21,13 +21,18 @@
 
 // Build against 5.1 for best compatibility with both Lua and LuaJIT
 
+#if 1
+
 // Debian
-//#include <lua5.1/lua.h>
-//#include <lua5.1/lauxlib.h>
+#include <lua5.1/lua.h>
+#include <lua5.1/lauxlib.h>
 
 // Nixos
-#include "lua.h"
-#include "lauxlib.h"
+#else
+#include <lua.h>
+#include <lauxlib.h>
+
+#endif
 
 // elfutils
 #include <libelf.h>
