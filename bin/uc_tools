@@ -1,0 +1,27 @@
+#!/bin/sh
+# This is a trampoline binary.  Some context:
+#
+# uc_tools is intended to be an ad hoc collection of tools I [Tom] use
+# for bare metal embedded development.  Typically this code is
+# included in other projects as a git submodule.
+#
+# Recently some need has arisen to expose some of the functionality as
+# stand alone executables.  To avoid clutter, a single trampoline
+# script is used.  This way the verbose names can be kept.
+#
+# This is currently only in active use together with Nix.
+
+set -e
+UC_TOOLS=$(readlink -f $(dirname "$0")/..)
+CMD="$1"
+[ -z "$CMD" ] && echo "usage: $0 <cmd> [<arg> ...]" && exit 1
+shift
+case "$CMD" in
+    packet_bridge)
+        exec $UC_TOOLS/linux/packet_bridge_main.dynamic.host.elf "$@"
+        ;;
+    *)
+        echo "$0: unknown command $CMD"
+        exit 1
+        ;;
+esac
