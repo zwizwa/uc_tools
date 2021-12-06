@@ -1,14 +1,15 @@
 [ -z "$UC_TOOLS" ] && UC_TOOLS=$(dirname $O)/..
 
-assert_vars() {
-    for var in $@; do
-        # echo "checking $var=\"$(eval "echo \$$var")\"" >&2
-        if [ -z "$(eval "echo \$$var")" ]; then
-             echo "$var is undefined" >&2
-             exit 1
-        fi
-    done
-}
+. $(dirname $0)/../build_lib.sh
+
+
+
+CLOSURE_VARS="
+O C D A ARCH FIRMWARE DATA LD_GEN LD MAP ELF BIN DASM HEX BIN2FW ADDR
+UC_TOOLS TYPE GCC CFLAGS CFLAGS_EXTRA UC_TOOLS_GDB_DIR FW
+VERSION_LINK VERSION_LINK_GEN ELF_SHA1_DIR
+"
+
 
 assert_vars TYPE
 
@@ -16,6 +17,7 @@ assert_vars TYPE
 case "$TYPE" in
     o)
         assert_vars ARCH O
+        # dump_closure_to_file ${O}.build
         rm -rf "$O"
 
         [ -z "$GCC" ] && . $UC_TOOLS/linux/env.$ARCH.sh
@@ -33,6 +35,7 @@ case "$TYPE" in
         ;;
     a)
         assert_vars A OBJECTS
+        dump_closure_to_file ${A}.build
         rm -f "$A"
         ar -r $A $OBJECTS #2>/dev/null
         ;;
@@ -41,6 +44,7 @@ case "$TYPE" in
         ;;
     elf)
         assert_vars LD ARCH MAP ELF A
+        dump_closure_to_file ${ELF}.build
         rm -f "$ELF"
 
         [ -z "$GCC" ] && . $UC_TOOLS/linux/env.$ARCH.sh
@@ -57,6 +61,7 @@ case "$TYPE" in
         ;;
     so)
         assert_vars LD ARCH MAP SO A
+        dump_closure_to_file ${SO}.build
         rm -f "$SO"
 
         [ -z "$GCC" ] && . $UC_TOOLS/linux/env.$ARCH.sh
