@@ -271,7 +271,8 @@ linux/lib.host.a: $(LIB_HOST_A_OBJECTS)
 	export BUILD=linux/build.sh ; \
 	export SO=$@ ; \
 	export LD=linux/dynamic.host.ld ; \
-	export MAP=$(patsubst %.elf,%.map,$@) ; \
+	export LDLIBS="-ldw -lelf" ; \
+	export MAP=$(patsubst %.so,%.map,$@) ; \
 	export O=$< ; \
 	export TYPE=so ; \
 	export UC_TOOLS=$(UC_TOOLS) ; \
