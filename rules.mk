@@ -226,7 +226,7 @@ gdb/lib.f103.a: $(LIB_F103_A_OBJECTS) rules.mk
 	export ARCH=host ; \
 	export BUILD=linux/build.sh ; \
 	export C=$< ; \
-	export CFLAGS_EXTRA=\ -Igdb/\ -Ilinux/ ; \
+	export CFLAGS_EXTRA="-Igdb/ -Ilinux/" ; \
 	export D=$(patsubst %.o,%d,$@) ; \
 	export FIRMWARE=$$(basename $< .c) ; \
 	export O=$@ ; \

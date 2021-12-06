@@ -27,7 +27,7 @@ dump_closure() {
     dump_var() {
         # FIXME: don't add if var is empty
         # echo $1
-        local val=$(eval "echo \$$var")
+        local val="$(eval "echo \$$var")"
         [ ! -z "$val" ] && echo "export $1=\"$val"\"
     }
     mkdir -p $(dirname "$file")
@@ -47,7 +47,7 @@ dump_closure_to_file() {
     dump_closure "$1" $CLOSURE_VARS
     # This is for emacs to recompile the file.
     # Make this configurable? Write it somewhere else?
-    echo "(compile \"$1\")"
+    # echo "(compile \"$1\")"
 }
 
 # Default behavior for the above
