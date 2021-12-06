@@ -5,11 +5,14 @@
 [ -z "$UC_TOOLS" ] && UC_TOOLS=..
 [ -z "$GCC" ] && GCC=gcc
 
-CFLAGS_ERROR=-Werror
-# CFLAGS_ERROR=
+# Only enable -Werror for development builds!
+# CFLAGS_ERROR=-Werror
+[ -z "$CFLAGS_ERROR" ] && CFLAGS_ERROR=-Wno-error
 
 # The path of least resistance is to just use gnu99 on linux.
 # -std=c99
+
+
 
 CFLAGS=" \
 -std=gnu99 \
@@ -21,6 +24,7 @@ CFLAGS=" \
 -fdata-sections \
 -MD \
 -Wall \
+-Wno-format-security \
 -Wno-format \
 -Wno-attributes \
 -Wno-multichar \

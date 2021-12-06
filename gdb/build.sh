@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # TL,DR: Build system is split into two parts:
 # 1. Build tool wrappers (this file)
