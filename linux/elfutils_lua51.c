@@ -20,8 +20,14 @@
 // https://en.wikipedia.org/wiki/Executable_and_Linkable_Format
 
 // Build against 5.1 for best compatibility with both Lua and LuaJIT
-#include <lua5.1/lua.h>
-#include <lua5.1/lauxlib.h>
+
+// Debian
+//#include <lua5.1/lua.h>
+//#include <lua5.1/lauxlib.h>
+
+// Nixos
+#include "lua.h"
+#include "lauxlib.h"
 
 // elfutils
 #include <libelf.h>
