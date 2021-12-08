@@ -1,3 +1,5 @@
+#!/bin/sh
+
 [ -z "$UC_TOOLS" ] && UC_TOOLS=$(dirname $O)/..
 
 . $(dirname $0)/../build_lib.sh
