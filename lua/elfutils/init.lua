@@ -1,4 +1,4 @@
--- This is support code for the C module elfutils_lua.c
+-- This is support code for the C module elfutils_lua51.c
 -- See comments in that file.
 
 -- Logging.
@@ -13,7 +13,7 @@ local function log_desc(thing)
 end
 
 -- FIXME: This requires a link from .so to the .dynamic.host.so in linux/
-local C = require("lib.elfutils_lua51")
+local C = require("elfutils_lua51")
 
 assert("elfutils_lua51" == C.name())
 

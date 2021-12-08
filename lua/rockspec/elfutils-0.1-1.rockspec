@@ -4,47 +4,38 @@ package = "elfutils"
 version = "0.1-1"
 
 source = {
-  url = "https://github.com/zwizwa/uc_tools/archive/e966333a2708d368bf7de12c5847a36e4e1191f5.zip",
-  dir = "uc_tools-e966333a2708d368bf7de12c5847a36e4e1191f5",
+  url = "https://github.com/zwizwa/elfutils-lua/archive/v0.1.zip",
+  dir = "elfutils-lua-0.1",
 }
 
 description = {
-  summary    = "Lua code from uc_tools",
-  homepage   = "https://github.com/zwizwa/uc_tools",
+  summary    = "Lua wrapper for elfutils",
+  homepage   = "https://github.com/zwizwa/elfutils-lua",
   license    = "MIT/X11",
   maintainer = "Tom Schouten",
   detailed   = [[
-  Please note that this is very experimental software.
+  Lua wrappers for elfutils libelf and libdw plus Lua routines for convenient data structure access.
+  Experimental.
   ]],
 }
 
 dependencies = {
-  "lua >= 5.1, < 5.5"
+  "lua >= 5.1"
 }
 
 build = {
   type = "builtin",
 
-  -- If this is not included it includes everything?
-  copy_directories = {"lua/elfutils"},
-
-  platforms = {
-    linux   = { modules = {
-      elfutils_lua51 = {
-        libraries = {"elf", "dw"},
-      }
-    }},
-  },
-
   modules = {
-    elfutils_lua51 = {
+    ["elfutils_lua51"] = {
       sources = {
-        "linux/elfutils_lua51.c",
+        "elfutils_lua51.c",
       },
       incdirs   = { ".", ".." },
-      libdirs   = { }
+      libdirs   = { },
+      libraries = {"elf", "dw"},
     },
-    elfutils = "lua/lib/elfutils.lua",
+    elfutils = "init.lua",
   }
 
 }
