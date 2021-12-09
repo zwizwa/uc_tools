@@ -154,7 +154,7 @@ gdb/lib.f103.a: $(LIB_F103_A_OBJECTS) rules.mk
 	%.f103.o \
 	gdb/lib.f103.a \
 	gdb/x8.f103.ld \
-	../uc_tools/gdb/registers_stm32f103.f103.o \
+	$(UC_TOOLS)/gdb/registers_stm32f103.f103.o \
 
 	@echo $@ ; if [ -f env.sh ] ; then . ./env.sh ; fi ; \
 	export A=gdb/lib.f103.a ; \
@@ -165,7 +165,7 @@ gdb/lib.f103.a: $(LIB_F103_A_OBJECTS) rules.mk
 	export MAP=$(patsubst %.elf,%.map,$@) ; \
 	export O=$< ; \
 	export TYPE=elf ; \
-	export UC_TOOLS=../uc_tools/ ; \
+	export UC_TOOLS=$(UC_TOOLS)/ ; \
 	export VERSION_LINK_GEN=./version.sh ; \
 	$$BUILD 2>&1
 
@@ -174,7 +174,7 @@ gdb/lib.f103.a: $(LIB_F103_A_OBJECTS) rules.mk
 	%.f103.o \
 	gdb/lib.f103.a \
 	gdb/core.f103.ld \
-	../uc_tools/gdb/registers_stm32f103.f103.o \
+	$(UC_TOOLS)/gdb/registers_stm32f103.f103.o \
 
 	@echo $@ ; if [ -f env.sh ] ; then . ./env.sh ; fi ; \
 	export A=gdb/lib.f103.a ; \
