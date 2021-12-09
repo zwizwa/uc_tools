@@ -6,11 +6,15 @@
 
 HERE=$(dirname $0)
 if [ -z "$VERSION" ]; then
-    v="$(date '+%Y%m%d-%H%M%S')-$(cd $HERE ; git rev-parse --short=6 HEAD)-dev"
-    if [ -z "$(cd $HERE ; git diff)" ] ; then
-        VERSION="$v"
+    if [ ! -f $HERE/.git ]; then
+        VERSION="unknown"
     else
-        VERSION="$v-dirty"
+        v="$(date '+%Y%m%d-%H%M%S')-$(cd $HERE ; git rev-parse --short=6 HEAD)-dev"
+        if [ -z "$(cd $HERE ; git diff)" ] ; then
+            VERSION="$v"
+        else
+            VERSION="$v-dirty"
+        fi
     fi
 fi
 echo $VERSION
