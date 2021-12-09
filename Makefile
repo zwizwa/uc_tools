@@ -8,9 +8,11 @@ linux/packet_bridge_main.dynamic.host.elf \
 linux/gdbstub_connect.dynamic.host.elf \
 
 ALL_GDB=\
-gdb/bl_c8t6_a12b5.core.f103.elf \
+gdb/bl_c8t6_a12b5_boot1.core.f103.elf \
 
-all: $(ALL_LINUX) $(ALL_GDB)
+ALL ?= $(ALL_LINUX) $(ALL_GDB)
+
+all: $(ALL)
 
 PREFIX ?= /usr/local/uc_tools
 install: all
