@@ -1257,7 +1257,7 @@ struct port *port_open_(const char *spec_ro) {
         else {
             int fd;
             ASSERT_ERRNO(fd = open(tok, O_RDWR));
-            LOG("LINE:%s -> fd=%d\n", tok, fd);
+            // LOG("LINE:%s -> fd=%d\n", tok, fd);
             return port_open_line_stream(fd, fd);
         }
     }
