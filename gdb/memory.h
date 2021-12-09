@@ -33,7 +33,7 @@ static inline void hw_flash_erase_page(uint32_t page_address) {
     hw_flash_wait_for_last_operation();
     FLASH_CR &= ~FLASH_CR_PER;
 }
- inline void hw_flash_lock(void) {
+static inline void hw_flash_lock(void) {
     //__asm__ volatile("cpsid if\n");
     FLASH_CR |= FLASH_CR_LOCK;
 }
