@@ -1250,8 +1250,16 @@ struct port *port_open_(const char *spec_ro) {
     }
 
     if (!strcmp(tok, "LINE")) {
-        ASSERT(NULL == (tok = strtok(NULL, delim)));
-        return port_open_line_stream(0, 1);
+        tok = strtok(NULL, delim);
+        if (NULL == tok) {
+            return port_open_line_stream(0, 1);
+        }
+        else {
+            int fd;
+            ASSERT_ERRNO(fd = open(tok, O_RDWR));
+            LOG("LINE:%s -> fd=%d\n", tok, fd);
+            return port_open_line_stream(fd, fd);
+        }
     }
 
 #ifdef HAVE_LIBUSB
