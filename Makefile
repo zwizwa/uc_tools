@@ -7,13 +7,18 @@ linux/elfutils_lua51.dynamic.host.so \
 linux/packet_bridge_main.dynamic.host.elf \
 linux/gdbstub_connect.dynamic.host.elf \
 
-all: $(ALL_LINUX)
+ALL_GDB=\
+gdb/bl_c8t6_a12b5.core.f103.elf \
+
+all: $(ALL_LINUX) $(ALL_GDB)
 
 PREFIX ?= /usr/local/uc_tools
 install: all
+	mkdir -p $(PREFIX)/gdb
 	mkdir -p $(PREFIX)/linux
 	mkdir -p $(PREFIX)/lua
 	mkdir -p $(PREFIX)/bin
+	cp -a $(ALL_GDB)                           $(PREFIX)/gdb/
 	cp -a $(ALL_LINUX)                         $(PREFIX)/linux/
 	cp -a lua/lib/elfutils.lua                 $(PREFIX)/lua/
 	cp -a bin/uc_tools                         $(PREFIX)/bin/

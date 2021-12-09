@@ -9,8 +9,9 @@
 [ -z "$UC_TOOLS" ] && UC_TOOLS=..
 
 # Tool Prefix
+[ ! -z "$GCC_ARM_NONE_EABI_PREFIX" ] && TPF="$GCC_ARM_NONE_EABI_PREFIX"
 [ -z "$TPF" ] && TPF=$UC_TOOLS/../gcc-arm-none-eabi-4_8-2014q2/bin/arm-none-eabi-
-LIBOPENCM3=$UC_TOOLS/../libopencm3
+[ -z "$LIBOPENCM3" ] && LIBOPENCM3=$UC_TOOLS/../libopencm3
 
 # ---- Implementation
 
