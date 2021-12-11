@@ -243,10 +243,10 @@ struct port *port_open_udp_opts(const struct port_open_udp_opts *opts) {
 
         socklen_t addrlen = sizeof(address);
         ASSERT_ERRNO(bind(fd, (struct sockaddr *)&address, addrlen));
-        LOG("udp: port %d\n", opts->bind_port);
+        // LOG("udp: port %d\n", opts->bind_port);
     }
     else {
-        LOG("udp: not bound\n");
+        // LOG("udp: not bound\n");
     }
     struct udp_port *p;
     ASSERT(p = malloc(sizeof(*p)));
