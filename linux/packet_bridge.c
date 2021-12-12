@@ -216,16 +216,25 @@ static ssize_t udp_write(struct udp_port *p, uint8_t *buf, ssize_t len) {
     ssize_t wlen;
     int flags = 0;
     // LOG("udp_write: %d\n", len);
-    ASSERT_ERRNO(
-        wlen = sendto(p->p.fd, buf, len, flags,
-                      (struct sockaddr*)&p->peer,
-                      sizeof(p->peer)));
+    if (p->p.broadcast           /* user requests broadcast */
+        && p->broadcast_enabled  /* udp socket has broadcast enabled */ ) {
+        ASSERT_ERRNO(
+            wlen = sendto(p->p.fd, buf, len, flags,
+                          (struct sockaddr*)&p->peer,
+                          sizeof(p->peer)));
+    }
+    else {
+        ASSERT_ERRNO(
+            wlen = sendto(p->p.fd, buf, len, flags,
+                          (struct sockaddr*)&p->peer,
+                          sizeof(p->peer)));
+    }
     return wlen;
 }
 /* Don't expose this function as public API. */
 struct port_open_udp_opts {
     uint16_t bind_port;
-    int broadcast;
+    int broadcast:1;
 };
 struct port *port_open_udp_opts(const struct port_open_udp_opts *opts) {
     int fd;
@@ -238,6 +247,8 @@ struct port *port_open_udp_opts(const struct port_open_udp_opts *opts) {
         ASSERT_ERRNO(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)));
 
         if (opts->broadcast) {
+            // Permits sending of broadcast messages,
+            // Broadcasts are still received even if this is off.
             ASSERT_ERRNO(setsockopt(fd, SOL_SOCKET, SO_BROADCAST, &(int){ 1 }, sizeof(int)));
         }
 
@@ -256,6 +267,7 @@ struct port *port_open_udp_opts(const struct port_open_udp_opts *opts) {
     p->p.read  = (port_read_fn)udp_read;
     p->p.write = (port_write_fn)udp_write;
     p->p.pop = 0;
+    p->broadcast_enabled = opts->broadcast;
 
     return &p->p;
 }
@@ -1126,7 +1138,7 @@ struct port *port_open_(const char *spec_ro) {
         return p;
     }
 
-    // UDP-BIND:<bind_port>:<host>:<port>
+    // UDP-BIND:<bind_port>:<host>:<port>[:<bcaddr>]
     if (!strcmp(tok, "UDP-BIND")) {
         ASSERT(tok = strtok(NULL, delim));
         uint16_t bind_port = atoi(tok);
@@ -1134,11 +1146,17 @@ struct port *port_open_(const char *spec_ro) {
         const char *host = tok;
         ASSERT(tok = strtok(NULL, delim));
         uint16_t port = atoi(tok);
-        ASSERT(NULL == (tok = strtok(NULL, delim)));
+        tok = strtok(NULL, delim);
+        const char *bcaddr = NULL;
+        if (tok) {
+            // Optional broadcast address
+            ASSERT(NULL == (tok = strtok(NULL, delim)));
+            bcaddr = tok;
+        }
         //LOG("UDP:%s:%d\n", host, port);
         struct port_open_udp_opts opts = {
             .bind_port = bind_port,
-            //.broadcast = 1
+            .broadcast = !!bcaddr,
         };
         struct port *p = port_open_udp_opts(&opts);
         struct udp_port *up = (void*)p;

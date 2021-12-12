@@ -45,6 +45,7 @@ struct port {
     int fd_out;          // optional, if different from main fd
     short events;
     int verbose:1;
+    int broadcast:1;     // write() will use broadcast if supported/enabled
     port_read_fn read;
     port_write_fn write;
     port_pop_fn pop;     // only for buffered ports
@@ -54,6 +55,7 @@ struct port {
 struct udp_port {
     struct port p;
     struct sockaddr_in peer;
+    int broadcast_enabled:1;
 };
 
 struct port *port_open_tap(const char *dev);
