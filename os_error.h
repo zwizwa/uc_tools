@@ -22,6 +22,7 @@
    differently if this is no longer appropriate. */
 
 #include <stdint.h>
+#include "macros.h"
 
 struct os_result;
 struct os_error;
