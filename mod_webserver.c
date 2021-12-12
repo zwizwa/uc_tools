@@ -249,7 +249,7 @@ void webserver_loop(uint16_t port) {
     struct os_tcp_server server;
     os_tcp_server_init(&server, port);
 
-    LOG("webserver_loop on port %d\n", (int)port);
+    // LOG("webserver_loop on port %d\n", (int)port);
     for (;;) {
         /* In our case, http request state is always transient, so it
            can go onto the stack.  The socket might be transient, or
