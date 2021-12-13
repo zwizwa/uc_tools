@@ -197,12 +197,20 @@ static ssize_t udp_read(struct udp_port *p, uint8_t *buf, ssize_t len) {
 
     /* Associate to the last peer that sends to us.  This is to make
        setup simpler. */
-    /*
-      if (!same_addr(&p->peer, &peer)) {
-      LOG("peer:"); log_addr(&peer);
-      }
-    */
-    memcpy(&p->peer, &peer, sizeof(peer));
+
+    /* FIXME: That really doesn't work well when broadcasting is
+       involved.  And thinking about it some more it seems to be
+       generally flawed.  To not change default behavior this is
+       controlled with a flag that defaults to 0 for the old
+       behavior. */
+    if (!p->lock_peer) {
+        /*
+          if (!same_addr(&p->peer, &peer)) {
+          LOG("peer:"); log_addr(&peer);
+          }
+        */
+        memcpy(&p->peer, &peer, sizeof(peer));
+    }
 
     //LOG("udp_read rlen=%d\n", rlen);
     return rlen;
@@ -218,12 +226,16 @@ static ssize_t udp_write(struct udp_port *p, uint8_t *buf, ssize_t len) {
     // LOG("udp_write: %d\n", len);
     if (p->p.broadcast           /* user requests broadcast */
         && p->broadcast_enabled  /* udp socket has broadcast enabled */ ) {
+        //LOG("udp_write: broadcast\n");
+        //log_addr(&p->broadcast_addr);
         ASSERT_ERRNO(
             wlen = sendto(p->p.fd, buf, len, flags,
-                          (struct sockaddr*)&p->peer,
-                          sizeof(p->peer)));
+                          (struct sockaddr*)&p->broadcast_addr,
+                          sizeof(p->broadcast_addr)));
     }
     else {
+        //LOG("udp_write: unicast\n");
+        //log_addr(&p->peer);
         ASSERT_ERRNO(
             wlen = sendto(p->p.fd, buf, len, flags,
                           (struct sockaddr*)&p->peer,
@@ -234,7 +246,7 @@ static ssize_t udp_write(struct udp_port *p, uint8_t *buf, ssize_t len) {
 /* Don't expose this function as public API. */
 struct port_open_udp_opts {
     uint16_t bind_port;
-    int broadcast:1;
+    int allow_broadcast:1;
 };
 struct port *port_open_udp_opts(const struct port_open_udp_opts *opts) {
     int fd;
@@ -246,7 +258,7 @@ struct port *port_open_udp_opts(const struct port_open_udp_opts *opts) {
         };
         ASSERT_ERRNO(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)));
 
-        if (opts->broadcast) {
+        if (opts->allow_broadcast) {
             // Permits sending of broadcast messages,
             // Broadcasts are still received even if this is off.
             ASSERT_ERRNO(setsockopt(fd, SOL_SOCKET, SO_BROADCAST, &(int){ 1 }, sizeof(int)));
@@ -267,7 +279,7 @@ struct port *port_open_udp_opts(const struct port_open_udp_opts *opts) {
     p->p.read  = (port_read_fn)udp_read;
     p->p.write = (port_write_fn)udp_write;
     p->p.pop = 0;
-    p->broadcast_enabled = opts->broadcast;
+    p->broadcast_enabled = opts->allow_broadcast;
 
     return &p->p;
 }
@@ -1138,7 +1150,7 @@ struct port *port_open_(const char *spec_ro) {
         return p;
     }
 
-    // UDP-BIND:<bind_port>:<host>:<port>[:<bcaddr>]
+    // UDP-BIND:<bind_port>:<host>:<port>[:<bc_addr>]
     if (!strcmp(tok, "UDP-BIND")) {
         ASSERT(tok = strtok(NULL, delim));
         uint16_t bind_port = atoi(tok);
@@ -1147,24 +1159,33 @@ struct port *port_open_(const char *spec_ro) {
         ASSERT(tok = strtok(NULL, delim));
         uint16_t port = atoi(tok);
         tok = strtok(NULL, delim);
-        const char *bcaddr = NULL;
+        const char *bc_addr = NULL;
         if (tok) {
-            // Optional broadcast address
+            bc_addr = tok;
+            // Optional broadcast enable
             ASSERT(NULL == (tok = strtok(NULL, delim)));
-            bcaddr = tok;
         }
-        //LOG("UDP:%s:%d\n", host, port);
+        // LOG("UDP-BIND:%d:%s:%d:%s\n", bind_port, host, port, bc_addr ? bc_addr : "");
         struct port_open_udp_opts opts = {
             .bind_port = bind_port,
-            .broadcast = !!bcaddr,
+            .allow_broadcast = !!bc_addr,
         };
         struct port *p = port_open_udp_opts(&opts);
         struct udp_port *up = (void*)p;
 
+        // We lock to this host and don't auto-change.
+        up->lock_peer = 1;
+
+        // Fill in the target addresses.
         assert_gethostbyname(&up->peer, host);
         up->peer.sin_port = htons(port);
         up->peer.sin_family = AF_INET;
 
+        if (bc_addr) {
+            assert_gethostbyname(&up->broadcast_addr, bc_addr);
+            up->broadcast_addr.sin_port = htons(port);
+            up->broadcast_addr.sin_family = AF_INET;
+        }
 
         return p;
     }

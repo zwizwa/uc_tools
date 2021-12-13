@@ -44,18 +44,22 @@ struct port {
     int fd;              // main file descriptor
     int fd_out;          // optional, if different from main fd
     short events;
-    int verbose:1;
-    int broadcast:1;     // write() will use broadcast if supported/enabled
     port_read_fn read;
     port_write_fn write;
     port_pop_fn pop;     // only for buffered ports
     const char *spec;
+    /* Configuration.  If you add a flag, make sure the old behavior
+       correspond to flag == 0. */
+    int verbose:1;
+    int broadcast:1;     // write() will use broadcast if supported/enabled
 };
 
 struct udp_port {
     struct port p;
     struct sockaddr_in peer;
+    struct sockaddr_in broadcast_addr;
     int broadcast_enabled:1;
+    int lock_peer:1;     // don't change peer after receiving from different host
 };
 
 struct port *port_open_tap(const char *dev);
