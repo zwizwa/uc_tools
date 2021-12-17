@@ -16,5 +16,5 @@ echo "serving $webroot" >&2
 exec gdb 2>&1 \
      --quiet \
      --eval-command="file $HERE/$ELF" \
-     --eval-command="run $webroot /tmp/test.raw" \
+     --eval-command="run $webroot /home/tom/test.raw" \
      --eval-command="bt"

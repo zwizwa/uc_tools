@@ -8,5 +8,10 @@
 
 -- See erl_tools/src/dsl.erl
 
+-- EDIT: This would work for dataflow language, but not for anything
+-- that needs flow control. It's better to use a concrete syntax,
+-- e.g. lisp, and then map that to an interpreter/compiler.
+
 local dsl = {}
+
 return dsl

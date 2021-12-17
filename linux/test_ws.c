@@ -33,5 +33,7 @@ int main(int argc, char **argv) {
     }
     ASSERT_ERRNO(chdir(argv[1]));
     minmax_open(&map, argv[2], 8);
-    webserver_loop(3456);
+    uint16_t port = 3456;
+    LOG("starting server on port %d\n", port);
+    webserver_loop(port);
 }
