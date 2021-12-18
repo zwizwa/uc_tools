@@ -63,7 +63,13 @@ end
 
 -- Introduce a varible.
 function scm:push(var)
-   table.insert(self.env, {var=var,state='unbound'})
+   local id = #self.vars + 1
+   local v = {var=var,id=id,state='unbound'}
+   -- self.var is the list of all created variables
+   table.insert(self.vars, v)
+   -- self.env is the currently visible environment, which gets popped on exit.
+   -- FIXME: How to not put unbound variables here? Maybe not an issue..
+   table.insert(self.env, v)
    return #self.env
 end
 function scm:pop()
@@ -87,16 +93,17 @@ function scm:ref(var)
    return nil
 end
 
--- Basic structuring form is 'let*' which mostly resembles C's scoping
--- rules.
+-- Core form is 'let*' which mostly resembles C's scoping rules.
 form['let*'] = function(self, let_expr, hole)
    local bindings, inner = unpack(se.cdr(let_expr))
    assert(type(bindings) == 'table')
 
    if hole then
+      -- C statement expressions essentially let*
       self:write_assign(hole)
-      self:write(" {{\n")
+      self:write("({\n")
    else
+      -- If there's no variable to bind then use a block.
       self:write(self:indent_string() .. "{\n")
    end
    self.indent = self.indent + 1
@@ -115,31 +122,25 @@ form['let*'] = function(self, let_expr, hole)
       self:compile(expr, n)
    end
 
-   -- Compile inner forms.  Only the result of the last one is stored.
+   -- Compile inner forms as statements.  Last one gets bound for
+   -- non-nil hole.
    assert(se.length(inner) > 0)
-   while true do
-      local form = se.car(inner)
+   for form in se.elements(inner) do
       assert(form)
-      if 1 == se.length(inner) then
-         self:compile(form, nil)
-         self.indent = self.indent - 1
-         for i=1,nb_bindings do
-            self:pop()
-         end
+      self:compile(form, nil)
+   end
 
-         -- Only mark after it's actually bound.
-         if hole then
-            self:mark_bound(hole)
-            self:write(self:indent_string() .. "})\n")
-         else
-            self:write(self:indent_string() .. "}\n")
-         end
+   self.indent = self.indent - 1
+   for i=1,nb_bindings do
+      self:pop()
+   end
 
-         return
-      else
-         self:compile(form, nil)
-      end
-      inner = se.cdr(inner)
+   -- Only mark after it's actually bound.
+   if hole then
+      self:write(self:indent_string() .. "})\n")
+      self:mark_bound(hole)
+   else
+      self:write(self:indent_string() .. "}\n")
    end
 end
 
@@ -150,8 +151,6 @@ form['loop'] = function(self, expr, hole)
    -- assert(nil == se.cdr(tail))
    self:compile(se.car(tail), hole)
    self:write(self:indent_string() .. "goto begin;\n}\n");
-   -- Return value can never be read.
-   return nil
 end
 
 -- Blocking form.  This is implemented in a C macro.
@@ -171,14 +170,23 @@ form['read'] = function(self, expr, hole)
 end
 
 function scm:var(n)
+   local v = self.env[n]
    -- local ref = "s->e[" .. n-1 .. "]"
-   local ref = "R(" .. n .. ")"
+   local ref = "r" .. n
    local state_comment = ""
-   if self.env[n].state == 'saved' then
+   if v.state == 'saved' then
       state_comment = ":saved"
    end
-   local comment = "/*" .. self.env[n].var .. state_comment .. "*/"
-   return ref .. comment
+   local comment = "/*" .. v.var .. state_comment .. "*/"
+
+   if not self.vars_last then
+      -- First pass: use generic names
+      return ref .. comment
+   else
+      -- Second pass: indicate extra information
+      local s = self.vars_last[v.id].state
+      return ref .. "/*" .. s .. "*/"
+   end
 end
 
 -- FIXME: Write it symbolically first, then generate C in a second pass.
@@ -245,8 +253,19 @@ function scm:compile(expr, hole)
    end
 end
 
+-- The two passes are dumb: just run it twice.
+-- First pass will gather stats that second pass will use.
+function scm:compile2(expr)
+   self:compile(expr)
+   assert(0 == #self.env)
+   self.vars_last = self.vars
+   self.vars = {}
+   self:compile(expr)
+end
+
+
 function scm.new()
-   local obj = { nb_cont = 0, env = {}, indent = 1 }
+   local obj = { nb_cont = 0, env = {}, vars = {}, indent = 1 }
    setmetatable(obj, {__index = scm})
    return obj
 end

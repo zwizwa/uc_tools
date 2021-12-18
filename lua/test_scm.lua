@@ -19,6 +19,7 @@ local function test()
    -- log_desc(expr)
    local interp = scm.new()
    interp.write = function(self, str) log(str) end
-   interp:compile(expr)
+
+   interp:compile2(expr)
 end
 test()
