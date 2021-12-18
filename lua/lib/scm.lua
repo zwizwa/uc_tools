@@ -1,17 +1,9 @@
 -- FIXME: Just doodling.  Figuring out if this really needs
 -- infrastructure or not (e.g. Haskell).
 
--- FIXME: Figure out how to encode variable lifetime.  Idea is to
--- transition from 'bound' to 'forgotten' when going through a
--- blocking point, then 'saved' when actually referenced again AND the
--- state was 'forgotten'.
-
--- FIXME: If blocks are involved, it's simpler to implement let* in
--- one go.
 
 -- Compiler for small subset of Scheme to compile down to sm.h style
 -- state machines.
-
 
 -- Some ideas:
 
@@ -28,6 +20,14 @@
 --    implementing a stack.  The compiler can guarantee the stack size
 --    at compile time.
 --
+-- 5. Basic form is scheme's let* mapped to GCC statement expressions.
+--
+-- 6. Add second pass to distinguish between saved and local
+--    variables, and to pack the allocation on the saved stack.
+--
+-- 7. Variables go through this cycle:
+--    unbound -> local ( -> forgotten ( -> saved ))
+
 
 
 local se = require('lib.se')
@@ -159,7 +159,11 @@ form['read'] = function(self, expr, hole)
    local chan = se.car(se.cdr(expr))
    local bound = {}
    for n,var in ipairs(self.env) do
-      if var.state == 'bound' then
+      -- At the suspension point, all local variables are forgotten.
+      -- This is used later when the variable is referenced to turn it
+      -- into a 'saved' variable, so in the second pass it can be
+      -- properly allocated.
+      if var.state == 'local' then
          table.insert(bound, n)
          var.state = 'forgotten'
       end
@@ -178,6 +182,8 @@ function scm:saved_index(n)
    local n1 = 0
    for i=1,n do
       local id = self.env[i].id
+      -- In the second pass we have the final word on all of the
+      -- variables.
       if self.vars_last[id].state == 'saved' then
          n1 = n1 + 1
       end
@@ -187,18 +193,16 @@ end
 
 function scm:var_and_type(n)
    local v = self.env[n]
-   -- local ref = "s->e[" .. n-1 .. "]"
-   -- local ref = "r(" .. n .. "," .. v.id .. ")"
-   local ref = "r" .. v.id
-   local state_comment = ""
-   if v.state == 'saved' then
-      state_comment = ":saved"
-   end
-   local comment = "/*" .. v.var .. state_comment .. "*/"
 
    if not self.vars_last then
-      -- First pass: use generic names
-      return ref .. comment, ""
+      -- First pass: use generic names as we can't perform allocation
+      -- until the second pass.  The C output in this first pass is
+      -- for debugging only so it doesn't really matter it is not
+      -- proper C.
+      local state_comment = ""
+      if v.state == 'saved' then state_comment = ":saved" end
+      local comment = "/*" .. v.var .. state_comment .. "*/"
+      return "r" .. v.id .. comment, ""
    else
       -- Second pass: we have a lot more information now.  Two things:
       -- saved and local variables can be distinguished, and the stack
@@ -227,7 +231,7 @@ end
 -- FIXME: Write it symbolically first, then generate C in a second pass.
 function scm:mark_bound(n)
    assert(self.env[n].state == 'unbound')
-   self.env[n].state = 'bound'
+   self.env[n].state = 'local'
 end
 function scm:write_assign(n)
    local var, typ = self:var_and_type(n)
