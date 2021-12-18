@@ -1,7 +1,10 @@
 -- FIXME: Just doodling.  Figuring out if this really needs
 -- infrastructure or not (e.g. Haskell).
 
--- FIXME: Figure out how to determine variable lifetime.
+-- FIXME: Figure out how to encode variable lifetime.  Idea is to
+-- transition from 'bound' to 'forgotten' when going through a
+-- blocking point, then 'saved' when actually referenced again AND the
+-- state was 'forgotten'.
 
 -- Compiler for small subset of Scheme to compile down to sm.h style
 -- state machines.
@@ -150,6 +153,7 @@ end
 function scm:write_binding(n, c_expr)
    self:write(indent)
    if nil ~= n then
+      assert(self.env[n].state == 'unbound')
       self.env[n].state = 'bound'
       self:write(self:var(n) .. " = ")
    end
