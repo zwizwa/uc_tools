@@ -96,7 +96,11 @@ end
 
 -- Core form is 'let*' which mostly resembles C's scoping rules.
 form['let*'] = function(self, let_expr, hole)
-   local bindings, inner = unpack(se.cdr(let_expr))
+   se.match(
+   let_expr, { n = 2 },
+   function(_, bindings, inner)
+
+   -- local bindings, inner = unpack(se.cdr(let_expr))
    assert(type(bindings) == 'table')
 
    if hole then
@@ -143,6 +147,8 @@ form['let*'] = function(self, let_expr, hole)
    else
       self:write(self:indent_string() .. "}\n")
    end
+
+   end)
 end
 
 -- Every machine is a loop.

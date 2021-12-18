@@ -92,6 +92,19 @@ function se.cdr(pair)
    assert(type(pair) == 'table')
    return pair[2]
 end
+function se.match(expr, config, body)
+   assert(type(config) == 'table')
+   local len = se.length(expr)
+   if not config.n then config.n = len end
+   if config.n > len then config.n = len end
+   local args = {}
+   for i=1,config.n do
+      table.insert(args, se.car(expr))
+      expr = se.cdr(expr)
+   end
+   table.insert(args, expr) -- tail
+   return body(unpack(args))
+end
 
 
 function se:read_list()
