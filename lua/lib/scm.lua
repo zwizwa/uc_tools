@@ -93,7 +93,12 @@ form['let*'] = function(self, let_expr, hole)
    local bindings, inner = unpack(se.cdr(let_expr))
    assert(type(bindings) == 'table')
 
-   self:write(self:indent_string() .. "{\n")
+   if hole then
+      self:write_assign(hole)
+      self:write(" {{\n")
+   else
+      self:write(self:indent_string() .. "{\n")
+   end
    self.indent = self.indent + 1
 
    local nb_bindings = se.length(bindings)
@@ -116,12 +121,20 @@ form['let*'] = function(self, let_expr, hole)
       local form = se.car(inner)
       assert(form)
       if 1 == se.length(inner) then
-         self:compile(form, hole)
+         self:compile(form, nil)
          self.indent = self.indent - 1
-         self:write(self:indent_string() .. "}\n")
          for i=1,nb_bindings do
             self:pop()
          end
+
+         -- Only mark after it's actually bound.
+         if hole then
+            self:mark_bound(hole)
+            self:write(self:indent_string() .. "})\n")
+         else
+            self:write(self:indent_string() .. "}\n")
+         end
+
          return
       else
          self:compile(form, nil)
@@ -169,12 +182,19 @@ function scm:var(n)
 end
 
 -- FIXME: Write it symbolically first, then generate C in a second pass.
+function scm:mark_bound(n)
+   assert(self.env[n].state == 'unbound')
+   self.env[n].state = 'bound'
+end
+function scm:write_assign(n)
+   self:write(self:indent_string() .. self:var(n) .. " = ")
+end
 function scm:write_binding(n, c_expr)
-   self:write(self:indent_string())
-   if nil ~= n then
-      assert(self.env[n].state == 'unbound')
-      self.env[n].state = 'bound'
-      self:write(self:var(n) .. " = ")
+   if n then
+      self:write_assign(n)
+      self:mark_bound(n)
+   else
+      self:write(self:indent_string())
    end
    self:write(c_expr)
    self:write(";\n");
