@@ -8,12 +8,15 @@
 
 -- Some ideas:
 
--- * Compiling closures to C functions is too much work.  Use computed
---   goto.  It's quite useful to jump into a control structure.
+-- * Compiling continuations to individual C functions is too much
+--   work.  Use computed goto just like sm.h does. Much easier to jump
+--   straight into a control structure compared to separately
+--   representing continuations.
 --
 -- * The main problem then becomes variable management, essentially
---   implementing variable storage :local for temporary, C struct for
---   values that survive yield points.
+--   implementing variable storage: local for temporary variables that
+--   do not need to survive yield points, and C struct for values that
+--   survive yield points.
 --
 -- * All non blocking primitives can just be C functions.
 --
@@ -28,7 +31,8 @@
 --   and perform the stack allocation.
 --
 -- * Lifetime is implemented by letting variables go through this cycle:
---   unbound -> local ( -> forgotten ( -> saved ))
+--   unbound -> local -> lost -> saved
+--   with the last 2 transitions not happening for all.
 --
 -- * Blocking subroutines are not yet implemented.  Simplest is to
 --   implement them as macros, but a function call mechanism inside a
@@ -85,7 +89,7 @@ function scm:ref(var)
          -- If this is a variable that crossed a suspension border,
          -- mark it such that it gets stored in the state struct and
          -- not on the C stack.
-         if v.state == 'forgotten' then
+         if v.state == 'lost' then
             v.state = 'saved'
          end
          return i
@@ -137,7 +141,7 @@ form['let*'] = function(self, let_expr, hole)
 
    -- Only mark after it's actually bound.
    if hole then
-      self:write(self:indent_string() .. "})\n")
+      self:write(self:indent_string() .. "});\n")
       self:mark_bound(hole)
    else
       self:write(self:indent_string() .. "}\n")
@@ -160,41 +164,37 @@ form['read'] = function(self, expr, hole)
    local _, chan = se.unpack(expr, {n = 2})
    local bound = {}
    for n,var in ipairs(self.env) do
-      -- At the suspension point, all local variables are forgotten.
+      -- At the suspension point, all local variables are lost.
       -- This is used later when the variable is referenced to turn it
       -- into a 'saved' variable, so in the second pass it can be
       -- properly allocated.
       if var.state == 'local' then
          table.insert(bound, n)
-         var.state = 'forgotten'
+         var.state = 'lost'
       end
    end
    self:write_binding(hole, "READ(" .. chan .. ")")
 end
 
-function scm:stack_index_(n)
-   if not self.vars_last then
-      -- Only works in second pass.  In first pass we map the Scheme
-      -- environment index directly to a stack index.
-      return n
-   end
-   local n1 = 0
-   for i=1,n do
-      local id = self.env[i].id
-      -- In the second pass we have the final word on all of the
-      -- variables.
-      if self.vars_last[id].state == 'saved' then
-         n1 = n1 + 1
+function scm:stack_index(n)
+   -- Only works in second pass.  In first pass we map the Scheme
+   -- environment index directly to a stack index.
+   local n1 = n
+   if self.vars_last then
+      n1 = 0
+      for i=1,n do
+         local id = self.env[i].id
+         -- In the second pass we have the final word on all of the
+         -- variables.
+         if self.vars_last[id].state == 'saved' then
+            n1 = n1 + 1
+         end
       end
    end
-   return n1
-end
-function scm:stack_index(n)
-   local n = self:stack_index_(n)
-   if n > self.stack_size then
-      self.stack_size = n
+   if n1 > self.stack_size then
+      self.stack_size = n1
    end
-   return n
+   return n1
 end
 
 function scm:var_and_type(n)
@@ -229,7 +229,6 @@ function scm:var(n)
    return c_expr
 end
 
--- FIXME: Write it symbolically first, then generate C in a second pass.
 function scm:mark_bound(n)
    assert(self.env[n].state == 'unbound')
    self.env[n].state = 'local'
@@ -291,21 +290,29 @@ function scm:compile(expr, hole)
    end
 end
 
--- The two passes are dumb: just run the same pass twice.
--- First pass will gather stats that second pass will use.
+
+-- Don't bother with building representations.  The two passes emit C
+-- code directly, as the shape of the code resembles the Scheme code
+-- fairly directly.  The second pass can use the information gathered
+-- in the first pass to allocate variables in the state struct, or on
+-- the C stack.
 function scm:compile_passes(expr)
+
    self:write("\n#if 0 // first pass\n")
    self:compile(expr)
-   self:write("// stack size: " .. self.stack_size .. "\n")
+   self:write("// state size: " .. self.stack_size .. "\n")
    self:write("#endif\n")
+
+   -- Second pass uses vars_last: the information gathered about each
+   -- variable in the first pass.
+   self.vars_last = self.vars ; self.vars = {}
+   self.stack_size = 0
    assert(0 == #self.env)
    assert(1 == self.indent)
-   self.vars_last = self.vars
-   self.vars = {}
-   self.stack_size = 0
+
    self:write("\n// second pass\n")
    self:compile(expr)
-   self:write("// stack size: " .. self.stack_size .. "\n")
+   self:write("// state size: " .. self.stack_size .. "\n")
    self:write("\n")
 end
 

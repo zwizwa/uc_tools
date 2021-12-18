@@ -14,11 +14,11 @@ local function test()
    local file = "test.scm"
    local stream = io.open(file,"r")
    local parser = se.new(stream)
-   parser.log = function(self, str) log(str) end
+   parser.log = function(self, str) io.stderr:write(str) end
    local expr = parser:read()
    -- log_desc(expr)
    local interp = scm.new()
-   interp.write = function(self, str) log(str) end
+   interp.write = function(self, str) io.stdout:write(str) end
 
    interp:compile_passes(expr)
 end
