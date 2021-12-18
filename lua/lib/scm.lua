@@ -49,10 +49,9 @@ end
 
 local indent = "  "
 
--- Introduce a varible on the stack.  Note that it's probably possible
--- to mark the variables that do not escape.
+-- Introduce a varible.
 function scm:push(var)
-   table.insert(self.env, var)
+   table.insert(self.env, {var=var,state='unbound'})
    return #self.env
 end
 function scm:pop()
@@ -62,7 +61,7 @@ end
 function scm:ref(var)
    -- search backwards.  this implements shadowing
    for i=#self.env,1,-1 do
-      if self.env[i] == var then return i end
+      if self.env[i].var == var then return i end
    end
    return nil
 end
@@ -130,18 +129,28 @@ end
 form['read'] = function(self, expr, hole)
    assert(2 == se.length(expr))
    local chan = se.car(se.cdr(expr))
-   self:write_binding(hole, "READ(" .. chan .. ") /*blocks*/")
+   local bound = {}
+   for n,var in ipairs(self.env) do
+      if var.state == 'bound' then
+         table.insert(bound, n)
+      end
+   end
+
+   self:write_binding(hole, "READ(" .. chan .. ") /*closure:" .. table.concat(bound,",") .. "*/")
+   -- This is a blocking point.  Mark all visible variables.
 end
 
 function scm:var(n)
-   local ref = "s->e[" .. n-1 .. "]"
-   local comment = "/*" .. self.env[n] .. "*/"
+   -- local ref = "s->e[" .. n-1 .. "]"
+   local ref = "R(" .. n .. ")"
+   local comment = "/*" .. self.env[n].var .. "*/"
    return ref .. comment
 end
 
 function scm:write_binding(n, c_expr)
    self:write(indent)
    if nil ~= n then
+      self.env[n].state = 'bound'
       self:write(self:var(n) .. " = ")
    end
    self:write(c_expr)
@@ -158,8 +167,11 @@ end
 function scm:atom_to_c_expr(atom, hole)
    if type(atom) == 'string' then
       local n = self:ref(atom)
-      local thing = n or "global." .. atom
-      return thing
+      if n then
+         return self:var(n)
+      else
+         return "global." .. atom
+      end
    else
       -- number or other const
       return atom
