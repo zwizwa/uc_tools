@@ -50,7 +50,13 @@ function scm:alloc_cont()
    return n
 end
 
-local indent = "  "
+function scm:indent_string()
+   local strs = {}
+   for i=1,self.indent do
+      table.insert(strs,"  ")
+   end
+   return table.concat(strs,"")
+end
 
 -- Introduce a varible.
 function scm:push(var)
@@ -64,7 +70,16 @@ end
 function scm:ref(var)
    -- search backwards.  this implements shadowing
    for i=#self.env,1,-1 do
-      if self.env[i].var == var then return i end
+      local v = self.env[i]
+      if v.state ~= 'unbound' and v.var == var then
+         -- If this is a variable that crossed a suspension border,
+         -- mark it such that it gets stored in the state struct and
+         -- not on the C stack.
+         if v.state == 'forgotten' then
+            v.state = 'saved'
+         end
+         return i
+      end
    end
    return nil
 end
@@ -84,6 +99,9 @@ form['let1'] = function(self, let_expr, hole)
    local expr = se.car(se.cdr(binding))
    assert(type(var) == 'string')
    assert(expr)
+   self:write(self:indent_string() .. "{\n")
+   self.indent = self.indent + 1
+
    -- Reserve a location
    local n = self:push(var)
    self:compile(expr, n)
@@ -94,6 +112,8 @@ form['let1'] = function(self, let_expr, hole)
       assert(form)
       if 1 == se.length(inner) then
          self:compile(form, hole)
+         self.indent = self.indent - 1
+         self:write(self:indent_string() .. "}\n")
          self:pop()
          return
       else
@@ -123,7 +143,7 @@ form['loop'] = function(self, expr, hole)
    local tail = se.cdr(expr)
    -- assert(nil == se.cdr(tail))
    self:compile(se.car(tail), hole)
-   self:write(indent .. "goto begin;\n}\n");
+   self:write(self:indent_string() .. "goto begin;\n}\n");
    -- Return value can never be read.
    return nil
 end
@@ -136,6 +156,7 @@ form['read'] = function(self, expr, hole)
    for n,var in ipairs(self.env) do
       if var.state == 'bound' then
          table.insert(bound, n)
+         var.state = 'forgotten'
       end
    end
 
@@ -146,12 +167,17 @@ end
 function scm:var(n)
    -- local ref = "s->e[" .. n-1 .. "]"
    local ref = "R(" .. n .. ")"
-   local comment = "/*" .. self.env[n].var .. "*/"
+   local state_comment = ""
+   if self.env[n].state == 'saved' then
+      state_comment = ":saved"
+   end
+   local comment = "/*" .. self.env[n].var .. state_comment .. "*/"
    return ref .. comment
 end
 
+-- FIXME: Write it symbolically first, then generate C in a second pass.
 function scm:write_binding(n, c_expr)
-   self:write(indent)
+   self:write(self:indent_string())
    if nil ~= n then
       assert(self.env[n].state == 'unbound')
       self.env[n].state = 'bound'
@@ -207,7 +233,7 @@ function scm:compile(expr, hole)
 end
 
 function scm.new()
-   local obj = { nb_cont = 0, env = {} }
+   local obj = { nb_cont = 0, env = {}, indent = 1 }
    setmetatable(obj, {__index = scm})
    return obj
 end
