@@ -1,4 +1,9 @@
+-- FIXME: Just doodling.  Figuring out if this really needs
+-- infrastructure or not (e.g. Haskell).  There are a lot of issues
+-- with this.
+
 -- Reduced scheme compiler to map onto sm.h style state machines.
+
 
 -- Some ideas:
 
@@ -24,6 +29,12 @@ scm.form = form
 local function is_form(expr, form)
    return type(expr) == 'table' and expr[1] == form
 end
+local function tail(arr)
+   local tab = {}
+   assert(#arr > 0)
+   for i=2,#arr do table.insert(tab, arr[i]) end
+   return tab
+end
 
 function scm:alloc_cont()
    local n = self.nb_cont
@@ -33,6 +44,8 @@ end
 
 local indent = "  "
 
+-- Introduce a varible on the stack.  Note that it's probably possible
+-- to mark the variables that do not escape.
 function scm:push(var)
    table.insert(self.env, var)
    return #self.env
@@ -41,8 +54,9 @@ function scm:pop(var)
    table.remove(self.env)
 end
 
--- Basic structuring form is 'let' for a single variable binding.
--- This can be later expanded to provide 'let*'.
+-- Basic structuring form is 'let*' for a single variable binding,
+-- which mostly resembles C's scoping rules.  Implemented in two
+-- steps: single binding form let1 and nested let*.
 form['let1'] = function(self, let_expr)
    assert(#let_expr == 3)
    local _, bindings, inner = unpack(let_expr)
@@ -50,31 +64,33 @@ form['let1'] = function(self, let_expr)
    -- Primitive form only supports one binding.
    assert(#bindings == 1)
    local var, expr = unpack(bindings[1])
-   local n = self:push(var)
    assert(type(var) == 'string')
    assert(expr)
-   self:write_binding(n, self:compile(expr))
-   local rv = self:compile(inner)
+   -- Reserve a location
+   local n = self:push(var)
+   local c_expr_binding = self:compile(expr)
+   self:write_binding(n, c_expr_binding)
+   local c_expr_inner = self:compile(inner)
    self:pop()
-   return rv
+   -- This isn't quite right: it excapes out of the context, but then
+   -- again the value is never used.
+   return c_expr_inner
 end
 
+-- Macros are implemented by calling self:compile() directly.
 form['let*'] = function(self, let_expr)
    local _, bindings, inner = unpack(let_expr)
+   assert(#bindings > 0)
    if #bindings == 1 then
       return self:compile({'let1', bindings, inner})
    else
-      local b_rest = {}
-      for i=2,#bindings do
-         table.insert(b_rest, bindings[i])
-      end
-      return self:compile({'let1', {bindings[1]}, {'let*', b_rest, inner}})
+      return self:compile({'let1', {bindings[1]}, {'let*', tail(bindings), inner}})
    end
 end
 
 -- Every machine is a loop.
 form['loop'] = function(self, expr)
-   self:write("void loop() {\nbegin:\n");
+   self:write("void loop(state_t *s) {\nbegin:\n");
    assert(#expr == 2)
    self:write_statement(self:compile(expr[2]))
    self:write(indent .. "goto begin;\n}\n");
@@ -91,8 +107,8 @@ end
 
 function scm:write_binding(n, c_expr)
    self:write(indent)
-   if n then
-      self:write("s->env[" .. n-1 .. "] /* " .. self.env[n] .. " */ = ")
+   if nil ~= n then
+      self:write("s->env[" .. n-1 .. "] /*" .. self.env[n] .. "*/ = ")
    end
    self:write(c_expr)
    self:write(";\n");
@@ -101,9 +117,8 @@ function scm:write_statement(c_expr)
    self:write_binding(nil, c_expr)
 end
 
-
 function scm:apply(vals)
-   return "apply(" .. table.concat(vals,",") .. ")"
+   return vals[1] .. "(" .. table.concat(tail(vals),",") .. ")"
 end
 
 function scm:compile(expr)
