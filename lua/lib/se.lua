@@ -50,12 +50,59 @@ function se:read_atom()
       self:pop()
    end
 end
+function se.list(...)
+   return se.array_to_list({...})
+end
+function se.array_to_list(arr)
+   local lst = {}
+   for i=#arr,1,-1 do
+      lst = {arr[i], lst}
+   end
+   return lst
+end
+function se.elements(lst)
+   local pair = lst
+   return function()
+      if pair then
+         local el, rest = unpack(pair)
+         pair = rest
+         return el
+      end
+   end
+end
+function se.array(lst)
+   local arr = {}
+   for el in se.elements(lst) do
+      table.insert(arr, el)
+   end
+   return arr
+end
+function se.length(lst)
+   local n = 0
+   for el in se.elements(lst) do
+      n = n + 1
+   end
+   return n
+end
+function se.car(pair)
+   assert(type(pair) == 'table')
+   return pair[1]
+end
+function se.cdr(pair)
+   assert(type(pair) == 'table')
+   return pair[2]
+end
+
+
 function se:read_list()
    local objs = {}
    while true do
       if ')' == self:skip_space() then
          self:pop()
-         return objs
+         -- For processing it is much more convenient to represent
+         -- this as a list of pairs instead of an array.
+         -- return objs
+         return self.array_to_list(objs)
       end
       local obj = self:read()
       table.insert(objs, obj)

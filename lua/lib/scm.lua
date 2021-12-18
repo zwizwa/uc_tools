@@ -30,6 +30,8 @@
 -- past a suspension point, and those that are.  It's not clear how to
 -- separate them.
 
+local se = require('lib.se')
+
 local scm = {}
 
 local form = {}
@@ -73,41 +75,58 @@ end
 
 -- Basic structuring form is 'let*' for a single variable binding,
 -- which mostly resembles C's scoping rules.  Implemented in two
--- steps: single binding form let1 and nested let*.
+-- steps: single binding form let1 and let* that expands into nested
+-- let1 forms.
 form['let1'] = function(self, let_expr, hole)
-   assert(#let_expr == 3)
-   local _, bindings, inner = unpack(let_expr)
+   local bindings, inner = unpack(se.cdr(let_expr))
    assert(type(bindings) == 'table')
    -- Primitive form only supports one binding.
-   assert(#bindings == 1)
-   local var, expr = unpack(bindings[1])
+   assert(1 == se.length(bindings))
+   local binding = se.car(bindings)
+   assert(2 == se.length(binding))
+   local var  = se.car(binding)
+   local expr = se.car(se.cdr(binding))
    assert(type(var) == 'string')
    assert(expr)
    -- Reserve a location
    local n = self:push(var)
    self:compile(expr, n)
-   self:compile(inner, hole)
-   self:pop()
-   -- This isn't quite right: it excapes out of the context, but then
-   -- again the value is never used.
+   -- Compile inner forms.  Only the result of the last one is stored.
+   assert(se.length(inner) > 0)
+   while true do
+      local form = se.car(inner)
+      assert(form)
+      if 1 == se.length(inner) then
+         self:compile(form, hole)
+         self:pop()
+         return
+      else
+         self:compile(form, nil)
+      end
+      inner = se.cdr(inner)
+   end
 end
 
 -- Macros are implemented by calling self:compile() directly.
 form['let*'] = function(self, let_expr, hole)
-   local _, bindings, inner = unpack(let_expr)
-   assert(#bindings > 0)
-   if #bindings == 1 then
-      return self:compile({'let1', bindings, inner}, hole)
+   local bindings, statements = unpack(se.cdr(let_expr))
+   local n = se.length(bindings)
+   assert(n>0)
+   if 1 == n then
+      return self:compile({'let1', {bindings, statements}}, hole)
    else
-      return self:compile({'let1', {bindings[1]}, {'let*', tail(bindings), inner}}, hole)
+      local first = se.car(bindings)
+      local rest  = se.cdr(bindings)
+      return self:compile({'let1', {se.list(first), se.list({'let*', {rest, statements}})}}, hole)
    end
 end
 
 -- Every machine is a loop.
 form['loop'] = function(self, expr, hole)
    self:write("void loop(state_t *s) {\nbegin:\n");
-   assert(#expr == 2)
-   self:compile(expr[2], hole)
+   local tail = se.cdr(expr)
+   -- assert(nil == se.cdr(tail))
+   self:compile(se.car(tail), hole)
    self:write(indent .. "goto begin;\n}\n");
    -- Return value can never be read.
    return nil
@@ -115,8 +134,8 @@ end
 
 -- Blocking form.  This is implemented in a C macro.
 form['read'] = function(self, expr, hole)
-   assert(#expr == 2)
-   local chan = expr[2]
+   assert(2 == se.length(expr))
+   local chan = se.car(se.cdr(expr))
    self:write_binding(hole, "READ(" .. chan .. ")")
 end
 
@@ -155,8 +174,9 @@ function scm:compile(expr, hole)
          return self:write_binding(hole, expr)
       end
    end
-   assert(type(expr) == 'table')
-   local form = unpack(expr)
+   local form, tail = unpack(expr)
+   assert(form)
+   -- self:write('/*form: ' .. form .. "*/")
    assert(type(form) == 'string')
    local form_fn = self.form[form]
    if form_fn then
@@ -164,12 +184,17 @@ function scm:compile(expr, hole)
    else
       -- We expect everything to be in ANF
       local refs = {}
-      for i=2,#expr do
-         local n = self:ref(expr[i])
-         if n then
-            table.insert(refs, self:var(n))
+      for maybe_var in se.elements(tail) do
+         if type(maybe_var) == 'string' then
+            local n = self:ref(maybe_var)
+            if n then
+               table.insert(refs, self:var(n))
+            else
+               table.insert(refs, "global:" .. maybe_var)
+            end
          else
-            table.insert(refs, "global:" .. expr[i])
+            -- number or other const
+            table.insert(refs, maybe_var)
          end
       end
       local c_expr = expr[1] .. "(" .. table.concat(refs, ",") .. ")"

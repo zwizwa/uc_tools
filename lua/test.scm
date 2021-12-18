@@ -1,4 +1,10 @@
 ; s-expression syntax for Lua CPS DSL.
+; (+ 1 2)
+
+;(let* ((a 123)
+;       (b 345))
+;      (+ a b 1))
+
 (loop
  (let*
      ((a (read chan1))
@@ -9,7 +15,9 @@
       (d (let* ((k 4)
                 (l 5))
            (+ c k l))))
-   (write d)))
+   (write c)
+   (write d)
+   ))
 
 
 
