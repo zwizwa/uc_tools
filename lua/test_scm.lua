@@ -20,6 +20,6 @@ local function test()
    local interp = scm.new()
    interp.write = function(self, str) log(str) end
 
-   interp:compile2(expr)
+   interp:compile_passes(expr)
 end
 test()

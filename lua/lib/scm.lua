@@ -1,5 +1,6 @@
--- FIXME: Just doodling.  Figuring out if this really needs
--- infrastructure or not (e.g. Haskell).
+-- FIXME: Just doodling.  Figuring out if this really needs large
+-- infrastructure or not (e.g. Haskell or Racket), or if Lua is enough
+-- to compile it.
 
 
 -- Compiler for small subset of Scheme to compile down to sm.h style
@@ -7,26 +8,31 @@
 
 -- Some ideas:
 
--- 1. Compiling closures to C functions is too much work.  Use
---    computed goto.  It's quite useful to jump into a control
---    structure.
+-- * Compiling closures to C functions is too much work.  Use computed
+--   goto.  It's quite useful to jump into a control structure.
 --
--- 2. All higher order functions need to be implemented as macros.
---    Maybe some functionality can be defined for that?
+-- * The main problem then becomes variable management, essentially
+--   implementing variable storage :local for temporary, C struct for
+--   values that survive yield points.
 --
--- 3. All non blocking primitives can just be C functions.
+-- * All non blocking primitives can just be C functions.
 --
--- 4. Keep the environment simple: an array of words essentially
---    implementing a stack.  The compiler can guarantee the stack size
---    at compile time.
+-- * Keep the stored environment simple: an array of machine words
+--   essentially implementing a stack.  The compiler can guarantee the
+--   stack size at compile time.
 --
--- 5. Basic form is scheme's let* mapped to GCC statement expressions.
+-- * Basic program form is scheme's let* mapped to GCC statement
+--   expressions.
 --
--- 6. Add second pass to distinguish between saved and local
---    variables, and to pack the allocation on the saved stack.
+-- * Second pass can distinguish between saved and local variables,
+--   and perform the stack allocation.
 --
--- 7. Variables go through this cycle:
---    unbound -> local ( -> forgotten ( -> saved ))
+-- * Lifetime is implemented by letting variables go through this cycle:
+--   unbound -> local ( -> forgotten ( -> saved ))
+--
+-- * Blocking subroutines are not yet implemented.  Simplest is to
+--   implement them as macros, but a function call mechanism inside a
+--   machine isn't an impossible challenge.
 
 
 
@@ -47,11 +53,6 @@ local function tail(arr)
    return tab
 end
 
-function scm:alloc_cont()
-   local n = self.nb_cont
-   self.nb_cont = n + 1
-   return n
-end
 
 function scm:indent_string()
    local strs = {}
@@ -173,12 +174,12 @@ form['read'] = function(self, expr, hole)
    -- This is a blocking point.  Mark all visible variables.
 end
 
-function scm:saved_index(n)
+function scm:stack_index_(n)
    if not self.vars_last then
-      -- Only works in second pass
+      -- Only works in second pass.  In first pass we map the Scheme
+      -- environment index directly to a stack index.
       return n
    end
-
    local n1 = 0
    for i=1,n do
       local id = self.env[i].id
@@ -190,35 +191,37 @@ function scm:saved_index(n)
    end
    return n1
 end
+function scm:stack_index(n)
+   local n = self:stack_index_(n)
+   if n > self.stack_size then
+      self.stack_size = n
+   end
+   return n
+end
 
 function scm:var_and_type(n)
    local v = self.env[n]
+   local c_index = self:stack_index(n) - 1
 
    if not self.vars_last then
-      -- First pass: use generic names as we can't perform allocation
-      -- until the second pass.  The C output in this first pass is
-      -- for debugging only so it doesn't really matter it is not
-      -- proper C.
+      -- First pass: allocate all bindings in the state's stack.
       local state_comment = ""
       if v.state == 'saved' then state_comment = ":saved" end
       local comment = "/*" .. v.var .. state_comment .. "*/"
-      return "r" .. v.id .. comment, ""
+      -- return "r" .. v.id .. comment, ""
+      return "s->e[" .. c_index .. "]" .. comment, ""
    else
-      -- Second pass: we have a lot more information now.  Two things:
-      -- saved and local variables can be distinguished, and the stack
-      -- allocation can be shrunk a bit.
+      -- Second pass: we have a lot more information now.  Saved and
+      -- local variables can be distinguished and the stack allocation
+      -- can be shrunk.
       local last = self.vars_last[v.id]
       assert(last)
       assert(last.state)
+      local comment = "/*" .. v.var .. "*/"
       if last.state == 'saved' then
-
-         -- Instead of using n (the environment index), we can skip
-         -- the local variables and pack the array.
-         -- return "s->e[" .. n .. "]"
-         local c_index = self:saved_index(n) - 1
-         return "s->e[" .. c_index .. "]", ""
+         return "s->e[" .. c_index .. "]" .. comment, ""
       else
-         return "l" .. v.id, "T "
+         return "l" .. v.id .. comment, "T "
       end
    end
 end
@@ -246,9 +249,6 @@ function scm:write_binding(n, c_expr)
    end
    self:write(c_expr)
    self:write(";\n");
-end
-function scm:write_statement(c_expr)
-   self:write_binding(nil, c_expr)
 end
 
 function scm:apply(vals)
@@ -293,19 +293,27 @@ function scm:compile(expr, hole)
    end
 end
 
--- The two passes are dumb: just run it twice.
+-- The two passes are dumb: just run the same pass twice.
 -- First pass will gather stats that second pass will use.
-function scm:compile2(expr)
+function scm:compile_passes(expr)
+   self:write("\n#if 0 // first pass\n")
    self:compile(expr)
+   self:write("// stack size: " .. self.stack_size .. "\n")
+   self:write("#endif\n")
    assert(0 == #self.env)
+   assert(1 == self.indent)
    self.vars_last = self.vars
    self.vars = {}
+   self.stack_size = 0
+   self:write("\n// second pass\n")
    self:compile(expr)
+   self:write("// stack size: " .. self.stack_size .. "\n")
+   self:write("\n")
 end
 
 
 function scm.new()
-   local obj = { nb_cont = 0, env = {}, vars = {}, indent = 1 }
+   local obj = { env = {}, vars = {}, indent = 1, stack_size = 0 }
    setmetatable(obj, {__index = scm})
    return obj
 end
