@@ -97,87 +97,92 @@ end
 -- Core form is 'let*' which mostly resembles C's scoping rules.
 form['let*'] = function(self, let_expr, hole)
    se.match(
-   let_expr, { n = 2 },
-   function(_, bindings, inner)
+      let_expr, { n = 2, tail = true },
+      function(_, bindings, inner)
 
-   -- local bindings, inner = unpack(se.cdr(let_expr))
-   assert(type(bindings) == 'table')
+         assert(type(bindings) == 'table')
 
-   if hole then
-      -- C statement expressions essentially let*
-      self:write_assign(hole)
-      self:write("({\n")
-   else
-      -- If there's no variable to bind then use a block.
-      self:write(self:indent_string() .. "{\n")
-   end
-   self.indent = self.indent + 1
+         if hole then
+            -- C statement expressions essentially let*
+            self:write_assign(hole)
+            self:write("({\n")
+         else
+            -- If there's no variable to bind then use a block.
+            self:write(self:indent_string() .. "{\n")
+         end
+         self.indent = self.indent + 1
 
-   local nb_bindings = se.length(bindings)
+         local nb_bindings = se.length(bindings)
 
-   for binding in se.elements(bindings) do
-      assert(2 == se.length(binding))
-      local var  = se.car(binding)
-      local expr = se.car(se.cdr(binding))
-      assert(type(var) == 'string')
-      assert(expr)
+         for binding in se.elements(bindings) do
+            se.match(
+               binding, { n = 2 },
+               function(var, expr)
+                  assert(type(var) == 'string')
+                  assert(expr)
 
-      -- Reserve a location
-      local n = self:push(var)
-      self:compile(expr, n)
-   end
+                  -- Reserve a location
+                  local n = self:push(var)
+                  self:compile(expr, n)
+               end)
+         end
 
-   -- Compile inner forms as statements.  Last one gets bound for
-   -- non-nil hole.
-   assert(se.length(inner) > 0)
-   for form in se.elements(inner) do
-      assert(form)
-      self:compile(form, nil)
-   end
+         -- Compile inner forms as statements.  Last one gets bound
+         -- for non-nil hole.
+         assert(se.length(inner) > 0)
+         for form in se.elements(inner) do
+            assert(form)
+            self:compile(form, nil)
+         end
 
-   self.indent = self.indent - 1
-   for i=1,nb_bindings do
-      self:pop()
-   end
+         self.indent = self.indent - 1
+         for i=1,nb_bindings do
+            self:pop()
+         end
 
-   -- Only mark after it's actually bound.
-   if hole then
-      self:write(self:indent_string() .. "})\n")
-      self:mark_bound(hole)
-   else
-      self:write(self:indent_string() .. "}\n")
-   end
+         -- Only mark after it's actually bound.
+         if hole then
+            self:write(self:indent_string() .. "})\n")
+            self:mark_bound(hole)
+         else
+            self:write(self:indent_string() .. "}\n")
+         end
 
    end)
 end
 
 -- Every machine is a loop.
 form['loop'] = function(self, expr, hole)
-   self:write("void loop(state_t *s) {\nbegin:\n");
-   local tail = se.cdr(expr)
-   -- assert(nil == se.cdr(tail))
-   self:compile(se.car(tail), hole)
-   self:write(self:indent_string() .. "goto begin;\n}\n");
+   assert(2 == se.length(expr))
+   se.match(
+      expr, {n = 2},
+      function(_, expr1)
+         self:write("void loop(state_t *s) {\nbegin:\n");
+         assert(expr1)
+         self:compile(expr1, hole)
+         self:write(self:indent_string() .. "goto begin;\n}\n");
+      end)
 end
 
 -- Blocking form.  This is implemented in a C macro.
 form['read'] = function(self, expr, hole)
    assert(2 == se.length(expr))
-   local chan = se.car(se.cdr(expr))
-   local bound = {}
-   for n,var in ipairs(self.env) do
-      -- At the suspension point, all local variables are forgotten.
-      -- This is used later when the variable is referenced to turn it
-      -- into a 'saved' variable, so in the second pass it can be
-      -- properly allocated.
-      if var.state == 'local' then
-         table.insert(bound, n)
-         var.state = 'forgotten'
-      end
-   end
-
-   self:write_binding(hole, "READ(" .. chan .. ")")
-   -- This is a blocking point.  Mark all visible variables.
+   se.match(
+      expr, {n = 2},
+      function(_, chan)
+         local bound = {}
+         for n,var in ipairs(self.env) do
+            -- At the suspension point, all local variables are forgotten.
+            -- This is used later when the variable is referenced to turn it
+            -- into a 'saved' variable, so in the second pass it can be
+            -- properly allocated.
+            if var.state == 'local' then
+               table.insert(bound, n)
+               var.state = 'forgotten'
+            end
+         end
+         self:write_binding(hole, "READ(" .. chan .. ")")
+      end)
 end
 
 function scm:stack_index_(n)

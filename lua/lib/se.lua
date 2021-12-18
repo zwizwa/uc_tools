@@ -95,8 +95,14 @@ end
 function se.match(expr, config, body)
    assert(type(config) == 'table')
    local len = se.length(expr)
-   if not config.n then config.n = len end
-   if config.n > len then config.n = len end
+   if not config.tail then
+      -- Do strict match by default.
+      assert(config.n)
+      assert(len == config.n)
+   else
+      if not config.n then config.n = len end
+      if config.n > len then config.n = len end
+   end
    local args = {}
    for i=1,config.n do
       table.insert(args, se.car(expr))
