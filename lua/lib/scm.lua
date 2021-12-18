@@ -6,6 +6,9 @@
 -- blocking point, then 'saved' when actually referenced again AND the
 -- state was 'forgotten'.
 
+-- FIXME: If blocks are involved, it's simpler to implement let* in
+-- one go.
+
 -- Compiler for small subset of Scheme to compile down to sm.h style
 -- state machines.
 
@@ -84,27 +87,29 @@ function scm:ref(var)
    return nil
 end
 
--- Basic structuring form is 'let*' for a single variable binding,
--- which mostly resembles C's scoping rules.  Implemented in two
--- steps: single binding form let1 and let* that expands into nested
--- let1 forms.
-form['let1'] = function(self, let_expr, hole)
+-- Basic structuring form is 'let*' which mostly resembles C's scoping
+-- rules.
+form['let*'] = function(self, let_expr, hole)
    local bindings, inner = unpack(se.cdr(let_expr))
    assert(type(bindings) == 'table')
-   -- Primitive form only supports one binding.
-   assert(1 == se.length(bindings))
-   local binding = se.car(bindings)
-   assert(2 == se.length(binding))
-   local var  = se.car(binding)
-   local expr = se.car(se.cdr(binding))
-   assert(type(var) == 'string')
-   assert(expr)
+
    self:write(self:indent_string() .. "{\n")
    self.indent = self.indent + 1
 
-   -- Reserve a location
-   local n = self:push(var)
-   self:compile(expr, n)
+   local nb_bindings = se.length(bindings)
+
+   for binding in se.elements(bindings) do
+      assert(2 == se.length(binding))
+      local var  = se.car(binding)
+      local expr = se.car(se.cdr(binding))
+      assert(type(var) == 'string')
+      assert(expr)
+
+      -- Reserve a location
+      local n = self:push(var)
+      self:compile(expr, n)
+   end
+
    -- Compile inner forms.  Only the result of the last one is stored.
    assert(se.length(inner) > 0)
    while true do
@@ -114,26 +119,14 @@ form['let1'] = function(self, let_expr, hole)
          self:compile(form, hole)
          self.indent = self.indent - 1
          self:write(self:indent_string() .. "}\n")
-         self:pop()
+         for i=1,nb_bindings do
+            self:pop()
+         end
          return
       else
          self:compile(form, nil)
       end
       inner = se.cdr(inner)
-   end
-end
-
--- Macros are implemented by calling self:compile() directly.
-form['let*'] = function(self, let_expr, hole)
-   local bindings, statements = unpack(se.cdr(let_expr))
-   local n = se.length(bindings)
-   assert(n>0)
-   if 1 == n then
-      return self:compile({'let1', {bindings, statements}}, hole)
-   else
-      local first = se.car(bindings)
-      local rest  = se.cdr(bindings)
-      return self:compile({'let1', {se.list(first), se.list({'let*', {rest, statements}})}}, hole)
    end
 end
 
