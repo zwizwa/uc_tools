@@ -21,6 +21,15 @@
 --    at compile time.
 --
 
+-- FIXME: Restructure such that eval (compile) is always parameterized
+-- by a location where the value is stored, which is either a stack
+-- location or a local variable in case the variable doesn't escape.
+--
+-- Really this is no different than the other compilers, just that
+-- there are two kinds of variables: those that are not referenced
+-- past a suspension point, and those that are.  It's not clear how to
+-- separate them.
+
 local scm = {}
 
 local form = {}
