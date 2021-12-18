@@ -1,8 +1,10 @@
 -- FIXME: Just doodling.  Figuring out if this really needs
--- infrastructure or not (e.g. Haskell).  There are a lot of issues
--- with this.
+-- infrastructure or not (e.g. Haskell).
 
--- Reduced scheme compiler to map onto sm.h style state machines.
+-- FIXME: Figure out how to determine variable lifetime.
+
+-- Compiler for small subset of Scheme to compile down to sm.h style
+-- state machines.
 
 
 -- Some ideas:
@@ -21,14 +23,6 @@
 --    at compile time.
 --
 
--- FIXME: Restructure such that eval (compile) is always parameterized
--- by a location where the value is stored, which is either a stack
--- location or a local variable in case the variable doesn't escape.
---
--- Really this is no different than the other compilers, just that
--- there are two kinds of variables: those that are not referenced
--- past a suspension point, and those that are.  It's not clear how to
--- separate them.
 
 local se = require('lib.se')
 
@@ -136,7 +130,7 @@ end
 form['read'] = function(self, expr, hole)
    assert(2 == se.length(expr))
    local chan = se.car(se.cdr(expr))
-   self:write_binding(hole, "READ(" .. chan .. ")")
+   self:write_binding(hole, "READ(" .. chan .. ") /*blocks*/")
 end
 
 function scm:var(n)
@@ -161,18 +155,20 @@ function scm:apply(vals)
    return vals[1] .. "(" .. table.concat(tail(vals),",") .. ")"
 end
 
-function scm:compile(expr, hole)
-   assert(expr)
-   if type(expr) == 'number' then
-      return self:write_binding(hole, expr)
+function scm:atom_to_c_expr(atom, hole)
+   if type(atom) == 'string' then
+      local n = self:ref(atom)
+      local thing = n or "global." .. atom
+      return thing
+   else
+      -- number or other const
+      return atom
    end
-   if type(expr) == 'string' then
-      local n = self:ref(expr)
-      if n then
-         return self:write_binding(hole, expr)
-      else
-         return self:write_binding(hole, expr)
-      end
+end
+
+function scm:compile(expr, hole)
+   if type(expr) ~= 'table' then
+      return self:write_binding(hole, self:atom_to_c_expr(expr))
    end
    local form, tail = unpack(expr)
    assert(form)
@@ -182,20 +178,12 @@ function scm:compile(expr, hole)
    if form_fn then
       return form_fn(self, expr, hole)
    else
-      -- We expect everything to be in ANF
+      -- We expect everything to be in ANF, meaning arguments to
+      -- function calls are only constants or variable references.
+      -- FIXME: Insert let* form if this is not the case.
       local refs = {}
       for maybe_var in se.elements(tail) do
-         if type(maybe_var) == 'string' then
-            local n = self:ref(maybe_var)
-            if n then
-               table.insert(refs, self:var(n))
-            else
-               table.insert(refs, "global:" .. maybe_var)
-            end
-         else
-            -- number or other const
-            table.insert(refs, maybe_var)
-         end
+         table.insert(refs, self:atom_to_c_expr(maybe_var))
       end
       local c_expr = expr[1] .. "(" .. table.concat(refs, ",") .. ")"
       self:write_binding(hole, c_expr)

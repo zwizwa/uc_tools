@@ -1,4 +1,5 @@
 ; s-expression syntax for Lua CPS DSL.
+; this compiles donw to C sm.h macros
 ; (+ 1 2)
 
 ;(let* ((a 123)
@@ -16,7 +17,7 @@
                 (l 5))
            (+ c k l))))
    (write c)
-   (write d)
+   (write d1)
    ))
 
 
