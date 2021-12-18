@@ -165,14 +165,31 @@ form['read'] = function(self, expr, hole)
       end
    end
 
-   self:write_binding(hole, "READ(" .. chan .. ") /*closure:" .. table.concat(bound,",") .. "*/")
+   self:write_binding(hole, "READ(" .. chan .. ")")
    -- This is a blocking point.  Mark all visible variables.
 end
 
-function scm:var(n)
+function scm:saved_index(n)
+   if not self.vars_last then
+      -- Only works in second pass
+      return n
+   end
+
+   local n1 = 0
+   for i=1,n do
+      local id = self.env[i].id
+      if self.vars_last[id].state == 'saved' then
+         n1 = n1 + 1
+      end
+   end
+   return n1
+end
+
+function scm:var_and_type(n)
    local v = self.env[n]
    -- local ref = "s->e[" .. n-1 .. "]"
-   local ref = "r" .. n
+   -- local ref = "r(" .. n .. "," .. v.id .. ")"
+   local ref = "r" .. v.id
    local state_comment = ""
    if v.state == 'saved' then
       state_comment = ":saved"
@@ -181,12 +198,30 @@ function scm:var(n)
 
    if not self.vars_last then
       -- First pass: use generic names
-      return ref .. comment
+      return ref .. comment, ""
    else
-      -- Second pass: indicate extra information
-      local s = self.vars_last[v.id].state
-      return ref .. "/*" .. s .. "*/"
+      -- Second pass: we have a lot more information now.  Two things:
+      -- saved and local variables can be distinguished, and the stack
+      -- allocation can be shrunk a bit.
+      local last = self.vars_last[v.id]
+      assert(last)
+      assert(last.state)
+      if last.state == 'saved' then
+
+         -- Instead of using n (the environment index), we can skip
+         -- the local variables and pack the array.
+         -- return "s->e[" .. n .. "]"
+         local c_index = self:saved_index(n) - 1
+         return "s->e[" .. c_index .. "]", ""
+      else
+         return "l" .. v.id, "T "
+      end
    end
+end
+
+function scm:var(n)
+   local c_expr, c_type = self:var_and_type(n)
+   return c_expr
 end
 
 -- FIXME: Write it symbolically first, then generate C in a second pass.
@@ -195,7 +230,8 @@ function scm:mark_bound(n)
    self.env[n].state = 'bound'
 end
 function scm:write_assign(n)
-   self:write(self:indent_string() .. self:var(n) .. " = ")
+   local var, typ = self:var_and_type(n)
+   self:write(self:indent_string() .. typ .. var .. " = ")
 end
 function scm:write_binding(n, c_expr)
    if n then
