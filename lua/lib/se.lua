@@ -92,7 +92,9 @@ function se.cdr(pair)
    assert(type(pair) == 'table')
    return pair[2]
 end
-function se.match(expr, config, body)
+-- It might be simpler to do something like se.unpack to fit better in
+-- the language.  Functions are a little annoying.
+function se.unpack_array(expr, config, body)
    assert(type(config) == 'table')
    local len = se.length(expr)
    if not config.tail then
@@ -109,6 +111,14 @@ function se.match(expr, config, body)
       expr = se.cdr(expr)
    end
    table.insert(args, expr) -- tail
+   return args
+end
+function se.unpack(expr, config)
+   local args = se.unpack_array(expr, config, body)
+   return unpack(args)
+end
+function se.match(expr, config, body)
+   local args = se.unpack_array(expr, config, body)
    return body(unpack(args))
 end
 
