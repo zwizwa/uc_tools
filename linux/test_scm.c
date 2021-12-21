@@ -4,7 +4,7 @@
 typedef struct {
     uint32_t e[100];
 } state_t;
-#define READ(chan) 123
+#define SM_READ(s, chan) 123
 #define add(a,b) ((a)+(b))
 typedef uint32_t T;
 

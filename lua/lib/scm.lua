@@ -98,6 +98,44 @@ function scm:ref(var)
    return nil
 end
 
+-- FIXME: This might not be a good primitive form.  I'm leaning more
+-- and more towards basic scheme, which would mean actual
+-- continuations and function calls.
+form['for'] = function(self, for_expr, hole)
+   -- For doesn't return a value, so for now just assert there is
+   -- nothing to bind.
+   assert(not hole)
+   local _, setup, inner = se.unpack(for_expr, { n = 2, tail = true })
+
+   self:write(self:indent_string() .. "for(;;){\n")
+   self.indent = self.indent + 1
+
+   for form in se.elements(inner) do
+      assert(form)
+      self:compile(form, nil)
+   end
+
+   self.indent = self.indent - 1
+   self:write(self:indent_string() .. "}\n")
+end
+
+form['if'] = function(self, if_expr, hole)
+   assert(not hole)
+   local _, setup, inner = se.unpack(if_expr, { n = 2, tail = true })
+
+   self:write(self:indent_string() .. "for(;;){\n")
+   self.indent = self.indent + 1
+
+   for form in se.elements(inner) do
+      assert(form)
+      self:compile(form, nil)
+   end
+
+   self.indent = self.indent - 1
+   self:write(self:indent_string() .. "}\n")
+end
+
+
 -- Core form is 'let*' which mostly resembles C's scoping rules.
 form['let*'] = function(self, let_expr, hole)
    local _, bindings, inner = se.unpack(let_expr, { n = 2, tail = true })
@@ -126,8 +164,8 @@ form['let*'] = function(self, let_expr, hole)
       self:compile(expr, n)
    end
 
-   -- Compile inner forms as statements.  Last one gets bound
-   -- for non-nil hole.
+   -- Compile inner forms as statements.  C handles value passing of
+   -- the last statement if this is compiled as statement expression.
    assert(se.length(inner) > 0)
    for form in se.elements(inner) do
       assert(form)
@@ -149,14 +187,18 @@ form['let*'] = function(self, let_expr, hole)
 
 end
 
--- Every machine is a loop.
-form['loop'] = function(self, expr, hole)
-   assert(2 == se.length(expr))
-   local _, expr1 = se.unpack(expr, {n = 2})
-   self:write("void loop(state_t *s) {\nbegin:\n");
+-- Functions with no arguments.
+-- FIXME: How to specify this as only top-level form?
+form['define'] = function(self, expr, hole)
+   local _, spec, expr1 = se.unpack(expr, {n = 3})
+   local fname = se.unpack(spec, {n = 1})
+   self:write("void " .. fname .. "("
+                 .. self.config.state_type
+                 .. " *" .. self.config.state_name
+                 .. ") {\n");
    assert(expr1)
    self:compile(expr1, hole)
-   self:write(self:indent_string() .. "goto begin;\n}\n");
+   self:write(self:indent_string() .. "}\n");
 end
 
 -- Blocking form.  This is implemented in a C macro.
@@ -173,7 +215,11 @@ form['read'] = function(self, expr, hole)
          var.state = 'lost'
       end
    end
-   self:write_binding(hole, "READ(" .. chan .. ")")
+   self:write_binding(
+      hole,
+      "SM_READ("
+         .. self.config.state_name .. ","
+         .. self.config.state_name .. "->" .. chan .. ")")
 end
 
 function scm:stack_index(n)
@@ -266,6 +312,55 @@ function scm:atom_to_c_expr(atom, hole)
    end
 end
 
+function scm:gensym()
+   local n = self.sym_n
+   self.sym_n = n + 1
+   -- FIXME: Generated symbols should not clash with any program text.
+   return "g" .. n
+end
+
+-- Convert all arguments to A-Normal form.
+-- https://en.wikipedia.org/wiki/A-normal_form
+function scm:anf(expr, hole)
+   local bindings = {}
+   local prim_forms = {}
+
+   assert(se.length(expr) > 0)
+   -- FIXME: Functions are primitive for now.
+   assert(type(se.car(expr)) == 'string')
+
+   for subexpr in se.elements(expr) do
+      if type(subexpr) == 'table' then
+         -- non-primitive, insert form
+         local sym = self:gensym()
+         local binding = se.list(sym, subexpr)
+         table.insert(bindings, binding)
+         table.insert(prim_forms, sym)
+      else
+         -- primitive, just collect it
+         table.insert(prim_forms, subexpr)
+      end
+   end
+   if #bindings == 0 then
+      -- Compile primitive call
+      local args = {}
+      for i=2,#prim_forms do
+         table.insert(args, self:atom_to_c_expr(prim_forms[i]))
+      end
+      local c_expr = prim_forms[1] .. "(" .. table.concat(args, ",") .. ")"
+      self:write_binding(hole, c_expr)
+
+   else
+      -- Generate let* and ecurse into compiler
+      self:compile(
+         se.list('let*',
+                 se.array_to_list(bindings),
+                 -- List expression containing function call
+                 se.array_to_list(prim_forms)),
+         hole)
+   end
+end
+
 function scm:compile(expr, hole)
    if type(expr) ~= 'table' then
       return self:write_binding(hole, self:atom_to_c_expr(expr))
@@ -278,15 +373,7 @@ function scm:compile(expr, hole)
    if form_fn then
       return form_fn(self, expr, hole)
    else
-      -- We expect everything to be in ANF, meaning arguments to
-      -- function calls are only constants or variable references.
-      -- FIXME: Insert let* form if this is not the case.
-      local refs = {}
-      for maybe_var in se.elements(tail) do
-         table.insert(refs, self:atom_to_c_expr(maybe_var))
-      end
-      local c_expr = expr[1] .. "(" .. table.concat(refs, ",") .. ")"
-      self:write_binding(hole, c_expr)
+      self:anf(expr, hole)
    end
 end
 
@@ -298,27 +385,37 @@ end
 -- the C stack.
 function scm:compile_passes(expr)
 
-   self:write("\n#if 0 // first pass\n")
+   self:reset()
+   self:write("\n// first pass\n")
+   self:write("#if 0\n")
    self:compile(expr)
    self:write("// state size: " .. self.stack_size .. "\n")
    self:write("#endif\n")
 
    -- Second pass uses vars_last: the information gathered about each
    -- variable in the first pass.
-   self.vars_last = self.vars ; self.vars = {}
-   self.stack_size = 0
-   assert(0 == #self.env)
-   assert(1 == self.indent)
+   self.vars_last = self.vars
 
+   self:reset()
    self:write("\n// second pass\n")
    self:compile(expr)
    self:write("// state size: " .. self.stack_size .. "\n")
    self:write("\n")
 end
 
+-- Reset compiler state before executing a new pass.
+function scm:reset()
+   self.vars = {}
+   self.stack_size = 0
+   self.sym_n = 0
+   assert(0 == #self.env)
+   assert(1 == self.indent)
+end
+
 
 function scm.new()
-   local obj = { env = {}, vars = {}, indent = 1, stack_size = 0 }
+   local config = { state_name = "s", state_type = "state_t" }
+   local obj = { env = {}, indent = 1, config = config }
    setmetatable(obj, {__index = scm})
    return obj
 end
