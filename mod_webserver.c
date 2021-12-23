@@ -165,7 +165,14 @@ void get_request(struct http_req *c, const char *uri) {
         uri = WEBSERVER_INDEX_HTML;
         LOG("-> %s\n", uri);
     }
-    else { if (!is_local(uri)) return; }
+    else {
+        /* Keep it simple: all files need to be in the webroot.  No
+           subdirectories allowed. */
+        if (!is_local(uri)) {
+            LOG("%s is not local\n", uri);
+            return;
+        }
+    }
     int n = sizeof(s->filename);
     strncpy(s->filename, uri, n);
     s->filename[n-1] = 0;

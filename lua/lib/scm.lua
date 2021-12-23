@@ -198,7 +198,7 @@ form['define'] = function(self, expr, hole)
                  .. ") {\n");
    assert(expr1)
    self:compile(expr1, hole)
-   self:write(self:indent_string() .. "}\n");
+   self:write("}\n");
 end
 
 -- Blocking form.  This is implemented in a C macro.
@@ -323,7 +323,7 @@ end
 -- https://en.wikipedia.org/wiki/A-normal_form
 function scm:anf(expr, hole)
    local bindings = {}
-   local prim_forms = {}
+   local app_form = {}
 
    assert(se.length(expr) > 0)
    -- FIXME: Functions are primitive for now.
@@ -335,19 +335,19 @@ function scm:anf(expr, hole)
          local sym = self:gensym()
          local binding = se.list(sym, subexpr)
          table.insert(bindings, binding)
-         table.insert(prim_forms, sym)
+         table.insert(app_form, sym)
       else
          -- primitive, just collect it
-         table.insert(prim_forms, subexpr)
+         table.insert(app_form, subexpr)
       end
    end
    if #bindings == 0 then
       -- Compile primitive call
       local args = {}
-      for i=2,#prim_forms do
-         table.insert(args, self:atom_to_c_expr(prim_forms[i]))
+      for i=2,#app_form do
+         table.insert(args, self:atom_to_c_expr(app_form[i]))
       end
-      local c_expr = prim_forms[1] .. "(" .. table.concat(args, ",") .. ")"
+      local c_expr = app_form[1] .. "(" .. table.concat(args, ",") .. ")"
       self:write_binding(hole, c_expr)
 
    else
@@ -356,7 +356,7 @@ function scm:anf(expr, hole)
          se.list('let*',
                  se.array_to_list(bindings),
                  -- List expression containing function call
-                 se.array_to_list(prim_forms)),
+                 se.array_to_list(app_form)),
          hole)
    end
 end

@@ -14,7 +14,7 @@
                 (c (read chan1)))
            (add b c)))
         (d (read chan1))
-        (e (let* ((x (add a (+ 1 2)))
+        (e (let* ((x (add a (add 1 2)))
                   (y (add d 2)))
              (add x y)))
         (f (read chan1))
