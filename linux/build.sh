@@ -1,5 +1,4 @@
 #!/bin/sh
-
 [ -z "$UC_TOOLS" ] && UC_TOOLS=$(dirname $O)/..
 
 . $(dirname $0)/../build_lib.sh
@@ -15,7 +14,6 @@ VERSION_LINK VERSION_LINK_GEN ELF_SHA1_DIR
 
 assert_vars TYPE
 
-
 case "$TYPE" in
     o)
         assert_vars ARCH O
@@ -24,7 +22,8 @@ case "$TYPE" in
 
         [ -z "$GCC" ] && . $UC_TOOLS/linux/env.$ARCH.sh
 
-        set -x
+        # set -x
+
         $GCC \
             $CFLAGS \
             $CFLAGS_EXTRA \

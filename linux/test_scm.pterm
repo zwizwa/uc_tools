@@ -1,0 +1,13 @@
+%% -*- erlang -*-
+%%
+%% Here's an attempt to start moving some of the ad-hoc configuration
+%% out of .erl files and into per-file configuration files.  This file
+%% contains an Erlang Map with configuration.  See do_uc_tools.erl
+%% build rule for o files.
+
+#{ deps =>
+       %% Omitting directory means files are in the same directory as
+       %% .conf file.  Otherwise exo-relative paths are necesary.
+       [{c,<<"mod_test_scm">>}]
+}
+
