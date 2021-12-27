@@ -104,6 +104,7 @@ end
 -- FIXME: This might not be a good primitive form.  I'm leaning more
 -- and more towards basic scheme, which would mean actual
 -- continuations and function calls.
+-- EDIT: Tail recursion is now supported.
 form['for'] = function(self, for_expr, hole)
    -- For doesn't return a value, so for now just assert there is
    -- nothing to bind.
@@ -122,21 +123,22 @@ form['for'] = function(self, for_expr, hole)
    self:write(self:indent_string() .. "}\n")
 end
 
-form['if'] = function(self, if_expr, hole)
-   assert(not hole)
-   local _, setup, inner = se.unpack(if_expr, { n = 2, tail = true })
+-- TODO
+-- form['if'] = function(self, if_expr, hole)
+--    assert(not hole)
+--    local _, setup, inner = se.unpack(if_expr, { n = 2, tail = true })
 
-   self:write(self:indent_string() .. "for(;;){\n")
-   self.indent = self.indent + 1
+--    self:write(self:indent_string() .. "for(;;){\n")
+--    self.indent = self.indent + 1
 
-   for form in se.elements(inner) do
-      assert(form)
-      self:compile(form, nil)
-   end
+--    for form in se.elements(inner) do
+--       assert(form)
+--       self:compile(form, nil)
+--    end
 
-   self.indent = self.indent - 1
-   self:write(self:indent_string() .. "}\n")
-end
+--    self.indent = self.indent - 1
+--    self:write(self:indent_string() .. "}\n")
+-- end
 
 
 -- Core form is 'let*' which mostly resembles C's scoping rules.
@@ -164,15 +166,18 @@ form['let*'] = function(self, let_expr, hole)
 
       -- Reserve a location
       local n = self:push(var)
-      self:compile(expr, n)
+      self:compile(expr, n, false)
    end
 
    -- Compile inner forms as statements.  C handles value passing of
    -- the last statement if this is compiled as statement expression.
-   assert(se.length(inner) > 0)
-   for form in se.elements(inner) do
+   local n_inner = se.length(inner)
+   assert(n_inner > 0)
+
+
+   for form, rest_expr in se.elements(inner) do
       assert(form)
-      self:compile(form, nil)
+      self:compile(form, nil, not se.is_pair(rest_expr))
    end
 
    self.indent = self.indent - 1
@@ -224,7 +229,11 @@ form['module'] = function(self, expr, hole)
    for_defines(
       function(fname, body_expr)
          self:write(fname .. ":\n");
-         self:compile(body_expr, nil)
+         -- Every function starts and ends with an empty environment.
+         -- We do not (yet) support closures.
+         assert(#self.env == 0)
+         self:compile(body_expr, nil, true)
+         assert(#self.env == 0)
       end)
 
    self:write("}\n");
@@ -351,7 +360,7 @@ end
 
 -- Convert all arguments to A-Normal form.
 -- https://en.wikipedia.org/wiki/A-normal_form
-function smc:anf(expr, hole)
+function smc:anf(expr, hole, tail_position)
    local bindings = {}
    local app_form = {}
 
@@ -381,8 +390,9 @@ function smc:anf(expr, hole)
          -- Composite
          -- FIXME: only 0-arg tail calls for now!
          assert(#app_form == 1)
-         assert(hole == nil)
-         local c_expr = "goto " .. app_form[1]
+         assert(tail_position)
+         -- local cmt = { [true] = "/*tail*/", [false] = "/*no-tail*/" }
+         local c_expr = "goto " .. app_form[1] --  .. cmt[tail_position]
          self:write_binding(hole, c_expr)
       else
          -- Primitive
@@ -401,7 +411,7 @@ function smc:anf(expr, hole)
    end
 end
 
-function smc:compile(expr, hole)
+function smc:compile(expr, hole, tail_position)
    if type(expr) ~= 'table' then
       return self:write_binding(hole, self:atom_to_c_expr(expr))
    end
@@ -413,7 +423,7 @@ function smc:compile(expr, hole)
    if form_fn then
       return form_fn(self, expr, hole)
    else
-      self:anf(expr, hole)
+      self:anf(expr, hole, tail_position)
    end
 end
 

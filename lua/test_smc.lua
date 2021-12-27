@@ -23,3 +23,11 @@ local function test()
    interp:compile_passes(expr)
 end
 test()
+
+-- function test1()
+--    local inner = se.array_to_list({1,2,3})
+--    for form, rest_expr in se.elements(inner) do
+--       log(form .. ":" .. #rest_expr .. "\n")
+--    end
+-- end
+-- test1()

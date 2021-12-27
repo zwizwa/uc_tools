@@ -60,13 +60,17 @@ function se.array_to_list(arr)
    end
    return lst
 end
+function se.is_pair(x)
+   return type(x) == 'table' and (#x == 2)
+end
 function se.elements(lst)
    local pair = lst
    return function()
       if pair then
          local el, rest = unpack(pair)
          pair = rest
-         return el
+         -- It's very convenient to also return the tail of the list.
+         return el, pair
       end
    end
 end
