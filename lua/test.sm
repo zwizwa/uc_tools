@@ -28,6 +28,12 @@
   (define (fun2)
     (fun1))
 
+  (define (fun3)
+    (let*
+        ((a (read chan1))
+         (b (read chan2)))
+      (add a b)))
+
   )
 
 

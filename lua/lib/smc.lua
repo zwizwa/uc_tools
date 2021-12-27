@@ -70,9 +70,9 @@ function smc:indent_string()
 end
 
 -- Introduce a varible.
-function smc:push(var)
+function smc:push(var_name)
    local id = #self.vars + 1
-   local v = {var=var,id=id,state='unbound'}
+   local v = {var=var_name,id=id,state='unbound'}
    -- self.var is the list of all created variables
    table.insert(self.vars, v)
    -- self.env is the currently visible environment, which gets popped on exit.
@@ -80,6 +80,7 @@ function smc:push(var)
    table.insert(self.env, v)
    return #self.env
 end
+
 function smc:pop()
    local var = self.env[#self.env]
    table.remove(self.env)
@@ -211,26 +212,33 @@ form['module'] = function(self, expr, hole)
       for define_expr in se.elements(define_exprs) do
          local define, fun_spec, body_expr = se.unpack(define_expr, {n = 3})
          assert(define == 'define')
-         local fname = se.unpack(fun_spec, {n = 1})
+         local fname, args = se.unpack(fun_spec, {n = 1, tail = true})
          assert(body_expr)
-         f(fname, body_expr)
+         f(fname, args, body_expr)
       end
    end
 
    -- 'define' has is only defined inside a 'module' form.  we need
    -- to perform two passes to allow for backreferences.
    for_defines(
-      function(fname, body_expr)
+      function(fname, args, body_expr)
          assert(type(fname == 'string'))
          assert(body_expr)
-         -- self.funs[fname] = body_expr -- Not necessary?
-         self.funs[fname] = true
+         -- Keeping track of these saves two purposes: 1) it allows to
+         -- distinguish between primitives and composite functions,
+         -- and 2) it allows inlining of non-tail calls.
+         self.funs[fname] = {args = args, body = body_expr}
       end)
    for_defines(
-      function(fname, body_expr)
+      function(fname, args, body_expr)
          self:write(fname .. ":\n");
          -- Every function starts and ends with an empty environment.
          -- We do not (yet) support closures.
+
+         -- FIXME: In first pass, keep track of which functions are
+         -- called in tail position.  Those will need to be emitted.
+         -- Functions that are only inlined do not need to be
+         -- generated.
          assert(#self.env == 0)
          self:compile(body_expr, nil, true)
          assert(#self.env == 0)
@@ -382,20 +390,35 @@ function smc:anf(expr, hole, tail_position)
    end
    if #bindings == 0 then
       -- Compile function call
-      local args = {}
-      for i=2,#app_form do
-         table.insert(args, self:atom_to_c_expr(app_form[i]))
-      end
-      if self.funs[app_form[1]] then
+      local fun_def = self.funs[app_form[1]]
+      if fun_def then
          -- Composite
-         -- FIXME: only 0-arg tail calls for now!
-         assert(#app_form == 1)
-         assert(tail_position)
-         -- local cmt = { [true] = "/*tail*/", [false] = "/*no-tail*/" }
-         local c_expr = "goto " .. app_form[1] --  .. cmt[tail_position]
-         self:write_binding(hole, c_expr)
+         if (tail_position) then
+            -- FIXME: only 0-arg tail calls for now!
+            assert(#app_form == 1)
+            -- local cmt = { [true] = "/*tail*/", [false] = "/*no-tail*/" }
+            local c_expr = "goto " .. app_form[1] --  .. cmt[tail_position]
+            self:write_binding(hole, c_expr)
+         else
+            -- Non-tail calls are inlined.  We do not support "real"
+            -- function calls which would need a stack.
+            local nb_bindings = #app_form - 1
+            -- Inlining boils down to creating aliases for variables..
+            for i=1,nb_bindings do
+               self:push(FIXME)
+            end
+            -- Then compiling the body expression.
+            self:compile(fun_def.body, hole, false)
+            for i=1,nb_bindings do
+               self:pop()
+            end
+         end
       else
          -- Primitive
+         local args = {}
+         for i=2,#app_form do
+            table.insert(args, self:atom_to_c_expr(app_form[i]))
+         end
          local c_expr = app_form[1] .. "(" .. table.concat(args, ",") .. ")"
          self:write_binding(hole, c_expr)
       end
@@ -434,6 +457,10 @@ end
 -- in the first pass to allocate variables in the state struct, or on
 -- the C stack.
 function smc:compile_passes(expr)
+   local w = self.write
+   -- Override to suppress printing of first pass C output, which is
+   -- only neccessary for debugging variable allocation.
+   self.write = function() end
 
    self:reset()
    self:write("\n// first pass\n")
@@ -441,6 +468,9 @@ function smc:compile_passes(expr)
    self:compile(expr)
    self:write("// state size: " .. self.stack_size .. "\n")
    self:write("#endif\n")
+
+
+   self.write = w
 
    -- Second pass uses vars_last: the information gathered about each
    -- variable in the first pass.
