@@ -1,10 +1,9 @@
--- FIXME: Just doodling.  Figuring out if this really needs large
--- infrastructure or not (e.g. Haskell or Racket), or if Lua is enough
--- to compile it.
+-- Compiles a subset of Scheme to sm.h style state machines.
 
+-- FIXME: Just doodling at this poing.  Figuring out if this really
+-- needs large infrastructure or not (e.g. Haskell or Racket), or if
+-- Lua is enough to compile it.
 
--- Compiler for small subset of Scheme to compile down to sm.h style
--- state machines.
 
 -- Some ideas:
 
@@ -37,15 +36,19 @@
 -- * Blocking subroutines are not yet implemented.  Simplest is to
 --   implement them as macros, but a function call mechanism inside a
 --   machine isn't an impossible challenge.
+--
+-- * To support function calls we take an iterative approach:
+--   1) a single Scheme file (module) maps to a single C function.
+--   2) Scheme functions map to goto labels inside the C function.
 
 
 
 local se = require('lib.se')
 
-local scm = {}
+local smc = {}
 
 local form = {}
-scm.form = form
+smc.form = form
 
 local function is_form(expr, form)
    return type(expr) == 'table' and expr[1] == form
@@ -58,7 +61,7 @@ local function tail(arr)
 end
 
 
-function scm:indent_string()
+function smc:indent_string()
    local strs = {}
    for i=1,self.indent do
       table.insert(strs,"  ")
@@ -67,7 +70,7 @@ function scm:indent_string()
 end
 
 -- Introduce a varible.
-function scm:push(var)
+function smc:push(var)
    local id = #self.vars + 1
    local v = {var=var,id=id,state='unbound'}
    -- self.var is the list of all created variables
@@ -77,11 +80,11 @@ function scm:push(var)
    table.insert(self.env, v)
    return #self.env
 end
-function scm:pop()
+function smc:pop()
    local var = self.env[#self.env]
    table.remove(self.env)
 end
-function scm:ref(var)
+function smc:ref(var)
    -- search backwards.  this implements shadowing
    for i=#self.env,1,-1 do
       local v = self.env[i]
@@ -187,19 +190,46 @@ form['let*'] = function(self, let_expr, hole)
 
 end
 
--- Functions with no arguments.
--- FIXME: How to specify this as only top-level form?
-form['define'] = function(self, expr, hole)
-   local _, spec, expr1 = se.unpack(expr, {n = 3})
-   local fname = se.unpack(spec, {n = 1})
-   self:write("void " .. fname .. "("
+-- Functions with no arguments compile to goto lables.  The module
+-- form compiles to a C function.
+
+form['module'] = function(self, expr, hole)
+   assert(hole == nil)
+   local _, mod_spec, define_exprs = se.unpack(expr, {n = 2, tail = true})
+   local modname = se.unpack(mod_spec, {n = 1})
+   self:write("void " .. modname .. "("
                  .. self.config.state_type
                  .. " *" .. self.config.state_name
                  .. ") {\n");
-   assert(expr1)
-   self:compile(expr1, hole)
+
+   local function for_defines(f)
+      for define_expr in se.elements(define_exprs) do
+         local define, fun_spec, body_expr = se.unpack(define_expr, {n = 3})
+         assert(define == 'define')
+         local fname = se.unpack(fun_spec, {n = 1})
+         assert(body_expr)
+         f(fname, body_expr)
+      end
+   end
+
+   -- 'define' has is only defined inside a 'module' form.  we need
+   -- to perform two passes to allow for backreferences.
+   for_defines(
+      function(fname, body_expr)
+         assert(type(fname == 'string'))
+         assert(body_expr)
+         -- self.funs[fname] = body_expr -- Not necessary?
+         self.funs[fname] = true
+      end)
+   for_defines(
+      function(fname, body_expr)
+         self:write(fname .. ":\n");
+         self:compile(body_expr, nil)
+      end)
+
    self:write("}\n");
 end
+
 
 -- Blocking form.  This is implemented in a C macro.
 form['read'] = function(self, expr, hole)
@@ -222,7 +252,7 @@ form['read'] = function(self, expr, hole)
          .. self.config.state_name .. "->" .. chan .. ")")
 end
 
-function scm:stack_index(n)
+function smc:stack_index(n)
    -- Only works in second pass.  In first pass we map the Scheme
    -- environment index directly to a stack index.
    local n1 = n
@@ -243,7 +273,7 @@ function scm:stack_index(n)
    return n1
 end
 
-function scm:var_and_type(n)
+function smc:var_and_type(n)
    local v = self.env[n]
    local c_index = self:stack_index(n) - 1
 
@@ -270,20 +300,20 @@ function scm:var_and_type(n)
    end
 end
 
-function scm:var(n)
+function smc:var(n)
    local c_expr, c_type = self:var_and_type(n)
    return c_expr
 end
 
-function scm:mark_bound(n)
+function smc:mark_bound(n)
    assert(self.env[n].state == 'unbound')
    self.env[n].state = 'local'
 end
-function scm:write_assign(n)
+function smc:write_assign(n)
    local var, typ = self:var_and_type(n)
    self:write(self:indent_string() .. typ .. var .. " = ")
 end
-function scm:write_binding(n, c_expr)
+function smc:write_binding(n, c_expr)
    if n then
       self:write_assign(n)
       self:mark_bound(n)
@@ -294,11 +324,11 @@ function scm:write_binding(n, c_expr)
    self:write(";\n");
 end
 
-function scm:apply(vals)
+function smc:apply(vals)
    return vals[1] .. "(" .. table.concat(tail(vals),",") .. ")"
 end
 
-function scm:atom_to_c_expr(atom, hole)
+function smc:atom_to_c_expr(atom, hole)
    if type(atom) == 'string' then
       local n = self:ref(atom)
       if n then
@@ -312,7 +342,7 @@ function scm:atom_to_c_expr(atom, hole)
    end
 end
 
-function scm:gensym()
+function smc:gensym()
    local n = self.sym_n
    self.sym_n = n + 1
    -- FIXME: Generated symbols should not clash with any program text.
@@ -321,7 +351,7 @@ end
 
 -- Convert all arguments to A-Normal form.
 -- https://en.wikipedia.org/wiki/A-normal_form
-function scm:anf(expr, hole)
+function smc:anf(expr, hole)
    local bindings = {}
    local app_form = {}
 
@@ -342,13 +372,23 @@ function scm:anf(expr, hole)
       end
    end
    if #bindings == 0 then
-      -- Compile primitive call
+      -- Compile function call
       local args = {}
       for i=2,#app_form do
          table.insert(args, self:atom_to_c_expr(app_form[i]))
       end
-      local c_expr = app_form[1] .. "(" .. table.concat(args, ",") .. ")"
-      self:write_binding(hole, c_expr)
+      if self.funs[app_form[1]] then
+         -- Composite
+         -- FIXME: only 0-arg tail calls for now!
+         assert(#app_form == 1)
+         assert(hole == nil)
+         local c_expr = "goto " .. app_form[1]
+         self:write_binding(hole, c_expr)
+      else
+         -- Primitive
+         local c_expr = app_form[1] .. "(" .. table.concat(args, ",") .. ")"
+         self:write_binding(hole, c_expr)
+      end
 
    else
       -- Generate let* and ecurse into compiler
@@ -361,7 +401,7 @@ function scm:anf(expr, hole)
    end
 end
 
-function scm:compile(expr, hole)
+function smc:compile(expr, hole)
    if type(expr) ~= 'table' then
       return self:write_binding(hole, self:atom_to_c_expr(expr))
    end
@@ -383,7 +423,7 @@ end
 -- fairly directly.  The second pass can use the information gathered
 -- in the first pass to allocate variables in the state struct, or on
 -- the C stack.
-function scm:compile_passes(expr)
+function smc:compile_passes(expr)
 
    self:reset()
    self:write("\n// first pass\n")
@@ -404,20 +444,21 @@ function scm:compile_passes(expr)
 end
 
 -- Reset compiler state before executing a new pass.
-function scm:reset()
+function smc:reset()
    self.vars = {}
    self.stack_size = 0
    self.sym_n = 0
+   self.funs = {}
    assert(0 == #self.env)
    assert(1 == self.indent)
 end
 
 
-function scm.new()
+function smc.new()
    local config = { state_name = "s", state_type = "state_t" }
    local obj = { env = {}, indent = 1, config = config }
-   setmetatable(obj, {__index = scm})
+   setmetatable(obj, {__index = smc})
    return obj
 end
 
-return scm
+return smc
