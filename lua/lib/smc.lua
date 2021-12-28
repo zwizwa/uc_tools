@@ -1,11 +1,7 @@
 -- Compiles a subset of Scheme to sm.h style state machines.
 
--- FIXME: Probably good to remove as much mutable state as possible.
--- Only for "accumulators".
-
-
 -- Some ideas:
-
+--
 -- * General language structure:
 --   1) a Scheme module maps to a C function.
 --   2) Scheme functions map to goto labels inside the C function.
@@ -39,6 +35,9 @@
 -- * Blocking subroutines are not (yet) implemented.  Any non-tail
 --   function call is inlined.
 --
+-- * The for(;;) C form is implemented explicitly, modeled after a
+--   stripped-down Racket for form.
+--
 --
 
 -- WTF why Lua?
@@ -71,15 +70,8 @@ smc.form = form
 local function is_form(expr, form)
    return type(expr) == 'table' and expr[1] == form
 end
-local function tail(arr)
-   local tab = {}
-   assert(#arr > 0)
-   for i=2,#arr do table.insert(tab, arr[i]) end
-   return tab
-end
 
-
-function smc:indent_string()
+function smc:tab()
    local strs = {}
    for i=1,self.indent do
       table.insert(strs,"  ")
@@ -87,16 +79,26 @@ function smc:indent_string()
    return table.concat(strs,"")
 end
 
+-- Note that variables and cells are separate.  A variable is a Lua
+-- string that refers to a cell.  Cells can be aliased, e.g. inside an
+-- inlined function context, variables are typically renamed.
+--
+-- Cells are allocated on the C stack (if it is known that there is no
+-- suspend boundary between definition and reference), or in the
+-- persistent store otherwise.
 
 -- Introduce a varible.
 function smc:new_cell()
    local id = #self.cells + 1
-   local cell = {id=id,bind='unbound'}
+   local cell = {id = id, bind = 'unbound'}
    if (not self.cells_last) or (self.cells_last[id].bind == 'saved') then
-      -- In first pass (no cells_last), assume this variable needs to
-      -- be saved on the state stack.  In second pass we have analysis
-      -- information to distinguish between emphemeral (local) and
-      -- saved.
+      -- In second pass (cells_last defined) we can distinguish
+      -- between variables that need to be saved in the state struct,
+      -- or those that can be represented as C variables.  This
+      -- optimization is the main purpose of this mini language.
+      --
+      -- In the first pass this information is not known, so all
+      -- variables are allocated in the state struct.
       cell.c_index = self.stack_ptr
       self.stack_ptr = self.stack_ptr + 1
       if self.stack_ptr > self.stack_size then
@@ -108,9 +110,11 @@ function smc:new_cell()
    return cell
 end
 
-function smc:push_var(var_name)
+-- Introduce a variable in the lexical scope associated to a new
+-- storage cell.
+function smc:push_new_var(var_name)
    local cell = self:new_cell()
-   local v = {var=var_name,cell=cell}
+   local v = {var = var_name, cell = cell}
    -- self.env is the currently visible environment, which gets popped on exit.
    -- FIXME: How to not put unbound variables here? Maybe not an issue..
    self.env = se.cons(v, self.env)
@@ -120,17 +124,18 @@ end
 -- Aliases are used to implement substitution for function inlining.
 function smc:push_alias(alias_name, v)
    assert(v and v.cell)
-   local v_alias = {var=alias_name, cell=v.cell}
+   local v_alias = {var = alias_name, cell = v.cell}
    self.env = se.cons(v_alias, self.env)
    return v_alias
 end
 
-function smc:ref(var, env)
+-- Map a variable name to variable slot in the environment.
+function smc:ref(var_name, env)
    if not env then env = self.env end
 
    -- search starts at last pushed variable.  this implements shadowing
    for v in se.elements(env) do
-      if v.var == var then
+      if v.var == var_name then
          -- note that if the cell is not yet bound to a value, we
          -- can't see it yet.  this is a hack: FIXME
          if v.cell.bind ~= 'unbound' then
@@ -147,7 +152,8 @@ function smc:ref(var, env)
    return nil
 end
 
--- This is a stripped-down version of the racket 'for' form.
+-- This is a stripped-down version of the racket 'for' form supporting
+-- a single sequence.
 form['for'] = function(self, for_expr, hole)
    -- For doesn't return a value, so for now just assert there is
    -- nothing to bind.
@@ -166,10 +172,10 @@ form['for'] = function(self, for_expr, hole)
    self:save(
       {'env'},
       function()
-         local v = self:push_var(var_name)
-         self:write(self:indent_string())
+         local v = self:push_new_var(var_name)
+         self:write(self:tab())
          self:write("for(")
-         self:write_assign(v)
+         self:write_var_def(v)
          self:write("0 ; ")
          self:mark_bound(v)
          local cv = self:atom_to_c_expr(var_name)
@@ -182,7 +188,7 @@ form['for'] = function(self, for_expr, hole)
          end
          self.indent = self.indent - 1
 
-         self:write(self:indent_string() .. "}\n")
+         self:write(self:tab() .. "}\n")
       end)
 end
 
@@ -191,7 +197,7 @@ end
 --    assert(not hole)
 --    local _, setup, inner = se.unpack(if_expr, { n = 2, tail = true })
 
---    self:write(self:indent_string() .. "for(;;){\n")
+--    self:write(self:tab() .. "for(;;){\n")
 --    self.indent = self.indent + 1
 
 --    for form in se.elements(inner) do
@@ -200,7 +206,7 @@ end
 --    end
 
 --    self.indent = self.indent - 1
---    self:write(self:indent_string() .. "}\n")
+--    self:write(self:tab() .. "}\n")
 -- end
 
 -- Save/restore dynamic environment.
@@ -218,20 +224,17 @@ end
 
 
 -- Core form is 'let*' which mostly resembles C's scoping rules.
+-- Compile the form to C statement expressions.
 form['let*'] = function(self, let_expr, hole, tail_position)
    local _, bindings, inner = se.unpack(let_expr, { n = 2, tail = true })
 
    assert(type(bindings) == 'table')
 
+   self:write(self:tab())
    if hole then
-      -- C statement expressions are essentially let*
-      self:write(self:indent_string())
-      self:write_assign(hole)
-      self:write("({\n")
-   else
-      -- If there's no variable to bind then use a block.
-      self:write(self:indent_string() .. "({\n")
+      self:write_var_def(hole)
    end
+   self:write("({\n")
 
    self:save(
       {'env','stack_ptr','indent'},
@@ -243,9 +246,7 @@ form['let*'] = function(self, let_expr, hole, tail_position)
             local var, expr = se.unpack(binding, { n = 2 })
             assert(type(var) == 'string')
             assert(expr)
-
-            -- Reserve a location
-            local v = self:push_var(var)
+            local v = self:push_new_var(var)
             self:compile(expr, v, false)
          end
 
@@ -264,16 +265,17 @@ form['let*'] = function(self, let_expr, hole, tail_position)
          end
    end)
 
-   self:write(self:indent_string() .. "});\n")
-   -- Only mark after it's actually bound.
+   self:write(self:tab() .. "});\n")
+
+   -- Only mark after it's actually bound in the C text.
    if hole then
       self:mark_bound(hole)
    end
 
 end
 
--- Functions with no arguments compile to goto lables.  The module
--- form compiles to a C function.
+-- The module form compiles to a C function.  Functions with no
+-- arguments compile to goto lables inside such a function.
 
 form['module'] = function(self, expr, hole)
    assert(hole == nil)
@@ -284,6 +286,7 @@ form['module'] = function(self, expr, hole)
                  .. " *" .. self.config.state_name
                  .. ") {\n");
 
+   -- 'define' is only defined inside a 'module' form.
    local function for_defines(f)
       for define_expr in se.elements(define_exprs) do
          local define, fun_spec, body_expr = se.unpack(define_expr, {n = 3})
@@ -294,15 +297,12 @@ form['module'] = function(self, expr, hole)
       end
    end
 
-   -- 'define' has is only defined inside a 'module' form.  we need
-   -- to perform two passes to allow for backreferences.
+   -- perform two passes to allow for backreferences.
    for_defines(
       function(fname, args, body_expr)
          assert(type(fname == 'string'))
          assert(body_expr)
-         -- Keeping track of these saves two purposes: 1) it allows to
-         -- distinguish between primitives and composite functions,
-         -- and 2) it allows inlining of non-tail calls.
+         -- Keep track of syntax for later inlining.
          self.funs[fname] = {args = args, body = body_expr}
       end)
    for_defines(
@@ -321,28 +321,34 @@ form['module'] = function(self, expr, hole)
 end
 
 
--- Blocking form.  This is implemented in a C macro.
+-- Blocking form.  The control structure itself is implemented
+-- separately in a C macro, specialized to the state machine
+-- scheduler.  It is not of concern here.  We only need to manage the
+-- lexical varariables.
 form['read'] = function(self, expr, hole)
    local _, chan = se.unpack(expr, {n = 2})
    local bound = {}
    for var in se.elements(self.env) do
-      -- At the suspension point, all local variables are lost.
-      -- This is used later when the variable is referenced to turn it
-      -- into a 'saved' variable, so in the second pass it can be
-      -- properly allocated.
+      -- All visible C local variables are undefined when we jump into
+      -- the body of a function.  Mark them 'lost' here.  This is used
+      -- later when the variable is referenced to turn it into a
+      -- 'saved' variable, so in the second pass it can be allocated
+      -- in the state struct.
       if var.cell.bind == 'local' then
          table.insert(bound, n)
          var.cell.bind = 'lost'
       end
    end
+   local s = self.config.state_name
    self:write_binding(
       hole,
       "SM_READ("
-         .. self.config.state_name .. ","
-         .. self.config.state_name .. "->" .. chan .. ")")
+         .. s .. ","
+         .. s .. "->" .. chan .. ")")
 end
 
 
+-- C representation of variable (lvalue/rvalue), and its type.
 function smc:var_and_type(v)
    local comment = "/*" .. v.var .. "*/"
    if v.cell.c_index then
@@ -352,29 +358,35 @@ function smc:var_and_type(v)
    end
 end
 
+-- Just the lvalue/rvalue.
 function smc:var(n)
    local c_expr, c_type = self:var_and_type(n)
    return c_expr
 end
 
+-- Called after C code is emitted that assigns a value to the
+-- variable.
 function smc:mark_bound(v)
    assert(v.cell.bind == 'unbound')
    v.cell.bind = 'local'
 end
-function smc:write_assign(n)
-   local var, typ = self:var_and_type(n)
+
+-- Emit C code for variable definition.
+function smc:write_var_def(v)
+   local var, typ = self:var_and_type(v)
    self:write( typ .. var .. " = ")
 end
-function smc:write_binding(n, c_expr)
-   self:write(self:indent_string())
-   if n then
-      self:write_assign(n)
-      self:mark_bound(n)
+function smc:write_binding(v, c_expr)
+   self:write(self:tab())
+   if v then
+      self:write_var_def(v)
+      self:mark_bound(v)
    end
    self:write(c_expr)
    self:write(";\n");
 end
 
+-- Map Scheme atom (const or variable) to its C representation.
 function smc:atom_to_c_expr(atom)
    if type(atom) == 'string' then
       local n = self:ref(atom)
@@ -389,11 +401,19 @@ function smc:atom_to_c_expr(atom)
    end
 end
 
+-- Type checking shorthand
+local function tc(typ,val)
+   assert(type(val) == typ)
+   return val
+end
+
+-- Generate symbols for let-insertion.  These use a prefix that is not
+-- legal in the code so they never clash with source variables.
 function smc:gensym()
    local n = self.sym_n
    self.sym_n = n + 1
    -- FIXME: Generated symbols should not clash with any program text.
-   return "#" .. n
+   return ";" .. n
 end
 
 -- Apply function to arguments, converting all arguments to A-Normal
@@ -437,7 +457,6 @@ function smc:apply(expr, hole, tail_position)
       return
    end
 
-
    -- The expression is in A-Normal form.
    local fun_name = app_form[1]
    local fun_def = self.funs[fun_name]
@@ -477,17 +496,16 @@ function smc:apply(expr, hole, tail_position)
             -- to cells accessible through the callsite environment.
             local callsite_env = self.env
             self.env = {}
-            -- Note that we do NOT change self.stack_ptr
             local dbg = {fun_name}
             for i=1, #app_form-1 do
-               local var_name = app_form[i+1]   ; assert(type(var_name) == 'string')
-               local arg_name = fun_def.args[i] ; assert(type(arg_name) == 'string')
-               local callsite_var = self:ref(var_name, callsite_env) ; assert(callsite_var)
+               local var_name = tc('string',app_form[i+1])
+               local arg_name = tc('string',fun_def.args[i])
+               local callsite_var = tc('table',self:ref(var_name, callsite_env))
                self:push_alias(arg_name, callsite_var)
                table.insert(dbg, arg_name .. "=" .. var_name)
             end
             -- The body can then be compiled in this local environment.
-            self:write(self:indent_string() .. "/*inline:" .. table.concat(dbg,",") .. "*/\n")
+            self:write(self:tab() .. "/*inline:" .. table.concat(dbg,",") .. "*/\n")
             self:compile(fun_def.body, hole, false)
          end)
    end
@@ -498,6 +516,10 @@ local function ifte(c,t,f)
    if c then return t else return f end
 end
 
+-- Compilation dispatch based on expr.  If hole is non-nil, it refers
+-- to the variable that takes the value of the expression.  If
+-- tail_position is true, this expression resides in the tail position
+-- of a function definition ( where goto statements are valid. )
 function smc:compile(expr, hole, tail_position)
    if type(expr) ~= 'table' then
       -- variable or constant
@@ -522,7 +544,7 @@ end
 -- code directly, as the shape of the code resembles the Scheme code
 -- fairly directly.  The second pass can use the information gathered
 -- in the first pass to allocate variables in the state struct, or on
--- the C stack.
+-- the C stack, and to omit unused function definitions.
 function smc:compile_passes(expr)
    local w = self.write
    -- Override to suppress printing of first pass C output, which is
@@ -535,7 +557,6 @@ function smc:compile_passes(expr)
    self:compile(expr)
    self:write("// stack_size: " .. self.stack_size .. "\n")
    self:write("#endif\n")
-
 
    self.write = w
 

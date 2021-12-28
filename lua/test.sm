@@ -30,7 +30,7 @@
       (send e)
       (send f)
       (for ((i (in-range 3)))
-        (send (add e i)))
+        (send (add (read chan1) i)))
       (fun2)))
 
   (define (fun2)
