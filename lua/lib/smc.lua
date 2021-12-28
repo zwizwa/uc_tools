@@ -74,7 +74,7 @@ local function next_stack_index(env)
       local v = env[i]
       if v.index then return v.index + 1 end
    end
-   return 1
+   return 0 -- This is a C index, starts at 0.
 end
 
 -- Introduce a varible.
@@ -98,7 +98,7 @@ function smc:push(var_name)
    -- self.env is the currently visible environment, which gets popped on exit.
    -- FIXME: How to not put unbound variables here? Maybe not an issue..
    table.insert(self.env, v)
-   return #self.env
+   return v
 end
 
 function smc:pop()
@@ -116,7 +116,7 @@ function smc:ref(var)
          if v.state == 'lost' then
             v.state = 'saved'
          end
-         return i
+         return v
       end
    end
    return nil
@@ -186,8 +186,8 @@ form['let*'] = function(self, let_expr, hole)
       assert(expr)
 
       -- Reserve a location
-      local n = self:push(var)
-      self:compile(expr, n, false)
+      local v = self:push(var)
+      self:compile(expr, v, false)
    end
 
    -- Compile inner forms as statements.  C handles value passing of
@@ -289,12 +289,9 @@ form['read'] = function(self, expr, hole)
          .. self.config.state_name .. "->" .. chan .. ")")
 end
 
-function smc:stack_index(n)
-   return self.env[n].index
-end
 
-function smc:var_and_type(n)
-   local v = self.env[n]
+function smc:var_and_type(v)
+   -- FIXME: dispatch on v.index instead?
 
    if not self.vars_last then
       -- First pass: allocate all bindings in the state's stack.
@@ -302,8 +299,8 @@ function smc:var_and_type(n)
       if v.state == 'saved' then state_comment = ":saved" end
       local comment = "/*" .. v.var .. state_comment .. "*/"
       -- return "r" .. v.id .. comment, ""
-      local c_index = self:stack_index(n) - 1
-      return "s->e[" .. c_index .. "]" .. comment, ""
+      assert(v.index)
+      return "s->e[" .. v.index .. "]" .. comment, ""
    else
       -- Second pass: we have a lot more information now.  Saved and
       -- local variables can be distinguished and the stack allocation
@@ -313,8 +310,7 @@ function smc:var_and_type(n)
       assert(last.state)
       local comment = "/*" .. v.var .. "*/"
       if last.state == 'saved' then
-         local c_index = self:stack_index(n) - 1
-         return "s->e[" .. c_index .. "]" .. comment, ""
+         return "s->e[" .. v.index .. "]" .. comment, ""
       else
          return "l" .. v.id .. comment, "T "
       end
@@ -326,9 +322,9 @@ function smc:var(n)
    return c_expr
 end
 
-function smc:mark_bound(n)
-   assert(self.env[n].state == 'unbound')
-   self.env[n].state = 'local'
+function smc:mark_bound(v)
+   assert(v.state == 'unbound')
+   v.state = 'local'
 end
 function smc:write_assign(n)
    local var, typ = self:var_and_type(n)
