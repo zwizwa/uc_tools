@@ -69,14 +69,21 @@ function smc:indent_string()
    return table.concat(strs,"")
 end
 
--- FIXME: later, with renaming, it is possible that variables get
--- shuffled so this might need to compute a maximum instead of first
--- match?
-local function next_cstack_index(stack)
-   for v in se.elements(stack) do
-      if v.index then return v.index + 1 end
+-- Return C index for C struct storage (first index is 0).
+-- This depends on the current stack.
+-- Also we have no guarantee that the variables are ordered, so scan the whole stack.
+-- FIXME: That introduces quadratic behavior
+function smc:next_c_index()
+   local c_index = 0
+   for v in se.elements(self.stack) do
+      if v.c_index and v.c_index >= c_index then
+         c_index = v.c_index + 1
+      end
    end
-   return 0 -- This is a C index, starts at 0.
+   if c_index >= self.c_size then
+      self.c_size = c_index + 1
+   end
+   return c_index
 end
 
 -- Introduce a varible.
@@ -88,7 +95,7 @@ function smc:new_var(var_name)
       -- be saved on the state stack.  In second pass we have analysis
       -- information to distinguish between emphemeral (local) and
       -- saved.
-      v.cstack_index = next_cstack_index(self.stack)
+      v.c_index = self:next_c_index()
    end
    -- self.var is the list of all created variables
    table.insert(self.vars, v)
@@ -158,7 +165,7 @@ end
 --    self:write(self:indent_string() .. "}\n")
 -- end
 
-
+-- Save/restore dynamic environment.
 function smc:save(keys, fun)
    local saved = {}
    for i,key in ipairs(keys) do
@@ -268,9 +275,9 @@ form['module'] = function(self, expr, hole)
          -- called in tail position.  Those will need to be emitted.
          -- Functions that are only inlined do not need to be
          -- generated.
-         --assert(#self.stack == 0)
+         assert(0 == se.length(self.stack))
          self:compile(body_expr, nil, true)
-         --assert(#self.stack == 0)
+         assert(0 == se.length(self.stack))
       end)
 
    self:write("}\n");
@@ -301,8 +308,8 @@ end
 
 function smc:var_and_type(v)
    local comment = "/*" .. v.var .. "*/"
-   if v.cstack_index then
-      return "s->e[" .. v.cstack_index .. "]" .. comment, ""
+   if v.c_index then
+      return "s->e[" .. v.c_index .. "]" .. comment, ""
    else
       return "l" .. v.id .. comment, "T "
    end
@@ -456,7 +463,7 @@ function smc:compile_passes(expr)
    self:write("\n// first pass\n")
    self:write("#if 0\n")
    self:compile(expr)
-   self:write("// state size: " .. self.stack_size .. "\n")
+   self:write("// state size: " .. self.c_size .. "\n")
    self:write("#endif\n")
 
 
@@ -469,14 +476,14 @@ function smc:compile_passes(expr)
    self:reset()
    self:write("\n// second pass\n")
    self:compile(expr)
-   self:write("// state size: " .. self.stack_size .. "\n")
+   self:write("// state size: " .. self.c_size .. "\n")
    self:write("\n")
 end
 
 -- Reset compiler state before executing a new pass.
 function smc:reset()
    self.vars = {}
-   self.stack_size = 0
+   self.c_size = 0
    self.sym_n = 0
    self.funs = {}
    assert(0 == se.length(self.stack))
