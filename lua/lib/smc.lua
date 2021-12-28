@@ -69,9 +69,11 @@ function smc:indent_string()
    return table.concat(strs,"")
 end
 
+-- FIXME: later, with renaming, it is possible that variables get
+-- shuffled so this might need to compute a maximum instead of first
+-- match?
 local function next_stack_index(env)
-   for i=#env,1,-1 do
-      local v = env[i]
+   for v in se.elements(env) do
       if v.index then return v.index + 1 end
    end
    return 0 -- This is a C index, starts at 0.
@@ -97,18 +99,16 @@ function smc:push(var_name)
    local v = self:new_var(var_name)
    -- self.env is the currently visible environment, which gets popped on exit.
    -- FIXME: How to not put unbound variables here? Maybe not an issue..
-   table.insert(self.env, v)
+   self.env = se.cons(v, self.env)
    return v
 end
 
 function smc:pop()
-   local var = self.env[#self.env]
-   table.remove(self.env)
+   self.env = se.cdr(self.env)
 end
 function smc:ref(var)
    -- search backwards.  this implements shadowing
-   for i=#self.env,1,-1 do
-      local v = self.env[i]
+   for v in se.elements(self.env) do
       if v.state ~= 'unbound' and v.var == var then
          -- If this is a variable that crossed a suspension border,
          -- mark it such that it gets stored in the state struct and
@@ -259,9 +259,9 @@ form['module'] = function(self, expr, hole)
          -- called in tail position.  Those will need to be emitted.
          -- Functions that are only inlined do not need to be
          -- generated.
-         assert(#self.env == 0)
+         --assert(#self.env == 0)
          self:compile(body_expr, nil, true)
-         assert(#self.env == 0)
+         --assert(#self.env == 0)
       end)
 
    self:write("}\n");
@@ -272,7 +272,7 @@ end
 form['read'] = function(self, expr, hole)
    local _, chan = se.unpack(expr, {n = 2})
    local bound = {}
-   for n,var in ipairs(self.env) do
+   for var in se.elements(self.env) do
       -- At the suspension point, all local variables are lost.
       -- This is used later when the variable is referenced to turn it
       -- into a 'saved' variable, so in the second pass it can be
@@ -471,7 +471,7 @@ function smc:reset()
    self.stack_size = 0
    self.sym_n = 0
    self.funs = {}
-   assert(0 == #self.env)
+   -- assert(0 == #self.env)
    assert(1 == self.indent)
 end
 
