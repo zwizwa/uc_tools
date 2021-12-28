@@ -76,8 +76,8 @@ end
 function smc:next_c_index()
    local c_index = 0
    for v in se.elements(self.stack) do
-      if v.c_index and v.c_index >= c_index then
-         c_index = v.c_index + 1
+      if v.cell.c_index and v.cell.c_index >= c_index then
+         c_index = v.cell.c_index + 1
       end
    end
    if c_index >= self.c_size then
@@ -87,23 +87,24 @@ function smc:next_c_index()
 end
 
 -- Introduce a varible.
-function smc:new_var(var_name)
-   local id = #self.vars + 1
-   local v = {var=var_name,cell={id=id,bind='unbound'}}
-   if (not self.vars_last) or (self.vars_last[id].cell.bind == 'saved') then
-      -- In first pass (no vars_last), assume this variable needs to
+function smc:new_cell(var_name)
+   local id = #self.cells + 1
+   local cell = {id=id,bind='unbound'}
+   if (not self.cells_last) or (self.cells_last[id].bind == 'saved') then
+      -- In first pass (no cells_last), assume this variable needs to
       -- be saved on the state stack.  In second pass we have analysis
       -- information to distinguish between emphemeral (local) and
       -- saved.
-      v.c_index = self:next_c_index()
+      cell.c_index = self:next_c_index()
    end
    -- self.var is the list of all created variables
-   table.insert(self.vars, v)
-   return v
+   table.insert(self.cells, cell)
+   return cell
 end
 
 function smc:push_new_var(var_name)
-   local v = self:new_var(var_name)
+   local cell = self:new_cell(var_name)
+   local v = {var=var_name,cell=cell}
    -- self.stack is the currently visible environment, which gets popped on exit.
    -- FIXME: How to not put unbound variables here? Maybe not an issue..
    self.stack = se.cons(v, self.stack)
@@ -308,8 +309,8 @@ end
 
 function smc:var_and_type(v)
    local comment = "/*" .. v.var .. "*/"
-   if v.c_index then
-      return "s->e[" .. v.c_index .. "]" .. comment, ""
+   if v.cell.c_index then
+      return "s->e[" .. v.cell.c_index .. "]" .. comment, ""
    else
       return "l" .. v.cell.id .. comment, "T "
    end
@@ -469,9 +470,9 @@ function smc:compile_passes(expr)
 
    self.write = w
 
-   -- Second pass uses vars_last: the information gathered about each
-   -- variable in the first pass.
-   self.vars_last = self.vars
+   -- Second pass uses cells_last: the information gathered about each
+   -- storage cell in the first pass.
+   self.cells_last = self.cells
 
    self:reset()
    self:write("\n// second pass\n")
@@ -482,7 +483,7 @@ end
 
 -- Reset compiler state before executing a new pass.
 function smc:reset()
-   self.vars = {}
+   self.cells = {}
    self.c_size = 0
    self.sym_n = 0
    self.funs = {}
