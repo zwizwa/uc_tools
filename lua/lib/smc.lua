@@ -78,7 +78,7 @@ local function next_stack_index(env)
 end
 
 -- Introduce a varible.
-function smc:push(var_name)
+function smc:new_var(var_name)
    local id = #self.vars + 1
    local v = {var=var_name,id=id,state='unbound'}
    if (not self.vars_last) or (self.vars_last[id].state == 'saved') then
@@ -90,6 +90,11 @@ function smc:push(var_name)
    end
    -- self.var is the list of all created variables
    table.insert(self.vars, v)
+   return v
+end
+
+function smc:push(var_name)
+   local v = self:new_var(var_name)
    -- self.env is the currently visible environment, which gets popped on exit.
    -- FIXME: How to not put unbound variables here? Maybe not an issue..
    table.insert(self.env, v)
@@ -284,29 +289,8 @@ form['read'] = function(self, expr, hole)
          .. self.config.state_name .. "->" .. chan .. ")")
 end
 
-function smc:stack_index_(n)
-   return self.env[n].index
-end
-
 function smc:stack_index(n)
-   -- Only works in second pass.  In first pass we map the Scheme
-   -- environment index directly to a stack index.
-   local n1 = n
-   if self.vars_last then
-      n1 = 0
-      for i=1,n do
-         local id = self.env[i].id
-         -- In the second pass we have the final word on all of the
-         -- variables.
-         if self.vars_last[id].state == 'saved' then
-            n1 = n1 + 1
-         end
-      end
-   end
-   if n1 > self.stack_size then
-      self.stack_size = n1
-   end
-   return n1
+   return self.env[n].index
 end
 
 function smc:var_and_type(n)
