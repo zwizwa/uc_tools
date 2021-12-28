@@ -90,8 +90,11 @@ function smc:new_cell()
       -- be saved on the state stack.  In second pass we have analysis
       -- information to distinguish between emphemeral (local) and
       -- saved.
-      cell.c_index = self.stack_next
-      self.stack_next = self.stack_next + 1
+      cell.c_index = self.stack_ptr
+      self.stack_ptr = self.stack_ptr + 1
+      if self.stack_ptr > self.stack_size then
+         self.stack_size = self.stack_ptr
+      end
    end
    -- self.var is the list of all created variables
    table.insert(self.cells, cell)
@@ -208,7 +211,7 @@ form['let*'] = function(self, let_expr, hole, tail_position)
    end
 
    self:save(
-      {'env','stack_next','indent'},
+      {'env','stack_ptr','indent'},
       function()
          self.indent = self.indent + 1
 
@@ -448,24 +451,23 @@ function smc:apply(expr, hole, tail_position)
       -- Non-tail calls are inlined as we do not support the call
       -- stack necessary for "real" calls.
       self:save(
-         {'env','stack_next','depth'},
+         {'env','stack_ptr','depth'},
          function()
             self.depth = self.depth + 1
-            assert(self.depth < 10)
+            assert(self.depth < 10) -- FIXME: ad-hoc infinite loop guard
 
-            -- Inlining bridges the callsite environment, and a new
-            -- environment inside the function body.
+            -- Inlining links the environment inside the function body
+            -- to cells accessible through the callsite environment.
             local callsite_env = self.env
             self.env = {}
-            for i=2, #app_form do
-               local var_name = app_form[i]
-               assert(type(var_name) == 'string')
-               local callsite_var = self:ref(var_name, callsite_env)
-               assert(callsite_var)
-               self:push_alias(var_name, callsite_var)
+            -- Note that we do NOT change self.stack_ptr
+            for i=1, #app_form-1 do
+               local var_name = app_form[i+1]   ; assert(type(var_name) == 'string')
+               local arg_name = fun_def.args[i] ; assert(type(arg_name) == 'string')
+               local callsite_var = self:ref(var_name, callsite_env) ; assert(callsite_var)
+               self:push_alias(arg_name, callsite_var)
             end
-            -- Then compiling the body expression.
-            -- log_desc(fun_def.body)
+            -- The body can then be compiled in this local environment.
             self:compile(fun_def.body, hole, false)
          end)
    end
@@ -505,13 +507,13 @@ function smc:compile_passes(expr)
    local w = self.write
    -- Override to suppress printing of first pass C output, which is
    -- only neccessary for debugging variable allocation.
-   self.write = function() end
+   -- self.write = function() end
 
    self:reset()
    self:write("\n// first pass\n")
    self:write("#if 0\n")
    self:compile(expr)
-   self:write("// state size: " .. self.c_size .. "\n")
+   self:write("// stack_size: " .. self.stack_size .. "\n")
    self:write("#endif\n")
 
 
@@ -524,26 +526,26 @@ function smc:compile_passes(expr)
    self:reset()
    self:write("\n// second pass\n")
    self:compile(expr)
-   self:write("// state size: " .. self.c_size .. "\n")
+   self:write("// stack_size: " .. self.stack_size .. "\n")
    self:write("\n")
 end
 
 -- Reset compiler state before executing a new pass.
 function smc:reset()
    self.cells = {}
-   self.c_size = 0
+   self.stack_size = 0
    self.sym_n = 0
    self.funs = {}
    self.depth = 0
    assert(0 == se.length(self.env))
-   assert(0 == self.stack_next)
+   assert(0 == self.stack_ptr)
    assert(1 == self.indent)
 end
 
 
 function smc.new()
    local config = { state_name = "s", state_type = "state_t" }
-   local obj = { stack_next = 0, env = {}, indent = 1, config = config }
+   local obj = { stack_ptr = 0, env = {}, indent = 1, config = config }
    setmetatable(obj, {__index = smc})
    return obj
 end
