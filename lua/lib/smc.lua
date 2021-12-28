@@ -69,10 +69,25 @@ function smc:indent_string()
    return table.concat(strs,"")
 end
 
+local function next_stack_index(env)
+   for i=#env,1,-1 do
+      local v = env[i]
+      if v.index then return v.index + 1 end
+   end
+   return 1
+end
+
 -- Introduce a varible.
 function smc:push(var_name)
    local id = #self.vars + 1
    local v = {var=var_name,id=id,state='unbound'}
+   if (not self.vars_last) or (self.vars_last[id].state == 'saved') then
+      -- In first pass (no vars_last), assume this variable needs to
+      -- be saved on the state stack.  In second pass we have analysis
+      -- information to distinguish between emphemeral (local) and
+      -- saved.
+      v.index = next_stack_index(self.env)
+   end
    -- self.var is the list of all created variables
    table.insert(self.vars, v)
    -- self.env is the currently visible environment, which gets popped on exit.
@@ -269,6 +284,10 @@ form['read'] = function(self, expr, hole)
          .. self.config.state_name .. "->" .. chan .. ")")
 end
 
+function smc:stack_index_(n)
+   return self.env[n].index
+end
+
 function smc:stack_index(n)
    -- Only works in second pass.  In first pass we map the Scheme
    -- environment index directly to a stack index.
@@ -292,7 +311,6 @@ end
 
 function smc:var_and_type(n)
    local v = self.env[n]
-   local c_index = self:stack_index(n) - 1
 
    if not self.vars_last then
       -- First pass: allocate all bindings in the state's stack.
@@ -300,6 +318,7 @@ function smc:var_and_type(n)
       if v.state == 'saved' then state_comment = ":saved" end
       local comment = "/*" .. v.var .. state_comment .. "*/"
       -- return "r" .. v.id .. comment, ""
+      local c_index = self:stack_index(n) - 1
       return "s->e[" .. c_index .. "]" .. comment, ""
    else
       -- Second pass: we have a lot more information now.  Saved and
@@ -310,6 +329,7 @@ function smc:var_and_type(n)
       assert(last.state)
       local comment = "/*" .. v.var .. "*/"
       if last.state == 'saved' then
+         local c_index = self:stack_index(n) - 1
          return "s->e[" .. c_index .. "]" .. comment, ""
       else
          return "l" .. v.id .. comment, "T "
