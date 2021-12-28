@@ -80,22 +80,6 @@ function smc:indent_string()
    return table.concat(strs,"")
 end
 
--- Return C index for C struct storage (first index is 0).
--- This depends on the current stack.
--- Also we have no guarantee that the variables are ordered, so scan the whole stack.
--- FIXME: That introduces quadratic behavior
-function smc:next_c_index()
-   local c_index = 0
-   for v in se.elements(self.env) do
-      if v.cell.c_index and v.cell.c_index >= c_index then
-         c_index = v.cell.c_index + 1
-      end
-   end
-   if c_index >= self.c_size then
-      self.c_size = c_index + 1
-   end
-   return c_index
-end
 
 -- Introduce a varible.
 function smc:new_cell()
@@ -106,7 +90,8 @@ function smc:new_cell()
       -- be saved on the state stack.  In second pass we have analysis
       -- information to distinguish between emphemeral (local) and
       -- saved.
-      cell.c_index = self:next_c_index()
+      cell.c_index = self.stack_next
+      self.stack_next = self.stack_next + 1
    end
    -- self.var is the list of all created variables
    table.insert(self.cells, cell)
