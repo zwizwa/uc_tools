@@ -286,18 +286,14 @@ form['module'] = function(self, expr, hole)
       end)
    for_defines(
       function(fname, args, body_expr)
-         self:write(fname .. ":\n");
-         -- Every function starts and ends with an empty environment.
-         -- We do not (yet) support closures.
-
-         -- FIXME: In first pass, keep track of which functions are
-         -- called in tail position.  Those will need to be emitted.
-         -- Functions that are only inlined do not need to be
-         -- generated.
-
-         assert(0 == se.length(self.env))
-         self:compile(body_expr, nil, true)
-         assert(0 == se.length(self.env))
+         -- Only emit body if it is actually used.  We only have usage
+         -- information in the second pass when labels_last is defined.
+         if (not self.labels_last) or self.labels_last[fname] then
+            -- No closure support: make sure lex env is empty.
+            assert(0 == se.length(self.env))
+            self:write(fname .. ":\n");
+            self:compile(body_expr, nil, true)
+         end
       end)
 
    self:write("}\n");
@@ -446,6 +442,7 @@ function smc:apply(expr, hole, tail_position)
       -- local cmt = { [true] = "/*tail*/", [false] = "/*no-tail*/" }
       local c_expr = "goto " .. app_form[1] --  .. cmt[tail_position]
       self:write_binding(hole, c_expr)
+      self.labels[fun_name] = true
    else
       -- log("no_tail: fun_name=" .. fun_name .. "\n")
       -- Non-tail calls are inlined as we do not support the call
@@ -519,9 +516,11 @@ function smc:compile_passes(expr)
 
    self.write = w
 
-   -- Second pass uses cells_last: the information gathered about each
-   -- storage cell in the first pass.
-   self.cells_last = self.cells
+   -- Second pass uses some information from the previous pass: the
+   -- information gathered about each storage cell, and information
+   -- about the goto labels.
+   self.cells_last  = self.cells
+   self.labels_last = self.labels
 
    self:reset()
    self:write("\n// second pass\n")
@@ -533,6 +532,7 @@ end
 -- Reset compiler state before executing a new pass.
 function smc:reset()
    self.cells = {}
+   self.labels = {}
    self.stack_size = 0
    self.sym_n = 0
    self.funs = {}
