@@ -89,8 +89,8 @@ end
 -- Introduce a varible.
 function smc:new_var(var_name)
    local id = #self.vars + 1
-   local v = {var=var_name,id=id,state='unbound'}
-   if (not self.vars_last) or (self.vars_last[id].state == 'saved') then
+   local v = {var=var_name,cell={id=id,bind='unbound'}}
+   if (not self.vars_last) or (self.vars_last[id].cell.bind == 'saved') then
       -- In first pass (no vars_last), assume this variable needs to
       -- be saved on the state stack.  In second pass we have analysis
       -- information to distinguish between emphemeral (local) and
@@ -102,7 +102,7 @@ function smc:new_var(var_name)
    return v
 end
 
-function smc:push(var_name)
+function smc:push_new_var(var_name)
    local v = self:new_var(var_name)
    -- self.stack is the currently visible environment, which gets popped on exit.
    -- FIXME: How to not put unbound variables here? Maybe not an issue..
@@ -113,12 +113,12 @@ end
 function smc:ref(var)
    -- search backwards.  this implements shadowing
    for v in se.elements(self.stack) do
-      if v.state ~= 'unbound' and v.var == var then
+      if v.cell.bind ~= 'unbound' and v.var == var then
          -- If this is a variable that crossed a suspension border,
          -- mark it such that it gets stored in the state struct and
          -- not on the C stack.
-         if v.state == 'lost' then
-            v.state = 'saved'
+         if v.cell.bind == 'lost' then
+            v.cell.bind = 'saved'
          end
          return v
       end
@@ -206,7 +206,7 @@ form['let*'] = function(self, let_expr, hole)
             assert(expr)
 
             -- Reserve a location
-            local v = self:push(var)
+            local v = self:push_new_var(var)
             self:compile(expr, v, false)
          end
 
@@ -293,9 +293,9 @@ form['read'] = function(self, expr, hole)
       -- This is used later when the variable is referenced to turn it
       -- into a 'saved' variable, so in the second pass it can be
       -- properly allocated.
-      if var.state == 'local' then
+      if var.cell.bind == 'local' then
          table.insert(bound, n)
-         var.state = 'lost'
+         var.cell.bind = 'lost'
       end
    end
    self:write_binding(
@@ -311,7 +311,7 @@ function smc:var_and_type(v)
    if v.c_index then
       return "s->e[" .. v.c_index .. "]" .. comment, ""
    else
-      return "l" .. v.id .. comment, "T "
+      return "l" .. v.cell.id .. comment, "T "
    end
 end
 
@@ -321,8 +321,8 @@ function smc:var(n)
 end
 
 function smc:mark_bound(v)
-   assert(v.state == 'unbound')
-   v.state = 'local'
+   assert(v.cell.bind == 'unbound')
+   v.cell.bind = 'local'
 end
 function smc:write_assign(n)
    local var, typ = self:var_and_type(n)
@@ -404,7 +404,7 @@ function smc:anf(expr, hole, tail_position)
             local saved_env = self.stack
             -- Inlining boils down to creating aliases for variables..
             for i=1,nb_bindings do
-               self:push(FIXME)
+               self:push_alias(FIXME)
             end
             -- Then compiling the body expression.
             self:compile(fun_def.body, hole, false)
