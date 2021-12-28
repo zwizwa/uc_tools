@@ -72,8 +72,8 @@ end
 -- FIXME: later, with renaming, it is possible that variables get
 -- shuffled so this might need to compute a maximum instead of first
 -- match?
-local function next_stack_index(env)
-   for v in se.elements(env) do
+local function next_cstack_index(stack)
+   for v in se.elements(stack) do
       if v.index then return v.index + 1 end
    end
    return 0 -- This is a C index, starts at 0.
@@ -88,7 +88,7 @@ function smc:new_var(var_name)
       -- be saved on the state stack.  In second pass we have analysis
       -- information to distinguish between emphemeral (local) and
       -- saved.
-      v.index = next_stack_index(self.env)
+      v.cstack_index = next_cstack_index(self.stack)
    end
    -- self.var is the list of all created variables
    table.insert(self.vars, v)
@@ -97,15 +97,15 @@ end
 
 function smc:push(var_name)
    local v = self:new_var(var_name)
-   -- self.env is the currently visible environment, which gets popped on exit.
+   -- self.stack is the currently visible environment, which gets popped on exit.
    -- FIXME: How to not put unbound variables here? Maybe not an issue..
-   self.env = se.cons(v, self.env)
+   self.stack = se.cons(v, self.stack)
    return v
 end
 
 function smc:ref(var)
    -- search backwards.  this implements shadowing
-   for v in se.elements(self.env) do
+   for v in se.elements(self.stack) do
       if v.state ~= 'unbound' and v.var == var then
          -- If this is a variable that crossed a suspension border,
          -- mark it such that it gets stored in the state struct and
@@ -159,6 +159,19 @@ end
 -- end
 
 
+function smc:save(keys, fun)
+   local saved = {}
+   for i,key in ipairs(keys) do
+      saved[key] = self[key]
+   end
+   local rv = fun()
+   for i,key in ipairs(keys) do
+      self[key] = saved[key]
+   end
+   return rv
+end
+
+
 -- Core form is 'let*' which mostly resembles C's scoping rules.
 form['let*'] = function(self, let_expr, hole)
    local _, bindings, inner = se.unpack(let_expr, { n = 2, tail = true })
@@ -173,33 +186,34 @@ form['let*'] = function(self, let_expr, hole)
       -- If there's no variable to bind then use a block.
       self:write(self:indent_string() .. "{\n")
    end
-   self.indent = self.indent + 1
 
-   local nb_bindings = se.length(bindings)
-   local saved_env = self.env
-   for binding in se.elements(bindings) do
-      local var, expr = se.unpack(binding, { n = 2 })
-      assert(type(var) == 'string')
-      assert(expr)
+   self:save(
+      {'indent','stack'},
+      function()
+         self.indent = self.indent + 1
 
-      -- Reserve a location
-      local v = self:push(var)
-      self:compile(expr, v, false)
-   end
+         local nb_bindings = se.length(bindings)
+         for binding in se.elements(bindings) do
+            local var, expr = se.unpack(binding, { n = 2 })
+            assert(type(var) == 'string')
+            assert(expr)
 
-   -- Compile inner forms as statements.  C handles value passing of
-   -- the last statement if this is compiled as statement expression.
-   local n_inner = se.length(inner)
-   assert(n_inner > 0)
+            -- Reserve a location
+            local v = self:push(var)
+            self:compile(expr, v, false)
+         end
+
+         -- Compile inner forms as statements.  C handles value passing of
+         -- the last statement if this is compiled as statement expression.
+         local n_inner = se.length(inner)
+         assert(n_inner > 0)
 
 
-   for form, rest_expr in se.elements(inner) do
-      assert(form)
-      self:compile(form, nil, not se.is_pair(rest_expr))
-   end
-
-   self.indent = self.indent - 1
-   self.env = saved_env
+         for form, rest_expr in se.elements(inner) do
+            assert(form)
+            self:compile(form, nil, not se.is_pair(rest_expr))
+         end
+   end)
 
    -- Only mark after it's actually bound.
    if hole then
@@ -254,9 +268,9 @@ form['module'] = function(self, expr, hole)
          -- called in tail position.  Those will need to be emitted.
          -- Functions that are only inlined do not need to be
          -- generated.
-         --assert(#self.env == 0)
+         --assert(#self.stack == 0)
          self:compile(body_expr, nil, true)
-         --assert(#self.env == 0)
+         --assert(#self.stack == 0)
       end)
 
    self:write("}\n");
@@ -267,7 +281,7 @@ end
 form['read'] = function(self, expr, hole)
    local _, chan = se.unpack(expr, {n = 2})
    local bound = {}
-   for var in se.elements(self.env) do
+   for var in se.elements(self.stack) do
       -- At the suspension point, all local variables are lost.
       -- This is used later when the variable is referenced to turn it
       -- into a 'saved' variable, so in the second pass it can be
@@ -287,8 +301,8 @@ end
 
 function smc:var_and_type(v)
    local comment = "/*" .. v.var .. "*/"
-   if v.index then
-      return "s->e[" .. v.index .. "]" .. comment, ""
+   if v.cstack_index then
+      return "s->e[" .. v.cstack_index .. "]" .. comment, ""
    else
       return "l" .. v.id .. comment, "T "
    end
@@ -380,14 +394,14 @@ function smc:anf(expr, hole, tail_position)
             -- Non-tail calls are inlined.  We do not support "real"
             -- function calls which would need a stack.
             local nb_bindings = #app_form - 1
-            local saved_env = self.env
+            local saved_env = self.stack
             -- Inlining boils down to creating aliases for variables..
             for i=1,nb_bindings do
                self:push(FIXME)
             end
             -- Then compiling the body expression.
             self:compile(fun_def.body, hole, false)
-            self.env = saved_env
+            self.stack = saved_env
          end
       else
          -- Primitive
@@ -465,14 +479,14 @@ function smc:reset()
    self.stack_size = 0
    self.sym_n = 0
    self.funs = {}
-   -- assert(0 == #self.env)
+   assert(0 == se.length(self.stack))
    assert(1 == self.indent)
 end
 
 
 function smc.new()
    local config = { state_name = "s", state_type = "state_t" }
-   local obj = { env = {}, indent = 1, config = config }
+   local obj = { stack = {}, indent = 1, config = config }
    setmetatable(obj, {__index = smc})
    return obj
 end
