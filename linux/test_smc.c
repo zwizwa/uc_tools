@@ -3,6 +3,7 @@
 // Context
 typedef struct {
     uint32_t e[100];
+    uint32_t a; // free variable
 } state_t;
 #define SM_READ(s, chan) 123
 #define add(a,b) ((a)+(b))

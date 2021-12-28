@@ -5,6 +5,10 @@
 ;       (b 345))
 ;      (add a b 1))
 
+;; TODO:
+;; - set!
+;; - multi-arg tail calls
+
 (module (testmod)
 
   (define (fun1)
@@ -12,7 +16,8 @@
         ((a
           (let* ((b (read chan1))
                  (c (read chan1)))
-            (add b c)))
+            (add a ;; Free variable
+                 (add b c))))
          (d (read chan1))
          (e (let* ((x (add a (add 1 2)))
                    (y (add d 2)))

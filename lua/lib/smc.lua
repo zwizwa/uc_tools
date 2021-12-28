@@ -207,7 +207,7 @@ form['let*'] = function(self, let_expr, hole, tail_position)
       self:write("({\n")
    else
       -- If there's no variable to bind then use a block.
-      self:write(self:indent_string() .. "{\n")
+      self:write(self:indent_string() .. "({\n")
    end
 
    self:save(
@@ -241,12 +241,10 @@ form['let*'] = function(self, let_expr, hole, tail_position)
          end
    end)
 
+   self:write(self:indent_string() .. "});\n")
    -- Only mark after it's actually bound.
    if hole then
-      self:write(self:indent_string() .. "});\n")
       self:mark_bound(hole)
-   else
-      self:write(self:indent_string() .. "}\n")
    end
 
 end
@@ -325,7 +323,7 @@ end
 function smc:var_and_type(v)
    local comment = "/*" .. v.var .. "*/"
    if v.cell.c_index then
-      return "s->e[" .. v.cell.c_index .. "]" .. comment, ""
+      return self.config.state_name .. "->e[" .. v.cell.c_index .. "]" .. comment, ""
    else
       return "l" .. v.cell.id .. comment, "T "
    end
@@ -361,7 +359,7 @@ function smc:atom_to_c_expr(atom, hole)
       if n then
          return self:var(n)
       else
-         return "global." .. atom
+         return self.config.state_name .. "->" .. atom .. "/*free*/"
       end
    else
       -- number or other const
@@ -458,13 +456,16 @@ function smc:apply(expr, hole, tail_position)
             local callsite_env = self.env
             self.env = {}
             -- Note that we do NOT change self.stack_ptr
+            local dbg = {fun_name}
             for i=1, #app_form-1 do
                local var_name = app_form[i+1]   ; assert(type(var_name) == 'string')
                local arg_name = fun_def.args[i] ; assert(type(arg_name) == 'string')
                local callsite_var = self:ref(var_name, callsite_env) ; assert(callsite_var)
                self:push_alias(arg_name, callsite_var)
+               table.insert(dbg, arg_name .. "=" .. var_name)
             end
             -- The body can then be compiled in this local environment.
+            self:write(self:indent_string() .. "/*inline:" .. table.concat(dbg,",") .. "*/\n")
             self:compile(fun_def.body, hole, false)
          end)
    end
