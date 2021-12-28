@@ -1,15 +1,15 @@
 -- Compiles a subset of Scheme to sm.h style state machines.
 
--- FIXME: Just doodling at this point.  Figuring out if this really
--- needs large infrastructure or not (e.g. Haskell or Racket), or if
--- Lua is enough to compile it.
-
 -- FIXME: Probably good to remove as much mutable state as possible.
 -- Only for "accumulators".
 
 
 -- Some ideas:
 
+-- * General language structure:
+--   1) a Scheme module maps to a C function.
+--   2) Scheme functions map to goto labels inside the C function.
+--
 -- * Compiling continuations to individual C functions is too much
 --   work.  Use computed goto just like sm.h does. Much easier to jump
 --   straight into a control structure compared to separately
@@ -30,19 +30,26 @@
 --   expressions.
 --
 -- * Second pass can distinguish between saved and local variables,
---   and perform the stack allocation.
+--   which can be used to optimize the stack allocation.
 --
 -- * Lifetime is implemented by letting variables go through this cycle:
 --   unbound -> local -> lost -> saved
 --   with the last 2 transitions not happening for all.
 --
--- * Blocking subroutines are not yet implemented.  Simplest is to
---   implement them as macros, but a function call mechanism inside a
---   machine isn't an impossible challenge.
+-- * Blocking subroutines are not (yet) implemented.  Any non-tail
+--   function call is inlined.
 --
--- * To support function calls we take an iterative approach:
---   1) a single Scheme file (module) maps to a single C function.
---   2) Scheme functions map to goto labels inside the C function.
+--
+
+-- WTF why Lua?
+--
+-- Originally, just to see if I can add a small special-purpose state
+-- machine compiler to an existing project without introducing "scary"
+-- dependencies like Racket or Haskell, and as an incentive to build
+-- something simple first.  It seems like that is possible, and this
+-- project gradually turned into a sandbox to develop a schemisch Lua
+-- programming style.  Looks like I'm going to be stuck with Lua for a
+-- while it seems so might as well make me feel at home...
 
 
 local se = require('lib.se')
@@ -101,10 +108,8 @@ function smc:new_cell()
    return cell
 end
 
-function smc:push_var(var_name, cell)
-   if not cell then
-      cell = self:new_cell()
-   end
+function smc:push_var(var_name)
+   local cell = self:new_cell()
    local v = {var=var_name,cell=cell}
    -- self.env is the currently visible environment, which gets popped on exit.
    -- FIXME: How to not put unbound variables here? Maybe not an issue..
@@ -142,26 +147,43 @@ function smc:ref(var, env)
    return nil
 end
 
--- FIXME: This might not be a good primitive form.  I'm leaning more
--- and more towards basic scheme, which would mean actual
--- continuations and function calls.
--- EDIT: Tail recursion is now supported.
+-- This is a stripped-down version of the racket 'for' form.
 form['for'] = function(self, for_expr, hole)
    -- For doesn't return a value, so for now just assert there is
    -- nothing to bind.
    assert(not hole)
-   local _, setup, inner = se.unpack(for_expr, { n = 2, tail = true })
+   local _, bindings, inner = se.unpack(for_expr, { n = 2, tail = true })
 
-   self:write(self:indent_string() .. "for(;;){\n")
-   self.indent = self.indent + 1
+   -- Only supports a small subset.  The iterators are compile-time
+   -- constructs, not like the Racket case.
+   local binding = se.unpack(bindings, { n = 1 })
+   local var_name, iter_form = se.unpack(binding, { n = 2 })
+   local iter_name, iter_arg = se.unpack(iter_form, { n = 2 })
+   assert(iter_name == 'in-range')
+   assert(type(iter_arg) == 'number')
+   assert(type(var_name) == 'string')
 
-   for form in se.elements(inner) do
-      assert(form)
-      self:compile(form, nil)
-   end
+   self:save(
+      {'env'},
+      function()
+         local v = self:push_var(var_name)
+         self:write(self:indent_string())
+         self:write("for(")
+         self:write_assign(v)
+         self:write("0 ; ")
+         self:mark_bound(v)
+         local cv = self:atom_to_c_expr(var_name)
+         self:write(cv .. " < " .. iter_arg .. " ; ")
+         self:write(cv .. " = " .. cv .. " + 1) {\n")
+         self.indent = self.indent + 1
+         for form in se.elements(inner) do
+            assert(form)
+            self:compile(form, nil)
+         end
+         self.indent = self.indent - 1
 
-   self.indent = self.indent - 1
-   self:write(self:indent_string() .. "}\n")
+         self:write(self:indent_string() .. "}\n")
+      end)
 end
 
 -- TODO
@@ -203,6 +225,7 @@ form['let*'] = function(self, let_expr, hole, tail_position)
 
    if hole then
       -- C statement expressions are essentially let*
+      self:write(self:indent_string())
       self:write_assign(hole)
       self:write("({\n")
    else
@@ -340,20 +363,19 @@ function smc:mark_bound(v)
 end
 function smc:write_assign(n)
    local var, typ = self:var_and_type(n)
-   self:write(self:indent_string() .. typ .. var .. " = ")
+   self:write( typ .. var .. " = ")
 end
 function smc:write_binding(n, c_expr)
+   self:write(self:indent_string())
    if n then
       self:write_assign(n)
       self:mark_bound(n)
-   else
-      self:write(self:indent_string())
    end
    self:write(c_expr)
    self:write(";\n");
 end
 
-function smc:atom_to_c_expr(atom, hole)
+function smc:atom_to_c_expr(atom)
    if type(atom) == 'string' then
       local n = self:ref(atom)
       if n then

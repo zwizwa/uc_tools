@@ -6,6 +6,7 @@
 ;      (add a b 1))
 
 ;; TODO:
+;; - if
 ;; - set!
 ;; - multi-arg tail calls
 
@@ -28,6 +29,8 @@
       (send d)
       (send e)
       (send f)
+      (for ((i (in-range 3)))
+        (send (add e i)))
       (fun2)))
 
   (define (fun2)
