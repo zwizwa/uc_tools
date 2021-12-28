@@ -96,6 +96,9 @@ function se.cdr(pair)
    assert(type(pair) == 'table')
    return pair[2]
 end
+function se.cons(car, cdr)
+   return {car, cdr}
+end
 -- It might be simpler to do something like se.unpack to fit better in
 -- the language.  Functions are a little annoying.
 function se.unpack_array(expr, config, body)
