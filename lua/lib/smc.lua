@@ -103,9 +103,6 @@ function smc:push(var_name)
    return v
 end
 
-function smc:pop()
-   self.env = se.cdr(self.env)
-end
 function smc:ref(var)
    -- search backwards.  this implements shadowing
    for v in se.elements(self.env) do
@@ -179,7 +176,7 @@ form['let*'] = function(self, let_expr, hole)
    self.indent = self.indent + 1
 
    local nb_bindings = se.length(bindings)
-
+   local saved_env = self.env
    for binding in se.elements(bindings) do
       local var, expr = se.unpack(binding, { n = 2 })
       assert(type(var) == 'string')
@@ -202,9 +199,7 @@ form['let*'] = function(self, let_expr, hole)
    end
 
    self.indent = self.indent - 1
-   for i=1,nb_bindings do
-      self:pop()
-   end
+   self.env = saved_env
 
    -- Only mark after it's actually bound.
    if hole then
@@ -385,15 +380,14 @@ function smc:anf(expr, hole, tail_position)
             -- Non-tail calls are inlined.  We do not support "real"
             -- function calls which would need a stack.
             local nb_bindings = #app_form - 1
+            local saved_env = self.env
             -- Inlining boils down to creating aliases for variables..
             for i=1,nb_bindings do
                self:push(FIXME)
             end
             -- Then compiling the body expression.
             self:compile(fun_def.body, hole, false)
-            for i=1,nb_bindings do
-               self:pop()
-            end
+            self.env = saved_env
          end
       else
          -- Primitive
