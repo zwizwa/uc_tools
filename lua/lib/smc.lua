@@ -42,8 +42,16 @@
 --   2) Scheme functions map to goto labels inside the C function.
 
 
-
 local se = require('lib.se')
+
+local prompt = require('prompt')
+local function log(str)
+   io.stderr:write(str)
+end
+local function log_desc(thing)
+   log(prompt.describe(thing))
+   log("\n")
+end
 
 local smc = {}
 
@@ -113,9 +121,19 @@ function smc:push_var(var_name, cell)
    return v
 end
 
-function smc:ref(var)
+-- Aliases are used to implement substitution for function inlining.
+function smc:push_alias(alias_name, v)
+   assert(v and v.cell)
+   local v_alias = {var=alias_name, cell=v.cell}
+   self.stack = se.cons(v_alias, self.stack)
+   return v_alias
+end
+
+function smc:ref(var, stack)
+   if not stack then stack = self.stack end
+
    -- search starts at last pushed variable.  this implements shadowing
-   for v in se.elements(self.stack) do
+   for v in se.elements(stack) do
       if v.var == var then
          -- note that if the cell is not yet bound to a value, we
          -- can't see it yet.  this is a hack: FIXME
@@ -187,13 +205,13 @@ end
 
 
 -- Core form is 'let*' which mostly resembles C's scoping rules.
-form['let*'] = function(self, let_expr, hole)
+form['let*'] = function(self, let_expr, hole, tail_position)
    local _, bindings, inner = se.unpack(let_expr, { n = 2, tail = true })
 
    assert(type(bindings) == 'table')
 
    if hole then
-      -- C statement expressions essentially let*
+      -- C statement expressions are essentially let*
       self:write_assign(hole)
       self:write("({\n")
    else
@@ -225,7 +243,10 @@ form['let*'] = function(self, let_expr, hole)
 
          for form, rest_expr in se.elements(inner) do
             assert(form)
-            self:compile(form, nil, not se.is_pair(rest_expr))
+            local sub_tail_position =
+               tail_position and
+               (not se.is_pair(rest_expr))
+            self:compile(form, nil, sub_tail_position)
          end
    end)
 
@@ -282,6 +303,7 @@ form['module'] = function(self, expr, hole)
          -- called in tail position.  Those will need to be emitted.
          -- Functions that are only inlined do not need to be
          -- generated.
+
          assert(0 == se.length(self.stack))
          self:compile(body_expr, nil, true)
          assert(0 == se.length(self.stack))
@@ -346,10 +368,6 @@ function smc:write_binding(n, c_expr)
    self:write(";\n");
 end
 
-function smc:apply(vals)
-   return vals[1] .. "(" .. table.concat(tail(vals),",") .. ")"
-end
-
 function smc:atom_to_c_expr(atom, hole)
    if type(atom) == 'string' then
       local n = self:ref(atom)
@@ -402,13 +420,14 @@ function smc:apply(expr, hole, tail_position)
    -- If any new bindings were generated, insert a let* for and
    -- recurse into compiler.
    if #bindings > 0 then
+      self:compile(
+         se.list('let*',
+                 se.array_to_list(bindings),
+                 -- List expression containing function call
+                 se.array_to_list(app_form)),
+         hole,
+         tail_position)
       return
-         self:compile(
-            se.list('let*',
-                    se.array_to_list(bindings),
-                    -- List expression containing function call
-                    se.array_to_list(app_form)),
-            hole)
    end
 
 
@@ -417,51 +436,73 @@ function smc:apply(expr, hole, tail_position)
    local fun_def = self.funs[fun_name]
 
    -- If there is no function definition under this name, we assume
-   -- this is a C primitive.
+   -- this is a C primitive.  Emit code.
    if not fun_def then
       local args = {}
       for i=2,#app_form do
          table.insert(args, self:atom_to_c_expr(app_form[i]))
       end
       local c_expr = fun_name .. "(" .. table.concat(args, ",") .. ")"
-      return self:write_binding(hole, c_expr)
+      self:write_binding(hole, c_expr)
+      return
    end
 
    -- Compile composite function call.
-   local fun_def = self.funs[app_form[1]]
    if (tail_position) then
       -- FIXME: only 0-arg tail calls for now!
+      -- log("tail: fun_name=" .. fun_name .. "\n")
       assert(#app_form == 1)
       -- local cmt = { [true] = "/*tail*/", [false] = "/*no-tail*/" }
       local c_expr = "goto " .. app_form[1] --  .. cmt[tail_position]
       self:write_binding(hole, c_expr)
    else
-      -- Non-tail calls are inlined.  We do not support "real"
-      -- function calls which would need a stack.
-      local nb_bindings = #app_form - 1
-      local saved_env = self.stack
-      -- Inlining boils down to creating aliases for variables..
-      for i=1,nb_bindings do
-         self:push_alias(FIXME)
-      end
-      -- Then compiling the body expression.
-      self:compile(fun_def.body, hole, false)
-      self.stack = saved_env
+      log("no_tail: fun_name=" .. fun_name .. "\n")
+      -- Non-tail calls are inlined as we do not support the call
+      -- stack necessary for "real" calls.
+      self:save(
+         {'stack','depth'},
+         function()
+            self.depth = self.depth + 1
+            assert(self.depth < 10)
+
+            -- Inlining boils down to creating a new environment where
+            -- variables from the call site are aliased into a fresh
+            -- scope.
+            local callsite_stack = self.stack
+            self.stack = {}
+            for i=2, #app_form do
+               local var_name = app_form[i]
+               assert(type(var_name) == 'string')
+               local callsite_var = self:ref(var_name, callsite_stack)
+               assert(callsite_var)
+               self:push_alias(var_name, callsite_var)
+            end
+            -- Then compiling the body expression.
+            log_desc(fun_def.body)
+            self:compile(fun_def.body, hole, false)
+         end)
    end
 
 end
 
+local function ifte(c,t,f)
+   if c then return t else return f end
+end
+
 function smc:compile(expr, hole, tail_position)
    if type(expr) ~= 'table' then
+      -- variable or constant
       return self:write_binding(hole, self:atom_to_c_expr(expr))
    end
    local form, tail = unpack(expr)
    assert(form)
    -- self:write('/*form: ' .. form .. "*/")
    assert(type(form) == 'string')
+   -- log("compile:" .. form .. ",tail:" .. ifte(tail_position,"yes","no") .. "\n")
+
    local form_fn = self.form[form]
    if form_fn then
-      return form_fn(self, expr, hole)
+      return form_fn(self, expr, hole, tail_position)
    else
       self:apply(expr, hole, tail_position)
    end
@@ -506,6 +547,7 @@ function smc:reset()
    self.c_size = 0
    self.sym_n = 0
    self.funs = {}
+   self.depth = 0
    assert(0 == se.length(self.stack))
    assert(1 == self.indent)
 end

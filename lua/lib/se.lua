@@ -129,7 +129,6 @@ function se.match(expr, config, body)
    return body(unpack(args))
 end
 
-
 function se:read_list()
    local objs = {}
    while true do
