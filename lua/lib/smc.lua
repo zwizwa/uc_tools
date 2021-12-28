@@ -371,18 +371,19 @@ function smc:gensym()
    return "g" .. n
 end
 
--- Convert all arguments to A-Normal form.
+-- Apply function to arguments, converting all arguments to A-Normal
+-- form if necessary.
+--
 -- https://en.wikipedia.org/wiki/A-normal_form
 --
 -- To simplify representation, we also bind constants to variables.
 -- The C compiler can later optimize those.
 --
-function smc:anf(expr, hole, tail_position)
+function smc:apply(expr, hole, tail_position)
    local bindings = {}
    local app_form = {}
 
    assert(se.length(expr) > 0)
-   -- FIXME: Functions are primitive for now.
    assert(type(se.car(expr)) == 'string')
 
    for subexpr in se.elements(expr) do
@@ -397,49 +398,57 @@ function smc:anf(expr, hole, tail_position)
          table.insert(app_form, sym)
       end
    end
-   if #bindings == 0 then
-      -- Compile function call
-      local fun_def = self.funs[app_form[1]]
-      if fun_def then
-         -- Composite
-         if (tail_position) then
-            -- FIXME: only 0-arg tail calls for now!
-            assert(#app_form == 1)
-            -- local cmt = { [true] = "/*tail*/", [false] = "/*no-tail*/" }
-            local c_expr = "goto " .. app_form[1] --  .. cmt[tail_position]
-            self:write_binding(hole, c_expr)
-         else
-            -- Non-tail calls are inlined.  We do not support "real"
-            -- function calls which would need a stack.
-            local nb_bindings = #app_form - 1
-            local saved_env = self.stack
-            -- Inlining boils down to creating aliases for variables..
-            for i=1,nb_bindings do
-               self:push_alias(FIXME)
-            end
-            -- Then compiling the body expression.
-            self:compile(fun_def.body, hole, false)
-            self.stack = saved_env
-         end
-      else
-         -- Primitive
-         local args = {}
-         for i=2,#app_form do
-            table.insert(args, self:atom_to_c_expr(app_form[i]))
-         end
-         local c_expr = app_form[1] .. "(" .. table.concat(args, ",") .. ")"
-         self:write_binding(hole, c_expr)
-      end
 
-   else
-      -- Generate let* and ecurse into compiler
-      self:compile(
-         se.list('let*',
-                 se.array_to_list(bindings),
-                 -- List expression containing function call
-                 se.array_to_list(app_form)),
-         hole)
+   -- If any new bindings were generated, insert a let* for and
+   -- recurse into compiler.
+   if #bindings > 0 then
+      return
+         self:compile(
+            se.list('let*',
+                    se.array_to_list(bindings),
+                    -- List expression containing function call
+                    se.array_to_list(app_form)),
+            hole)
    end
+
+
+   -- The expression is in A-Normal form.
+   local fun_name = app_form[1]
+   local fun_def = self.funs[fun_name]
+
+   -- If there is no function definition under this name, we assume
+   -- this is a C primitive.
+   if not fun_def then
+      local args = {}
+      for i=2,#app_form do
+         table.insert(args, self:atom_to_c_expr(app_form[i]))
+      end
+      local c_expr = fun_name .. "(" .. table.concat(args, ",") .. ")"
+      return self:write_binding(hole, c_expr)
+   end
+
+   -- Compile composite function call.
+   local fun_def = self.funs[app_form[1]]
+   if (tail_position) then
+      -- FIXME: only 0-arg tail calls for now!
+      assert(#app_form == 1)
+      -- local cmt = { [true] = "/*tail*/", [false] = "/*no-tail*/" }
+      local c_expr = "goto " .. app_form[1] --  .. cmt[tail_position]
+      self:write_binding(hole, c_expr)
+   else
+      -- Non-tail calls are inlined.  We do not support "real"
+      -- function calls which would need a stack.
+      local nb_bindings = #app_form - 1
+      local saved_env = self.stack
+      -- Inlining boils down to creating aliases for variables..
+      for i=1,nb_bindings do
+         self:push_alias(FIXME)
+      end
+      -- Then compiling the body expression.
+      self:compile(fun_def.body, hole, false)
+      self.stack = saved_env
+   end
+
 end
 
 function smc:compile(expr, hole, tail_position)
@@ -454,7 +463,7 @@ function smc:compile(expr, hole, tail_position)
    if form_fn then
       return form_fn(self, expr, hole)
    else
-      self:anf(expr, hole, tail_position)
+      self:apply(expr, hole, tail_position)
    end
 end
 
