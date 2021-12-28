@@ -1,8 +1,11 @@
 -- Compiles a subset of Scheme to sm.h style state machines.
 
--- FIXME: Just doodling at this poing.  Figuring out if this really
+-- FIXME: Just doodling at this point.  Figuring out if this really
 -- needs large infrastructure or not (e.g. Haskell or Racket), or if
 -- Lua is enough to compile it.
+
+-- FIXME: Probably good to remove as much mutable state as possible.
+-- Only for "accumulators".
 
 
 -- Some ideas:
@@ -83,7 +86,7 @@ end
 -- FIXME: That introduces quadratic behavior
 function smc:next_c_index()
    local c_index = 0
-   for v in se.elements(self.stack) do
+   for v in se.elements(self.env) do
       if v.cell.c_index and v.cell.c_index >= c_index then
          c_index = v.cell.c_index + 1
       end
@@ -115,9 +118,9 @@ function smc:push_var(var_name, cell)
       cell = self:new_cell()
    end
    local v = {var=var_name,cell=cell}
-   -- self.stack is the currently visible environment, which gets popped on exit.
+   -- self.env is the currently visible environment, which gets popped on exit.
    -- FIXME: How to not put unbound variables here? Maybe not an issue..
-   self.stack = se.cons(v, self.stack)
+   self.env = se.cons(v, self.env)
    return v
 end
 
@@ -125,15 +128,15 @@ end
 function smc:push_alias(alias_name, v)
    assert(v and v.cell)
    local v_alias = {var=alias_name, cell=v.cell}
-   self.stack = se.cons(v_alias, self.stack)
+   self.env = se.cons(v_alias, self.env)
    return v_alias
 end
 
-function smc:ref(var, stack)
-   if not stack then stack = self.stack end
+function smc:ref(var, env)
+   if not env then env = self.env end
 
    -- search starts at last pushed variable.  this implements shadowing
-   for v in se.elements(stack) do
+   for v in se.elements(env) do
       if v.var == var then
          -- note that if the cell is not yet bound to a value, we
          -- can't see it yet.  this is a hack: FIXME
@@ -220,7 +223,7 @@ form['let*'] = function(self, let_expr, hole, tail_position)
    end
 
    self:save(
-      {'indent','stack'},
+      {'env','stack_next','indent'},
       function()
          self.indent = self.indent + 1
 
@@ -304,9 +307,9 @@ form['module'] = function(self, expr, hole)
          -- Functions that are only inlined do not need to be
          -- generated.
 
-         assert(0 == se.length(self.stack))
+         assert(0 == se.length(self.env))
          self:compile(body_expr, nil, true)
-         assert(0 == se.length(self.stack))
+         assert(0 == se.length(self.env))
       end)
 
    self:write("}\n");
@@ -317,7 +320,7 @@ end
 form['read'] = function(self, expr, hole)
    local _, chan = se.unpack(expr, {n = 2})
    local bound = {}
-   for var in se.elements(self.stack) do
+   for var in se.elements(self.env) do
       -- At the suspension point, all local variables are lost.
       -- This is used later when the variable is referenced to turn it
       -- into a 'saved' variable, so in the second pass it can be
@@ -386,7 +389,7 @@ function smc:gensym()
    local n = self.sym_n
    self.sym_n = n + 1
    -- FIXME: Generated symbols should not clash with any program text.
-   return "g" .. n
+   return "#" .. n
 end
 
 -- Apply function to arguments, converting all arguments to A-Normal
@@ -456,29 +459,28 @@ function smc:apply(expr, hole, tail_position)
       local c_expr = "goto " .. app_form[1] --  .. cmt[tail_position]
       self:write_binding(hole, c_expr)
    else
-      log("no_tail: fun_name=" .. fun_name .. "\n")
+      -- log("no_tail: fun_name=" .. fun_name .. "\n")
       -- Non-tail calls are inlined as we do not support the call
       -- stack necessary for "real" calls.
       self:save(
-         {'stack','depth'},
+         {'env','stack_next','depth'},
          function()
             self.depth = self.depth + 1
             assert(self.depth < 10)
 
-            -- Inlining boils down to creating a new environment where
-            -- variables from the call site are aliased into a fresh
-            -- scope.
-            local callsite_stack = self.stack
-            self.stack = {}
+            -- Inlining bridges the callsite environment, and a new
+            -- environment inside the function body.
+            local callsite_env = self.env
+            self.env = {}
             for i=2, #app_form do
                local var_name = app_form[i]
                assert(type(var_name) == 'string')
-               local callsite_var = self:ref(var_name, callsite_stack)
+               local callsite_var = self:ref(var_name, callsite_env)
                assert(callsite_var)
                self:push_alias(var_name, callsite_var)
             end
             -- Then compiling the body expression.
-            log_desc(fun_def.body)
+            -- log_desc(fun_def.body)
             self:compile(fun_def.body, hole, false)
          end)
    end
@@ -548,14 +550,15 @@ function smc:reset()
    self.sym_n = 0
    self.funs = {}
    self.depth = 0
-   assert(0 == se.length(self.stack))
+   assert(0 == se.length(self.env))
+   assert(0 == self.stack_next)
    assert(1 == self.indent)
 end
 
 
 function smc.new()
    local config = { state_name = "s", state_type = "state_t" }
-   local obj = { stack = {}, indent = 1, config = config }
+   local obj = { stack_next = 0, env = {}, indent = 1, config = config }
    setmetatable(obj, {__index = smc})
    return obj
 end

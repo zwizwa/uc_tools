@@ -17,7 +17,7 @@
          (e (let* ((x (add a (add 1 2)))
                    (y (add d 2)))
               (add x y)))
-         (f 123) ;;(fun3 123))
+         (f (fun3 e))
          (g (let* ((l 5))
               (add f l))))
       (send d)
@@ -28,10 +28,11 @@
   (define (fun2)
     (fun1))
 
-  (define (fun3 a)
+  (define (fun3 x)
     (let*
-        ((b (read chan2)))
-      (add a b)))
+        ((a (read chan2))
+         (b (read chan2)))
+      (add x (add a b))))
 
   )
 
