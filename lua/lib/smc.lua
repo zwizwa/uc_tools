@@ -291,29 +291,11 @@ end
 
 
 function smc:var_and_type(v)
-   -- FIXME: dispatch on v.index instead?
-
-   if not self.vars_last then
-      -- First pass: allocate all bindings in the state's stack.
-      local state_comment = ""
-      if v.state == 'saved' then state_comment = ":saved" end
-      local comment = "/*" .. v.var .. state_comment .. "*/"
-      -- return "r" .. v.id .. comment, ""
-      assert(v.index)
+   local comment = "/*" .. v.var .. "*/"
+   if v.index then
       return "s->e[" .. v.index .. "]" .. comment, ""
    else
-      -- Second pass: we have a lot more information now.  Saved and
-      -- local variables can be distinguished and the stack allocation
-      -- can be shrunk.
-      local last = self.vars_last[v.id]
-      assert(last)
-      assert(last.state)
-      local comment = "/*" .. v.var .. "*/"
-      if last.state == 'saved' then
-         return "s->e[" .. v.index .. "]" .. comment, ""
-      else
-         return "l" .. v.id .. comment, "T "
-      end
+      return "l" .. v.id .. comment, "T "
    end
 end
 
