@@ -87,7 +87,7 @@ function smc:next_c_index()
 end
 
 -- Introduce a varible.
-function smc:new_cell(var_name)
+function smc:new_cell()
    local id = #self.cells + 1
    local cell = {id=id,bind='unbound'}
    if (not self.cells_last) or (self.cells_last[id].bind == 'saved') then
@@ -102,8 +102,10 @@ function smc:new_cell(var_name)
    return cell
 end
 
-function smc:push_new_var(var_name)
-   local cell = self:new_cell(var_name)
+function smc:push_var(var_name, cell)
+   if not cell then
+      cell = self:new_cell()
+   end
    local v = {var=var_name,cell=cell}
    -- self.stack is the currently visible environment, which gets popped on exit.
    -- FIXME: How to not put unbound variables here? Maybe not an issue..
@@ -112,16 +114,20 @@ function smc:push_new_var(var_name)
 end
 
 function smc:ref(var)
-   -- search backwards.  this implements shadowing
+   -- search starts at last pushed variable.  this implements shadowing
    for v in se.elements(self.stack) do
-      if v.cell.bind ~= 'unbound' and v.var == var then
-         -- If this is a variable that crossed a suspension border,
-         -- mark it such that it gets stored in the state struct and
-         -- not on the C stack.
-         if v.cell.bind == 'lost' then
-            v.cell.bind = 'saved'
+      if v.var == var then
+         -- note that if the cell is not yet bound to a value, we
+         -- can't see it yet.  this is a hack: FIXME
+         if v.cell.bind ~= 'unbound' then
+            -- If this is a variable that crossed a suspension border,
+            -- mark it such that it gets stored in the state struct and
+            -- not on the C stack.
+            if v.cell.bind == 'lost' then
+               v.cell.bind = 'saved'
+            end
+            return v
          end
-         return v
       end
    end
    return nil
@@ -207,7 +213,7 @@ form['let*'] = function(self, let_expr, hole)
             assert(expr)
 
             -- Reserve a location
-            local v = self:push_new_var(var)
+            local v = self:push_var(var)
             self:compile(expr, v, false)
          end
 
@@ -367,6 +373,10 @@ end
 
 -- Convert all arguments to A-Normal form.
 -- https://en.wikipedia.org/wiki/A-normal_form
+--
+-- To simplify representation, we also bind constants to variables.
+-- The C compiler can later optimize those.
+--
 function smc:anf(expr, hole, tail_position)
    local bindings = {}
    local app_form = {}
@@ -376,15 +386,15 @@ function smc:anf(expr, hole, tail_position)
    assert(type(se.car(expr)) == 'string')
 
    for subexpr in se.elements(expr) do
-      if type(subexpr) == 'table' then
-         -- non-primitive, insert form
+      if type(subexpr) == 'string' then
+         -- variable reference, just collect
+         table.insert(app_form, subexpr)
+      else
+         -- sub-expression or constant. insert form
          local sym = self:gensym()
          local binding = se.list(sym, subexpr)
          table.insert(bindings, binding)
          table.insert(app_form, sym)
-      else
-         -- primitive, just collect it
-         table.insert(app_form, subexpr)
       end
    end
    if #bindings == 0 then
