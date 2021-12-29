@@ -339,8 +339,8 @@ form['module'] = function(self, expr, hole)
    if self.mod_prefix then
       modname = self.mod_prefix .. modname
    end
-   self:write("void " .. modname .. "("
-                 .. self.config.state_type
+   self:write("void " .. modname .. "(struct "
+                 .. self.config.state_struct
                  .. " *" .. self.config.state_name
                  .. ") {\n");
 
@@ -372,6 +372,8 @@ form['module'] = function(self, expr, hole)
             assert(0 == se.length(self.env))
             self:write(fname .. ":\n");
             self:compile(body_expr, nil, true)
+         else
+            self:write("/* " .. fname .. " inline only */\n")
          end
       end)
 
@@ -451,6 +453,8 @@ function smc:atom_to_c_expr(atom)
       if n then
          return self:var(n)
       else
+         -- Keep track of free variables.
+         self.free[atom] = true
          return self.config.state_name .. "->" .. atom .. "/*free*/"
       end
    else
@@ -632,11 +636,34 @@ function smc:compile_passes(expr)
    self.cells_last  = self.cells
    self.labels_last = self.labels
 
-   self:reset()
-   self:write("\n// second pass\n")
-   self:compile(expr)
-   self:write("// stack_size: " .. self.stack_size .. "\n")
-   self:write("\n")
+   local c_code = {}
+   self:save_context(
+      {'write'},
+      function()
+         self.write = function(_, str)
+            table.insert(c_code, str)
+         end
+         self:reset()
+         self:write("\n// second pass\n")
+         self:compile(expr)
+         self:write("// stack_size: " .. self.stack_size .. "\n")
+         self:write("\n")
+      end)
+
+   -- Generate the struct definition, then append the C code.
+   self:write("struct " .. self.config.state_struct .. " {\n")
+   self:save_context(
+      {'indent'},
+      function()
+         self.indent = self.indent + 1
+         self:write(self:tab() .. "T e[" .. self.stack_size .. "];\n")
+         for v in pairs(self.free) do
+            self:write(self:tab() .. "T " .. v .. ";\n")
+         end
+      end)
+   self:write("};\n")
+
+   self:write(table.concat(c_code,""))
 end
 
 -- Reset compiler state before executing a new pass.
@@ -647,6 +674,7 @@ function smc:reset()
    self.sym_n = 0
    self.funs = {}
    self.depth = 0
+   self.free = {}
    assert(0 == se.length(self.env))
    assert(0 == self.stack_ptr)
    assert(1 == self.indent)
@@ -654,7 +682,7 @@ end
 
 
 function smc.new()
-   local config = { state_name = "s", state_type = "state_t" }
+   local config = { state_name = "s", state_struct = "state" }
    local obj = { stack_ptr = 0, env = {}, indent = 1, config = config }
    setmetatable(obj, {__index = smc})
    return obj

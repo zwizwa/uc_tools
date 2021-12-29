@@ -57,7 +57,15 @@ behind them, and probably deserve their own documentation:
   to provide incremental development.  Think "C REPL on a
   micocontroller".
 
-- A small Forth interpreter
+- A small Forth interpreter + host system
+
+- Lua wrappers for elfutils (e.g. inspect target data structures for
+  testing pre/post conditions on embedded target).
+  
+- Small webserver for bootstrapping a websocket connection to embedded
+  target.
+  
+- smc.lua: Preliminary Scheme to protothread compiler
 
 
 Additionally, there is a collection of mundane tools and applications:

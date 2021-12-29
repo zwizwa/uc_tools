@@ -2,8 +2,8 @@
 ;; Subset of Scheme representing sm.h style protothreads.
 ;;
 ;; This is a test file with nonsense code that exercises all forms,
-;; for visual inspection of code generation.  See test_csp.sm for a
-;; real example.
+;; for visual inspection of code generation.  See test_smc_csp.sm for
+;; a real example.
 
 ;(let* ((a 123)
 ;       (b 345))
