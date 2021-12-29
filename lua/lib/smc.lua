@@ -192,6 +192,27 @@ form['for'] = function(self, for_expr, hole)
       end)
 end
 
+function smc:write_se(expr)
+   if type(expr) ~= 'table' then
+      self:write(expr)
+   else
+      self:write("(")
+      for el, rest in se.elements(expr) do
+         self:write_se(el)
+         if se.is_pair(rest) then
+            self:write(" ")
+         end
+      end
+      self:write(")")
+   end
+end
+function smc:write_se_comment(expr)
+   self:write("/*")
+   self:write_se(expr)
+   self:write("*/")
+end
+
+
 form['if'] = function(self, if_expr, hole, tail_position)
    local _, condition, expr_true, expr_false = se.unpack(if_expr, { n = 4 })
 
@@ -208,10 +229,15 @@ form['if'] = function(self, if_expr, hole, tail_position)
       return
    end
 
-   -- Compilation of the two braches is similar to let*
-   -- We use statement expressions as well, so write var def here and
-   -- propagate hole=nil since value of last expression in statement
-   -- expression eventually ends up in this variable.
+
+   -- We use statement expressions as with let*, so write var def here
+   -- and propagate hole=nil since value of last expression in
+   -- statement expression eventually ends up in this variable.
+   self:write(self:tab())
+   if hole then
+      -- FIXME: In tail position this doesn't make any sense.
+      self:write_var_def(hole)
+   end
 
    local function compile_branch(form)
       self:fork(
@@ -222,15 +248,10 @@ form['if'] = function(self, if_expr, hole, tail_position)
          end)
    end
 
-   self:write(self:tab())
-   if hole then
-      -- FIXME: In tail position this doesn't make any sense.
-      self:write_var_def(hole)
-   end
-
    local ccond = self:atom_to_c_expr(condition)
 
    self:write(ccond .. " ? ({\n")
+   -- self:write_se(expr_true)
    compile_branch(expr_true)
    self:write(self:tab() .. "}) : ({\n")
    compile_branch(expr_false)
