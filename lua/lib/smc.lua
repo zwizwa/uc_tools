@@ -471,11 +471,13 @@ end
 
 -- Generate symbols for let-insertion.  These use a prefix that is not
 -- legal in the code so they never clash with source variables.
-function smc:gensym()
+function smc:gensym(prefix)
+   -- Generated symbols should not clash with any program text, which
+   -- is why we use the comment character here.
+   if not prefix then prefix = ";" end;
    local n = self.sym_n
    self.sym_n = n + 1
-   -- FIXME: Generated symbols should not clash with any program text.
-   return ";" .. n
+   return prefix .. n
 end
 
 -- Apply function to arguments, converting all arguments to A-Normal
@@ -652,15 +654,10 @@ function smc:compile_passes(expr)
 
    -- Generate the struct definition, then append the C code.
    self:write("struct " .. self.config.state_struct .. " {\n")
-   self:save_context(
-      {'indent'},
-      function()
-         self.indent = self.indent + 1
-         self:write(self:tab() .. "T e[" .. self.stack_size .. "];\n")
-         for v in pairs(self.free) do
-            self:write(self:tab() .. "T " .. v .. ";\n")
-         end
-      end)
+   self:write(self:tab() .. "T e[" .. self.stack_size .. "];\n")
+   for v in pairs(self.free) do
+      self:write(self:tab() .. "T " .. v .. ";\n")
+   end
    self:write("};\n")
 
    self:write(table.concat(c_code,""))

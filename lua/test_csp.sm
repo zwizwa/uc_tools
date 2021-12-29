@@ -1,9 +1,8 @@
 ;; -*- scheme -*-
 ;; Subset of Scheme representing sm.h style protothreads.
 ;;
-;; This is a test file with nonsense code that exercises all forms,
-;; for visual inspection of code generation.  See test_smc_csp.sm for
-;; a real example.
+;; This is a test file that compiles to testable code.  See test.sm
+;; for a nonsense code example exercising all forms.
 
 ;(let* ((a 123)
 ;       (b 345))
@@ -16,41 +15,7 @@
 (module (testmod)
 
   (define (fun1)
-    (let*
-        ((a
-          (let* ((b (read chan1))
-                 (c (read chan1)))
-            (add a ;; Free variable
-                 (add b c))))
-         (d (read chan1))
-         (e (let* ((x (add a (add 1 2)))
-                   (y (add d 2)))
-              (add x y)))
-         (f (fun3 e))
-         (g (let* ((l 5))
-              (add f l)))
-         (h (if g (add f g) (add f f)))
-         )
-      (send d)
-      (send e)
-      (send f)
-      (for ((i (in-range 3)))
-        (send (add (read chan1) i)))
-      
-      ; (if f (fun1) (fun2))
-      (fun2)
-      ))
-
-  (define (fun2)
-    (if (add (read chan1) (read chan2))
-        (fun1)
-        (fun2)))
-
-  (define (fun3 x)
-    (let*
-        ((a (read chan2))
-         (b (read chan2)))
-      (add x (add a b))))
+    (fun1))
 
   )
 

@@ -31,7 +31,7 @@
               (add f l)))
          (h (if g (add f g) (add f f)))
          )
-      (send d)
+      (send (add d h))
       (send e)
       (send f)
       (for ((i (in-range 3)))

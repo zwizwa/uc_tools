@@ -1,6 +1,6 @@
 struct state {
-    T e[3];
-    T a;
+  T e[3];
+  T a;
 };
 
 // second pass
@@ -49,28 +49,31 @@ fun1:
     }) : ({
       add(l13/*f*/,l13/*f*/);
     });
-    send(l5/*d*/);
+    ({
+      T l20/*;6*/ = add(l5/*d*/,l19/*h*/);
+      send(l20/*;6*/);
+    });
     send(s->e[1]/*e*/);
     send(l13/*f*/);
     for(s->e[2]/*i*/ = 0 ; s->e[2]/*i*/ < 3 ; s->e[2]/*i*/++) {
       ({
-        T l21/*;6*/ = ({
-          T l22/*;7*/ = SM_READ(s,s->chan1);
-          add(l22/*;7*/,s->e[2]/*i*/);
+        T l22/*;7*/ = ({
+          T l23/*;8*/ = SM_READ(s,s->chan1);
+          add(l23/*;8*/,s->e[2]/*i*/);
         });
-        send(l21/*;6*/);
+        send(l22/*;7*/);
       });
     }
     goto fun2;
   });
 fun2:
   ({
-    T l23/*;8*/ = ({
-      s->e[0]/*;9*/ = SM_READ(s,s->chan1);
-      T l25/*;10*/ = SM_READ(s,s->chan2);
-      add(s->e[0]/*;9*/,l25/*;10*/);
+    T l24/*;9*/ = ({
+      s->e[0]/*;10*/ = SM_READ(s,s->chan1);
+      T l26/*;11*/ = SM_READ(s,s->chan2);
+      add(s->e[0]/*;10*/,l26/*;11*/);
     });
-    l23/*;8*/ ? ({
+    l24/*;9*/ ? ({
       goto fun1;
     }) : ({
       goto fun2;
