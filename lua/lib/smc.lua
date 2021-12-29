@@ -169,7 +169,7 @@ form['for'] = function(self, for_expr, hole)
    assert(type(iter_arg) == 'number')
    assert(type(var_name) == 'string')
 
-   self:save(
+   self:fork(
       {'env'},
       function()
          local v = self:push_new_var(var_name)
@@ -180,7 +180,7 @@ form['for'] = function(self, for_expr, hole)
          self:mark_bound(v)
          local cv = self:atom_to_c_expr(var_name)
          self:write(cv .. " < " .. iter_arg .. " ; ")
-         self:write(cv .. " = " .. cv .. " + 1) {\n")
+         self:write(cv .. "++) {\n")
          self.indent = self.indent + 1
          for form in se.elements(inner) do
             assert(form)
@@ -192,33 +192,67 @@ form['for'] = function(self, for_expr, hole)
       end)
 end
 
--- TODO
--- form['if'] = function(self, if_expr, hole)
---    assert(not hole)
---    local _, setup, inner = se.unpack(if_expr, { n = 2, tail = true })
+form['if'] = function(self, if_expr, hole, tail_position)
+   local _, condition, expr_true, expr_false = se.unpack(if_expr, { n = 4 })
 
---    self:write(self:tab() .. "for(;;){\n")
---    self.indent = self.indent + 1
+   -- Perform let insertion when the condition is not a variable.
+   if type(condition) ~= 'string' then
+      local cond_var = self:gensym()
+      local binding = se.list(cond_var, condition)
+      self:compile(
+         se.list('let*',
+                 se.list(binding),
+                 se.list('if', cond_var, expr_true, expr_false)),
+         hole,
+         tail_position)
+      return
+   end
 
---    for form in se.elements(inner) do
---       assert(form)
---       self:compile(form, nil)
---    end
+   -- Compilation of the two braches is similar to let*
+   -- We use statement expressions as well, so write var def here and
+   -- propagate hole=nil since value of last expression in statement
+   -- expression eventually ends up in this variable.
 
---    self.indent = self.indent - 1
---    self:write(self:tab() .. "}\n")
--- end
+   local function compile_branch(form)
+      self:fork(
+         {'env','stack_ptr','indent'},
+         function()
+            self.indent = self.indent + 1
+            self:compile(form, nil, tail_position)
+         end)
+   end
 
--- Save/restore dynamic environment.
-function smc:save(keys, fun)
+   self:write(self:tab())
+   if hole then
+      -- FIXME: In tail position this doesn't make any sense.
+      self:write_var_def(hole)
+   end
+
+   local ccond = self:atom_to_c_expr(condition)
+
+   self:write(ccond .. " ? ({\n")
+   compile_branch(expr_true)
+   self:write(self:tab() .. "}) : ({\n")
+   compile_branch(expr_false)
+   self:write(self:tab() .. "});\n")
+
+   if hole then
+      self:mark_bound(hole)
+   end
+end
+
+
+-- Tracking the language's lexical scope can be implemented using
+-- dynamic scope in the compiler, as it recurses into the syntax.
+-- This function saves and restores a list of compiler keys
+-- (e.g. 'env', 'stack_ptr', 'indent').  Note that 'env' is
+-- implemented using a cons list instead of a hash table to facilitate
+-- sharing.
+function smc:fork(keys, inner_fun)
    local saved = {}
-   for i,key in ipairs(keys) do
-      saved[key] = self[key]
-   end
-   local rv = fun()
-   for i,key in ipairs(keys) do
-      self[key] = saved[key]
-   end
+   for i,key in ipairs(keys) do saved[key] = self[key]  end
+   local rv = inner_fun()
+   for i,key in ipairs(keys) do self[key]  = saved[key] end
    return rv
 end
 
@@ -236,7 +270,7 @@ form['let*'] = function(self, let_expr, hole, tail_position)
    end
    self:write("({\n")
 
-   self:save(
+   self:fork(
       {'env','stack_ptr','indent'},
       function()
          self.indent = self.indent + 1
@@ -486,7 +520,7 @@ function smc:apply(expr, hole, tail_position)
       -- log("no_tail: fun_name=" .. fun_name .. "\n")
       -- Non-tail calls are inlined as we do not support the call
       -- stack necessary for "real" calls.
-      self:save(
+      self:fork(
          {'env','stack_ptr','depth'},
          function()
             self.depth = self.depth + 1
@@ -546,19 +580,22 @@ end
 -- in the first pass to allocate variables in the state struct, or on
 -- the C stack, and to omit unused function definitions.
 function smc:compile_passes(expr)
-   local w = self.write
-   -- Override to suppress printing of first pass C output, which is
-   -- only neccessary for debugging variable allocation.
-   -- self.write = function() end
+   self:fork(
+      {'write'},
+      function()
+         -- Override to suppress printing of first pass C output, which is
+         -- only neccessary for debugging variable allocation.
+         if not self.config.emit_first_pass then
+            self.write = function() end
+         end
 
-   self:reset()
-   self:write("\n// first pass\n")
-   self:write("#if 0\n")
-   self:compile(expr)
-   self:write("// stack_size: " .. self.stack_size .. "\n")
-   self:write("#endif\n")
-
-   self.write = w
+         self:reset()
+         self:write("\n// first pass\n")
+         self:write("#if 0\n")
+         self:compile(expr)
+         self:write("// stack_size: " .. self.stack_size .. "\n")
+         self:write("#endif\n")
+      end)
 
    -- Second pass uses some information from the previous pass: the
    -- information gathered about each storage cell, and information

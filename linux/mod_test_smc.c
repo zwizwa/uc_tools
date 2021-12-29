@@ -1,75 +1,4 @@
 
-// first pass
-#if 0
-void testmod(state_t *s) {
-fun1:
-  ({
-    s->e[0]/*a*/ = ({
-      s->e[1]/*b*/ = SM_READ(s,s->chan1);
-      s->e[2]/*c*/ = SM_READ(s,s->chan1);
-      ({
-        s->e[3]/*;0*/ = add(s->e[1]/*b*/,s->e[2]/*c*/);
-        add(s->a/*free*/,s->e[3]/*;0*/);
-      });
-    });
-    s->e[1]/*d*/ = SM_READ(s,s->chan1);
-    s->e[2]/*e*/ = ({
-      s->e[3]/*x*/ = ({
-        s->e[4]/*;1*/ = ({
-          s->e[5]/*;2*/ = 1;
-          s->e[6]/*;3*/ = 2;
-          add(s->e[5]/*;2*/,s->e[6]/*;3*/);
-        });
-        add(s->e[0]/*a*/,s->e[4]/*;1*/);
-      });
-      s->e[4]/*y*/ = ({
-        s->e[5]/*;4*/ = 2;
-        add(s->e[1]/*d*/,s->e[5]/*;4*/);
-      });
-      add(s->e[3]/*x*/,s->e[4]/*y*/);
-    });
-    /*inline:fun3,x=e*/
-    s->e[3]/*f*/ = ({
-      s->e[4]/*a*/ = SM_READ(s,s->chan2);
-      s->e[5]/*b*/ = SM_READ(s,s->chan2);
-      ({
-        s->e[6]/*;5*/ = add(s->e[4]/*a*/,s->e[5]/*b*/);
-        add(s->e[2]/*x*/,s->e[6]/*;5*/);
-      });
-    });
-    s->e[4]/*g*/ = ({
-      s->e[5]/*l*/ = 5;
-      add(s->e[3]/*f*/,s->e[5]/*l*/);
-    });
-    send(s->e[1]/*d*/);
-    send(s->e[2]/*e*/);
-    send(s->e[3]/*f*/);
-    for(s->e[5]/*i*/ = 0 ; s->e[5]/*i*/ < 3 ; s->e[5]/*i*/ = s->e[5]/*i*/ + 1) {
-      ({
-        s->e[6]/*;6*/ = ({
-          s->e[7]/*;7*/ = SM_READ(s,s->chan1);
-          add(s->e[7]/*;7*/,s->e[5]/*i*/);
-        });
-        send(s->e[6]/*;6*/);
-      });
-    }
-    goto fun2;
-  });
-fun2:
-  goto fun1;
-fun3:
-  ({
-    s->e[0]/*a*/ = SM_READ(s,s->chan2);
-    s->e[1]/*b*/ = SM_READ(s,s->chan2);
-    ({
-      s->e[2]/*;8*/ = add(s->e[0]/*a*/,s->e[1]/*b*/);
-      add(s->x/*free*/,s->e[2]/*;8*/);
-    });
-  });
-}
-// stack_size: 8
-#endif
-
 // second pass
 void testmod(state_t *s) {
 fun1:
@@ -111,16 +40,21 @@ fun1:
       T l18/*l*/ = 5;
       add(l13/*f*/,l18/*l*/);
     });
+    T l19/*h*/ = l17/*g*/ ? ({
+      add(l13/*f*/,l17/*g*/);
+    }) : ({
+      add(l13/*f*/,l13/*f*/);
+    });
     send(l5/*d*/);
     send(s->e[1]/*e*/);
     send(l13/*f*/);
-    for(s->e[2]/*i*/ = 0 ; s->e[2]/*i*/ < 3 ; s->e[2]/*i*/ = s->e[2]/*i*/ + 1) {
+    for(s->e[2]/*i*/ = 0 ; s->e[2]/*i*/ < 3 ; s->e[2]/*i*/++) {
       ({
-        T l20/*;6*/ = ({
-          T l21/*;7*/ = SM_READ(s,s->chan1);
-          add(l21/*;7*/,s->e[2]/*i*/);
+        T l21/*;6*/ = ({
+          T l22/*;7*/ = SM_READ(s,s->chan1);
+          add(l22/*;7*/,s->e[2]/*i*/);
         });
-        send(l20/*;6*/);
+        send(l21/*;6*/);
       });
     }
     goto fun2;
