@@ -169,7 +169,7 @@ form['for'] = function(self, for_expr, hole)
    assert(type(iter_arg) == 'number')
    assert(type(var_name) == 'string')
 
-   self:fork(
+   self:save_context(
       {'env'},
       function()
          local v = self:push_new_var(var_name)
@@ -230,7 +230,8 @@ form['if'] = function(self, if_expr, hole, tail_position)
    end
 
 
-   -- We use statement expressions as with let*, so write var def here
+   -- See also implementation of 'let*'.
+   -- We use statement expressions here as well, so write var def here
    -- and propagate hole=nil since value of last expression in
    -- statement expression eventually ends up in this variable.
    self:write(self:tab())
@@ -240,7 +241,7 @@ form['if'] = function(self, if_expr, hole, tail_position)
    end
 
    local function compile_branch(form)
-      self:fork(
+      self:save_context(
          {'env','stack_ptr','indent'},
          function()
             self.indent = self.indent + 1
@@ -251,7 +252,6 @@ form['if'] = function(self, if_expr, hole, tail_position)
    local ccond = self:atom_to_c_expr(condition)
 
    self:write(ccond .. " ? ({\n")
-   -- self:write_se(expr_true)
    compile_branch(expr_true)
    self:write(self:tab() .. "}) : ({\n")
    compile_branch(expr_false)
@@ -269,7 +269,7 @@ end
 -- (e.g. 'env', 'stack_ptr', 'indent').  Note that 'env' is
 -- implemented using a cons list instead of a hash table to facilitate
 -- sharing.
-function smc:fork(keys, inner_fun)
+function smc:save_context(keys, inner_fun)
    local saved = {}
    for i,key in ipairs(keys) do saved[key] = self[key]  end
    local rv = inner_fun()
@@ -291,7 +291,7 @@ form['let*'] = function(self, let_expr, hole, tail_position)
    end
    self:write("({\n")
 
-   self:fork(
+   self:save_context(
       {'env','stack_ptr','indent'},
       function()
          self.indent = self.indent + 1
@@ -336,6 +336,9 @@ form['module'] = function(self, expr, hole)
    assert(hole == nil)
    local _, mod_spec, define_exprs = se.unpack(expr, {n = 2, tail = true})
    local modname = se.unpack(mod_spec, {n = 1})
+   if self.mod_prefix then
+      modname = self.mod_prefix .. modname
+   end
    self:write("void " .. modname .. "("
                  .. self.config.state_type
                  .. " *" .. self.config.state_name
@@ -541,7 +544,7 @@ function smc:apply(expr, hole, tail_position)
       -- log("no_tail: fun_name=" .. fun_name .. "\n")
       -- Non-tail calls are inlined as we do not support the call
       -- stack necessary for "real" calls.
-      self:fork(
+      self:save_context(
          {'env','stack_ptr','depth'},
          function()
             self.depth = self.depth + 1
@@ -595,23 +598,28 @@ function smc:compile(expr, hole, tail_position)
 end
 
 
--- Don't bother with building representations.  The two passes emit C
--- code directly, as the shape of the code resembles the Scheme code
--- fairly directly.  The second pass can use the information gathered
--- in the first pass to allocate variables in the state struct, or on
--- the C stack, and to omit unused function definitions.
+-- Don't bother with building intermediate representations.  The two
+-- passes emit C code directly.  The the shape of the C code is almost
+-- identical to the Scheme code apart from let-insertion and inlining.
+-- The first pass should be valid C.  The second pass can use the
+-- information gathered in the first pass to allocate variables in the
+-- state struct, or on the C stack, and to omit unused function
+-- definitions.
 function smc:compile_passes(expr)
-   self:fork(
-      {'write'},
+   self:save_context(
+      {'write','mod_prefix'},
       function()
          -- Override to suppress printing of first pass C output, which is
          -- only neccessary for debugging variable allocation.
-         if not self.config.emit_first_pass then
+         if not self.config.first_pass_prefix then
             self.write = function() end
+         else
+            self.mod_prefix = self.config.first_pass_prefix
          end
 
          self:reset()
          self:write("\n// first pass\n")
+         -- FIXME: First pass does not generate valid C at this point.
          self:write("#if 0\n")
          self:compile(expr)
          self:write("// stack_size: " .. self.stack_size .. "\n")

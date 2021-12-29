@@ -18,6 +18,7 @@ local function test()
    local expr = parser:read()
    -- log_desc(expr)
    local interp = smc.new()
+   -- interp.config.first_pass_prefix = "dbg_pass1_"
    interp.write = function(self, str) io.stdout:write(str) end
 
    interp:compile_passes(expr)
