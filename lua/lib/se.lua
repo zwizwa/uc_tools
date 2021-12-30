@@ -1,6 +1,9 @@
 -- Parse s-expressions
 -- Keep it simple at first: no improper lists, no strings.
 
+-- Note that we use {} to represent the empty list at the end of a
+-- cons list, not nil.
+
 local se = {}
 
 function se:next()
