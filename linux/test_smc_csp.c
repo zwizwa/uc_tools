@@ -1,9 +1,32 @@
+/* FIXME: Just a stub.
+
+   The idea here is to create a test for a real-world problem:
+   handling UART RX/TX interrupts.
+
+   (define (forwarder)
+     (wait-rx)
+     (let* ((byte (read-rx-reg)))
+       (if (tx-ready?)
+         (write-tx-reg! byte)
+         (begin
+           (wait-tx)
+           (write-tx-reg! byte))))
+     (forwarder))
+
+   Currently split between two approach: keep it "simple" by only
+   allowing uC interrupts to be events, or keeping it more general to
+   both represent interrupts directly + also have arbitrary inter-task
+   events (e.g. for software timer).
+
+*/
+
 #include <stdint.h>
 #include "macros.h"
 // Context
-#define SM_READ(s, chan) ({ return; 123; })
+#define SM_READ(s, chan, label, arg) \
+    ({ return &&label; label: arg; })
 #define add(a,b) ((a)+(b))
-typedef uint32_t T;
+typedef uintptr_t T;
 
 void send(uint32_t val) {}
 
@@ -13,6 +36,6 @@ void send(uint32_t val) {}
 
 int main(int argc, char **argv) {
     struct state s = {};
-    testmod(&s);
+    testmod(&s, NULL, 0);
     return 0;
 }

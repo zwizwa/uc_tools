@@ -180,26 +180,29 @@ void test4_0(struct csp_scheduler *s) {
     csp_send(s, chan, &msg, sizeof(msg));
 }
 
-
-int main(int argc, char **argv) {
+void run(void (*f)(struct csp_scheduler *)) {
     /* Sizes don't matter much for tests.  Just make sure they are
        large enough.  FIXME: create some functionality to compute
        storage parameters from application. */
-    int nb_c2e = 20;
-    int nb_c = 20;
+    int nb_channel_to_event = 20;
+    int nb_channel = 20;
+    csp_with_scheduler(nb_channel_to_event, nb_channel, f);
+}
+
+int main(int argc, char **argv) {
     if (argc < 2) {
         LOG("- test1\n");
-        csp_with_scheduler(nb_c2e, nb_c, test1);
+        run(test1);
         LOG("- test2\n");
-        csp_with_scheduler(nb_c2e, nb_c, test2);
+        run(test2);
         LOG("- test3\n");
-        csp_with_scheduler(nb_c2e, nb_c, test3);
+        run(test3);
     }
     else {
         /* This test split over two linux processes. */
         LOG("- test4_0\n");
         if (atoi(argv[1]) == 0) {
-            csp_with_scheduler(nb_c2e, nb_c, test4_0);
+            run(test4_0);
         }
     }
 }

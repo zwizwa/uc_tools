@@ -15,8 +15,15 @@
 (module (testmod)
 
   (define (fun1)
-    (fun1))
+    (if (add
+         (read chan1)
+         (read chan1))
+        (fun1)
+        (fun2)))
 
+  (define (fun2)
+    (fun1))
+  
   )
 
 

@@ -1,7 +1,7 @@
 #include <stdint.h>
 #include "macros.h"
 // Context
-#define SM_READ(s, chan) 123
+#define SM_READ(s, chan, label) 123
 #define add(a,b) ((a)+(b))
 typedef uint32_t T;
 

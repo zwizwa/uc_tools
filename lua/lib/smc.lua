@@ -110,15 +110,20 @@ function smc:new_cell()
    return cell
 end
 
--- Introduce a variable in the lexical scope associated to a new
--- storage cell.
-function smc:push_new_var(var_name)
-   local cell = self:new_cell()
+function smc:push_var(var_name, cell)
+   assert(var_name)
+   assert(cell)
    local v = {var = var_name, cell = cell}
    -- self.env is the currently visible environment, which gets popped on exit.
    -- FIXME: How to not put unbound variables here? Maybe not an issue..
    self.env = se.cons(v, self.env)
    return v
+end
+
+-- Introduce a variable in the lexical scope associated to a new
+-- storage cell.
+function smc:push_new_var(var_name)
+   return self:push_var(var_name, self:new_cell())
 end
 
 -- Aliases are used to implement substitution for function inlining.
@@ -339,10 +344,18 @@ form['module'] = function(self, expr, hole)
    if self.mod_prefix then
       modname = self.mod_prefix .. modname
    end
-   self:write("void " .. modname .. "(struct "
-                 .. self.config.state_struct
-                 .. " *" .. self.config.state_name
-                 .. ") {\n");
+   local args = {
+      "struct " .. self.config.state_struct .. " *" .. self.config.state_name,
+      "void *next",
+      "T arg",
+   }
+
+   self:write("void *" .. modname .. "(")
+   self:write(table.concat(args,", "))
+   self:write(") {\n");
+   -- local nxt = self.config.state_name .. "->next";
+   local nxt = "next";
+   self:write(self:tab() .. "if(" .. nxt .. ") goto *" .. nxt .. ";\n")
 
    -- 'define' is only defined inside a 'module' form.
    local function for_defines(f)
@@ -400,11 +413,15 @@ form['read'] = function(self, expr, hole)
       end
    end
    local s = self.config.state_name
+   -- Might as well generate it here.
+   local label = self:gensym("l");
    self:write_binding(
       hole,
       "SM_READ("
          .. s .. ","
-         .. s .. "->" .. chan .. ")")
+         .. s .. "->" .. chan .. ","
+         .. label .. ","
+         .. "arg)")
 end
 
 
@@ -654,6 +671,7 @@ function smc:compile_passes(expr)
 
    -- Generate the struct definition, then append the C code.
    self:write("struct " .. self.config.state_struct .. " {\n")
+   --self:write(self:tab() .. "void *next;\n")
    self:write(self:tab() .. "T e[" .. self.stack_size .. "];\n")
    for v in pairs(self.free) do
       self:write(self:tab() .. "T " .. v .. ";\n")
