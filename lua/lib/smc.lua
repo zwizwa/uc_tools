@@ -110,21 +110,16 @@ function smc:new_cell()
    return cell
 end
 
-function smc:push_var(var_name, cell)
-   assert(var_name)
-   assert(cell)
-   local v = {var = var_name, cell = cell}
-   -- self.env is the currently visible environment, which gets popped on exit.
-   -- FIXME: How to not put unbound variables here? Maybe not an issue..
+function smc:new_var(var_name)
+   return {var = var_name, cell = self:new_cell()}
+end
+
+-- Introduce the variable in the current lexical scope.
+function smc:push_var(v)
    self.env = se.cons(v, self.env)
    return v
 end
 
--- Introduce a variable in the lexical scope associated to a new
--- storage cell.
-function smc:push_new_var(var_name)
-   return self:push_var(var_name, self:new_cell())
-end
 
 -- Aliases are used to implement substitution for function inlining.
 function smc:push_alias(alias_name, v)
@@ -141,17 +136,16 @@ function smc:ref(var_name, env)
    -- search starts at last pushed variable.  this implements shadowing
    for v in se.elements(env) do
       if v.var == var_name then
-         -- note that if the cell is not yet bound to a value, we
-         -- can't see it yet.  this is a hack: FIXME
-         if v.cell.bind ~= 'unbound' then
-            -- If this is a variable that crossed a suspension border,
-            -- mark it such that it gets stored in the state struct and
-            -- not on the C stack.
-            if v.cell.bind == 'lost' then
-               v.cell.bind = 'saved'
-            end
-            return v
+         -- Unbound variables are never pushed to the stack.
+         assert(v.cell.bind ~= 'unbound')
+
+         -- If this is a variable that crossed a suspension border,
+         -- mark it such that it gets stored in the state struct and
+         -- not on the C stack.
+         if v.cell.bind == 'lost' then
+            v.cell.bind = 'saved'
          end
+         return v
       end
    end
    return nil
@@ -177,11 +171,14 @@ form['for'] = function(self, for_expr, hole)
    self:save_context(
       {'env'},
       function()
-         local v = self:push_new_var(var_name)
+         local v = self:new_var(var_name)
+
          self:write(self:tab())
          self:write("for(")
          self:write_var_def(v)
          self:write("0 ; ")
+
+         self:push_var(v)
          self:mark_bound(v)
          local cv = self:atom_to_c_expr(var_name)
          self:write(cv .. " < " .. iter_arg .. " ; ")
@@ -303,11 +300,12 @@ form['let*'] = function(self, let_expr, hole, tail_position)
 
          local nb_bindings = se.length(bindings)
          for binding in se.elements(bindings) do
-            local var, expr = se.unpack(binding, { n = 2 })
-            assert(type(var) == 'string')
+            local var_name, expr = se.unpack(binding, { n = 2 })
+            assert(type(var_name) == 'string')
             assert(expr)
-            local v = self:push_new_var(var)
+            local v = self:new_var(var_name)
             self:compile(expr, v, false)
+            self:push_var(v)
          end
 
          -- Compile inner forms as statements.  C handles value passing of
