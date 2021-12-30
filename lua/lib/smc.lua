@@ -136,7 +136,8 @@ function smc:ref(var_name, env)
    -- search starts at last pushed variable.  this implements shadowing
    for v in se.elements(env) do
       if v.var == var_name then
-         -- Unbound variables are never pushed to the stack.
+         -- We can only get references from the lexical environment,
+         -- and those should never contain unbound variables.
          assert(v.cell.bind ~= 'unbound')
 
          -- If this is a variable that crossed a suspension border,

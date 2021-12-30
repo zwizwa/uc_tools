@@ -50,15 +50,25 @@ function se:read_atom()
       self:pop()
    end
 end
-function se.list(...)
-   return se.array_to_list({...})
-end
-function se.array_to_list(arr)
+function se.array_to_list(arr, rec)
    local lst = {}
    for i=#arr,1,-1 do
-      lst = {arr[i], lst}
+      local el = arr[i]
+      if rec and type(el) == 'table' then
+         el = se.array_to_list(el, true)
+      end
+      lst = {el, lst}
    end
    return lst
+end
+-- Same as Scheme (list ...)
+function se.list(...)
+   return se.array_to_list({...}, false)
+end
+-- It's often convenient to first create a recursive array structure
+-- to a recursive list structure, then map it to recursive list.
+function se.tree(expr)
+   return se.array_to_list(expr, true)
 end
 function se.is_pair(x)
    return type(x) == 'table' and (#x == 2)
