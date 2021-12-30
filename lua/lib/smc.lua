@@ -215,6 +215,8 @@ function smc:write_se_comment(expr)
    self:write("*/")
 end
 
+local l = se.list
+
 
 form['if'] = function(self, if_expr, hole, tail_position)
    local _, condition, expr_true, expr_false = se.unpack(if_expr, { n = 4 })
@@ -222,11 +224,9 @@ form['if'] = function(self, if_expr, hole, tail_position)
    -- Perform let insertion when the condition is not a variable.
    if type(condition) ~= 'string' then
       local cond_var = self:gensym()
-      local binding = se.list(cond_var, condition)
       self:compile(
-         se.list('let*',
-                 se.list(binding),
-                 se.list('if', cond_var, expr_true, expr_false)),
+         l('let*', l(l(cond_var, condition)),
+           l('if', cond_var, expr_true, expr_false)),
          hole,
          tail_position)
       return
@@ -343,8 +343,9 @@ form['module'] = function(self, expr, hole)
    if self.mod_prefix then
       modname = self.mod_prefix .. modname
    end
+   local c = self.config
    local args = {
-      "struct " .. self.config.state_struct .. " *" .. self.config.state_name,
+      "struct " .. c.state_struct .. " *" .. c.state_name,
       "void *next",
       "T arg",
    }
@@ -352,7 +353,7 @@ form['module'] = function(self, expr, hole)
    self:write("void *" .. modname .. "(")
    self:write(table.concat(args,", "))
    self:write(") {\n");
-   -- local nxt = self.config.state_name .. "->next";
+   -- local nxt = c.state_name .. "->next";
    local nxt = "next";
    self:write(self:tab() .. "if(" .. nxt .. ") goto *" .. nxt .. ";\n")
 
@@ -518,7 +519,7 @@ function smc:apply(expr, hole, tail_position)
       else
          -- sub-expression or constant. insert form
          local sym = self:gensym()
-         local binding = se.list(sym, subexpr)
+         local binding = l(sym, subexpr)
          table.insert(bindings, binding)
          table.insert(app_form, sym)
       end
@@ -529,9 +530,9 @@ function smc:apply(expr, hole, tail_position)
    if #bindings > 0 then
       self:compile(
          se.list('let*',
-                 se.array_to_list(bindings),
-                 -- List expression containing function call
-                 se.array_to_list(app_form)),
+           se.array_to_list(bindings),
+           -- List expression containing function call
+           se.array_to_list(app_form)),
          hole,
          tail_position)
       return

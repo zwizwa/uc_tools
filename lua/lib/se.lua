@@ -26,6 +26,7 @@ function se:pop()
    self.head = nil
    return char
 end
+
 local whitespace = {[' '] = true, ['\n'] = true, ['\r'] = true, ['\t'] = true}
 local function is_whitespace(str)
    return whitespace[str] or false
@@ -50,25 +51,17 @@ function se:read_atom()
       self:pop()
    end
 end
-function se.array_to_list(arr, rec)
+function se.array_to_list(arr)
    local lst = {}
    for i=#arr,1,-1 do
       local el = arr[i]
-      if rec and type(el) == 'table' then
-         el = se.array_to_list(el, true)
-      end
       lst = {el, lst}
    end
    return lst
 end
 -- Same as Scheme (list ...)
 function se.list(...)
-   return se.array_to_list({...}, false)
-end
--- It's often convenient to first create a recursive array structure
--- to a recursive list structure, then map it to recursive list.
-function se.tree(expr)
-   return se.array_to_list(expr, true)
+   return se.array_to_list({...})
 end
 function se.is_pair(x)
    return type(x) == 'table' and (#x == 2)
