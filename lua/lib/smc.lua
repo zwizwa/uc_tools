@@ -399,7 +399,7 @@ form['module'] = function(self, expr, hole)
 end
 
 function smc:write_statement(name, ...)
-   self:write(self:tab() .. name .. "(")
+   self:write(name .. "(")
    self:write(table.concat({...},","))
    self:write(");\n")
 end
@@ -443,40 +443,44 @@ form['read'] = function(self, expr, hole)
    if hole then
       self:write_var_def(hole)
    end
-   self:write("({\n")
+   -- This macro has been added in csp.h
+   self:write_statement("CSP_RCV_W", t, s, chan)
 
-   self:save_context(
-      {'indent','env','stack_ptr'},
-      function()
-         self.indent = self.indent + 1
 
-         -- The rendez-vous buffer is a saved variable.
-         --local rv_name = self:gensym()
-         --local rv_var = self:new_var(rv_name)
-         --rv_var.cell.bind = 'saved'
-         --self:push_var(rv_var)
-         --local rv_cvar = self:atom_to_c_expr(rv_name)
+   -- self:write("({\n")
+   -- self:save_context(
+   --    {'indent','env','stack_ptr'},
+   --    function()
+   --       self.indent = self.indent + 1
 
-         -- Note: the CSP scheduler is used in shared memory
-         -- configuration by setting rcv buffer pointer to NULL.
-         -- Further we only use the msg_buf in unboxed mode (unitptr_t
-         -- machine word .msg.buf.w).
+   --       -- The rendez-vous buffer is a saved variable.
+   --       --local rv_name = self:gensym()
+   --       --local rv_var = self:new_var(rv_name)
+   --       --rv_var.cell.bind = 'saved'
+   --       --self:push_var(rv_var)
+   --       --local rv_cvar = self:atom_to_c_expr(rv_name)
 
-         -- Note that this can just be a C macro.  No need to make
-         -- this verbose in the generated code.
+   --       -- Note: the CSP scheduler is used in zero-copy mode by
+   --       -- setting rcv buffer pointer to NULL.  Further we only use
+   --       -- the msg_buf in unboxed mode (unitptr_t machine word
+   --       -- .msg.buf.w).
 
-         local nb_evt = 1
-         for evt=1,nb_evt do
-            self:write_statement("CSP_EVT_BUF",t,evt-1,chan,"NULL",0)
-         end
-         self:write_statement("CSP_SEL",t,s,0,nb_evt)
-         -- This is only valid up to the next blocking point so we
-         -- need to copy the value.
+   --       -- Note that this can just be a C macro.  No need to make
+   --       -- this verbose in the generated code.
 
-         self:write(self:tab() .. s .. "->evt[0].msg.w;\n")
-   end)
+   --       --local nb_evt = 1
+   --       --for evt=1,nb_evt do
+   --       --   self:write_statement("CSP_EVT_BUF",t,evt-1,chan,"NULL",0)
+   --       --end
+   --       --self:write_statement("CSP_SEL",t,s,0,nb_evt)
 
-   self:write(self:tab() .. "});\n")
+   --       -- This is only valid up to the next blocking point so we
+   --       -- need to copy the value.
+
+   --       self:write(self:tab() .. s .. "->evt[0].msg.w;\n")
+   -- end)
+   -- self:write(self:tab() .. "});\n")
+
    self:mark_bound(hole)
 end
 

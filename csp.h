@@ -163,6 +163,16 @@ _klabel:
         CSP_SEL(task,cont,0,1);                \
 }
 
+
+/* This form is used by the .sm Scheme style language.  This uses
+   zero-copy mode word transfer. */
+#define CSP_RCV_W(task,cont,ch) ({              \
+            CSP_EVT_BUF(task,0,ch,NULL,0);      \
+            CSP_SEL(task,cont,0,1);             \
+            (task)->evt[0].msg.w;               \
+        })
+
+
 /* RPC is a common pattern, so provide a macro for it. */
 #define CSP_RPC(task,cont,ch,req_var,resp_var) {        \
         CSP_SND(task,cont,ch,req_var);                  \
@@ -174,6 +184,8 @@ _klabel:
    the scheduler does not reclaim any resources. */
 #define CSP_HALT(task) \
     {(task)->resume = 0; return;}
+
+
 
 
 /* Scheduler data struct.  The hot list is the list of tasks to be

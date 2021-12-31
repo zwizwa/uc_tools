@@ -12,26 +12,14 @@ T testmod(struct state *s) {
 fun1:
   ({
     s->e[0]/*a*/ = ({
-      s->e[1]/*b*/ = ({
-        CSP_EVT_BUF(&(s->task),0,chan1,NULL,0);
-        CSP_SEL(&(s->task),s,0,1);
-        s->evt[0].msg.w;
-      });
-      T l3/*c*/ = ({
-        CSP_EVT_BUF(&(s->task),0,chan1,NULL,0);
-        CSP_SEL(&(s->task),s,0,1);
-        s->evt[0].msg.w;
-      });
+      s->e[1]/*b*/ = CSP_RCV_W(&(s->task),s,chan1);
+      T l3/*c*/ = CSP_RCV_W(&(s->task),s,chan1);
       ({
         T l4/*;2*/ = add(s->e[1]/*b*/,l3/*c*/);
         add(s->a/*free*/,l4/*;2*/);
       });
     });
-    T l5/*d*/ = ({
-      CSP_EVT_BUF(&(s->task),0,chan1,NULL,0);
-      CSP_SEL(&(s->task),s,0,1);
-      s->evt[0].msg.w;
-    });
+    T l5/*d*/ = CSP_RCV_W(&(s->task),s,chan1);
     s->e[1]/*e*/ = ({
       T l7/*x*/ = ({
         T l8/*;4*/ = ({
@@ -49,16 +37,8 @@ fun1:
     });
     /*inline:fun3,x=e*/
     T l13/*f*/ = ({
-      s->e[2]/*a*/ = ({
-        CSP_EVT_BUF(&(s->task),0,chan2,NULL,0);
-        CSP_SEL(&(s->task),s,0,1);
-        s->evt[0].msg.w;
-      });
-      T l15/*b*/ = ({
-        CSP_EVT_BUF(&(s->task),0,chan2,NULL,0);
-        CSP_SEL(&(s->task),s,0,1);
-        s->evt[0].msg.w;
-      });
+      s->e[2]/*a*/ = CSP_RCV_W(&(s->task),s,chan2);
+      T l15/*b*/ = CSP_RCV_W(&(s->task),s,chan2);
       ({
         T l16/*;10*/ = add(s->e[2]/*a*/,l15/*b*/);
         add(s->e[1]/*x*/,l16/*;10*/);
@@ -82,11 +62,7 @@ fun1:
     for(s->e[2]/*i*/ = 0 ; s->e[2]/*i*/ < 3 ; s->e[2]/*i*/++) {
       ({
         T l22/*;12*/ = ({
-          T l23/*;13*/ = ({
-            CSP_EVT_BUF(&(s->task),0,chan1,NULL,0);
-            CSP_SEL(&(s->task),s,0,1);
-            s->evt[0].msg.w;
-          });
+          T l23/*;13*/ = CSP_RCV_W(&(s->task),s,chan1);
           add(l23/*;13*/,s->e[2]/*i*/);
         });
         send(l22/*;12*/);
@@ -97,16 +73,8 @@ fun1:
 fun2:
   ({
     T l24/*;15*/ = ({
-      s->e[0]/*;16*/ = ({
-        CSP_EVT_BUF(&(s->task),0,chan1,NULL,0);
-        CSP_SEL(&(s->task),s,0,1);
-        s->evt[0].msg.w;
-      });
-      T l26/*;17*/ = ({
-        CSP_EVT_BUF(&(s->task),0,chan2,NULL,0);
-        CSP_SEL(&(s->task),s,0,1);
-        s->evt[0].msg.w;
-      });
+      s->e[0]/*;16*/ = CSP_RCV_W(&(s->task),s,chan1);
+      T l26/*;17*/ = CSP_RCV_W(&(s->task),s,chan2);
       add(s->e[0]/*;16*/,l26/*;17*/);
     });
     l24/*;15*/ ? ({
