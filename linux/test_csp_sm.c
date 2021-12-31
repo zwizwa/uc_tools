@@ -4,7 +4,7 @@
    a counter, implemented as a single loop
 
    a processor, implemented as a loop making two calls to a
-   submachine, with the submachie performing the csp blocking read.
+   submachine, with the submachine performing the csp blocking read.
 
    A change was made to separate the idea of CSP task and
    continuation.  The csp scheduler does not care about continuations
@@ -111,9 +111,9 @@ void proc_init(struct proc *s, int chan) {
 /* SETUP */
 void test1(struct csp_scheduler *s) {
     struct count c;
-    struct proc p;
+    struct proc  p;
     SM_CSP_START(s, &c.task, count, &c, 0 /* chan */);
-    SM_CSP_START(s, &p.task, proc, &p, 0 /* chan */);
+    SM_CSP_START(s, &p.task, proc,  &p, 0 /* chan */);
     csp_schedule(s);
     LOG("\n");
 }

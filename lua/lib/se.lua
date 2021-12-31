@@ -1,8 +1,8 @@
 -- Parse s-expressions
 -- Keep it simple at first: no improper lists, no strings.
 
--- Note that we use {} to represent the empty list at the end of a
--- cons list, not nil.
+-- Pairs are Lua's 2-element arrays
+-- The empty list is Lua's nil
 
 local se = {}
 
@@ -55,7 +55,7 @@ function se:read_atom()
    end
 end
 function se.array_to_list(arr)
-   local lst = {}
+   local lst = nil  -- the empty list
    for i=#arr,1,-1 do
       local el = arr[i]
       lst = {el, lst}
@@ -73,10 +73,14 @@ function se.elements(lst)
    local pair = lst
    return function()
       if pair then
+         assert(type(pair) == 'table')
          local el, rest = unpack(pair)
+         assert(el)
          pair = rest
          -- It's very convenient to also return the tail of the list.
          return el, pair
+      else
+         assert(nil == pair)
       end
    end
 end

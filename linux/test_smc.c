@@ -1,9 +1,13 @@
 #include <stdint.h>
 #include "macros.h"
 // Context
-#define SM_READ(s, chan, label) 123
+#define SM_READ(s, chan, label) ({ return 456; arg; })
 #define add(a,b) ((a)+(b))
 typedef uint32_t T;
+// Dummy, not used
+struct csp_task {};
+struct csp_evt {};
+
 
 void send(uint32_t val) {}
 

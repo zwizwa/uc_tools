@@ -346,15 +346,20 @@ form['module'] = function(self, expr, hole)
    local c = self.config
    local args = {
       "struct " .. c.state_struct .. " *" .. c.state_name,
-      "void *next",
-      "T arg",
+      -- Note that since the main purpose of this ended up compiling
+      -- CSP tasks, the next pointer and communication data is best
+      -- kept in the state struct.  No point in trying to optimize it
+      -- into registers.
+      --
+      -- "void *next",
+      -- "T arg",
    }
 
    self:write("void *" .. modname .. "(")
    self:write(table.concat(args,", "))
    self:write(") {\n");
-   -- local nxt = c.state_name .. "->next";
-   local nxt = "next";
+   local nxt = c.state_name .. "->next";
+   -- local nxt = "next";
    self:write(self:tab() .. "if(" .. nxt .. ") goto *" .. nxt .. ";\n")
 
    -- 'define' is only defined inside a 'module' form.
@@ -393,6 +398,12 @@ form['module'] = function(self, expr, hole)
    self:write("}\n");
 end
 
+function smc:write_statement(name, ...)
+   self:write(self:tab() .. name .. "(")
+   self:write(table.concat({...},","))
+   self:write(");\n")
+end
+
 
 -- Blocking form.  The control structure itself is implemented
 -- separately in a C macro, specialized to the state machine
@@ -400,6 +411,7 @@ end
 -- lexical varariables.
 form['read'] = function(self, expr, hole)
    local _, chan = se.unpack(expr, {n = 2})
+   -- self:assert(type(chan) == 'string')
    local bound = {}
    for var in se.elements(self.env) do
       -- All visible C local variables are undefined when we jump into
@@ -413,15 +425,59 @@ form['read'] = function(self, expr, hole)
       end
    end
    local s = self.config.state_name
-   -- Might as well generate it here.
+   -- Might as well generate the jump label here.
    local label = self:gensym("l");
-   self:write_binding(
-      hole,
-      "SM_READ("
-         .. s .. ","
-         .. s .. "->" .. chan .. ","
-         .. label .. ","
-         .. "arg)")
+
+   if false then
+      -- Externally defined macro interface to blocking read.
+      self:write_binding(
+         hole,
+         "SM_READ("
+            .. s .. ","
+            .. s .. "->" .. chan .. ","
+            .. label .. ")")
+      -- .. ",arg)"
+   else
+      -- Emit a csp.h style rendezvous setup sequence.
+
+      self:write(self:tab())
+      if hole then
+         self:write_var_def(hole)
+      end
+      self:write("({\n")
+
+      self:save_context(
+         {'indent','env','stack_ptr'},
+         function()
+            self.indent = self.indent + 1
+            -- The rendez-vous buffer is currently just a machine
+            -- word.  This will probably need to be revised.
+            local rv_name = self:gensym()
+            local rv_var = self:new_var(rv_name)
+            -- Ensure the variable goes in the C struct
+            rv_var.cell.bind = 'saved'
+            -- This doesn't seem to be necessary.
+            -- self:write(self:tab())
+            -- self:write_var_def(rv_var)
+            -- self:write("0;\n")
+            self:push_var(rv_var)
+            local rv_cvar = self:atom_to_c_expr(rv_name)
+
+            -- Wrappers for csp.h C macros
+            local task = "&(" .. s .. "->task)"
+            local task_cont = task .. "," .. s
+            local function write_csp_evt(ch,var)
+               self:write_statement("CSP_EVT",task,s,ch,var)
+            end
+            write_csp_evt(chan, rv_cvar)
+            self:write_statement("CSP_SEL",task,s,0,1)
+         end)
+
+      self:write(self:tab() .. "}\n")
+      self:mark_bound(hole)
+
+   end
+
 end
 
 
@@ -451,7 +507,8 @@ end
 -- Emit C code for variable definition.
 function smc:write_var_def(v)
    local var, typ = self:var_and_type(v)
-   self:write( typ .. var .. " = ")
+   self:write(typ .. var)
+   self:write(" = ")
 end
 function smc:write_binding(v, c_expr)
    self:write(self:tab())
@@ -576,7 +633,7 @@ function smc:apply(expr, hole, tail_position)
             -- Inlining links the environment inside the function body
             -- to cells accessible through the callsite environment.
             local callsite_env = self.env
-            self.env = {}
+            self.env = nil
             local dbg = {fun_name}
             for i=1, #app_form-1 do
                local var_name = tc('string',app_form[i+1])
@@ -671,7 +728,10 @@ function smc:compile_passes(expr)
 
    -- Generate the struct definition, then append the C code.
    self:write("struct " .. self.config.state_struct .. " {\n")
-   --self:write(self:tab() .. "void *next;\n")
+   self:write(self:tab() .. "struct csp_task task; // ends in evt[]\n");
+   self:write(self:tab() .. "struct csp_evt evt[" .. self.nb_evt .. "]; // nb events used\n");
+   self:write(self:tab() .. "void *next;\n")
+
    self:write(self:tab() .. "T e[" .. self.stack_size .. "];\n")
    for v in pairs(self.free) do
       self:write(self:tab() .. "T " .. v .. ";\n")
@@ -690,6 +750,7 @@ function smc:reset()
    self.funs = {}
    self.depth = 0
    self.free = {}
+   self.nb_evt = 0;
    assert(0 == se.length(self.env))
    assert(0 == self.stack_ptr)
    assert(1 == self.indent)
@@ -698,7 +759,7 @@ end
 
 function smc.new()
    local config = { state_name = "s", state_struct = "state" }
-   local obj = { stack_ptr = 0, env = {}, indent = 1, config = config }
+   local obj = { stack_ptr = 0, env = nil, indent = 1, config = config }
    setmetatable(obj, {__index = smc})
    return obj
 end

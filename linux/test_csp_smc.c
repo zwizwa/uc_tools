@@ -22,7 +22,9 @@
 
 #include <stdint.h>
 #include "macros.h"
+#include "csp.h"
 // Context
+// FIXME: label is not used. CSP_RCV generates its own label.
 #define SM_READ(s, chan, label, arg) \
     ({ return &&label; label: arg; })
 #define add(a,b) ((a)+(b))

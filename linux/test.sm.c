@@ -1,80 +1,107 @@
 struct state {
-  T e[3];
+  struct csp_task task; // ends in evt[]
+  struct csp_evt evt[0]; // nb events used
+  void *next;
+  T e[4];
   T a;
 };
 
 // second pass
-T testmod(struct state *s, void *next) {
+void *testmod(struct state *s) {
   if(s->next) goto *s->next;
 fun1:
   ({
     s->e[0]/*a*/ = ({
-      s->e[1]/*b*/ = SM_READ(s,s->chan1,l0);
-      T l3/*c*/ = SM_READ(s,s->chan1,l1);
+      s->e[1]/*b*/ = ({
+        CSP_EVT(&(s->task),s,chan1,s->e[2]/*;1*/);
+        CSP_SEL(&(s->task),s,0,1);
+      }
+      T l4/*c*/ = ({
+        CSP_EVT(&(s->task),s,chan1,s->e[2]/*;3*/);
+        CSP_SEL(&(s->task),s,0,1);
+      }
       ({
-        T l4/*;2*/ = add(s->e[1]/*b*/,l3/*c*/);
-        add(s->a/*free*/,l4/*;2*/);
+        T l6/*;4*/ = add(s->e[1]/*b*/,l4/*c*/);
+        add(s->a/*free*/,l6/*;4*/);
       });
     });
-    T l5/*d*/ = SM_READ(s,s->chan1,l3);
+    T l7/*d*/ = ({
+      CSP_EVT(&(s->task),s,chan1,s->e[1]/*;6*/);
+      CSP_SEL(&(s->task),s,0,1);
+    }
     s->e[1]/*e*/ = ({
-      T l7/*x*/ = ({
-        T l8/*;4*/ = ({
-          T l9/*;5*/ = 1;
-          T l10/*;6*/ = 2;
-          add(l9/*;5*/,l10/*;6*/);
+      T l10/*x*/ = ({
+        T l11/*;7*/ = ({
+          T l12/*;8*/ = 1;
+          T l13/*;9*/ = 2;
+          add(l12/*;8*/,l13/*;9*/);
         });
-        add(s->e[0]/*a*/,l8/*;4*/);
+        add(s->e[0]/*a*/,l11/*;7*/);
       });
-      T l11/*y*/ = ({
-        T l12/*;7*/ = 2;
-        add(l5/*d*/,l12/*;7*/);
+      T l14/*y*/ = ({
+        T l15/*;10*/ = 2;
+        add(l7/*d*/,l15/*;10*/);
       });
-      add(l7/*x*/,l11/*y*/);
+      add(l10/*x*/,l14/*y*/);
     });
     /*inline:fun3,x=e*/
-    T l13/*f*/ = ({
-      s->e[2]/*a*/ = SM_READ(s,s->chan2,l8);
-      T l15/*b*/ = SM_READ(s,s->chan2,l9);
+    T l16/*f*/ = ({
+      s->e[2]/*a*/ = ({
+        CSP_EVT(&(s->task),s,chan2,s->e[3]/*;12*/);
+        CSP_SEL(&(s->task),s,0,1);
+      }
+      T l19/*b*/ = ({
+        CSP_EVT(&(s->task),s,chan2,s->e[3]/*;14*/);
+        CSP_SEL(&(s->task),s,0,1);
+      }
       ({
-        T l16/*;10*/ = add(s->e[2]/*a*/,l15/*b*/);
-        add(s->e[1]/*x*/,l16/*;10*/);
+        T l21/*;15*/ = add(s->e[2]/*a*/,l19/*b*/);
+        add(s->e[1]/*x*/,l21/*;15*/);
       });
     });
-    T l17/*g*/ = ({
-      T l18/*l*/ = 5;
-      add(l13/*f*/,l18/*l*/);
+    T l22/*g*/ = ({
+      T l23/*l*/ = 5;
+      add(l16/*f*/,l23/*l*/);
     });
-    T l19/*h*/ = l17/*g*/ ? ({
-      add(l13/*f*/,l17/*g*/);
+    T l24/*h*/ = l22/*g*/ ? ({
+      add(l16/*f*/,l22/*g*/);
     }) : ({
-      add(l13/*f*/,l13/*f*/);
+      add(l16/*f*/,l16/*f*/);
     });
     ({
-      T l20/*;11*/ = add(l5/*d*/,l19/*h*/);
-      send(l20/*;11*/);
+      T l25/*;16*/ = add(l7/*d*/,l24/*h*/);
+      send(l25/*;16*/);
     });
     send(s->e[1]/*e*/);
-    send(l13/*f*/);
+    send(l16/*f*/);
     for(s->e[2]/*i*/ = 0 ; s->e[2]/*i*/ < 3 ; s->e[2]/*i*/++) {
       ({
-        T l22/*;12*/ = ({
-          T l23/*;13*/ = SM_READ(s,s->chan1,l14);
-          add(l23/*;13*/,s->e[2]/*i*/);
+        T l27/*;17*/ = ({
+          T l28/*;18*/ = ({
+            CSP_EVT(&(s->task),s,chan1,s->e[3]/*;20*/);
+            CSP_SEL(&(s->task),s,0,1);
+          }
+          add(l28/*;18*/,s->e[2]/*i*/);
         });
-        send(l22/*;12*/);
+        send(l27/*;17*/);
       });
     }
     goto fun2;
   });
 fun2:
   ({
-    T l24/*;15*/ = ({
-      s->e[0]/*;16*/ = SM_READ(s,s->chan1,l18);
-      T l26/*;17*/ = SM_READ(s,s->chan2,l19);
-      add(s->e[0]/*;16*/,l26/*;17*/);
+    T l30/*;21*/ = ({
+      s->e[0]/*;22*/ = ({
+        CSP_EVT(&(s->task),s,chan1,s->e[1]/*;25*/);
+        CSP_SEL(&(s->task),s,0,1);
+      }
+      T l33/*;23*/ = ({
+        CSP_EVT(&(s->task),s,chan2,s->e[1]/*;27*/);
+        CSP_SEL(&(s->task),s,0,1);
+      }
+      add(s->e[0]/*;22*/,l33/*;23*/);
     });
-    l24/*;15*/ ? ({
+    l30/*;21*/ ? ({
       goto fun1;
     }) : ({
       goto fun2;
@@ -82,5 +109,5 @@ fun2:
   });
 /* fun3 inline only */
 }
-// stack_size: 3
+// stack_size: 4
 
