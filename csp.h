@@ -30,10 +30,14 @@
    instead.
 */
 union csp_data_ptr {
-    void    *v;
-    uint8_t *u8;
-    uint8_t *u16;
-    uint8_t *u32;
+    void     *v;
+    uint8_t  *u8;
+    uint16_t *u16;
+    uint32_t *u32;
+    /* Note that in some cases it might make sense to specialize the
+       scheduler to word transfer only, where msg_len can be omitted
+       as well. */
+    uintptr_t w;
 };
 struct csp_evt {
     uint16_t chan;
@@ -67,14 +71,16 @@ struct csp_task {
     csp_resume_f resume;
 
     /* Each task blocks on a select operation, which can contain a
-       mixture of sends and receives.  A select cotnains nb_send send
+       mixture of sends and receives.  A select contains nb_send send
        ops and nb_receive receive ops.  There is always at least one
-       op.  User needs allocate as many slots as are necessary
-       throughout the program. */
+       op. */
     uint8_t nb_send;
     uint8_t nb_recv;
     uint8_t selected;
     uint8_t _res;
+
+    /* Following this struct, user needs to allocate as many slots as
+       are necessary throughout the program. */
     struct csp_evt evt[];
 };
 

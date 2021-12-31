@@ -16,8 +16,8 @@
 
   (define (fun1)
     (if (add
-         (read rx)
-         (read rx))
+         (read 0)
+         (read 0))
         (fun1)
         (fun2)))
 

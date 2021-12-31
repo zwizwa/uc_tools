@@ -38,6 +38,6 @@ void send(uint32_t val) {}
 
 int main(int argc, char **argv) {
     struct state s = {};
-    testmod(&s, NULL, 0);
+    testmod(&s);
     return 0;
 }

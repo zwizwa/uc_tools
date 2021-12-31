@@ -355,7 +355,7 @@ form['module'] = function(self, expr, hole)
       -- "T arg",
    }
 
-   self:write("void *" .. modname .. "(")
+   self:write("T " .. modname .. "(")
    self:write(table.concat(args,", "))
    self:write(") {\n");
    local nxt = c.state_name .. "->next";
@@ -405,6 +405,23 @@ function smc:write_statement(name, ...)
 end
 
 
+function smc:local_lost()
+   local bound = {}
+   for var in se.elements(self.env) do
+      -- All visible C local variables are uninitialized when we jump
+      -- into the body of a function as their.  Mark them 'lost' here.
+      -- This is used later when the variable is referenced to
+      -- (lazily) turn it into a 'saved' variable, so in the second
+      -- pass it can be allocated in the state struct.
+      if var.cell.bind == 'local' then
+         table.insert(bound, n)
+         var.cell.bind = 'lost'
+      end
+   end
+   return bound
+end
+
+
 -- Blocking form.  The control structure itself is implemented
 -- separately in a C macro, specialized to the state machine
 -- scheduler.  It is not of concern here.  We only need to manage the
@@ -412,72 +429,51 @@ end
 form['read'] = function(self, expr, hole)
    local _, chan = se.unpack(expr, {n = 2})
    -- self:assert(type(chan) == 'string')
-   local bound = {}
-   for var in se.elements(self.env) do
-      -- All visible C local variables are undefined when we jump into
-      -- the body of a function.  Mark them 'lost' here.  This is used
-      -- later when the variable is referenced to turn it into a
-      -- 'saved' variable, so in the second pass it can be allocated
-      -- in the state struct.
-      if var.cell.bind == 'local' then
-         table.insert(bound, n)
-         var.cell.bind = 'lost'
-      end
-   end
+
+   self:local_lost()
+
    local s = self.config.state_name
    -- Might as well generate the jump label here.
    local label = self:gensym("l");
 
-   if false then
-      -- Externally defined macro interface to blocking read.
-      self:write_binding(
-         hole,
-         "SM_READ("
-            .. s .. ","
-            .. s .. "->" .. chan .. ","
-            .. label .. ")")
-      -- .. ",arg)"
-   else
-      -- Emit a csp.h style rendezvous setup sequence.
+   -- Emit a csp.h style rendezvous setup sequence.
+   local t = "&(" .. s .. "->task)"
 
-      self:write(self:tab())
-      if hole then
-         self:write_var_def(hole)
-      end
-      self:write("({\n")
-
-      self:save_context(
-         {'indent','env','stack_ptr'},
-         function()
-            self.indent = self.indent + 1
-            -- The rendez-vous buffer is currently just a machine
-            -- word.  This will probably need to be revised.
-            local rv_name = self:gensym()
-            local rv_var = self:new_var(rv_name)
-            -- Ensure the variable goes in the C struct
-            rv_var.cell.bind = 'saved'
-            -- This doesn't seem to be necessary.
-            -- self:write(self:tab())
-            -- self:write_var_def(rv_var)
-            -- self:write("0;\n")
-            self:push_var(rv_var)
-            local rv_cvar = self:atom_to_c_expr(rv_name)
-
-            -- Wrappers for csp.h C macros
-            local task = "&(" .. s .. "->task)"
-            local task_cont = task .. "," .. s
-            local function write_csp_evt(ch,var)
-               self:write_statement("CSP_EVT",task,s,ch,var)
-            end
-            write_csp_evt(chan, rv_cvar)
-            self:write_statement("CSP_SEL",task,s,0,1)
-         end)
-
-      self:write(self:tab() .. "}\n")
-      self:mark_bound(hole)
-
+   self:write(self:tab())
+   if hole then
+      self:write_var_def(hole)
    end
+   self:write("({\n")
 
+   self:save_context(
+      {'indent','env','stack_ptr'},
+      function()
+         self.indent = self.indent + 1
+
+         -- The rendez-vous buffer is a saved variable.
+         --local rv_name = self:gensym()
+         --local rv_var = self:new_var(rv_name)
+         --rv_var.cell.bind = 'saved'
+         --self:push_var(rv_var)
+         --local rv_cvar = self:atom_to_c_expr(rv_name)
+
+         -- Note: the CSP scheduler is used in shared memory
+         -- configuration by setting rcv buffer pointer to NULL.
+         -- Further we only use the msg_buf in unboxed mode (unitptr_t
+         -- machine word .msg.buf.w).
+         local nb_evt = 1
+         for evt=1,nb_evt do
+            self:write_statement("CSP_EVT_BUF",t,evt-1,chan,"NULL",0)
+         end
+         self:write_statement("CSP_SEL",t,s,0,nb_evt)
+         -- This is only valid up to the next blocking point so we
+         -- need to copy the value.
+
+         self:write(self:tab() .. s .. "->evt[0].msg_buf.w;\n")
+   end)
+
+   self:write(self:tab() .. "});\n")
+   self:mark_bound(hole)
 end
 
 

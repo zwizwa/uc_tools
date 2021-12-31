@@ -186,6 +186,8 @@ typedef struct csp_task csp_task_list_t;
 #define FOR_TASKS(pp,list) \
     for(struct csp_task **pp = &(list); *pp; pp = &((*pp)->next))
 
+/* FIXME: 0 path not tested. */
+#define CSP_CONF_COPY 1
 
 static inline void do_send(
     struct csp_task *send, struct csp_evt *evt_send,
@@ -195,6 +197,7 @@ static inline void do_send(
        Note that this needs to be conditional on presence of send
        buffer, as it is quite common to have empty events, e.g. just
        synchronization. */
+#if CSP_CONF_COPY
     int shared_memory = 0;
     if (evt_send->msg_buf.v) {
         if (evt_recv->msg_buf.v) {
@@ -207,6 +210,10 @@ static inline void do_send(
             evt_recv->msg_len = evt_send->msg_len;
         }
     }
+#else
+    evt_recv->msg_buf = evt_send->msg_buf;
+    evt_recv->msg_len = evt_send->msg_len;
+#endif
 
     /* In both tasks, mark which event has completed.  It is
        always exactly one event. */
@@ -226,9 +233,11 @@ static inline void do_send(
     if (CSP_WAITING != recv->resume(recv)) {
         recv->resume = 0;
     }
+#if CSP_CONF_COPY
     if (shared_memory) {
         evt_recv->msg_buf.v = NULL;
     }
+#endif
     if (CSP_WAITING != send->resume(send)) {
         send->resume = 0;
     }
