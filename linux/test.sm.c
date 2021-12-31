@@ -1,6 +1,6 @@
 struct state {
   struct csp_task task; // ends in evt[]
-  struct csp_evt evt[0]; // nb events used
+  struct csp_evt evt[1]; // nb events used
   void *next;
   T e[3];
   T a;
@@ -15,23 +15,23 @@ fun1:
       s->e[1]/*b*/ = CSP_RCV_W(&(s->task),s,chan1);
       T l3/*c*/ = CSP_RCV_W(&(s->task),s,chan1);
       ({
-        T l4/*;2*/ = add(s->e[1]/*b*/,l3/*c*/);
-        add(s->a/*free*/,l4/*;2*/);
+        T l4/*;0*/ = add(s->e[1]/*b*/,l3/*c*/);
+        add(s->a/*free*/,l4/*;0*/);
       });
     });
     T l5/*d*/ = CSP_RCV_W(&(s->task),s,chan1);
     s->e[1]/*e*/ = ({
       T l7/*x*/ = ({
-        T l8/*;4*/ = ({
-          T l9/*;5*/ = 1;
-          T l10/*;6*/ = 2;
-          add(l9/*;5*/,l10/*;6*/);
+        T l8/*;1*/ = ({
+          T l9/*;2*/ = 1;
+          T l10/*;3*/ = 2;
+          add(l9/*;2*/,l10/*;3*/);
         });
-        add(s->e[0]/*a*/,l8/*;4*/);
+        add(s->e[0]/*a*/,l8/*;1*/);
       });
       T l11/*y*/ = ({
-        T l12/*;7*/ = 2;
-        add(l5/*d*/,l12/*;7*/);
+        T l12/*;4*/ = 2;
+        add(l5/*d*/,l12/*;4*/);
       });
       add(l7/*x*/,l11/*y*/);
     });
@@ -40,8 +40,8 @@ fun1:
       s->e[2]/*a*/ = CSP_RCV_W(&(s->task),s,chan2);
       T l15/*b*/ = CSP_RCV_W(&(s->task),s,chan2);
       ({
-        T l16/*;10*/ = add(s->e[2]/*a*/,l15/*b*/);
-        add(s->e[1]/*x*/,l16/*;10*/);
+        T l16/*;5*/ = add(s->e[2]/*a*/,l15/*b*/);
+        add(s->e[1]/*x*/,l16/*;5*/);
       });
     });
     T l17/*g*/ = ({
@@ -54,30 +54,30 @@ fun1:
       add(l13/*f*/,l13/*f*/);
     });
     ({
-      T l20/*;11*/ = add(l5/*d*/,l19/*h*/);
-      send(l20/*;11*/);
+      T l20/*;6*/ = add(l5/*d*/,l19/*h*/);
+      send(l20/*;6*/);
     });
     send(s->e[1]/*e*/);
     send(l13/*f*/);
     for(s->e[2]/*i*/ = 0 ; s->e[2]/*i*/ < 3 ; s->e[2]/*i*/++) {
       ({
-        T l22/*;12*/ = ({
-          T l23/*;13*/ = CSP_RCV_W(&(s->task),s,chan1);
-          add(l23/*;13*/,s->e[2]/*i*/);
+        T l22/*;7*/ = ({
+          T l23/*;8*/ = CSP_RCV_W(&(s->task),s,chan1);
+          add(l23/*;8*/,s->e[2]/*i*/);
         });
-        send(l22/*;12*/);
+        send(l22/*;7*/);
       });
     }
     goto fun2;
   });
 fun2:
   ({
-    T l24/*;15*/ = ({
-      s->e[0]/*;16*/ = CSP_RCV_W(&(s->task),s,chan1);
-      T l26/*;17*/ = CSP_RCV_W(&(s->task),s,chan2);
-      add(s->e[0]/*;16*/,l26/*;17*/);
+    T l24/*;9*/ = ({
+      s->e[0]/*;10*/ = CSP_RCV_W(&(s->task),s,chan1);
+      T l26/*;11*/ = CSP_RCV_W(&(s->task),s,chan2);
+      add(s->e[0]/*;10*/,l26/*;11*/);
     });
-    l24/*;15*/ ? ({
+    l24/*;9*/ ? ({
       goto fun1;
     }) : ({
       goto fun2;

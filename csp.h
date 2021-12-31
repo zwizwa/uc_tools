@@ -165,12 +165,16 @@ _klabel:
 
 
 /* This form is used by the .sm Scheme style language.  This uses
-   zero-copy mode word transfer. */
+   zero-copy mode uintptr_t single word transfer. */
 #define CSP_RCV_W(task,cont,ch) ({              \
             CSP_EVT_BUF(task,0,ch,NULL,0);      \
             CSP_SEL(task,cont,0,1);             \
             (task)->evt[0].msg.w;               \
         })
+#define CSP_SND_W(task,cont,ch,val) {                   \
+            CSP_EVT_BUF(task,0,ch,(uintptr_t)(val),0);  \
+            CSP_SEL(task,cont,1,0);                     \
+    }
 
 
 /* RPC is a common pattern, so provide a macro for it. */

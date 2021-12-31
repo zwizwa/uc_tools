@@ -71,6 +71,9 @@ local function is_form(expr, form)
    return type(expr) == 'table' and expr[1] == form
 end
 
+local l = se.list
+
+
 function smc:tab()
    local strs = {}
    for i=1,self.indent do
@@ -214,9 +217,6 @@ function smc:write_se_comment(expr)
    self:write_se(expr)
    self:write("*/")
 end
-
-local l = se.list
-
 
 form['if'] = function(self, if_expr, hole, tail_position)
    local _, condition, expr_true, expr_false = se.unpack(if_expr, { n = 4 })
@@ -428,6 +428,48 @@ end
 -- lexical varariables.
 form['read'] = function(self, expr, hole)
    local _, chan = se.unpack(expr, {n = 2})
+   self:local_lost()
+   local s = self.config.state_name
+   local t = "&(" .. s .. "->task)"
+   self:write(self:tab())
+   if hole then
+      self:write_var_def(hole)
+   end
+   self:write_statement("CSP_RCV_W", t, s, chan)
+   if self.nb_evt < 1 then
+      self.nb_evt = 1
+   end
+   self:mark_bound(hole)
+end
+
+form['write'] = function(self, expr, hole, tail_position)
+   local _, chan, expr1 = se.unpack(expr, {n = 3})
+
+   if type(expr1) ~= 'string' then
+      local var = self:gensym()
+      self:compile(
+         l('let*', l(l(var, expr1)),
+           l('write', chan, var)),
+         hole,
+         tail_position)
+      return
+   end
+
+   self:local_lost()
+   local s = self.config.state_name
+   local t = "&(" .. s .. "->task)"
+   self:write(self:tab())
+   local cvar = self:atom_to_c_expr(expr1)
+   self:write_statement("CSP_SND_W", t, s, chan, cvar)
+   if self.nb_evt < 1 then
+      self.nb_evt = 1
+   end
+end
+
+
+-- FIXME
+form['select'] = function(self, expr, hole)
+   local _, chan = se.unpack(expr, {n = 2})
    -- self:assert(type(chan) == 'string')
 
    self:local_lost()
@@ -445,7 +487,9 @@ form['read'] = function(self, expr, hole)
    end
    -- This macro has been added in csp.h
    self:write_statement("CSP_RCV_W", t, s, chan)
-
+   if self.nb_evt < 1 then
+      self.nb_evt = 1
+   end
 
    -- self:write("({\n")
    -- self:save_context(
@@ -481,7 +525,6 @@ form['read'] = function(self, expr, hole)
    -- end)
    -- self:write(self:tab() .. "});\n")
 
-   self:mark_bound(hole)
 end
 
 
