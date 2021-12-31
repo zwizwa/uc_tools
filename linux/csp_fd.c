@@ -27,7 +27,7 @@ csp_status_t csp_to_fd_resume(struct csp_to_fd *s) {
     /* Shared data is valid up to the next suspension.  Cache it in
        local variables so C compiler can aid with lifetime
        warnings. */
-    const uint8_t *buf = s->evt[0].msg_buf.u8;
+    const uint8_t *buf = s->evt[0].msg.u8;
     uint16_t       len = s->evt[0].msg_len;
     LOG("csp_to_fd: %p %d\n", buf, len);
     /* Protocol header is currently hardcoded. */

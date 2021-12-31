@@ -186,10 +186,7 @@ typedef struct csp_task csp_task_list_t;
 #define FOR_TASKS(pp,list) \
     for(struct csp_task **pp = &(list); *pp; pp = &((*pp)->next))
 
-/* FIXME: 0 path not tested. */
-#define CSP_CONF_COPY 1
-
-static inline void do_send(
+static inline void csp_do_send(
     struct csp_task *send, struct csp_evt *evt_send,
     struct csp_task *recv, struct csp_evt *evt_recv) {
 
@@ -199,20 +196,19 @@ static inline void do_send(
        synchronization. */
 #if CSP_CONF_COPY
     int shared_memory = 0;
-    if (evt_send->msg_buf.v) {
-        if (evt_recv->msg_buf.v) {
+    if (evt_send->msg.v) {
+        if (evt_recv->msg.v) {
             uint32_t n = MIN(evt_send->msg_len, evt_recv->msg_len);
-            memcpy(evt_recv->msg_buf.v, evt_send->msg_buf.v, n);
+            memcpy(evt_recv->msg.v, evt_send->msg.v, n);
         }
         else {
             shared_memory = 1;
-            evt_recv->msg_buf = evt_send->msg_buf;
+            evt_recv->msg = evt_send->msg;
             evt_recv->msg_len = evt_send->msg_len;
         }
     }
 #else
-    evt_recv->msg_buf = evt_send->msg_buf;
-    evt_recv->msg_len = evt_send->msg_len;
+    evt_recv->msg = evt_send->msg;
 #endif
 
     /* In both tasks, mark which event has completed.  It is
@@ -235,7 +231,7 @@ static inline void do_send(
     }
 #if CSP_CONF_COPY
     if (shared_memory) {
-        evt_recv->msg_buf.v = NULL;
+        evt_recv->msg.v = NULL;
     }
 #endif
     if (CSP_WAITING != send->resume(send)) {
@@ -266,19 +262,19 @@ void csp_evt_list_init(struct csp_evt_list *l, int n) {
     l[n-1].next = NULL;
 }
 
-static void add_task(struct csp_scheduler *s,
-                     struct csp_evt_list **l,
-                     struct csp_task *t,
-                     struct csp_evt *e) {
+static void csp_add_task(struct csp_scheduler *s,
+                         struct csp_evt_list **l,
+                         struct csp_task *t,
+                         struct csp_evt *e) {
     ASSERT(t);
     struct csp_evt_list *tc = csp_task_op_pop(&s->memory_pool);
     tc->key = t;
     tc->evt = e;
     csp_task_op_push(l, tc);
 }
-static void remove_task(struct csp_scheduler *s,
-                        struct csp_evt_list **l,
-                        struct csp_task *t) {
+static void csp_remove_task(struct csp_scheduler *s,
+                            struct csp_evt_list **l,
+                            struct csp_task *t) {
     struct csp_evt_list *tc = csp_task_op_remove(l, t);
     if (tc) csp_task_op_push(&s->memory_pool, tc);
 }
@@ -287,18 +283,18 @@ static void remove_task(struct csp_scheduler *s,
    channels.  Each channel has 2 wait lists, one for send and one for
    receive.  Entries in that list point to task and event, so they can
    be woken up immediately if a rendez-vous is found. */
-static inline void remove_cold(
+static inline void csp_remove_cold(
     struct csp_scheduler *s,
     struct csp_task *cold) {
     FOR_EVT_INDEX(e, cold) {
         int cold_dir = task_evt_dir(cold, e);
         int ch = cold->evt[e].chan;
-        remove_task(
+        csp_remove_task(
             s, &(s->chan_to_evt[ch].evts[cold_dir]),
             cold);
     }
 }
-static inline void add_cold(
+static inline void csp_add_cold(
     struct csp_scheduler *s,
     struct csp_task *cold) {
     cold->selected = -1;
@@ -307,17 +303,17 @@ static inline void add_cold(
         int dir = task_evt_dir(cold, e);
         int ch = cold->evt[e].chan;
         ASSERT(ch < s->nb_chans);
-        add_task(
+        csp_add_task(
             s, &(s->chan_to_evt[ch].evts[dir]),
             cold, &cold->evt[e]);
     }
 }
-static inline void add_hot(struct csp_scheduler *s,
-                           struct csp_task *hot_task) {
+static inline void csp_add_hot(struct csp_scheduler *s,
+                               struct csp_task *hot_task) {
     LOG_DBG("add_hot %p\n", hot_task);
     csp_task_push(&s->hot, hot_task);
 }
-static inline struct csp_task *pop_hot(struct csp_scheduler *s) {
+static inline struct csp_task *csp_pop_hot(struct csp_scheduler *s) {
     struct csp_task *task = csp_task_pop(&s->hot);
     LOG_DBG("pop_hot %p\n", task);
     return task;
@@ -336,7 +332,7 @@ void csp_start(struct csp_scheduler *s, struct csp_task *t) {
 
     /* Otherwise one of the select events can have an effect on the
        network.  Propagate until everything is blocked again. */
-    add_hot(s, t);
+    csp_add_hot(s, t);
     csp_schedule(s);
 }
 
@@ -353,10 +349,10 @@ void csp_start(struct csp_scheduler *s, struct csp_task *t) {
    - Each channel has a channel to events list for 2 directions (the cold list)
 
 */
-static void schedule_task(
+static void csp_schedule_task(
     struct csp_scheduler *s,
     struct csp_task *hot_task) {
-    LOG_DBG("schedule_task %p\n", hot_task);
+    LOG_DBG("csp_schedule_task %p\n", hot_task);
     log_dbg_state(s);
     FOR_EVT_INDEX(e, hot_task) {
         int cold_dir = !task_evt_dir(hot_task, e);
@@ -374,34 +370,34 @@ static void schedule_task(
                current event structure will need to execute before
                that.  This includes remove_cold(), which needs the
                direction of the event to pick the correct cold list. */
-            remove_cold(s, cold_task);
+            csp_remove_cold(s, cold_task);
 
             if (cold_dir == 1) {
                 // hot is send
-                do_send(hot_task,  hot_evt,
-                        cold_task, cold_evt);
+                csp_do_send(hot_task,  hot_evt,
+                            cold_task, cold_evt);
             }
             else {
                 // cold is send
-                do_send(cold_task, cold_evt,
-                        hot_task,  hot_evt);
+                csp_do_send(cold_task, cold_evt,
+                            hot_task,  hot_evt);
             }
 
             /* Add both to hot list again if still active. */
-            if(hot_task->resume)  add_hot(s, hot_task);
-            if(cold_task->resume) add_hot(s, cold_task);
+            if(hot_task->resume)  csp_add_hot(s, hot_task);
+            if(cold_task->resume) csp_add_hot(s, cold_task);
             return;
         }
     }
     /* None of the events have a corresponding cold task, so this
      * becomes a cold task. */
-    add_cold(s, hot_task);
+    csp_add_cold(s, hot_task);
 }
 
 void csp_schedule(struct csp_scheduler *s) {
     struct csp_task *hot;
-    while((hot = pop_hot(s))) {
-        schedule_task(s, hot);
+    while((hot = csp_pop_hot(s))) {
+        csp_schedule_task(s, hot);
     }
 }
 
@@ -456,7 +452,7 @@ static csp_status_t resume_halt(struct csp_task *t) {
 static int trans(struct csp_scheduler *s,
                  int chan,
                  int dir,
-                 void *msg_buf,
+                 void *msg,
                  uint32_t msg_len) {
     ASSERT(chan >= 0);
     ASSERT(chan < s->nb_chans);
@@ -468,8 +464,10 @@ static int trans(struct csp_scheduler *s,
                   .nb_send = !dir,
                   .nb_recv = !!dir },
         .evt  = { .chan    = chan,
+#if CSP_CONF_COPY
                   .msg_len = msg_len,
-                  .msg_buf = { .v = msg_buf } }
+#endif
+                  .msg     = { .v = msg } }
     };
     csp_task_push(&s->hot, &t.task);
     csp_schedule(s);
@@ -480,20 +478,20 @@ static int trans(struct csp_scheduler *s,
     /* If it didn't, we need to explicitly "kill" the task by removing
        it from the scheduler to avoid a dangling reference to the task
        object on this stack frame. */
-    remove_cold(s, &t.task);
+    csp_remove_cold(s, &t.task);
     return 0;
 }
 int csp_send(struct csp_scheduler *s,
              int chan,
-             void *msg_buf,
+             void *msg,
              uint32_t msg_len) {
-    return trans(s, chan, CSP_DIR_SEND, msg_buf, msg_len);
+    return trans(s, chan, CSP_DIR_SEND, msg, msg_len);
 }
 int csp_recv(struct csp_scheduler *s,
              int chan,
-             void *msg_buf,
+             void *msg,
              uint32_t msg_len) {
-    return trans(s, chan, CSP_DIR_RECV, msg_buf, msg_len);
+    return trans(s, chan, CSP_DIR_RECV, msg, msg_len);
 }
 
 

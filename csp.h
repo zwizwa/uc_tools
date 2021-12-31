@@ -29,7 +29,15 @@
    is taylored to the application, and pass buffer references around
    instead.
 */
-union csp_data_ptr {
+
+
+/* See mod_csp_zerocopy.c for a specialized version. */
+#ifndef CSP_CONF_COPY
+#define CSP_CONF_COPY 1
+#endif
+
+
+union csp_msg {
     void     *v;
     uint8_t  *u8;
     uint16_t *u16;
@@ -41,18 +49,25 @@ union csp_data_ptr {
 };
 struct csp_evt {
     uint16_t chan;
+#if CSP_CONF_COPY
+    /* In zero-copy mode the object is abstract. */
     uint16_t msg_len;
-    union csp_data_ptr msg_buf;
+#endif
+    union csp_msg msg;
 };
 
 
 /* Initialize a single-channel operation. */
 static inline void csp_evt(struct csp_evt *o,
                            uint16_t chan,
-                           void *msg_buf, uint32_t msg_len) {
+                           void *msg, uint32_t msg_len) {
     o->chan = chan;
-    o->msg_buf.v = msg_buf;
+    o->msg.v = msg;
+#if CSP_CONF_COPY
+    /* It's ok to leave msg_len in the argument list.
+       Too much work to change the API. */
     o->msg_len = msg_len;
+#endif
 }
 
 

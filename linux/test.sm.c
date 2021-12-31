@@ -15,12 +15,12 @@ fun1:
       s->e[1]/*b*/ = ({
         CSP_EVT_BUF(&(s->task),0,chan1,NULL,0);
         CSP_SEL(&(s->task),s,0,1);
-        s->evt[0].msg_buf.w;
+        s->evt[0].msg.w;
       });
       T l3/*c*/ = ({
         CSP_EVT_BUF(&(s->task),0,chan1,NULL,0);
         CSP_SEL(&(s->task),s,0,1);
-        s->evt[0].msg_buf.w;
+        s->evt[0].msg.w;
       });
       ({
         T l4/*;2*/ = add(s->e[1]/*b*/,l3/*c*/);
@@ -30,7 +30,7 @@ fun1:
     T l5/*d*/ = ({
       CSP_EVT_BUF(&(s->task),0,chan1,NULL,0);
       CSP_SEL(&(s->task),s,0,1);
-      s->evt[0].msg_buf.w;
+      s->evt[0].msg.w;
     });
     s->e[1]/*e*/ = ({
       T l7/*x*/ = ({
@@ -52,12 +52,12 @@ fun1:
       s->e[2]/*a*/ = ({
         CSP_EVT_BUF(&(s->task),0,chan2,NULL,0);
         CSP_SEL(&(s->task),s,0,1);
-        s->evt[0].msg_buf.w;
+        s->evt[0].msg.w;
       });
       T l15/*b*/ = ({
         CSP_EVT_BUF(&(s->task),0,chan2,NULL,0);
         CSP_SEL(&(s->task),s,0,1);
-        s->evt[0].msg_buf.w;
+        s->evt[0].msg.w;
       });
       ({
         T l16/*;10*/ = add(s->e[2]/*a*/,l15/*b*/);
@@ -85,7 +85,7 @@ fun1:
           T l23/*;13*/ = ({
             CSP_EVT_BUF(&(s->task),0,chan1,NULL,0);
             CSP_SEL(&(s->task),s,0,1);
-            s->evt[0].msg_buf.w;
+            s->evt[0].msg.w;
           });
           add(l23/*;13*/,s->e[2]/*i*/);
         });
@@ -100,12 +100,12 @@ fun2:
       s->e[0]/*;16*/ = ({
         CSP_EVT_BUF(&(s->task),0,chan1,NULL,0);
         CSP_SEL(&(s->task),s,0,1);
-        s->evt[0].msg_buf.w;
+        s->evt[0].msg.w;
       });
       T l26/*;17*/ = ({
         CSP_EVT_BUF(&(s->task),0,chan2,NULL,0);
         CSP_SEL(&(s->task),s,0,1);
-        s->evt[0].msg_buf.w;
+        s->evt[0].msg.w;
       });
       add(s->e[0]/*;16*/,l26/*;17*/);
     });

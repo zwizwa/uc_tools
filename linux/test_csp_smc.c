@@ -22,7 +22,9 @@
 
 #include <stdint.h>
 #include "macros.h"
-#include "csp.h"
+
+/* This uses the specialized scheduler. */
+#include "mod_csp_zerocopy.c"
 // Context
 // FIXME: label is not used. CSP_RCV generates its own label.
 #define SM_READ(s, chan, label, arg) \

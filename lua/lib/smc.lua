@@ -461,6 +461,10 @@ form['read'] = function(self, expr, hole)
          -- configuration by setting rcv buffer pointer to NULL.
          -- Further we only use the msg_buf in unboxed mode (unitptr_t
          -- machine word .msg.buf.w).
+
+         -- Note that this can just be a C macro.  No need to make
+         -- this verbose in the generated code.
+
          local nb_evt = 1
          for evt=1,nb_evt do
             self:write_statement("CSP_EVT_BUF",t,evt-1,chan,"NULL",0)
@@ -469,7 +473,7 @@ form['read'] = function(self, expr, hole)
          -- This is only valid up to the next blocking point so we
          -- need to copy the value.
 
-         self:write(self:tab() .. s .. "->evt[0].msg_buf.w;\n")
+         self:write(self:tab() .. s .. "->evt[0].msg.w;\n")
    end)
 
    self:write(self:tab() .. "});\n")
