@@ -280,13 +280,34 @@ function smc:save_context(keys, inner_fun)
    return rv
 end
 
+-- Compile sequence of statements.  This is supposed to go inside a
+-- statement expression '({' '})'
+function smc:compile_statements(inner, tail_position)
+   for form, rest_expr in se.elements(inner) do
+      assert(form)
+      local sub_tail_position =
+         tail_position and
+         (not se.is_pair(rest_expr))
+      -- Hole is nil because we use statement expression.
+      self:compile(form, nil, sub_tail_position)
+   end
+end
+
 
 -- Core form is 'let*' which mostly resembles C's scoping rules.
 -- Compile the form to C statement expressions.
-form['let*'] = function(self, let_expr, hole, tail_position)
-   local _, bindings, inner = se.unpack(let_expr, { n = 2, tail = true })
-
+form['let*'] = function(self, expr, hole, tail_position)
+   local _, bindings, inner = se.unpack(expr, { n = 2, tail = true })
    assert(type(bindings) == 'table')
+   self:compile_letstar(bindings, inner, hole, tail_position)
+end
+form['begin'] = function(self, expr, hole, tail_position)
+   local _, inner = se.unpack(expr, { n = 1, tail = true })
+   self:compile_letstar(nil, inner, hole, tail_position)
+end
+
+
+function smc:compile_letstar(bindings, inner, hole, tail_position)
 
    self:write(self:tab())
    if hole then
@@ -314,14 +335,7 @@ form['let*'] = function(self, let_expr, hole, tail_position)
          local n_inner = se.length(inner)
          assert(n_inner > 0)
 
-
-         for form, rest_expr in se.elements(inner) do
-            assert(form)
-            local sub_tail_position =
-               tail_position and
-               (not se.is_pair(rest_expr))
-            self:compile(form, nil, sub_tail_position)
-         end
+         self:compile_statements(inner, tail_position)
    end)
 
    self:write(self:tab() .. "});\n")
@@ -332,6 +346,7 @@ form['let*'] = function(self, let_expr, hole, tail_position)
    end
 
 end
+
 
 -- The module form compiles to a C function.  Functions with no
 -- arguments compile to goto lables inside such a function.
@@ -365,7 +380,8 @@ form['module'] = function(self, expr, hole)
    -- 'define' is only defined inside a 'module' form.
    local function for_defines(f)
       for define_expr in se.elements(define_exprs) do
-         local define, fun_spec, body_expr = se.unpack(define_expr, {n = 3})
+         local define, fun_spec, body_exprs = se.unpack(define_expr, {n = 2, tail = true})
+         local body_expr = {'begin', body_exprs}
          assert(define == 'define')
          local fname, args = se.unpack(fun_spec, {n = 1, tail = true})
          assert(body_expr)
@@ -405,6 +421,12 @@ function smc:write_statement(name, ...)
 end
 
 
+
+
+
+-- Blocking forms.  See csp.h for the definition of the macros.  The
+-- task we have to do here is variable storage management.
+
 function smc:local_lost()
    local bound = {}
    for var in se.elements(self.env) do
@@ -421,11 +443,6 @@ function smc:local_lost()
    return bound
 end
 
-
--- Blocking form.  The control structure itself is implemented
--- separately in a C macro, specialized to the state machine
--- scheduler.  It is not of concern here.  We only need to manage the
--- lexical varariables.
 form['read'] = function(self, expr, hole)
    local _, chan = se.unpack(expr, {n = 2})
    self:local_lost()
@@ -455,11 +472,17 @@ form['write'] = function(self, expr, hole, tail_position)
       return
    end
 
+   -- Perform the reference _before_ marking the context as lost.  Our
+   -- reference here is used to initialize the evt msg before
+   -- executing return.
+   local cvar = self:atom_to_c_expr(expr1)
+
    self:local_lost()
    local s = self.config.state_name
    local t = "&(" .. s .. "->task)"
    self:write(self:tab())
-   local cvar = self:atom_to_c_expr(expr1)
+
+
    self:write_statement("CSP_SND_W", t, s, chan, cvar)
    if self.nb_evt < 1 then
       self.nb_evt = 1

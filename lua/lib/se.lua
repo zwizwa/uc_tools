@@ -4,6 +4,10 @@
 -- Pairs are Lua's 2-element arrays
 -- The empty list is Lua's nil
 
+-- FIXME: That is a mistake! It makes it impossible to put nil in an
+-- array and then iterate over the elements.
+
+
 local se = {}
 
 function se:next()

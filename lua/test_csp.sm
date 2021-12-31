@@ -15,10 +15,13 @@
 (module (testmod)
 
   (define (fun1)
+    (write 1 123)
     (let* ((a (read 0)))
       (write 1 a)
       (if (add a (read 0))
-          (fun1)
+          (begin
+            (write 1 a)
+            (fun1))
           (fun2))))
   
   (define (fun2)
