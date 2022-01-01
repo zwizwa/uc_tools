@@ -639,23 +639,28 @@ form['select'] = function(self, expr)
          stmt("CSP_SEL",t,s,n_w,n_r)
          self:local_lost()
 
-         local function w_case(evt,c)
-            w("case " .. evt .. ":\n")
+         local function w_case(evt,c,bind_var)
+            w("case " .. evt .. ": {\n")
             self:save_context(
-               {'indent'},
+               {'indent','env','stack_ptr'},
                function()
                   self.indent = self.indent+1
-                  --if self.var then
-                  --   self:write_var_def(self.var)
-                  --end
+                  if bind_var then
+                     local v = self:new_var(bind_var)
+                     self:write(self:tab())
+                     self:write_var_def(v)
+                     self:write(s .. "->evt[" .. evt .. "].msg.w;\n")
+                     self:mark_bound(v)
+                     self:push_var(v)
+                  end
                   self:compile(c.expr)
-                  w("break;\n");
+                  w("} break;\n");
                end)
          end
 
          w("switch((" .. t .. ")->selected) {\n")
          for i,c in ipairs(clauses.write) do w_case(i-1,c) end
-         for i,c in ipairs(clauses.read)  do w_case(n_w+i-1,c) end
+         for i,c in ipairs(clauses.read)  do w_case(n_w+i-1,c,c.var) end
          w("}\n")
 
 
@@ -675,7 +680,7 @@ function smc:var_and_type(v)
       return self.config.state_name .. "->e["
          .. v.cell.c_index .. "]" .. comment, ""
    else
-      return "l" .. v.cell.id .. comment, "T "
+      return "r" .. v.cell.id .. comment, "T "
    end
 end
 
