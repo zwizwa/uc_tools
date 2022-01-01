@@ -50,8 +50,12 @@
 -- programming style.  Looks like I'm going to be stuck with Lua for a
 -- while it seems so might as well make me feel at home...
 --
--- After adding the CSP forms, I do think this is getting a bit too
--- complex and hard to read.  Especially hard to refactor.
+-- After adding the CSP forms and the case statement generation, I do
+-- think this is getting a bit too complex and hard to read.
+-- Especially hard to refactor.  Conclusion: yes possible in Lua, but
+-- there is a point where the stateful nature starts to get in the
+-- way.  Also there is a limit to 2-pass compilation.  At some point
+-- the tracking needed becomes too spread out.
 
 
 local se = require('lib.se')
@@ -209,15 +213,16 @@ end
 
 function smc:write_se(expr)
    if type(expr) ~= 'table' then
-      self:write(expr)
+      local str = expr .. ""
+      self:write(str)
    else
       self:write("(")
       for el, rest in se.elements(expr) do
          self:write_se(el)
-         --if se.is_pair(rest) then
+         if rest then
             -- FIXME: ((read 0v1)(send 1(add 1v1)))
             self:write(" ")
-         --end
+         end
       end
       self:write(")")
    end
@@ -334,9 +339,7 @@ function smc:compile_statements(inner)
       self:save_context(
          {'tail_position','var'},
          function()
-            self.tail_position =
-               tail_position and
-               (not se.is_pair(rest_expr))
+            self.tail_position = tail_position and (not rest_expr)
             -- Var is nil because we use statement expressions.
             self.var = nil
             self:compile(form)
@@ -574,11 +577,10 @@ form['select'] = function(self, expr)
                     expr = handle_expr})
    end
 
-   -- Recurse through let* if there were any non-variable forms.
+   -- Insert let if there were any non-variable forms.
    if li.bindings then
       local forms = nil
-      -- It is a bit annoying to have to pack things up again.
-      -- The order doesn't matter, so just cons everything.
+      -- Put the form back together from the analysis data.
       for _,kind in ipairs({'read','write'}) do
          for _,c in ipairs(clauses[kind]) do
             local form = l(l(kind, c.chan, c.var), c.expr)
@@ -600,15 +602,12 @@ form['select'] = function(self, expr)
       self:write(str)
    end
 
-   -- When using case, we have to use assignment.  This is not
-   -- represented well.  Define dummy value first.
-   self:write(self:tab())
-   self:write_var_def(self.var)
-   self:write("0/*dummy*/;\n")
-   self:mark_bound(self.var)
-   -- Calls to :write_var_def afterwards will use assignment, which
-   -- needs to be allowed explicitly.
-   self.var.cell.const = false
+   -- The C case statement needs separate variable definition and
+   -- assignment.  For this the variable is marked as multipath, such
+   -- that subsequent binding operations ignore that the variable has
+   -- already been bound and emit an assignment insted of a
+   -- definition.
+   self:maybe_write_var_def_multipath(self.var)
 
    w("{\n")
    self:save_context(
@@ -688,10 +687,8 @@ end
 -- Called after C code is emitted that assigns a value to the
 -- variable.
 function smc:mark_bound(v)
-   if v.cell.bind == 'unbound' then
+   if v.cell.bind == 'unbound' or v.cell.multipath then
       v.cell.bind = 'local'
-   else
-      assert(v.cell.const == false)
    end
 end
 
@@ -699,17 +696,33 @@ end
 function smc:write_var_def(v)
    assert(v and v.cell)
    local var, typ = self:var_and_type(v)
-   if v.cell.bind == 'unbound' then
-      -- Insert the definition.
-      self:write(typ .. var)
+   if v.cell.multipath then
+      -- Assume variable definition has already been written out
+      -- without definition.
+      self:write(var)
       self:write(" = ")
    else
-      -- Just assignment
-      assert(v.cell.const == false)
-      self:write(var)
+      -- Insert the definition.
+      assert(v.cell.bind == 'unbound')
+      self:write(typ .. var)
       self:write(" = ")
    end
 end
+
+-- Multipath variables need to be defined if they are local.  If they
+-- are on the stack this does not emit any C code.
+function smc:maybe_write_var_def_multipath(v)
+   assert(v and v.cell)
+   if not v.cell.c_index then
+      local var, typ = self:var_and_type(v)
+      self:write(self:tab())
+      self:write(var)
+      self:write(";\n")
+   end
+   v.cell.multipath = true
+end
+
+
 -- Write expression, and if there is a current variable 'hole', emit
 -- variable definition as well.
 function smc:write_binding(c_expr)

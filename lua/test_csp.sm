@@ -35,7 +35,7 @@
       ;;(select
       ;; ((read 0 v1)      (send 1 v1))
       ;; ((send 1 (+ 1 2)) (send 1 123)))
-      (if (add def (read 0))
+      (if (add def 0)
           (fun1)
           (fun2))
       ))

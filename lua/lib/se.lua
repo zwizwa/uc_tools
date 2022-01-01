@@ -58,6 +58,8 @@ function se:read_atom()
       self:pop()
    end
 end
+-- Note that this does not work well if the array contains an empty
+-- list, which is represented by Lua nil.
 function se.array_to_list(arr)
    local lst = nil  -- the empty list
    for i=#arr,1,-1 do
@@ -69,9 +71,6 @@ end
 -- Same as Scheme (list ...)
 function se.list(...)
    return se.array_to_list({...})
-end
-function se.is_pair(x)
-   return type(x) == 'table' and (#x == 2)
 end
 function se.elements(lst)
    local pair = lst
