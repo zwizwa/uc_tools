@@ -84,8 +84,17 @@ local smc = {}
 local form = {}
 smc.form = form
 
-
-
+-- Make writing output syntax as convenient as possible.
+-- Erlang style strings + multiple arguments.
+function smc:w(...)
+   for _,el in ipairs({...}) do
+      if type(el) == 'table' then
+         self:w(unpack(el))
+      else
+         self:write(el)
+      end
+   end
+end
 
 function smc:tab()
    local strs = {}
@@ -198,16 +207,15 @@ form['for'] = function(self, for_expr)
       function()
          local v = self:new_var(var_name)
 
-         self:write(self:tab())
-         self:write("for(")
-         self:write_var_def(v)
-         self:write("0 ; ")
+         self:w(self:tab(),"for(")
+         self:w_var_def(v)
+         self:w("0 ; ")
 
          self:push_var(v)
          self:mark_bound(v)
          local cv = self:atom_to_c_expr(var_name)
-         self:write(cv .. " < " .. iter_arg .. " ; ")
-         self:write(cv .. "++) {\n")
+         self:w(cv, " < ", iter_arg, " ; ")
+         self:w(cv, "++) {\n")
          self:save_context(
             {'indent'},
             function()
@@ -218,33 +226,33 @@ form['for'] = function(self, for_expr)
                end
             end)
 
-         self:write(self:tab() .. "}\n")
+         self:w(self:tab(), "}\n")
       end)
 end
 
-function smc:write_se(expr)
+function smc:w_se(expr)
    if type(expr) ~= 'table' then
-      self:write(expr)
+      self:w(expr)
    else
-      self:write("(")
+      self:w("(")
       for el, rest in se.elements(expr) do
-         self:write_se(el)
+         self:w_se(el)
          if not se.is_empty(rest) then
-            self:write(" ")
+            self:w(" ")
          end
       end
-      self:write(")")
+      self:w(")")
    end
 end
-function smc:write_se_comment(expr)
-   self:write("/*")
-   self:write_se(expr)
-   self:write("*/")
+function smc:w_se_comment(expr)
+   self:w("/*")
+   self:w_se(expr)
+   self:w("*/")
 end
-function smc:write_se_comment_i_n(expr)
-   self:write(self:tab())
-   self:write_se_comment(expr)
-   self:write("\n")
+function smc:w_se_comment_i_n(expr)
+   self:w(self:tab())
+   self:w_se_comment(expr)
+   self:w("\n")
 end
 
 -- Let insertion happens often enough, so make an abstraction.
@@ -286,10 +294,10 @@ form['if'] = function(self, if_expr)
    -- We use statement expressions here as well, so write var def here
    -- and propagate var=nil since value of last expression in
    -- statement expression eventually ends up in this variable.
-   self:write(self:tab())
+   self:w(self:tab())
    if self.var then
       -- FIXME: In tail position this doesn't make any sense.
-      self:write_var_def(self.var)
+      self:w_var_def(self.var)
    end
 
    local function compile_branch(form)
@@ -304,11 +312,11 @@ form['if'] = function(self, if_expr)
 
    local ccond = self:atom_to_c_expr(condition)
 
-   self:write(ccond .. " ? ({\n")
+   self:w(ccond, " ? ({\n")
    compile_branch(expr_true)
-   self:write(self:tab() .. "}) : ({\n")
+   self:w(self:tab(), "}) : ({\n")
    compile_branch(expr_false)
-   self:write(self:tab() .. "});\n")
+   self:w(self:tab(), "});\n")
 
    if self.var then
       self:mark_bound(self.var)
@@ -363,11 +371,11 @@ end
 
 function smc:compile_letstar(bindings, sequence)
 
-   self:write(self:tab())
+   self:w(self:tab())
    if self.var then
-      self:write_var_def(self.var)
+      self:w_var_def(self.var)
    end
-   self:write("({\n")
+   self:w("({\n")
 
    self:save_context(
       {'env','stack_ptr','indent','var'},
@@ -399,7 +407,7 @@ function smc:compile_letstar(bindings, sequence)
          self:compile_statements(sequence)
    end)
 
-   self:write(self:tab() .. "});\n")
+   self:w(self:tab(), "});\n")
 
    -- Only mark after it's actually bound in the C text.
    if self.var then
@@ -431,12 +439,10 @@ form['module'] = function(self, expr)
       -- "T arg",
    }
 
-   self:write("T " .. modname .. "(")
-   self:write(table.concat(args,", "))
-   self:write(") {\n");
+   self:w("T ", modname, "(",table.concat(args,", "),") {\n");
    local nxt = c.state_name .. "->next";
    -- local nxt = "next";
-   self:write(self:tab() .. "if(" .. nxt .. ") goto *" .. nxt .. ";\n")
+   self:w(self:tab(), "if(", nxt, ") goto *", nxt, ";\n")
 
    -- 'define' is only defined inside a 'module' form.
    local function for_defines(f)
@@ -466,7 +472,7 @@ form['module'] = function(self, expr)
          if (not self.labels_last) or self.labels_last[fname] then
             -- No closure support: make sure lex env is empty.
             assert(0 == se.length(self.env))
-            self:write(fname .. ":\n");
+            self:w(fname, ":\n");
             self:save_context(
                {'var','tail_position'},
                function()
@@ -475,21 +481,16 @@ form['module'] = function(self, expr)
                   self:compile(body_expr)
                end)
          else
-            self:write("/* " .. fname .. " inline only */\n")
+            self:w("/* ", fname, " inline only */\n")
          end
       end)
 
-   self:write("}\n");
+   self:w("}\n");
 end
 
-function smc:write_statement(name, ...)
-   self:write(name .. "(")
-   self:write(table.concat({...},","))
-   self:write(");\n")
+function smc:w_statement(name, ...)
+   self:w(name .. "(",table.concat({...},","),");\n")
 end
-
-
-
 
 
 -- Blocking forms.  See csp.h for the definition of the macros.  The
@@ -516,11 +517,11 @@ form['read'] = function(self, expr)
    self:local_lost()
    local s = self.config.state_name
    local t = "&(" .. s .. "->task)"
-   self:write(self:tab())
+   self:w(self:tab())
    if self.var then
-      self:write_var_def(self.var)
+      self:w_var_def(self.var)
    end
-   self:write_statement("CSP_RCV_W", t, s, chan)
+   self:w_statement("CSP_RCV_W", t, s, chan)
    if self.nb_evt < 1 then
       self.nb_evt = 1
    end
@@ -544,9 +545,9 @@ form['write'] = function(self, expr)
    self:local_lost()
    local s = self.config.state_name
    local t = "&(" .. s .. "->task)"
-   self:write(self:tab())
+   self:w(self:tab())
 
-   self:write_statement("CSP_SND_W", t, s, chan, cvar)
+   self:w_statement("CSP_SND_W", t, s, chan, cvar)
    if self.nb_evt < 1 then
       self.nb_evt = 1
    end
@@ -575,7 +576,7 @@ form['select'] = function(self, expr)
    -- Keep track of bindings to perform ANF transformation if necessary
    local li = self:letins()
    for clause_expr in se.elements(clauses_expr) do
-      self:write_se_comment_i_n(clause_expr)
+      self:w_se_comment_i_n(clause_expr)
       local head_expr, handle_expr = se.unpack(clause_expr, {n = 2})
       local kind, chan, data_expr  = se.unpack(head_expr,   {n = 3})
       if kind == 'write' then
@@ -602,8 +603,7 @@ form['select'] = function(self, expr)
    local t = "&(" .. s .. "->task)"
 
    local function w(str)
-      self:write(self:tab())
-      self:write(str)
+      self:w(self:tab(),str)
    end
 
    -- The C case statement needs separate variable definition and
@@ -611,7 +611,7 @@ form['select'] = function(self, expr)
    -- that subsequent binding operations ignore that the variable has
    -- already been bound and emit an assignment insted of a
    -- definition.
-   self:maybe_write_var_def_multipath(self.var)
+   self:maybe_w_var_def_multipath(self.var)
 
    w("{\n")
    self:save_context(
@@ -624,8 +624,8 @@ form['select'] = function(self, expr)
          -- the msg_buf in unboxed mode (unitptr_t machine word
          -- .msg.buf.w).
          local function stmt(...)
-            self:write(self:tab())
-            self:write_statement(unpack({...}))
+            self:w(self:tab())
+            self:w_statement(unpack({...}))
          end
 
          local nb_evt = 1
@@ -650,9 +650,9 @@ form['select'] = function(self, expr)
                   self:inc('indent')
                   if bind_var then
                      local v = self:new_var(bind_var)
-                     self:write(self:tab())
-                     self:write_var_def(v)
-                     self:write(s .. "->evt[" .. evt .. "].msg.w;\n")
+                     self:w(self:tab())
+                     self:w_var_def(v)
+                     self:w(s , "->evt[", evt, "].msg.w;\n")
                      self:mark_bound(v)
                      self:push_var(v)
                   end
@@ -697,31 +697,27 @@ function smc:mark_bound(v)
 end
 
 -- Emit C code for variable definition.
-function smc:write_var_def(v)
+function smc:w_var_def(v)
    assert(v and v.cell)
    local var, typ = self:var_and_type(v)
    if v.cell.multipath then
       -- Assume variable definition has already been written out
       -- without definition.
-      self:write(var)
-      self:write(" = ")
+      self:w(var," = ")
    else
       -- Insert the definition.
       assert(v.cell.bind == 'unbound')
-      self:write(typ .. var)
-      self:write(" = ")
+      self:w(typ,var," = ")
    end
 end
 
 -- Multipath variables need to be defined if they are local.  If they
 -- are on the stack this does not emit any C code.
-function smc:maybe_write_var_def_multipath(v)
+function smc:maybe_w_var_def_multipath(v)
    assert(v and v.cell)
    if not v.cell.c_index then
       local var, typ = self:var_and_type(v)
-      self:write(self:tab())
-      self:write(typ .. var)
-      self:write(";\n")
+      self:w(self:tab(),typ,var,";\n")
    end
    v.cell.multipath = true
 end
@@ -729,14 +725,13 @@ end
 
 -- Write expression, and if there is a current variable 'hole', emit
 -- variable definition as well.
-function smc:write_binding(c_expr)
-   self:write(self:tab())
+function smc:w_binding(c_expr)
+   self:w(self:tab())
    if self.var then
-      self:write_var_def(self.var)
+      self:w_var_def(self.var)
       self:mark_bound(self.var)
    end
-   self:write(c_expr)
-   self:write(";\n");
+   self:w(c_expr,";\n");
 end
 
 -- Map Scheme atom (const or variable) to its C representation.
@@ -825,7 +820,7 @@ function smc:apply(expr)
          table.insert(args, self:atom_to_c_expr(app_form[i]))
       end
       local c_expr = fun_name .. "(" .. table.concat(args, ",") .. ")"
-      self:write_binding(c_expr)
+      self:w_binding(c_expr)
       return
    end
 
@@ -836,7 +831,7 @@ function smc:apply(expr)
       assert(#app_form == 1)
       -- local cmt = { [true] = "/*tail*/", [false] = "/*no-tail*/" }
       local c_expr = "goto " .. app_form[1] --  .. cmt[tail_position]
-      self:write_binding(c_expr)
+      self:w_binding(c_expr)
       self.labels[fun_name] = true
    else
       -- log("no_tail: fun_name=" .. fun_name .. "\n")
@@ -875,7 +870,7 @@ end
 function smc:compile(expr)
    if type(expr) ~= 'table' then
       -- variable or constant
-      return self:write_binding(self:atom_to_c_expr(expr))
+      return self:w_binding(self:atom_to_c_expr(expr))
    end
    local form, tail = unpack(expr)
    assert(form)
