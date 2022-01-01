@@ -49,6 +49,9 @@
 -- project gradually turned into a sandbox to develop a schemisch Lua
 -- programming style.  Looks like I'm going to be stuck with Lua for a
 -- while it seems so might as well make me feel at home...
+--
+-- After adding the CSP forms, I do think this is getting a bit too
+-- complex and hard to read.  Especially hard to refactor.
 
 
 local se = require('lib.se')
@@ -146,7 +149,7 @@ function smc:ref(var_name, env)
    for v in se.elements(env) do
       if v.var == var_name then
          -- We can only get references from the lexical environment,
-         -- and those should never contain unbound variables.
+         -- and that should never contain unbound variables.
          assert(v.cell.bind ~= 'unbound')
 
          -- If this is a variable that crossed a suspension border,
@@ -592,12 +595,17 @@ form['select'] = function(self, expr)
    local s = self.config.state_name
    local t = "&(" .. s .. "->task)"
 
-   self:write(self:tab())
-   if self.var then
-      self:write_var_def(self.var)
+   local function w(str)
+      self:write(self:tab())
+      self:write(str)
    end
 
-   self:write("({\n")
+   self:write(self:tab())
+   self:write_var_def(self.var)
+   self:write("0 /* undefined */ ;\n")
+   self:mark_bound(self.var)
+
+   w("{\n")
    self:save_context(
       {'indent','env','stack_ptr'},
       function()
@@ -626,15 +634,31 @@ form['select'] = function(self, expr)
          stmt("CSP_SEL",t,s,n_w,n_r)
          self:local_lost()
 
-         self:write(self:tab())
+         local function w_case(evt,c)
+            w("case " .. evt .. ":\n")
+            self:save_context(
+               {'indent'},
+               function()
+                  self.indent = self.indent+1
+                  --if self.var then
+                  --   self:write_var_def(self.var)
+                  --end
+                  self:compile(c.expr)
+                  w("break;\n");
+               end)
+         end
 
-         self:write("(" .. t .. ")->selected;\n")
+         w("switch((" .. t .. ")->selected) {\n")
+         for i,c in ipairs(clauses.write) do w_case(i-1,c) end
+         for i,c in ipairs(clauses.read)  do w_case(n_w+i-1,c) end
+         w("}\n")
+
 
          -- Dispatch.  Make a case statement first.
 
          -- self:write(self:tab() .. s .. "->evt[0].msg.w;\n")
    end)
-   self:write(self:tab() .. "});\n")
+   w("};\n")
 
 end
 
@@ -660,10 +684,21 @@ end
 
 -- Emit C code for variable definition.
 function smc:write_var_def(v)
+   assert(v and v.cell)
    local var, typ = self:var_and_type(v)
-   self:write(typ .. var)
-   self:write(" = ")
+   if v.cell.bind == 'unbound' then
+      -- Insert the definition.
+      self:write(typ .. var)
+      self:write(" = ")
+   else
+      -- Just assignment
+      v.cell.bind = 'unbound'  -- FIXME: Hack
+      self:write(var)
+      self:write(" = ")
+   end
 end
+-- Write expression, and if there is a current variable 'hole', emit
+-- variable definition as well.
 function smc:write_binding(c_expr)
    self:write(self:tab())
    if self.var then
