@@ -230,17 +230,34 @@ function smc:write_se_comment_i_n(expr)
    self:write("\n")
 end
 
+-- Let insertion happens often enough, so make an abstraction.
+local letins = {}
+function smc:letins()
+   local obj = {comp = self}
+   setmetatable(obj, {__index = letins})
+   return obj
+end
+function letins:conv(expr)
+   if type(expr) == 'string' then return expr end
+   local var = self.comp:gensym()
+   self.bindings = {l(var, expr), self.bindings}
+   return var
+end
+function letins:compile(inner, hole, tail_position)
+   self.comp:compile_letstar(self.bindings, {inner}, hole, tail_position)
+end
+
+
 form['if'] = function(self, if_expr, hole, tail_position)
    local _, condition, expr_true, expr_false = se.unpack(if_expr, { n = 4 })
 
-   -- Perform let insertion when the condition is not a variable.
-   if type(condition) ~= 'string' then
-      local cond_var = self:gensym()
-      self:compile(
-         l('let*', l(l(cond_var, condition)),
-           l('if', cond_var, expr_true, expr_false)),
-         hole,
-         tail_position)
+   -- Perform let insertion if necessary.
+   local li = self:letins()
+   condition = li:conv(condition)
+   if li.bindings then
+      li:compile(l('if', condition, expr_true, expr_false),
+                 hole,
+                 tail_position)
       return
    end
 
@@ -309,17 +326,17 @@ end
 -- Core form is 'let*' which mostly resembles C's scoping rules.
 -- Compile the form to C statement expressions.
 form['let*'] = function(self, expr, hole, tail_position)
-   local _, bindings, inner = se.unpack(expr, { n = 2, tail = true })
+   local _, bindings, sequence = se.unpack(expr, { n = 2, tail = true })
    assert(type(bindings) == 'table')
-   self:compile_letstar(bindings, inner, hole, tail_position)
+   self:compile_letstar(bindings, sequence, hole, tail_position)
 end
 form['begin'] = function(self, expr, hole, tail_position)
-   local _, inner = se.unpack(expr, { n = 1, tail = true })
-   self:compile_letstar(nil, inner, hole, tail_position)
+   local _, sequence = se.unpack(expr, { n = 1, tail = true })
+   self:compile_letstar(nil, sequence, hole, tail_position)
 end
 
 
-function smc:compile_letstar(bindings, inner, hole, tail_position)
+function smc:compile_letstar(bindings, sequence, hole, tail_position)
 
    self:write(self:tab())
    if hole then
@@ -344,10 +361,10 @@ function smc:compile_letstar(bindings, inner, hole, tail_position)
 
          -- Compile inner forms as statements.  C handles value passing of
          -- the last statement if this is compiled as statement expression.
-         local n_inner = se.length(inner)
+         local n_inner = se.length(sequence)
          assert(n_inner > 0)
 
-         self:compile_statements(inner, tail_position)
+         self:compile_statements(sequence, tail_position)
    end)
 
    self:write(self:tab() .. "});\n")
@@ -512,6 +529,7 @@ end
 --
 -- This call blocks execution and resumes exactly one of the clauses.
 
+
 -- FIXME
 form['select'] = function(self, expr, hole, tail_position)
    local _, clauses_expr = se.unpack(expr, {n = 1, tail = true})
@@ -519,41 +537,37 @@ form['select'] = function(self, expr, hole, tail_position)
    -- sorted before invoking CSP_SEL.
    local clauses = { read = {}, write = {} }
    -- Keep track of bindings to perform ANF transformation if necessary
-   local bindings = nil
+   local li = self:letins()
    for clause_expr in se.elements(clauses_expr) do
       self:write_se_comment_i_n(clause_expr)
-
       local head_expr, handle_expr = se.unpack(clause_expr, {n = 2})
       local kind, chan, data_expr  = se.unpack(head_expr,   {n = 3})
-      assert(clauses[kind])
-      if kind == 'write' and type(data_expr) ~= 'string' then
-         -- The read forms need to be converted to ANF.
-         local var = self:gensym()
-         bindings = {l(var, data_expr), bindings}
-         data_expr = var
+      if kind == 'write' then
+         -- Possibly needs let insertion.
+         data_expr = li:conv(data_expr)
+      else
+         assert(kind == 'read')
       end
       assert(type(data_expr) == 'string')
+      -- Read and write can use the same structure.
       table.insert(clauses[kind],
-                   {chan = chan, var = data_expr, expr = handle_expr})
+                   {chan = chan,
+                    var  = data_expr,
+                    expr = handle_expr})
    end
 
    -- Recurse through let* if there were any non-variable forms.
-   -- This is a bit annoying to have to pack things up again...
-   if bindings then
+   if li.bindings then
       local forms = nil
-      -- The order doesn't matter, so just cons everything
+      -- It is a bit annoying to have to pack things up again.
+      -- The order doesn't matter, so just cons everything.
       for _,kind in ipairs({'read','write'}) do
          for _,c in ipairs(clauses[kind]) do
-            local form =
-               l(l(kind, c.chan, c.var), c.expr)
-            self:write_se_comment_i_n(form)
+            local form = l(l(kind, c.chan, c.var), c.expr)
             forms = {form, forms}
          end
       end
-      assert(forms)
-      local form = l('let*',bindings,{'select',forms})
-      self:write_se_comment_i_n(form)
-      self:compile(form, hole, tail_position)
+      li:compile({'select', forms}, hole, tail_position)
       return
    end
 
@@ -578,26 +592,30 @@ form['select'] = function(self, expr, hole, tail_position)
          -- setting rcv buffer pointer to NULL.  Further we only use
          -- the msg_buf in unboxed mode (unitptr_t machine word
          -- .msg.buf.w).
+         local function stmt(...)
+            self:write(self:tab())
+            self:write_statement(unpack({...}))
+         end
 
          local nb_evt = 1
          local n_w = #(clauses.write)
          local n_r = #(clauses.read)
          for i,c in ipairs(clauses.write) do
             local cvar = self:atom_to_c_expr(c.var)
-            self:write(self:tab())
-            self:write_statement("CSP_EVT_BUF",t,i-1,c.chan,cvar,0)
+            stmt("CSP_EVT_BUF",t,i-1,c.chan,cvar,0)
          end
          for i,c in ipairs(clauses.read) do
-            self:write(self:tab())
-            self:write_statement("CSP_EVT_BUF",t,n_w+i-1,c.chan,"NULL",0)
+            stmt("CSP_EVT_BUF",t,n_w+i-1,c.chan,"NULL",0)
          end
 
+         stmt("CSP_SEL",t,s,n_w,n_r)
          self:local_lost()
 
          self:write(self:tab())
-         self:write_statement("CSP_SEL",t,s,n_w,n_r)
-         self:write(self:tab())
+
          self:write("(" .. t .. ")->selected;\n")
+
+         -- Dispatch.  Make a case statement first.
 
          -- self:write(self:tab() .. s .. "->evt[0].msg.w;\n")
    end)
