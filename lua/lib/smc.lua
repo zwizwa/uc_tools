@@ -38,6 +38,9 @@
 -- * The for(;;) C form is implemented explicitly, modeled after a
 --   stripped-down Racket for form.
 --
+-- * Split string construction (Lua style "string lists") and writing
+--   as much as possible.
+--
 --
 
 -- WTF why Lua?
@@ -207,9 +210,7 @@ form['for'] = function(self, for_expr)
       function()
          local v = self:new_var(var_name)
 
-         self:w(self:tab(),"for(")
-         self:w_var_def(v)
-         self:w("0 ; ")
+         self:w(self:tab(),"for(",self:var_def(v),"0 ; ")
 
          self:push_var(v)
          self:mark_bound(v)
@@ -421,27 +422,16 @@ end
 -- arguments compile to goto lables inside such a function.
 
 form['module'] = function(self, expr)
-   -- assert(not self.var)
+   local c = self.config
+   assert(not self.var)
    local _, mod_spec, define_exprs = se.unpack(expr, {n = 2, tail = true})
    local modname = se.unpack(mod_spec, {n = 1})
-   if self.mod_prefix then
-      modname = self.mod_prefix .. modname
-   end
-   local c = self.config
-   local args = {
-      "struct " .. c.state_struct .. " *" .. c.state_name,
-      -- Note that since the main purpose of this ended up compiling
-      -- CSP tasks, the next pointer and communication data is best
-      -- kept in the state struct.  No point in trying to optimize it
-      -- into registers.
-      --
-      -- "void *next",
-      -- "T arg",
-   }
 
+   if self.mod_prefix then modname = { self.mod_prefix, modname } end
+   local args = { "struct " .. c.state_struct .. " *" .. c.state_name }
    self:w("T ", modname, "(",table.concat(args,", "),") {\n");
-   local nxt = c.state_name .. "->next";
-   -- local nxt = "next";
+
+   local nxt = {c.state_name, "->next"};
    self:w(self:tab(), "if(", nxt, ") goto *", nxt, ";\n")
 
    -- 'define' is only defined inside a 'module' form.
@@ -650,9 +640,8 @@ form['select'] = function(self, expr)
                   self:inc('indent')
                   if bind_var then
                      local v = self:new_var(bind_var)
-                     self:w(self:tab())
-                     self:w_var_def(v)
-                     self:w(s , "->evt[", evt, "].msg.w;\n")
+                     self:w(self:tab(),self:var_def(v),
+                            s,"->evt[",evt,"].msg.w;\n")
                      self:mark_bound(v)
                      self:push_var(v)
                   end
@@ -697,18 +686,21 @@ function smc:mark_bound(v)
 end
 
 -- Emit C code for variable definition.
-function smc:w_var_def(v)
+function smc:var_def(v)
    assert(v and v.cell)
    local var, typ = self:var_and_type(v)
    if v.cell.multipath then
       -- Assume variable definition has already been written out
       -- without definition.
-      self:w(var," = ")
+      return {var," = "}
    else
       -- Insert the definition.
       assert(v.cell.bind == 'unbound')
-      self:w(typ,var," = ")
+      return {typ,var," = "}
    end
+end
+function smc:w_var_def(v)
+   self:w(self:var_def(v))
 end
 
 -- Multipath variables need to be defined if they are local.  If they
