@@ -334,7 +334,7 @@ function smc:compile_statements(inner)
             self.tail_position =
                tail_position and
                (not se.is_pair(rest_expr))
-            -- Var is nil because we use statement expression.
+            -- Var is nil because we use statement expressions.
             self.var = nil
             self:compile(form)
          end)
@@ -350,7 +350,7 @@ function smc:compile_letstar(bindings, sequence)
    self:write("({\n")
 
    self:save_context(
-      {'env','stack_ptr','indent','var','tail_position'},
+      {'env','stack_ptr','indent','var'},
       function()
          self.indent = self.indent + 1
 
@@ -508,20 +508,19 @@ form['read'] = function(self, expr)
 end
 
 form['write'] = function(self, expr)
-   local _, chan, expr1 = se.unpack(expr, {n = 3})
+   local _, chan, data_expr = se.unpack(expr, {n = 3})
 
-   if type(expr1) ~= 'string' then
-      local var = self:gensym()
-      self:compile(
-         l('let*', l(l(var, expr1)),
-           l('write', chan, var)))
+   local li = self:letins()
+   data_expr = li:conv(data_expr)
+   if li.bindings then
+      li:compile(l('write', chan, data_expr))
       return
    end
 
    -- Perform the reference _before_ marking the context as lost.  Our
    -- reference here is used to initialize the evt msg before
    -- executing return.
-   local cvar = self:atom_to_c_expr(expr1)
+   local cvar = self:atom_to_c_expr(data_expr)
 
    self:local_lost()
    local s = self.config.state_name
