@@ -163,10 +163,10 @@ end
 
 -- This is a stripped-down version of the racket 'for' form supporting
 -- a single sequence.
-form['for'] = function(self, for_expr, hole)
+form['for'] = function(self, for_expr)
    -- For doesn't return a value, so for now just assert there is
    -- nothing to bind.
-   assert(not hole)
+   assert(not self.var)
    local _, bindings, inner = se.unpack(for_expr, { n = 2, tail = true })
 
    -- Only supports a small subset.  The iterators are compile-time
@@ -243,41 +243,40 @@ function letins:conv(expr)
    self.bindings = {l(var, expr), self.bindings}
    return var
 end
-function letins:compile(inner, hole, tail_position)
-   self.comp:compile_letstar(self.bindings, {inner}, hole, tail_position)
+function letins:compile(inner)
+   self.comp:compile_letstar(self.bindings, {inner})
 end
 
 
-form['if'] = function(self, if_expr, hole, tail_position)
+form['if'] = function(self, if_expr)
    local _, condition, expr_true, expr_false = se.unpack(if_expr, { n = 4 })
 
    -- Perform let insertion if necessary.
    local li = self:letins()
    condition = li:conv(condition)
    if li.bindings then
-      li:compile(l('if', condition, expr_true, expr_false),
-                 hole,
-                 tail_position)
+      li:compile(l('if', condition, expr_true, expr_false))
       return
    end
 
 
    -- See also implementation of 'let*'.
    -- We use statement expressions here as well, so write var def here
-   -- and propagate hole=nil since value of last expression in
+   -- and propagate var=nil since value of last expression in
    -- statement expression eventually ends up in this variable.
    self:write(self:tab())
-   if hole then
+   if self.var then
       -- FIXME: In tail position this doesn't make any sense.
-      self:write_var_def(hole)
+      self:write_var_def(self.var)
    end
 
    local function compile_branch(form)
       self:save_context(
-         {'env','stack_ptr','indent'},
+         {'env','stack_ptr','indent','var'},
          function()
             self.indent = self.indent + 1
-            self:compile(form, nil, tail_position)
+            self.var = nil
+            self:compile(form)
          end)
    end
 
@@ -289,8 +288,8 @@ form['if'] = function(self, if_expr, hole, tail_position)
    compile_branch(expr_false)
    self:write(self:tab() .. "});\n")
 
-   if hole then
-      self:mark_bound(hole)
+   if self.var then
+      self:mark_bound(self.var)
    end
 end
 
@@ -309,69 +308,82 @@ function smc:save_context(keys, inner_fun)
    return rv
 end
 
--- Compile sequence of statements.  This is supposed to go inside a
--- statement expression '({' '})'
-function smc:compile_statements(inner, tail_position)
-   for form, rest_expr in se.elements(inner) do
-      assert(form)
-      local sub_tail_position =
-         tail_position and
-         (not se.is_pair(rest_expr))
-      -- Hole is nil because we use statement expression.
-      self:compile(form, nil, sub_tail_position)
-   end
-end
 
 
 -- Core form is 'let*' which mostly resembles C's scoping rules.
 -- Compile the form to C statement expressions.
-form['let*'] = function(self, expr, hole, tail_position)
+form['let*'] = function(self, expr)
    local _, bindings, sequence = se.unpack(expr, { n = 2, tail = true })
    assert(type(bindings) == 'table')
-   self:compile_letstar(bindings, sequence, hole, tail_position)
+   self:compile_letstar(bindings, sequence)
 end
-form['begin'] = function(self, expr, hole, tail_position)
+form['begin'] = function(self, expr)
    local _, sequence = se.unpack(expr, { n = 1, tail = true })
-   self:compile_letstar(nil, sequence, hole, tail_position)
+   self:compile_letstar(nil, sequence)
 end
 
+-- Compile sequence of statements.  This is supposed to go inside a
+-- statement expression '({' '})'
+function smc:compile_statements(inner)
+   local tail_position = self.tail_position
+   for form, rest_expr in se.elements(inner) do
+      assert(form)
+      self:save_context(
+         {'tail_position','var'},
+         function()
+            self.tail_position =
+               tail_position and
+               (not se.is_pair(rest_expr))
+            -- Var is nil because we use statement expression.
+            self.var = nil
+            self:compile(form)
+         end)
+   end
+end
 
-function smc:compile_letstar(bindings, sequence, hole, tail_position)
+function smc:compile_letstar(bindings, sequence)
 
    self:write(self:tab())
-   if hole then
-      self:write_var_def(hole)
+   if self.var then
+      self:write_var_def(self.var)
    end
    self:write("({\n")
 
    self:save_context(
-      {'env','stack_ptr','indent'},
+      {'env','stack_ptr','indent','var','tail_position'},
       function()
          self.indent = self.indent + 1
 
-         local nb_bindings = se.length(bindings)
-         for binding in se.elements(bindings) do
-            local var_name, expr = se.unpack(binding, { n = 2 })
-            assert(type(var_name) == 'string')
-            assert(expr)
-            local v = self:new_var(var_name)
-            self:compile(expr, v, false)
-            self:push_var(v)
-         end
+         self:save_context(
+            {'tail_position'},
+            function()
+               local nb_bindings = se.length(bindings)
+               for binding in se.elements(bindings) do
+                  local var_name, expr = se.unpack(binding, { n = 2 })
+                  assert(type(var_name) == 'string')
+                  assert(expr)
+                  local v = self:new_var(var_name)
+                  self.var = v
+                  self.tail_position = false
+                  self:compile(expr, v, false)
+                  self:push_var(v)
+               end
+            end)
 
          -- Compile inner forms as statements.  C handles value passing of
          -- the last statement if this is compiled as statement expression.
          local n_inner = se.length(sequence)
          assert(n_inner > 0)
 
-         self:compile_statements(sequence, tail_position)
+         self.var = nil
+         self:compile_statements(sequence)
    end)
 
    self:write(self:tab() .. "});\n")
 
    -- Only mark after it's actually bound in the C text.
-   if hole then
-      self:mark_bound(hole)
+   if self.var then
+      self:mark_bound(self.var)
    end
 
 end
@@ -380,8 +392,8 @@ end
 -- The module form compiles to a C function.  Functions with no
 -- arguments compile to goto lables inside such a function.
 
-form['module'] = function(self, expr, hole)
-   assert(hole == nil)
+form['module'] = function(self, expr)
+   -- assert(not self.var)
    local _, mod_spec, define_exprs = se.unpack(expr, {n = 2, tail = true})
    local modname = se.unpack(mod_spec, {n = 1})
    if self.mod_prefix then
@@ -435,7 +447,13 @@ form['module'] = function(self, expr, hole)
             -- No closure support: make sure lex env is empty.
             assert(0 == se.length(self.env))
             self:write(fname .. ":\n");
-            self:compile(body_expr, nil, true)
+            self:save_context(
+               {'var','tail_position'},
+               function()
+                  self.tail_position = true
+                  self.var = nil
+                  self:compile(body_expr)
+               end)
          else
             self:write("/* " .. fname .. " inline only */\n")
          end
@@ -473,32 +491,30 @@ function smc:local_lost()
    return bound
 end
 
-form['read'] = function(self, expr, hole)
+form['read'] = function(self, expr)
    local _, chan = se.unpack(expr, {n = 2})
    self:local_lost()
    local s = self.config.state_name
    local t = "&(" .. s .. "->task)"
    self:write(self:tab())
-   if hole then
-      self:write_var_def(hole)
+   if self.var then
+      self:write_var_def(self.var)
    end
    self:write_statement("CSP_RCV_W", t, s, chan)
    if self.nb_evt < 1 then
       self.nb_evt = 1
    end
-   self:mark_bound(hole)
+   self:mark_bound(self.var)
 end
 
-form['write'] = function(self, expr, hole, tail_position)
+form['write'] = function(self, expr)
    local _, chan, expr1 = se.unpack(expr, {n = 3})
 
    if type(expr1) ~= 'string' then
       local var = self:gensym()
       self:compile(
          l('let*', l(l(var, expr1)),
-           l('write', chan, var)),
-         hole,
-         tail_position)
+           l('write', chan, var)))
       return
    end
 
@@ -531,7 +547,7 @@ end
 
 
 -- FIXME
-form['select'] = function(self, expr, hole, tail_position)
+form['select'] = function(self, expr)
    local _, clauses_expr = se.unpack(expr, {n = 1, tail = true})
    -- Collect read and write clauses separately.  They need to be
    -- sorted before invoking CSP_SEL.
@@ -567,7 +583,7 @@ form['select'] = function(self, expr, hole, tail_position)
             forms = {form, forms}
          end
       end
-      li:compile({'select', forms}, hole, tail_position)
+      li:compile({'select', forms})
       return
    end
 
@@ -578,8 +594,8 @@ form['select'] = function(self, expr, hole, tail_position)
    local t = "&(" .. s .. "->task)"
 
    self:write(self:tab())
-   if hole then
-      self:write_var_def(hole)
+   if self.var then
+      self:write_var_def(self.var)
    end
 
    self:write("({\n")
@@ -635,11 +651,6 @@ function smc:var_and_type(v)
    end
 end
 
--- Just the lvalue/rvalue.
-function smc:var(n)
-   local c_expr, c_type = self:var_and_type(n)
-   return c_expr
-end
 
 -- Called after C code is emitted that assigns a value to the
 -- variable.
@@ -654,11 +665,11 @@ function smc:write_var_def(v)
    self:write(typ .. var)
    self:write(" = ")
 end
-function smc:write_binding(v, c_expr)
+function smc:write_binding(c_expr)
    self:write(self:tab())
-   if v then
-      self:write_var_def(v)
-      self:mark_bound(v)
+   if self.var then
+      self:write_var_def(self.var)
+      self:mark_bound(self.var)
    end
    self:write(c_expr)
    self:write(";\n");
@@ -667,9 +678,10 @@ end
 -- Map Scheme atom (const or variable) to its C representation.
 function smc:atom_to_c_expr(atom)
    if type(atom) == 'string' then
-      local n = self:ref(atom)
-      if n then
-         return self:var(n)
+      local v = self:ref(atom)
+      if v then
+         local c_expr, c_type = self:var_and_type(v)
+         return c_expr
       else
          -- Keep track of free variables.
          self.free[atom] = true
@@ -706,7 +718,7 @@ end
 -- To simplify representation, we also bind constants to variables.
 -- The C compiler can later optimize those.
 --
-function smc:apply(expr, hole, tail_position)
+function smc:apply(expr)
    local bindings = {}
    local app_form = {}
 
@@ -718,6 +730,7 @@ function smc:apply(expr, hole, tail_position)
          -- variable reference, just collect
          table.insert(app_form, subexpr)
       else
+         assert(subexpr)
          -- sub-expression or constant. insert form
          local sym = self:gensym()
          local binding = l(sym, subexpr)
@@ -733,9 +746,7 @@ function smc:apply(expr, hole, tail_position)
          se.list('let*',
            se.array_to_list(bindings),
            -- List expression containing function call
-           se.array_to_list(app_form)),
-         hole,
-         tail_position)
+           se.array_to_list(app_form)))
       return
    end
 
@@ -751,18 +762,18 @@ function smc:apply(expr, hole, tail_position)
          table.insert(args, self:atom_to_c_expr(app_form[i]))
       end
       local c_expr = fun_name .. "(" .. table.concat(args, ",") .. ")"
-      self:write_binding(hole, c_expr)
+      self:write_binding(c_expr)
       return
    end
 
    -- Compile composite function call.
-   if (tail_position) then
+   if (self.tail_position) then
       -- FIXME: only 0-arg tail calls for now!
       -- log("tail: fun_name=" .. fun_name .. "\n")
       assert(#app_form == 1)
       -- local cmt = { [true] = "/*tail*/", [false] = "/*no-tail*/" }
       local c_expr = "goto " .. app_form[1] --  .. cmt[tail_position]
-      self:write_binding(hole, c_expr)
+      self:write_binding(c_expr)
       self.labels[fun_name] = true
    else
       -- log("no_tail: fun_name=" .. fun_name .. "\n")
@@ -788,20 +799,20 @@ function smc:apply(expr, hole, tail_position)
             end
             -- The body can then be compiled in this local environment.
             self:write(self:tab() .. "/*inline:" .. table.concat(dbg,",") .. "*/\n")
-            self:compile(fun_def.body, hole, false)
+            self:compile(fun_def.body)
          end)
    end
 
 end
 
--- Compilation dispatch based on expr.  If hole is non-nil, it refers
+-- Compilation dispatch based on expr.  If var is non-nil, it refers
 -- to the variable that takes the value of the expression.  If
 -- tail_position is true, this expression resides in the tail position
 -- of a function definition ( where goto statements are valid. )
-function smc:compile(expr, hole, tail_position)
+function smc:compile(expr)
    if type(expr) ~= 'table' then
       -- variable or constant
-      return self:write_binding(hole, self:atom_to_c_expr(expr))
+      return self:write_binding(self:atom_to_c_expr(expr))
    end
    local form, tail = unpack(expr)
    assert(form)
@@ -811,9 +822,9 @@ function smc:compile(expr, hole, tail_position)
 
    local form_fn = self.form[form]
    if form_fn then
-      return form_fn(self, expr, hole, tail_position)
+      return form_fn(self, expr)
    else
-      self:apply(expr, hole, tail_position)
+      self:apply(expr)
    end
 end
 
@@ -892,7 +903,9 @@ function smc:reset()
    self.funs = {}
    self.depth = 0
    self.free = {}
-   self.nb_evt = 0;
+   self.nb_evt = 0
+   self.var = nil
+   self.tail_position = false
    assert(0 == se.length(self.env))
    assert(0 == self.stack_ptr)
    assert(1 == self.indent)
