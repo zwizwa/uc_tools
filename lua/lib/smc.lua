@@ -203,7 +203,7 @@ form['for'] = function(self, for_expr)
          self.indent = self.indent + 1
          for form in se.elements(inner) do
             assert(form)
-            self:compile(form, nil)
+            self:compile(form)
          end
          self.indent = self.indent - 1
 
@@ -219,7 +219,7 @@ function smc:write_se(expr)
       self:write("(")
       for el, rest in se.elements(expr) do
          self:write_se(el)
-         if rest then
+         if not se.is_empty(rest) then
             -- FIXME: ((read 0v1)(send 1(add 1v1)))
             self:write(" ")
          end
@@ -241,18 +241,21 @@ end
 -- Let insertion happens often enough, so make an abstraction.
 local letins = {}
 function smc:letins()
-   local obj = {comp = self}
+   local obj = {comp = self, bindings_list = se.empty}
    setmetatable(obj, {__index = letins})
    return obj
 end
 function letins:conv(expr)
    if type(expr) == 'string' then return expr end
    local var = self.comp:gensym()
-   self.bindings = {l(var, expr), self.bindings}
+   self.bindings_list = {l(var, expr), self.bindings_list}
    return var
 end
 function letins:compile(inner)
-   self.comp:compile_letstar(self.bindings, {inner})
+   self.comp:compile_letstar(self.bindings_list, l(inner))
+end
+function letins:bindings()
+   return not se.is_empty(self.bindings_list)
 end
 
 
@@ -262,7 +265,7 @@ form['if'] = function(self, if_expr)
    -- Perform let insertion if necessary.
    local li = self:letins()
    condition = li:conv(condition)
-   if li.bindings then
+   if li:bindings() then
       li:compile(l('if', condition, expr_true, expr_false))
       return
    end
@@ -327,7 +330,7 @@ form['let*'] = function(self, expr)
 end
 form['begin'] = function(self, expr)
    local _, sequence = se.unpack(expr, { n = 1, tail = true })
-   self:compile_letstar(nil, sequence)
+   self:compile_letstar(se.empty, sequence)
 end
 
 -- Compile sequence of statements.  This is supposed to go inside a
@@ -339,7 +342,7 @@ function smc:compile_statements(inner)
       self:save_context(
          {'tail_position','var'},
          function()
-            self.tail_position = tail_position and (not rest_expr)
+            self.tail_position = tail_position and se.is_empty(rest_expr)
             -- Var is nil because we use statement expressions.
             self.var = nil
             self:compile(form)
@@ -518,7 +521,7 @@ form['write'] = function(self, expr)
 
    local li = self:letins()
    data_expr = li:conv(data_expr)
-   if li.bindings then
+   if li:bindings() then
       li:compile(l('write', chan, data_expr))
       return
    end
@@ -578,8 +581,8 @@ form['select'] = function(self, expr)
    end
 
    -- Insert let if there were any non-variable forms.
-   if li.bindings then
-      local forms = nil
+   if li:bindings() then
+      local forms = se.empty
       -- Put the form back together from the analysis data.
       for _,kind in ipairs({'read','write'}) do
          for _,c in ipairs(clauses[kind]) do
@@ -848,7 +851,7 @@ function smc:apply(expr)
             -- Inlining links the environment inside the function body
             -- to cells accessible through the callsite environment.
             local callsite_env = self.env
-            self.env = nil
+            self.env = se.empty
             local dbg = {fun_name}
             for i=1, #app_form-1 do
                local var_name = tc('string',app_form[i+1])
@@ -974,7 +977,7 @@ end
 
 function smc.new()
    local config = { state_name = "s", state_struct = "state" }
-   local obj = { stack_ptr = 0, env = nil, indent = 1, config = config }
+   local obj = { stack_ptr = 0, env = se.empty, indent = 1, config = config }
    setmetatable(obj, {__index = smc})
    return obj
 end

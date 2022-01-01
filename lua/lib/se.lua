@@ -5,10 +5,12 @@
 -- The empty list is Lua's nil
 
 -- FIXME: That is a mistake! It makes it impossible to put nil in an
--- array and then iterate over the elements.
+-- array and then iterate over the elements.  Use e.g. ';nil' to
+-- represent the empty list.
 
+local empty = ';nil'
 
-local se = {}
+local se = { empty = empty }
 
 function se:next()
    local char = self.stream:read(1)
@@ -61,7 +63,7 @@ end
 -- Note that this does not work well if the array contains an empty
 -- list, which is represented by Lua nil.
 function se.array_to_list(arr)
-   local lst = nil  -- the empty list
+   local lst = empty
    for i=#arr,1,-1 do
       local el = arr[i]
       lst = {el, lst}
@@ -73,17 +75,15 @@ function se.list(...)
    return se.array_to_list({...})
 end
 function se.elements(lst)
-   local pair = lst
+   local l = lst
    return function()
-      if pair then
-         assert(type(pair) == 'table')
-         local el, rest = unpack(pair)
-         assert(el)
-         pair = rest
+      assert(l)
+      if l ~= empty then
+         assert(type(l) == 'table')
+         local el, rest = unpack(l)
+         l = rest
          -- It's very convenient to also return the tail of the list.
-         return el, pair
-      else
-         assert(nil == pair)
+         return el, l
       end
    end
 end
@@ -111,6 +111,9 @@ function se.cdr(pair)
 end
 function se.cons(car, cdr)
    return {car, cdr}
+end
+function se.is_empty(lst)
+   return lst == empty
 end
 -- It might be simpler to do something like se.unpack to fit better in
 -- the language.  Functions are a little annoying.
