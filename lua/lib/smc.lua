@@ -102,7 +102,7 @@ end
 -- Introduce a varible.
 function smc:new_cell()
    local id = #self.cells + 1
-   local cell = {id = id, bind = 'unbound'}
+   local cell = {id = id, bind = 'unbound', const = true}
    if (not self.cells_last) or (self.cells_last[id].bind == 'saved') then
       -- In second pass (cells_last defined) we can distinguish
       -- between variables that need to be saved in the state struct,
@@ -600,10 +600,15 @@ form['select'] = function(self, expr)
       self:write(str)
    end
 
+   -- When using case, we have to use assignment.  This is not
+   -- represented well.  Define dummy value first.
    self:write(self:tab())
    self:write_var_def(self.var)
-   self:write("0 /* undefined */ ;\n")
+   self:write("0/*dummy*/;\n")
    self:mark_bound(self.var)
+   -- Calls to :write_var_def afterwards will use assignment, which
+   -- needs to be allowed explicitly.
+   self.var.cell.const = false
 
    w("{\n")
    self:save_context(
@@ -678,8 +683,11 @@ end
 -- Called after C code is emitted that assigns a value to the
 -- variable.
 function smc:mark_bound(v)
-   assert(v.cell.bind == 'unbound')
-   v.cell.bind = 'local'
+   if v.cell.bind == 'unbound' then
+      v.cell.bind = 'local'
+   else
+      assert(v.cell.const == false)
+   end
 end
 
 -- Emit C code for variable definition.
@@ -692,7 +700,7 @@ function smc:write_var_def(v)
       self:write(" = ")
    else
       -- Just assignment
-      v.cell.bind = 'unbound'  -- FIXME: Hack
+      assert(v.cell.const == false)
       self:write(var)
       self:write(" = ")
    end
