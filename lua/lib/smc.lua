@@ -103,6 +103,17 @@ end
 -- suspend boundary between definition and reference), or in the
 -- persistent store otherwise.
 
+function smc:track_max(varname, val)
+   if self[varname] < val then
+      self[varname] = val
+   end
+end
+function smc:inc(countername)
+   local n = self[countername]
+   self[countername] = n + 1
+   return n
+end
+
 -- Introduce a varible.
 function smc:new_cell()
    local id = #self.cells + 1
@@ -115,11 +126,8 @@ function smc:new_cell()
       --
       -- In the first pass this information is not known, so all
       -- variables are allocated in the state struct.
-      cell.c_index = self.stack_ptr
-      self.stack_ptr = self.stack_ptr + 1
-      if self.stack_ptr > self.stack_size then
-         self.stack_size = self.stack_ptr
-      end
+      cell.c_index = self:inc('stack_ptr')
+      self:track_max('stack_size', cell.c_index+1)
    end
    -- self.var is the list of all created variables
    table.insert(self.cells, cell)
@@ -200,12 +208,15 @@ form['for'] = function(self, for_expr)
          local cv = self:atom_to_c_expr(var_name)
          self:write(cv .. " < " .. iter_arg .. " ; ")
          self:write(cv .. "++) {\n")
-         self.indent = self.indent + 1
-         for form in se.elements(inner) do
-            assert(form)
-            self:compile(form)
-         end
-         self.indent = self.indent - 1
+         self:save_context(
+            {'indent'},
+            function()
+               self:inc('indent')
+               for form in se.elements(inner) do
+                  assert(form)
+                  self:compile(form)
+               end
+            end)
 
          self:write(self:tab() .. "}\n")
       end)
@@ -213,14 +224,12 @@ end
 
 function smc:write_se(expr)
    if type(expr) ~= 'table' then
-      local str = expr .. ""
-      self:write(str)
+      self:write(expr)
    else
       self:write("(")
       for el, rest in se.elements(expr) do
          self:write_se(el)
          if not se.is_empty(rest) then
-            -- FIXME: ((read 0v1)(send 1(add 1v1)))
             self:write(" ")
          end
       end
@@ -254,10 +263,14 @@ end
 function letins:compile(inner)
    self.comp:compile_letstar(self.bindings_list, l(inner))
 end
+function letins:maybe_compile(inner)
+   if not self:bindings() then return false end
+   self:compile(inner)
+   return true
+end
 function letins:bindings()
    return not se.is_empty(self.bindings_list)
 end
-
 
 form['if'] = function(self, if_expr)
    local _, condition, expr_true, expr_false = se.unpack(if_expr, { n = 4 })
@@ -265,11 +278,9 @@ form['if'] = function(self, if_expr)
    -- Perform let insertion if necessary.
    local li = self:letins()
    condition = li:conv(condition)
-   if li:bindings() then
-      li:compile(l('if', condition, expr_true, expr_false))
+   if li:maybe_compile(l('if', condition, expr_true, expr_false)) then
       return
    end
-
 
    -- See also implementation of 'let*'.
    -- We use statement expressions here as well, so write var def here
@@ -285,7 +296,7 @@ form['if'] = function(self, if_expr)
       self:save_context(
          {'env','stack_ptr','indent','var'},
          function()
-            self.indent = self.indent + 1
+            self:inc('indent')
             self.var = nil
             self:compile(form)
          end)
@@ -361,7 +372,7 @@ function smc:compile_letstar(bindings, sequence)
    self:save_context(
       {'env','stack_ptr','indent','var'},
       function()
-         self.indent = self.indent + 1
+         self:inc('indent')
 
          self:save_context(
             {'tail_position'},
@@ -521,8 +532,7 @@ form['write'] = function(self, expr)
 
    local li = self:letins()
    data_expr = li:conv(data_expr)
-   if li:bindings() then
-      li:compile(l('write', chan, data_expr))
+   if li:maybe_compile(l('write', chan, data_expr)) then
       return
    end
 
@@ -560,6 +570,8 @@ form['select'] = function(self, expr)
    -- Collect read and write clauses separately.  They need to be
    -- sorted before invoking CSP_SEL.
    local clauses = { read = {}, write = {} }
+   -- Also rebuild the expression in case let insertion is necessary
+   local clauses_expr1 = se.empty
    -- Keep track of bindings to perform ANF transformation if necessary
    local li = self:letins()
    for clause_expr in se.elements(clauses_expr) do
@@ -573,29 +585,18 @@ form['select'] = function(self, expr)
          assert(kind == 'read')
       end
       assert(type(data_expr) == 'string')
-      -- Read and write can use the same structure.
       table.insert(clauses[kind],
                    {chan = chan,
                     var  = data_expr,
                     expr = handle_expr})
+      clauses_expr1 = {l(l(kind, chan, data_expr), handle_expr),
+                       clauses_expr1}
    end
 
    -- Insert let if there were any non-variable forms.
-   if li:bindings() then
-      local forms = se.empty
-      -- Put the form back together from the analysis data.
-      for _,kind in ipairs({'read','write'}) do
-         for _,c in ipairs(clauses[kind]) do
-            local form = l(l(kind, c.chan, c.var), c.expr)
-            forms = {form, forms}
-         end
-      end
-      li:compile({'select', forms})
+   if li:maybe_compile({'select', se.reverse(clauses_expr1)}) then
       return
    end
-
-   -- Everything is in the proper form.
-   -- self:write_se_comment_i_n(expr)
 
    local s = self.config.state_name
    local t = "&(" .. s .. "->task)"
@@ -616,7 +617,7 @@ form['select'] = function(self, expr)
    self:save_context(
       {'indent','env','stack_ptr'},
       function()
-         self.indent = self.indent + 1
+         self:inc('indent')
 
          -- Note: the CSP scheduler is used in zero-copy mode by
          -- setting rcv buffer pointer to NULL.  Further we only use
@@ -646,7 +647,7 @@ form['select'] = function(self, expr)
             self:save_context(
                {'indent','env','stack_ptr'},
                function()
-                  self.indent = self.indent+1
+                  self:inc('indent')
                   if bind_var then
                      local v = self:new_var(bind_var)
                      self:write(self:tab())
@@ -719,7 +720,7 @@ function smc:maybe_write_var_def_multipath(v)
    if not v.cell.c_index then
       local var, typ = self:var_and_type(v)
       self:write(self:tab())
-      self:write(var)
+      self:write(typ .. var)
       self:write(";\n")
    end
    v.cell.multipath = true
@@ -768,8 +769,7 @@ function smc:gensym(prefix)
    -- Generated symbols should not clash with any program text, which
    -- is why we use the comment character here.
    if not prefix then prefix = ";" end;
-   local n = self.sym_n
-   self.sym_n = n + 1
+   local n = self:inc('sym_n')
    return prefix .. n
 end
 
@@ -845,8 +845,8 @@ function smc:apply(expr)
       self:save_context(
          {'env','stack_ptr','depth'},
          function()
-            self.depth = self.depth + 1
-            assert(self.depth < 10) -- FIXME: ad-hoc infinite loop guard
+            -- FIXME: ad-hoc infinite loop guard
+            assert(self:inc('depth') < 10)
 
             -- Inlining links the environment inside the function body
             -- to cells accessible through the callsite environment.

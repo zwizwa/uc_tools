@@ -87,6 +87,14 @@ function se.elements(lst)
       end
    end
 end
+function se.reverse(lst)
+   local l = empty
+   for el in se.elements(lst) do
+      l = {el, l}
+   end
+   return l
+end
+
 function se.array(lst)
    local arr = {}
    for el in se.elements(lst) do
