@@ -53,6 +53,8 @@
 
 local se = require('lib.se')
 
+
+-- Tools
 local prompt = require('prompt')
 local function log(str)
    io.stderr:write(str)
@@ -61,17 +63,21 @@ local function log_desc(thing)
    log(prompt.describe(thing))
    log("\n")
 end
-
-local smc = {}
-
-local form = {}
-smc.form = form
-
+local l = se.list
 local function is_form(expr, form)
    return type(expr) == 'table' and expr[1] == form
 end
+local function ifte(c,t,f)
+   if c then return t else return f end
+end
 
-local l = se.list
+
+-- Module
+local smc = {}
+local form = {}
+smc.form = form
+
+
 
 
 function smc:tab()
@@ -205,9 +211,10 @@ function smc:write_se(expr)
       self:write("(")
       for el, rest in se.elements(expr) do
          self:write_se(el)
-         if se.is_pair(rest) then
+         --if se.is_pair(rest) then
+            -- FIXME: ((read 0v1)(send 1(add 1v1)))
             self:write(" ")
-         end
+         --end
       end
       self:write(")")
    end
@@ -216,6 +223,11 @@ function smc:write_se_comment(expr)
    self:write("/*")
    self:write_se(expr)
    self:write("*/")
+end
+function smc:write_se_comment_i_n(expr)
+   self:write(self:tab())
+   self:write_se_comment(expr)
+   self:write("\n")
 end
 
 form['if'] = function(self, if_expr, hole, tail_position)
@@ -380,7 +392,8 @@ form['module'] = function(self, expr, hole)
    -- 'define' is only defined inside a 'module' form.
    local function for_defines(f)
       for define_expr in se.elements(define_exprs) do
-         local define, fun_spec, body_exprs = se.unpack(define_expr, {n = 2, tail = true})
+         local define, fun_spec, body_exprs =
+            se.unpack(define_expr, {n = 2, tail = true})
          local body_expr = {'begin', body_exprs}
          assert(define == 'define')
          local fname, args = se.unpack(fun_spec, {n = 1, tail = true})
@@ -482,71 +495,113 @@ form['write'] = function(self, expr, hole, tail_position)
    local t = "&(" .. s .. "->task)"
    self:write(self:tab())
 
-
    self:write_statement("CSP_SND_W", t, s, chan, cvar)
    if self.nb_evt < 1 then
       self.nb_evt = 1
    end
 end
 
+-- This is what it is all about.
+--
+-- Generate csp.h CSP_EVT and CSP_SEL macro invocations + dispatch on
+-- ->selected, starting from a multi-clause Scheme form:
+--
+-- (select
+--   ((read  0 <var>) (... ref <var> ...))
+--   ((write 1 <val>) (...))
+--
+-- This call blocks execution and resumes exactly one of the clauses.
 
 -- FIXME
-form['select'] = function(self, expr, hole)
-   local _, chan = se.unpack(expr, {n = 2})
-   -- self:assert(type(chan) == 'string')
+form['select'] = function(self, expr, hole, tail_position)
+   local _, clauses_expr = se.unpack(expr, {n = 1, tail = true})
+   -- Collect read and write clauses separately.  They need to be
+   -- sorted before invoking CSP_SEL.
+   local clauses = { read = {}, write = {} }
+   -- Keep track of bindings to perform ANF transformation if necessary
+   local bindings = nil
+   for clause_expr in se.elements(clauses_expr) do
+      self:write_se_comment_i_n(clause_expr)
 
-   self:local_lost()
+      local head_expr, handle_expr = se.unpack(clause_expr, {n = 2})
+      local kind, chan, data_expr  = se.unpack(head_expr,   {n = 3})
+      assert(clauses[kind])
+      if kind == 'write' and type(data_expr) ~= 'string' then
+         -- The read forms need to be converted to ANF.
+         local var = self:gensym()
+         bindings = {l(var, data_expr), bindings}
+         data_expr = var
+      end
+      assert(type(data_expr) == 'string')
+      table.insert(clauses[kind],
+                   {chan = chan, var = data_expr, expr = handle_expr})
+   end
+
+   -- Recurse through let* if there were any non-variable forms.
+   -- This is a bit annoying to have to pack things up again...
+   if bindings then
+      local forms = nil
+      -- The order doesn't matter, so just cons everything
+      for _,kind in ipairs({'read','write'}) do
+         for _,c in ipairs(clauses[kind]) do
+            local form =
+               l(l(kind, c.chan, c.var), c.expr)
+            self:write_se_comment_i_n(form)
+            forms = {form, forms}
+         end
+      end
+      assert(forms)
+      local form = l('let*',bindings,{'select',forms})
+      self:write_se_comment_i_n(form)
+      self:compile(form, hole, tail_position)
+      return
+   end
+
+   -- Everything is in the proper form.
+   -- self:write_se_comment_i_n(expr)
 
    local s = self.config.state_name
-   -- Might as well generate the jump label here.
-   local label = self:gensym("l");
-
-   -- Emit a csp.h style rendezvous setup sequence.
    local t = "&(" .. s .. "->task)"
 
    self:write(self:tab())
    if hole then
       self:write_var_def(hole)
    end
-   -- This macro has been added in csp.h
-   self:write_statement("CSP_RCV_W", t, s, chan)
-   if self.nb_evt < 1 then
-      self.nb_evt = 1
-   end
 
-   -- self:write("({\n")
-   -- self:save_context(
-   --    {'indent','env','stack_ptr'},
-   --    function()
-   --       self.indent = self.indent + 1
+   self:write("({\n")
+   self:save_context(
+      {'indent','env','stack_ptr'},
+      function()
+         self.indent = self.indent + 1
 
-   --       -- The rendez-vous buffer is a saved variable.
-   --       --local rv_name = self:gensym()
-   --       --local rv_var = self:new_var(rv_name)
-   --       --rv_var.cell.bind = 'saved'
-   --       --self:push_var(rv_var)
-   --       --local rv_cvar = self:atom_to_c_expr(rv_name)
+         -- Note: the CSP scheduler is used in zero-copy mode by
+         -- setting rcv buffer pointer to NULL.  Further we only use
+         -- the msg_buf in unboxed mode (unitptr_t machine word
+         -- .msg.buf.w).
 
-   --       -- Note: the CSP scheduler is used in zero-copy mode by
-   --       -- setting rcv buffer pointer to NULL.  Further we only use
-   --       -- the msg_buf in unboxed mode (unitptr_t machine word
-   --       -- .msg.buf.w).
+         local nb_evt = 1
+         local n_w = #(clauses.write)
+         local n_r = #(clauses.read)
+         for i,c in ipairs(clauses.write) do
+            local cvar = self:atom_to_c_expr(c.var)
+            self:write(self:tab())
+            self:write_statement("CSP_EVT_BUF",t,i-1,c.chan,cvar,0)
+         end
+         for i,c in ipairs(clauses.read) do
+            self:write(self:tab())
+            self:write_statement("CSP_EVT_BUF",t,n_w+i-1,c.chan,"NULL",0)
+         end
 
-   --       -- Note that this can just be a C macro.  No need to make
-   --       -- this verbose in the generated code.
+         self:local_lost()
 
-   --       --local nb_evt = 1
-   --       --for evt=1,nb_evt do
-   --       --   self:write_statement("CSP_EVT_BUF",t,evt-1,chan,"NULL",0)
-   --       --end
-   --       --self:write_statement("CSP_SEL",t,s,0,nb_evt)
+         self:write(self:tab())
+         self:write_statement("CSP_SEL",t,s,n_w,n_r)
+         self:write(self:tab())
+         self:write("(" .. t .. ")->selected;\n")
 
-   --       -- This is only valid up to the next blocking point so we
-   --       -- need to copy the value.
-
-   --       self:write(self:tab() .. s .. "->evt[0].msg.w;\n")
-   -- end)
-   -- self:write(self:tab() .. "});\n")
+         -- self:write(self:tab() .. s .. "->evt[0].msg.w;\n")
+   end)
+   self:write(self:tab() .. "});\n")
 
 end
 
@@ -555,7 +610,8 @@ end
 function smc:var_and_type(v)
    local comment = "/*" .. v.var .. "*/"
    if v.cell.c_index then
-      return self.config.state_name .. "->e[" .. v.cell.c_index .. "]" .. comment, ""
+      return self.config.state_name .. "->e["
+         .. v.cell.c_index .. "]" .. comment, ""
    else
       return "l" .. v.cell.id .. comment, "T "
    end
@@ -720,10 +776,6 @@ function smc:apply(expr, hole, tail_position)
 
 end
 
-local function ifte(c,t,f)
-   if c then return t else return f end
-end
-
 -- Compilation dispatch based on expr.  If hole is non-nil, it refers
 -- to the variable that takes the value of the expression.  If
 -- tail_position is true, this expression resides in the tail position
@@ -761,6 +813,8 @@ function smc:compile_passes(expr)
       function()
          -- Override to suppress printing of first pass C output, which is
          -- only neccessary for debugging variable allocation.
+         self.config.first_pass_prefix = "pass1_"  -- FIXME
+
          if not self.config.first_pass_prefix then
             self.write = function() end
          else
