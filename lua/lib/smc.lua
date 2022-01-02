@@ -38,8 +38,8 @@
 -- * The for(;;) C form is implemented explicitly, modeled after a
 --   stripped-down Racket for form.
 --
--- * Split string construction (Lua style "string lists") and writing
---   as much as possible.
+-- * Split string construction (Erlang style IOLists) and writing as
+--   much as possible.
 --
 --
 
@@ -80,6 +80,15 @@ end
 local function ifte(c,t,f)
    if c then return t else return f end
 end
+local function clist(in_lst)
+   local lst = {}
+   for _,el in ipairs(in_lst) do
+      table.insert(lst, el)
+      table.insert(lst, ", ")
+   end
+   table.remove(lst, #lst)
+   return lst
+end
 
 
 -- Module
@@ -104,7 +113,7 @@ function smc:tab()
    for i=1,self.indent do
       table.insert(strs,"  ")
    end
-   return table.concat(strs,"")
+   return strs
 end
 
 -- Note that variables and cells are separate.  A variable is a Lua
@@ -428,8 +437,8 @@ form['module'] = function(self, expr)
    local modname = se.unpack(mod_spec, {n = 1})
 
    if self.mod_prefix then modname = { self.mod_prefix, modname } end
-   local args = { "struct " .. c.state_struct .. " *" .. c.state_name }
-   self:w("T ", modname, "(",table.concat(args,", "),") {\n");
+   local args = { { "struct ", c.state_struct, " *", c.state_name } }
+   self:w("T ", modname, "(",clist(args),") {\n");
 
    local nxt = {c.state_name, "->next"};
    self:w(self:tab(), "if(", nxt, ") goto *", nxt, ";\n")
@@ -479,7 +488,7 @@ form['module'] = function(self, expr)
 end
 
 function smc:w_statement(name, ...)
-   self:w(name .. "(",table.concat({...},","),");\n")
+   self:w(name, "(", clist({...}), ");\n")
 end
 
 
@@ -506,7 +515,7 @@ form['read'] = function(self, expr)
    local _, chan = se.unpack(expr, {n = 2})
    self:local_lost()
    local s = self.config.state_name
-   local t = "&(" .. s .. "->task)"
+   local t = {"&(", s, "->task)"}
    self:w(self:tab())
    if self.var then
       self:w_var_def(self.var)
@@ -534,7 +543,7 @@ form['write'] = function(self, expr)
 
    self:local_lost()
    local s = self.config.state_name
-   local t = "&(" .. s .. "->task)"
+   local t = {"&(", s, "->task)"}
    self:w(self:tab())
 
    self:w_statement("CSP_SND_W", t, s, chan, cvar)
@@ -590,10 +599,10 @@ form['select'] = function(self, expr)
    end
 
    local s = self.config.state_name
-   local t = "&(" .. s .. "->task)"
+   local t = {"&(",s,"->task)"}
 
-   local function w(str)
-      self:w(self:tab(),str)
+   local function w(...)
+      self:w(self:tab(),{...})
    end
 
    -- The C case statement needs separate variable definition and
@@ -633,7 +642,7 @@ form['select'] = function(self, expr)
          self:local_lost()
 
          local function w_case(evt,c,bind_var)
-            w("case " .. evt .. ": {\n")
+            w("case ", evt, ": {\n")
             self:save_context(
                {'indent','env','stack_ptr'},
                function()
@@ -650,15 +659,10 @@ form['select'] = function(self, expr)
                end)
          end
 
-         w("switch((" .. t .. ")->selected) {\n")
+         w("switch((",t,")->selected) {\n")
          for i,c in ipairs(clauses.write) do w_case(i-1,c) end
          for i,c in ipairs(clauses.read)  do w_case(n_w+i-1,c,c.var) end
          w("}\n")
-
-
-         -- Dispatch.  Make a case statement first.
-
-         -- self:write(self:tab() .. s .. "->evt[0].msg.w;\n")
    end)
    w("};\n")
 
@@ -667,12 +671,11 @@ end
 
 -- C representation of variable (lvalue/rvalue), and its type.
 function smc:var_and_type(v)
-   local comment = "/*" .. v.var .. "*/"
+   local comment = {"/*", v.var, "*/"}
    if v.cell.c_index then
-      return self.config.state_name .. "->e["
-         .. v.cell.c_index .. "]" .. comment, ""
+      return {self.config.state_name,"->e[",v.cell.c_index,"]", comment}, ""
    else
-      return "r" .. v.cell.id .. comment, "T "
+      return {"r",v.cell.id,comment}, "T "
    end
 end
 
@@ -736,7 +739,7 @@ function smc:atom_to_c_expr(atom)
       else
          -- Keep track of free variables.
          self.free[atom] = true
-         return self.config.state_name .. "->" .. atom .. "/*free*/"
+         return {self.config.state_name,"->",atom,"/*free*/"}
       end
    else
       -- number or other const
@@ -757,7 +760,7 @@ function smc:gensym(prefix)
    -- is why we use the comment character here.
    if not prefix then prefix = ";" end;
    local n = self:inc('sym_n')
-   return prefix .. n
+   return prefix..n
 end
 
 -- Apply function to arguments, converting all arguments to A-Normal
@@ -811,22 +814,18 @@ function smc:apply(expr)
       for i=2,#app_form do
          table.insert(args, self:atom_to_c_expr(app_form[i]))
       end
-      local c_expr = fun_name .. "(" .. table.concat(args, ",") .. ")"
+      local c_expr = {fun_name, "(", clist(args), ")"}
       self:w_binding(c_expr)
       return
    end
 
    -- Compile composite function call.
    if (self.tail_position) then
-      -- FIXME: only 0-arg tail calls for now!
-      -- log("tail: fun_name=" .. fun_name .. "\n")
       assert(#app_form == 1)
-      -- local cmt = { [true] = "/*tail*/", [false] = "/*no-tail*/" }
-      local c_expr = "goto " .. app_form[1] --  .. cmt[tail_position]
+      local c_expr = {"goto ",app_form[1]}
       self:w_binding(c_expr)
       self.labels[fun_name] = true
    else
-      -- log("no_tail: fun_name=" .. fun_name .. "\n")
       -- Non-tail calls are inlined as we do not support the call
       -- stack necessary for "real" calls.
       self:save_context(
@@ -845,10 +844,10 @@ function smc:apply(expr)
                local arg_name = tc('string',fun_def.args[i])
                local callsite_var = tc('table',self:ref(var_name, callsite_env))
                self:push_alias(arg_name, callsite_var)
-               table.insert(dbg, arg_name .. "=" .. var_name)
+               table.insert(dbg, {arg_name,"=",var_name})
             end
             -- The body can then be compiled in this local environment.
-            self:write(self:tab() .. "/*inline:" .. table.concat(dbg,",") .. "*/\n")
+            self:w(self:tab(), "/*inline:",clist(dbg),"*/\n")
             self:compile(fun_def.body)
          end)
    end
@@ -866,10 +865,7 @@ function smc:compile(expr)
    end
    local form, tail = unpack(expr)
    assert(form)
-   -- self:write('/*form: ' .. form .. "*/")
    assert(type(form) == 'string')
-   -- log("compile:" .. form .. ",tail:" .. ifte(tail_position,"yes","no") .. "\n")
-
    local form_fn = self.form[form]
    if form_fn then
       return form_fn(self, expr)
@@ -901,12 +897,12 @@ function smc:compile_passes(expr)
          end
 
          self:reset()
-         self:write("\n// first pass\n")
+         self:w("\n// first pass\n")
          -- FIXME: First pass does not generate valid C at this point.
-         self:write("#if 0\n")
+         self:w("#if 0\n")
          self:compile(expr)
-         self:write("// stack_size: " .. self.stack_size .. "\n")
-         self:write("#endif\n")
+         self:w("// stack_size: ",self.stack_size,"\n")
+         self:w("#endif\n")
       end)
 
    -- Second pass uses some information from the previous pass: the
@@ -923,25 +919,25 @@ function smc:compile_passes(expr)
             table.insert(c_code, str)
          end
          self:reset()
-         self:write("\n// second pass\n")
+         self:w("\n// second pass\n")
          self:compile(expr)
-         self:write("// stack_size: " .. self.stack_size .. "\n")
-         self:write("\n")
+         self:w("// stack_size: ",self.stack_size,"\n")
+         self:w("\n")
       end)
 
    -- Generate the struct definition, then append the C code.
-   self:write("struct " .. self.config.state_struct .. " {\n")
-   self:write(self:tab() .. "struct csp_task task; // ends in evt[]\n");
-   self:write(self:tab() .. "struct csp_evt evt[" .. self.nb_evt .. "]; // nb events used\n");
-   self:write(self:tab() .. "void *next;\n")
+   self:w("struct ", self.config.state_struct, " {\n")
+   self:w(self:tab(), "struct csp_task task; // ends in evt[]\n");
+   self:w(self:tab(), "struct csp_evt evt[", self.nb_evt, "]; // nb events used\n");
+   self:w(self:tab(), "void *next;\n")
 
-   self:write(self:tab() .. "T e[" .. self.stack_size .. "];\n")
+   self:w(self:tab(), "T e[", self.stack_size, "];\n")
    for v in pairs(self.free) do
-      self:write(self:tab() .. "T " .. v .. ";\n")
+      self:w(self:tab(), "T ", v, ";\n")
    end
-   self:write("};\n")
+   self:w("};\n")
 
-   self:write(table.concat(c_code,""))
+   self:w(c_code)
 end
 
 -- Reset compiler state before executing a new pass.
