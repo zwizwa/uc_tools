@@ -123,6 +123,25 @@ end
 function se.is_empty(lst)
    return lst == empty
 end
+
+function se.iolist(expr)
+   if type(expr) ~= 'table' then
+      return expr
+   else
+      local iol = {"("}
+      for el, rest in se.elements(expr) do
+         table.insert(iol, se.iolist(el))
+         if not se.is_empty(rest) then
+            table.insert(iol, " ")
+         end
+      end
+      table.insert(iol, ")")
+      return iol
+   end
+end
+
+
+
 -- It might be simpler to do something like se.unpack to fit better in
 -- the language.  Functions are a little annoying.
 function se.unpack_array(expr, config, body)

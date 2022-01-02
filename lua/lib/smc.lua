@@ -240,53 +240,38 @@ form['for'] = function(self, for_expr)
       end)
 end
 
-function smc:w_se(expr)
-   if type(expr) ~= 'table' then
-      self:w(expr)
-   else
-      self:w("(")
-      for el, rest in se.elements(expr) do
-         self:w_se(el)
-         if not se.is_empty(rest) then
-            self:w(" ")
-         end
-      end
-      self:w(")")
-   end
+local function se_comment(expr)
+   return {"/*",se.iolist(expr),"*/"}
 end
-function smc:w_se_comment(expr)
-   self:w("/*")
-   self:w_se(expr)
-   self:w("*/")
+function smc:se_comment_i_n(expr)
+   return {self:tab(),se_comment(expr),"\n"}
 end
 function smc:w_se_comment_i_n(expr)
-   self:w(self:tab())
-   self:w_se_comment(expr)
-   self:w("\n")
+   self:w(self:se_comment_i_n(expr))
 end
 
 -- Let insertion happens often enough, so make an abstraction.
-local letins = {}
-function smc:letins()
+local let_insert = {}
+function smc:let_insert()
    local obj = {comp = self, bindings_list = se.empty}
-   setmetatable(obj, {__index = letins})
+   setmetatable(obj, {__index = let_insert})
    return obj
 end
-function letins:conv(expr)
+function let_insert:maybe_insert_var(expr)
    if type(expr) == 'string' then return expr end
    local var = self.comp:gensym()
    self.bindings_list = {l(var, expr), self.bindings_list}
    return var
 end
-function letins:compile(inner)
+function let_insert:compile(inner)
    self.comp:compile_letstar(self.bindings_list, l(inner))
 end
-function letins:maybe_compile(inner)
+function let_insert:compile_inserts(inner)
    if not self:bindings() then return false end
    self:compile(inner)
    return true
 end
-function letins:bindings()
+function let_insert:bindings()
    return not se.is_empty(self.bindings_list)
 end
 
@@ -294,9 +279,9 @@ form['if'] = function(self, if_expr)
    local _, condition, expr_true, expr_false = se.unpack(if_expr, { n = 4 })
 
    -- Perform let insertion if necessary.
-   local li = self:letins()
-   condition = li:conv(condition)
-   if li:maybe_compile(l('if', condition, expr_true, expr_false)) then
+   local li = self:let_insert()
+   condition = li:maybe_insert_var(condition)
+   if li:compile_inserts(l('if', condition, expr_true, expr_false)) then
       return
    end
 
@@ -530,9 +515,9 @@ end
 form['write'] = function(self, expr)
    local _, chan, data_expr = se.unpack(expr, {n = 3})
 
-   local li = self:letins()
-   data_expr = li:conv(data_expr)
-   if li:maybe_compile(l('write', chan, data_expr)) then
+   local li = self:let_insert()
+   data_expr = li:maybe_insert_var(data_expr)
+   if li:compile_inserts(l('write', chan, data_expr)) then
       return
    end
 
@@ -573,14 +558,14 @@ form['select'] = function(self, expr)
    -- Also rebuild the expression in case let insertion is necessary
    local clauses_expr1 = se.empty
    -- Keep track of bindings to perform ANF transformation if necessary
-   local li = self:letins()
+   local li = self:let_insert()
    for clause_expr in se.elements(clauses_expr) do
       self:w_se_comment_i_n(clause_expr)
       local head_expr, handle_expr = se.unpack(clause_expr, {n = 2})
       local kind, chan, data_expr  = se.unpack(head_expr,   {n = 3})
       if kind == 'write' then
          -- Possibly needs let insertion.
-         data_expr = li:conv(data_expr)
+         data_expr = li:maybe_insert_var(data_expr)
       else
          assert(kind == 'read')
       end
@@ -594,7 +579,7 @@ form['select'] = function(self, expr)
    end
 
    -- Insert let if there were any non-variable forms.
-   if li:maybe_compile({'select', se.reverse(clauses_expr1)}) then
+   if li:compile_inserts({'select', se.reverse(clauses_expr1)}) then
       return
    end
 
@@ -772,34 +757,19 @@ end
 -- The C compiler can later optimize those.
 --
 function smc:apply(expr)
-   local bindings = {}
-   local app_form = {}
-
    assert(se.length(expr) > 0)
    assert(type(se.car(expr)) == 'string')
 
+   local li = self:let_insert()
+   local app_form = {}
+
    for subexpr in se.elements(expr) do
-      if type(subexpr) == 'string' then
-         -- variable reference, just collect
-         table.insert(app_form, subexpr)
-      else
-         assert(subexpr)
-         -- sub-expression or constant. insert form
-         local sym = self:gensym()
-         local binding = l(sym, subexpr)
-         table.insert(bindings, binding)
-         table.insert(app_form, sym)
-      end
+      table.insert(app_form, li:maybe_insert_var(subexpr))
    end
 
-   -- If any new bindings were generated, insert a let* for and
+   -- If any new bindings were generated, insert a let* form and
    -- recurse into compiler.
-   if #bindings > 0 then
-      self:compile(
-         se.list('let*',
-           se.array_to_list(bindings),
-           -- List expression containing function call
-           se.array_to_list(app_form)))
+   if li:compile_inserts(se.array_to_list(app_form)) then
       return
    end
 
