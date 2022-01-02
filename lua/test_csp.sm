@@ -1,8 +1,9 @@
 ;; -*- scheme -*-
 ;; Subset of Scheme representing sm.h style protothreads.
 ;;
-;; This is a test file that compiles to testable code.  See test.sm
-;; for a nonsense code example exercising all forms.
+;; This is a test file that (evetually should) compile(s) to testable
+;; code.  See test.sm for a nonsense code example exercising all
+;; forms.
 
 ;(let* ((a 123)
 ;       (b 345))
