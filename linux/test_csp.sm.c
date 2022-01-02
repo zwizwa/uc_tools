@@ -108,8 +108,7 @@ fun2:
       T r5/*abc*/ = 123;
       /*((write 1 abc) 123)*/
       /*((read 0 v1) (add 1 v1))*/
-      T r6/*def*/;
-      {
+      T r6/*def*/; {
         CSP_EVT_BUF(&(s->task), 0, 1, r5/*abc*/, 0);
         CSP_EVT_BUF(&(s->task), 1, 0, NULL, 0);
         CSP_SEL(&(s->task), s, 1, 1);

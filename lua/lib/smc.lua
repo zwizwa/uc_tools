@@ -359,11 +359,7 @@ end
 
 function smc:compile_letstar(bindings, sequence)
 
-   self:w(self:tab())
-   if self.var then
-      self:w_var_def(self.var)
-   end
-   self:w("({\n")
+   self:w(self:tab(),self:var_def(self.var),"({\n")
 
    self:save_context(
       {'env','stack_ptr','indent','var'},
@@ -492,11 +488,9 @@ form['read'] = function(self, expr)
    self:local_lost()
    local s = self.config.state_name
    local t = {"&(", s, "->task)"}
-   self:w(self:tab())
-   if self.var then
-      self:w_var_def(self.var)
-   end
-   self:w(self:statement("CSP_RCV_W", t, s, chan))
+   self:w(self:tab(),
+          self:var_def(self.var),
+          self:statement("CSP_RCV_W", t, s, chan))
    if self.nb_evt < 1 then
       self.nb_evt = 1
    end
@@ -584,9 +578,7 @@ form['select'] = function(self, expr)
    -- that subsequent binding operations ignore that the variable has
    -- already been bound and emit an assignment insted of a
    -- definition.
-   self:maybe_w_var_def_multipath(self.var)
-
-   w("{\n")
+   self:w(self:tab(), self:var_def_multipath(self.var), "{\n")
    self:save_context(
       {'indent','env','stack_ptr'},
       function()
@@ -675,7 +667,6 @@ function smc:var_def(v)
       -- the bottom.
       return ""
    end
-   assert(v and v.cell)
    local var, typ = self:cvar_and_ctype(v)
    if v.cell.multipath then
       -- Assume variable definition has already been written out
@@ -687,19 +678,18 @@ function smc:var_def(v)
       return {ifte(typ,{typ, " "}, ""), var, " = "}
    end
 end
-function smc:w_var_def(v)
-   self:w(self:var_def(v))
-end
 
 -- Multipath variables need to be defined if they are local.  If they
 -- are on the stack this does not emit any C code.
-function smc:maybe_w_var_def_multipath(v)
-   assert(v and v.cell)
+function smc:var_def_multipath(v)
+   if not v then return "" end
+   v.cell.multipath = true
    if not v.cell.c_index then
       local var, typ = self:cvar_and_ctype(v)
-      self:w(self:tab(),ifte(typ,{typ, " "}, ""), var, ";\n")
+      return {ifte(typ,{typ, " "}, ""), var, "; "}
+   else
+      return ""
    end
-   v.cell.multipath = true
 end
 
 
