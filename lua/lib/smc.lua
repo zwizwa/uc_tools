@@ -246,9 +246,6 @@ end
 function smc:se_comment_i_n(expr)
    return {self:tab(),se_comment(expr),"\n"}
 end
-function smc:w_se_comment_i_n(expr)
-   self:w(self:se_comment_i_n(expr))
-end
 
 -- Let insertion happens often enough, so make an abstraction.
 local let_insert = {}
@@ -466,8 +463,8 @@ form['module'] = function(self, expr)
    self:w("}\n");
 end
 
-function smc:w_statement(name, ...)
-   self:w(name, "(", clist({...}), ");\n")
+function smc:statement(name, ...)
+   return {name, "(", clist({...}), ");\n"}
 end
 
 
@@ -499,7 +496,7 @@ form['read'] = function(self, expr)
    if self.var then
       self:w_var_def(self.var)
    end
-   self:w_statement("CSP_RCV_W", t, s, chan)
+   self:w(self:statement("CSP_RCV_W", t, s, chan))
    if self.nb_evt < 1 then
       self.nb_evt = 1
    end
@@ -523,9 +520,7 @@ form['write'] = function(self, expr)
    self:local_lost()
    local s = self.config.state_name
    local t = {"&(", s, "->task)"}
-   self:w(self:tab())
-
-   self:w_statement("CSP_SND_W", t, s, chan, cvar)
+   self:w(self:tab(),self:statement("CSP_SND_W", t, s, chan, cvar))
    if self.nb_evt < 1 then
       self.nb_evt = 1
    end
@@ -554,7 +549,7 @@ form['select'] = function(self, expr)
    -- Keep track of bindings to perform ANF transformation if necessary
    local li = self:let_insert()
    for clause_expr in se.elements(clauses_expr) do
-      self:w_se_comment_i_n(clause_expr)
+      self:w(self:se_comment_i_n(clause_expr))
       local head_expr, handle_expr = se.unpack(clause_expr, {n = 2})
       local kind, chan, data_expr  = se.unpack(head_expr,   {n = 3})
       if kind == 'write' then
@@ -602,8 +597,7 @@ form['select'] = function(self, expr)
          -- the msg_buf in unboxed mode (unitptr_t machine word
          -- .msg.buf.w).
          local function stmt(...)
-            self:w(self:tab())
-            self:w_statement(unpack({...}))
+            self:w(self:tab(),self:statement(unpack({...})))
          end
 
          local nb_evt = 1
@@ -713,9 +707,6 @@ end
 function smc:binding(c_expr)
    return {self:tab(), self:var_def(self.var), c_expr, ";\n"};
 end
-function smc:w_binding(c_expr)
-   self:w(self:binding(c_expr))
-end
 
 -- Map Scheme atom (const or variable) to its C representation.
 function smc:atom_to_c_expr(atom)
@@ -788,7 +779,7 @@ function smc:apply(expr)
          table.insert(args, self:atom_to_c_expr(app_form[i]))
       end
       local c_expr = {fun_name, "(", clist(args), ")"}
-      self:w_binding(c_expr)
+      self:w(self:binding(c_expr))
       self:mark_bound(self.var)
       return
    end
@@ -797,7 +788,7 @@ function smc:apply(expr)
    if (self.tail_position) then
       assert(#app_form == 1)
       local c_expr = {"goto ",app_form[1]}
-      self:w_binding(c_expr)
+      self:w(self:binding(c_expr))
       self:mark_bound(self.var)
       self.labels[fun_name] = true
    else
@@ -836,7 +827,7 @@ end
 function smc:compile(expr)
    if type(expr) ~= 'table' then
       -- variable or constant
-      self:w_binding(self:atom_to_c_expr(expr))
+      self:w(self:binding(self:atom_to_c_expr(expr)))
       self:mark_bound(self.var)
       return
    end
