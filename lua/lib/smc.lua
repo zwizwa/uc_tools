@@ -289,11 +289,9 @@ form['if'] = function(self, if_expr)
    -- We use statement expressions here as well, so write var def here
    -- and propagate var=nil since value of last expression in
    -- statement expression eventually ends up in this variable.
-   self:w(self:tab())
-   if self.var then
-      -- FIXME: In tail position this doesn't make any sense.
-      self:w_var_def(self.var)
-   end
+
+   -- FIXME: In tail position this doesn't make any sense.
+   self:w(self:tab(), self:var_def(self.var))
 
    local function compile_branch(form)
       self:save_context(
@@ -676,6 +674,12 @@ end
 
 -- Emit C code for variable definition.
 function smc:var_def(v)
+   if not v then
+      -- This means: if there is no variable to be defined, don't emit
+      -- any defining code.  It's simpler to push this all the way to
+      -- the bottom.
+      return ""
+   end
    assert(v and v.cell)
    local var, typ = self:cvar_and_ctype(v)
    if v.cell.multipath then
@@ -706,13 +710,11 @@ end
 
 -- Write expression, and if there is a current variable 'hole', emit
 -- variable definition as well.
+function smc:binding(c_expr)
+   return {self:tab(), self:var_def(self.var), c_expr, ";\n"};
+end
 function smc:w_binding(c_expr)
-   self:w(self:tab())
-   if self.var then
-      self:w_var_def(self.var)
-      self:mark_bound(self.var)
-   end
-   self:w(c_expr,";\n");
+   self:w(self:binding(c_expr))
 end
 
 -- Map Scheme atom (const or variable) to its C representation.
@@ -787,6 +789,7 @@ function smc:apply(expr)
       end
       local c_expr = {fun_name, "(", clist(args), ")"}
       self:w_binding(c_expr)
+      self:mark_bound(self.var)
       return
    end
 
@@ -795,6 +798,7 @@ function smc:apply(expr)
       assert(#app_form == 1)
       local c_expr = {"goto ",app_form[1]}
       self:w_binding(c_expr)
+      self:mark_bound(self.var)
       self.labels[fun_name] = true
    else
       -- Non-tail calls are inlined as we do not support the call
@@ -832,7 +836,9 @@ end
 function smc:compile(expr)
    if type(expr) ~= 'table' then
       -- variable or constant
-      return self:w_binding(self:atom_to_c_expr(expr))
+      self:w_binding(self:atom_to_c_expr(expr))
+      self:mark_bound(self.var)
+      return
    end
    local form, tail = unpack(expr)
    assert(form)
