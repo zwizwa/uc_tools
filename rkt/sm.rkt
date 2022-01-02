@@ -11,7 +11,7 @@
  #%top-interaction
  #%datum
  ;; Other racket bindings
- provide all-defined-out
+ provide all-defined-out define
 
  ;; Modified syntax
  (rename-out

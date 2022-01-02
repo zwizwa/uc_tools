@@ -313,9 +313,7 @@ form['if'] = function(self, if_expr)
    compile_branch(expr_false)
    self:w(self:tab(), "});\n")
 
-   if self.var then
-      self:mark_bound(self.var)
-   end
+   self:mark_bound(self.var)
 end
 
 
@@ -405,9 +403,7 @@ function smc:compile_letstar(bindings, sequence)
    self:w(self:tab(), "});\n")
 
    -- Only mark after it's actually bound in the C text.
-   if self.var then
-      self:mark_bound(self.var)
-   end
+   self:mark_bound(self.var)
 
 end
 
@@ -655,7 +651,7 @@ end
 
 
 -- C representation of variable (lvalue/rvalue), and its type.
-function smc:var_and_type(v)
+function smc:cvar_and_ctype(v)
    local comment = {"/*", v.var, "*/"}
    if v.cell.c_index then
       return {self.config.state_name,"->e[",v.cell.c_index,"]", comment}, ""
@@ -668,6 +664,11 @@ end
 -- Called after C code is emitted that assigns a value to the
 -- variable.
 function smc:mark_bound(v)
+   if not v then
+      -- It's simplest to just handle this case, since binding
+      -- vs. ignoring is handled implicitly at most places.
+      return
+   end
    if v.cell.bind == 'unbound' or v.cell.multipath then
       v.cell.bind = 'local'
    end
@@ -676,10 +677,10 @@ end
 -- Emit C code for variable definition.
 function smc:var_def(v)
    assert(v and v.cell)
-   local var, typ = self:var_and_type(v)
+   local var, typ = self:cvar_and_ctype(v)
    if v.cell.multipath then
       -- Assume variable definition has already been written out
-      -- without definition.
+      -- without value.
       return {var," = "}
    else
       -- Insert the definition.
@@ -696,7 +697,7 @@ end
 function smc:maybe_w_var_def_multipath(v)
    assert(v and v.cell)
    if not v.cell.c_index then
-      local var, typ = self:var_and_type(v)
+      local var, typ = self:cvar_and_ctype(v)
       self:w(self:tab(),typ,var,";\n")
    end
    v.cell.multipath = true
@@ -719,7 +720,7 @@ function smc:atom_to_c_expr(atom)
    if type(atom) == 'string' then
       local v = self:ref(atom)
       if v then
-         local c_expr, c_type = self:var_and_type(v)
+         local c_expr, c_type = self:cvar_and_ctype(v)
          return c_expr
       else
          -- Keep track of free variables.
