@@ -646,9 +646,9 @@ end
 function smc:cvar_and_ctype(v)
    local comment = {"/*", v.var, "*/"}
    if v.cell.c_index then
-      return {self.config.state_name,"->e[",v.cell.c_index,"]", comment}, ""
+      return {self.config.state_name,"->e[",v.cell.c_index,"]", comment}
    else
-      return {"r",v.cell.id,comment}, "T "
+      return {"r",v.cell.id,comment}, "T"
    end
 end
 
@@ -665,6 +665,7 @@ function smc:mark_bound(v)
       v.cell.bind = 'local'
    end
 end
+
 
 -- Emit C code for variable definition.
 function smc:var_def(v)
@@ -683,7 +684,7 @@ function smc:var_def(v)
    else
       -- Insert the definition.
       assert(v.cell.bind == 'unbound')
-      return {typ,var," = "}
+      return {ifte(typ,{typ, " "}, ""), var, " = "}
    end
 end
 function smc:w_var_def(v)
@@ -696,7 +697,7 @@ function smc:maybe_w_var_def_multipath(v)
    assert(v and v.cell)
    if not v.cell.c_index then
       local var, typ = self:cvar_and_ctype(v)
-      self:w(self:tab(),typ,var,";\n")
+      self:w(self:tab(),ifte(typ,{typ, " "}, ""), var, ";\n")
    end
    v.cell.multipath = true
 end
@@ -713,7 +714,7 @@ function smc:atom_to_c_expr(atom)
    if type(atom) == 'string' then
       local v = self:ref(atom)
       if v then
-         local c_expr, c_type = self:cvar_and_ctype(v)
+         local c_expr = self:cvar_and_ctype(v)
          return c_expr
       else
          -- Keep track of free variables.
