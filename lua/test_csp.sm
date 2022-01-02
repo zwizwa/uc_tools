@@ -1,4 +1,5 @@
-;; -*- scheme -*-
+#lang s-expr "sm.rkt" ;; -*- scheme -*-
+
 ;; Subset of Scheme representing sm.h style protothreads.
 ;;
 ;; This is a test file that (evetually should) compile(s) to testable
@@ -13,35 +14,32 @@
 ;; - set!
 ;; - multi-arg tail calls
 
-(module (testmod)
+(define (fun1)
+  (write 1 123)
+  (let* ((a (read 0)))
+    (write 1 a)
+    (if (add a (read 0))
+        (begin
+          (write 1 a)
+          (fun1))
+        (fun2))))
+  
+(define (fun2)
+  (let* ((abc 123)
+         (def
+          (select
+           ;;((write 1 (add 1 2)) (write 1 123))
+           ((write 1 abc) 123)
+           ((read  0 v1)  (add 1 v1))
+           )))
+    ;;(select
+    ;; ((read 0 v1)      (send 1 v1))
+    ;; ((send 1 (+ 1 2)) (send 1 123)))
+    (if (add def 0)
+        (fun1)
+        (fun2))
+    ))
 
-  (define (fun1)
-    (write 1 123)
-    (let* ((a (read 0)))
-      (write 1 a)
-      (if (add a (read 0))
-          (begin
-            (write 1 a)
-            (fun1))
-          (fun2))))
-  
-  (define (fun2)
-    (let* ((abc 123)
-           (def
-            (select
-             ;;((write 1 (add 1 2)) (write 1 123))
-             ((write 1 abc) 123)
-             ((read  0 v1)  (add 1 v1))
-             )))
-      ;;(select
-      ;; ((read 0 v1)      (send 1 v1))
-      ;; ((send 1 (+ 1 2)) (send 1 123)))
-      (if (add def 0)
-          (fun1)
-          (fun2))
-      ))
-  
-  )
 
 
 

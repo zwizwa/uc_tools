@@ -1,7 +1,7 @@
 
 // first pass
 #if 0
-T pass1_testmod(struct state *s) {
+T pass1_module(struct state *s) {
   if(s->next) goto *s->next;
 fun1:
   ({
@@ -75,7 +75,7 @@ struct state {
 };
 
 // second pass
-T testmod(struct state *s) {
+T module(struct state *s) {
   if(s->next) goto *s->next;
 fun1:
   ({

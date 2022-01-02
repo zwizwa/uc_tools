@@ -15,13 +15,16 @@ local function compile(file)
    local stream = io.open(file,"r")
    local parser = se.new(stream)
    parser.log = function(self, str) io.stderr:write(str) end
-   local expr = parser:read()
+
+   local exprs = parser:read_multi()
+
    -- log_desc(expr)
    local interp = smc.new()
    -- interp.config.first_pass_prefix = "dbg_pass1_"
    interp.write = function(self, str) io.stdout:write(str) end
 
-   interp:compile_passes(expr)
+   interp:compile_passes(
+      {'module',{se.list('module'),exprs}})
 end
 
 -- local file = "test.sm"

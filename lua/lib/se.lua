@@ -14,20 +14,31 @@ local se = { empty = empty }
 
 function se:next()
    local char = self.stream:read(1)
+   if char == '\n' then
+      self.nb_newlines = self.nb_newlines + 1
+   end
    if not char then
-      error("unexpected EOF")
+      error({error="EOF"})
    end
    -- self:log("next: " .. char .. "(" .. char:byte(1) .. ")\n")
    return char
 end
+
+function se:skip_line()
+   while '\n' ~= self:next() do end
+end
+
 function se:peek()
    if self.head then return self.head end
    while true do
       self.head = self:next()
-      if self.head ~= ';' then return self.head end
-      -- Skip comments
-      while '\n' ~= self:next() do
+      -- On the first line, '#' is also a comment character.
+      -- This is there for #! and Racket #lang forms.
+      if self.head == '#' and self.nb_newlines < 1 then
+         self.head = ';'
       end
+      if self.head ~= ';' then return self.head end
+      self:skip_line() -- Skip comment
    end
 end
 function se:pop()
@@ -195,9 +206,24 @@ function se:read()
    end
 end
 
+-- Read multiple expressions, gather them in a list.
+function se:read_multi()
+   local exprs = {}
+   while true do
+      local ok, err = pcall(function() return self:skip_space() end)
+      if not ok then
+         assert(err and err.error == 'EOF')
+         break
+      end
+      table.insert(exprs, self:read())
+   end
+   return se.array_to_list(exprs)
+end
+
+
 function se.new(stream)
    assert(stream)
-   local obj = { stream = stream }
+   local obj = { stream = stream, nb_newlines = 0 }
    setmetatable(obj, { __index = se })
    return obj
 end
