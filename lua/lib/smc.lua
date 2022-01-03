@@ -58,7 +58,8 @@
 -- Especially hard to refactor.  Conclusion: yes possible in Lua, but
 -- there is a point where the stateful nature starts to get in the
 -- way.  Also there is a limit to 2-pass compilation.  At some point
--- the tracking needed becomes too spread out.
+-- the tracking needed becomes too spread out.  I started
+-- transliteration to Racket.  That also informs some cleanup here.
 
 
 local se = require('lib.se')
@@ -287,7 +288,6 @@ form['if'] = function(self, if_expr)
    -- and propagate var=nil since value of last expression in
    -- statement expression eventually ends up in this variable.
 
-   -- FIXME: In tail position this doesn't make any sense.
    self:w(self:tab(), self:var_def(self.var))
 
    local function compile_branch(form)
@@ -328,8 +328,6 @@ end
 
 
 
--- Core form is 'let*' which mostly resembles C's scoping rules.
--- Compile the form to C statement expressions.
 form['let*'] = function(self, expr)
    local _, bindings, sequence = se.unpack(expr, { n = 2, tail = true })
    assert(type(bindings) == 'table')
@@ -340,55 +338,49 @@ form['begin'] = function(self, expr)
    self:compile_letstar(se.empty, sequence)
 end
 
--- Compile sequence of statements.  This is supposed to go inside a
--- statement expression '({' '})'
-function smc:compile_statements(inner)
-   local tail_position = self.tail_position
-   for form, rest_expr in se.elements(inner) do
-      assert(form)
-      self:save_context(
-         {'tail_position','var'},
-         function()
-            self.tail_position = tail_position and se.is_empty(rest_expr)
-            -- Var is nil because we use statement expressions.
-            self.var = nil
-            self:compile(form)
-         end)
-   end
-end
 
+-- Core form is 'let*' which resembles C's scoping rules.
+-- Abstracted out since we use it in a couple of places.
 function smc:compile_letstar(bindings, sequence)
 
    self:w(self:tab(),self:var_def(self.var),"({\n")
 
    self:save_context(
-      {'env','stack_ptr','indent','var'},
+      {'env','stack_ptr','indent','var','tail_position'},
       function()
          self:inc('indent')
 
-         self:save_context(
-            {'tail_position'},
-            function()
-               local nb_bindings = se.length(bindings)
-               for binding in se.elements(bindings) do
-                  local var_name, expr = se.unpack(binding, { n = 2 })
-                  assert(type(var_name) == 'string')
-                  assert(expr)
-                  local v = self:new_var(var_name)
-                  self.var = v
-                  self.tail_position = false
-                  self:compile(expr, v, false)
-                  self:push_var(v)
-               end
-            end)
+         local tail_position = self.tail_position
 
-         -- Compile inner forms as statements.  C handles value passing of
-         -- the last statement if this is compiled as statement expression.
+         -- Compile binding forms as expressions assigned to variables
+         -- (self.var ~= nil).
+         local nb_bindings = se.length(bindings)
+         for binding in se.elements(bindings) do
+            local var_name, expr = se.unpack(binding, { n = 2 })
+            assert(type(var_name) == 'string')
+            assert(expr)
+            local v = self:new_var(var_name)
+            self.var = v
+            self.tail_position = false
+            self:compile(expr, v, false)
+            self:push_var(v)
+         end
+
+         -- Compile inner forms as statements (self.var == nil).
+         -- C handles value passing of the last statement since we're
+         -- inside a statement expression.
          local n_inner = se.length(sequence)
          assert(n_inner > 0)
 
          self.var = nil
-         self:compile_statements(sequence)
+
+         for form, rest_expr in se.elements(sequence) do
+            assert(form)
+            self.tail_position = tail_position and se.is_empty(rest_expr)
+            -- Var is nil because we use statement expressions.
+            self.var = nil
+            self:compile(form)
+         end
    end)
 
    self:w(self:tab(), "});\n")
@@ -459,6 +451,11 @@ form['module'] = function(self, expr)
    self:w("}\n");
 end
 
+-- Ignore Racket forms.
+form['require'] = function(self, expr) end
+form['provide'] = function(self, expr) end
+
+
 function smc:statement(name, ...)
    return {name, "(", clist({...}), ");\n"}
 end
@@ -491,9 +488,7 @@ form['read'] = function(self, expr)
    self:w(self:tab(),
           self:var_def(self.var),
           self:statement("CSP_RCV_W", t, s, chan))
-   if self.nb_evt < 1 then
-      self.nb_evt = 1
-   end
+   self:track_max('nb_evt', 1)
    self:mark_bound(self.var)
 end
 
@@ -515,9 +510,7 @@ form['write'] = function(self, expr)
    local s = self.config.state_name
    local t = {"&(", s, "->task)"}
    self:w(self:tab(),self:statement("CSP_SND_W", t, s, chan, cvar))
-   if self.nb_evt < 1 then
-      self.nb_evt = 1
-   end
+   self:track_max('nb_evt', 1)
 end
 
 -- This is what it is all about.
@@ -592,9 +585,10 @@ form['select'] = function(self, expr)
             self:w(self:tab(),self:statement(unpack({...})))
          end
 
-         local nb_evt = 1
          local n_w = #(clauses.write)
          local n_r = #(clauses.read)
+         self:track_max('nb_evt', n_w + n_r)
+
          for i,c in ipairs(clauses.write) do
             local cvar = self:atom_to_c_expr(c.var)
             stmt("CSP_EVT_BUF",t,i-1,c.chan,cvar,0)
@@ -630,6 +624,7 @@ form['select'] = function(self, expr)
          w("}\n")
    end)
    w("};\n")
+
 
 end
 
@@ -847,7 +842,7 @@ function smc:compile_passes(expr)
       function()
          -- Override to suppress printing of first pass C output, which is
          -- only neccessary for debugging variable allocation.
-         self.config.first_pass_prefix = "pass1_"  -- FIXME
+         -- self.config.first_pass_prefix = "pass1_"  -- FIXME
 
          if not self.config.first_pass_prefix then
             self.write = function() end
