@@ -567,11 +567,11 @@ form['select'] = function(self, expr)
    end
 
    -- The C case statement needs separate variable definition and
-   -- assignment.  For this the variable is marked as multipath, such
+   -- assignment.  For this the variable is marked as assign_later, such
    -- that subsequent binding operations ignore that the variable has
    -- already been bound and emit an assignment insted of a
    -- definition.
-   self:w(self:tab(), self:var_def_multipath(self.var), "{\n")
+   self:w(self:tab(), self:var_def_assign_later(self.var), "{\n")
    self:save_context(
       {'indent','env','stack_ptr'},
       function()
@@ -648,7 +648,7 @@ function smc:mark_bound(v)
       -- vs. ignoring is handled implicitly at most places.
       return
    end
-   if v.cell.bind == 'unbound' or v.cell.multipath then
+   if v.cell.bind == 'unbound' or v.cell.assign_later then
       v.cell.bind = 'local'
    end
 end
@@ -663,7 +663,7 @@ function smc:var_def(v)
       return ""
    end
    local var, typ = self:cvar_and_ctype(v)
-   if v.cell.multipath then
+   if v.cell.assign_later then
       -- Assume variable definition has already been written out
       -- without value.
       return {var," = "}
@@ -674,11 +674,12 @@ function smc:var_def(v)
    end
 end
 
--- Multipath variables need to be defined if they are local.  If they
+-- For variables that are defined without value and assigned later,
+-- the definition is only necessary for C local variables.  If they
 -- are on the stack this does not emit any C code.
-function smc:var_def_multipath(v)
+function smc:var_def_assign_later(v)
    if not v then return "" end
-   v.cell.multipath = true
+   v.cell.assign_later = true
    if not v.cell.c_index then
       local var, typ = self:cvar_and_ctype(v)
       return {ifte(typ,{typ, " "}, ""), var, "; "}
