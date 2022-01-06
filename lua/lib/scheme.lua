@@ -4,6 +4,10 @@
 -- interpreter for the .sm language.  Something that can perform some
 -- extra verification?
 
+-- EDIT: No it will be useful to have a compilation target where "run
+-- time" bits can be just Lua, and (Scheme) code can be generated
+-- using a more powerful system on top (Racket or Haskell).
+
 local se = require('lib.se')
 local form = {}
 local scheme = {form = form}
