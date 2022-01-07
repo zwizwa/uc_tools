@@ -81,6 +81,14 @@ function se.array_to_list(arr)
    end
    return lst
 end
+function se.list_to_array(lst)
+   local arr = {}
+   for el in se.elements(lst) do
+      table.insert(arr, el)
+   end
+   return arr
+end
+
 -- Same as Scheme (list ...)
 function se.list(...)
    return se.array_to_list({...})

@@ -1,6 +1,6 @@
 struct state {
   struct csp_task task; // ends in evt[]
-  struct csp_evt evt[1]; // nb events used
+  struct csp_evt evt[2]; // nb events used
   void *next;
   T e[3];
   T a;
@@ -77,15 +77,36 @@ fun1:
 fun2:
   ({
     ({
-      T r24/*;9*/ = ({
-        s->e[0]/*;11*/ = CSP_RCV_W(&(s->task), s, chan2);
-        T r26/*;10*/ = CSP_RCV_W(&(s->task), s, chan1);
-        add(r26/*;10*/, s->e[0]/*;11*/);
-      });
-      r24/*;9*/ ? ({
-        goto fun1;
-      }) : ({
-        goto fun2;
+      T r24/*abc*/ = 123;
+      /*((write 1 abc) 123)*/
+      /*((read 0 v1) (add 1 v1))*/
+      T r25/*def*/; {
+        CSP_EVT_BUF(&(s->task), 0, 1, r24/*abc*/, 0);
+        CSP_EVT_BUF(&(s->task), 1, 0, NULL, 0);
+        CSP_SEL(&(s->task), s, 1, 1);
+        switch((&(s->task))->selected) {
+        case 0: {
+          r25/*def*/ = 123;
+          } break;
+        case 1: {
+          T r26/*v1*/ = s->evt[1].msg.w;
+          r25/*def*/ = ({
+            T r27/*;9*/ = 1;
+            add(r27/*;9*/, r26/*v1*/);
+          });
+          } break;
+        }
+      };
+      ({
+        T r28/*;10*/ = ({
+          T r29/*;11*/ = 0;
+          add(r25/*def*/, r29/*;11*/);
+        });
+        r28/*;10*/ ? ({
+          goto fun1;
+        }) : ({
+          goto fun2;
+        });
       });
     });
   });

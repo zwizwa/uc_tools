@@ -41,9 +41,20 @@
     ))
 
 (define (fun2)
-  (if (add (read chan1) (read chan2))
-      (fun1)
-      (fun2)))
+  (let* ((abc 123)
+         (def
+          (select
+           ;;((write 1 (add 1 2)) (write 1 123))
+           ((write 1 abc) 123)
+           ((read  0 v1)  (add 1 v1))
+           )))
+    ;;(select
+    ;; ((read 0 v1)      (send 1 v1))
+    ;; ((send 1 (+ 1 2)) (send 1 123)))
+    (if (add def 0)
+        (fun1)
+        (fun2))
+    ))
 
 (define (fun3 x)
   (let*

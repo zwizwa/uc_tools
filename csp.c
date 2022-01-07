@@ -48,7 +48,7 @@
      During a rendez-vous, data can be made visible to two tasks.
      This would avoid message copy in case tasks run on the same
      machine.  Note that this might already be implemented correctly,
-     by executing the receiver first.
+     by executing the receiver first.  (EDIT: Is already ok?)
 
    - Enforce directionality.  Together with a transaction mechanism,
      this allows packet transport of data payload over the network.
