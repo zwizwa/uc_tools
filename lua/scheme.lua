@@ -15,13 +15,17 @@ local function eval(file)
    local stream = io.open(file,"r")
    local parser = se.new(stream)
    parser.log = function(self, str) io.stderr:write(str) end
-   local expr = parser:read()
-   -- log_desc(expr)
-   local interp = scheme.new()
-   -- interp.config.first_pass_prefix = "dbg_pass1_"
-   interp.write = function(self, str) io.stdout:write(str) end
 
-   local val = interp:eval(expr)
+
+   local exprs = parser:read_multi()
+   local interp = scheme.new()
+
+   local env = se.empty
+
+   local val =
+      interp:eval_top(
+         {'module',{se.list('module'),exprs}})
+
    log(val .. "\n")
 end
 

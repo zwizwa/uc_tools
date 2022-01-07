@@ -5,10 +5,10 @@
 -- The empty list is Lua's nil
 
 -- FIXME: That is a mistake! It makes it impossible to put nil in an
--- array and then iterate over the elements.  Use e.g. ';nil' to
+-- array and then iterate over the elements.  Use e.g. '#<nil>' to
 -- represent the empty list.
 
-local empty = ';nil'
+local empty = '#<nil>'
 
 local se = { empty = empty }
 
