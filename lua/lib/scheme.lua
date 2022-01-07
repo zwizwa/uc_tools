@@ -16,24 +16,9 @@ local se = require('lib.se')
 local macro = {}
 local scheme = {macro = macro}
 
--- FIXME: This is a hack.  Translate to 'let*' + 'begin'.
 macro['module'] = function(self, expr)
    local _, _, mod_body = se.unpack(expr, { n = 2, tail = true })
-   local bindings = {}
-   local exprs = {}
-   for sub in se.elements(mod_body) do
-      if type(sub) == 'table' and sub[1] == 'define' then
-         local _, spec, fun_body = se.unpack(sub, { n = 2, tail = true })
-         local name, args = se.unpack(spec, { n = 1, tail = true })
-         assert(type(name) == 'string')
-         log('define ' .. name .. '\n')
-         table.insert(bindings, se.list(name, {'lambda', {args, fun_body}}))
-      else
-         table.insert(exprs, sub)
-      end
-   end
-   local l = se.array_to_list
-   return {'let*', {l(bindings), l(exprs)}}
+   return {'begin',mod_body}
 end
 
 
@@ -90,27 +75,42 @@ function scheme:eval(expr, env)
       log('form = ' .. form .. '\n')
 
       local macro_fn = self.macro[form]
-      -- Speed is not a concern, so stick to the absolute minimum:
-      -- 'if', 'lambda', macro expansion and function application, and
-      -- primitives that would be more work to express as a macro
-      -- ('begin', 'let*').
 
       if form == 'if' then
          local _, cond, iftrue, iffalse = se.unpack(expr, { n = 4 })
          expr = ifte(self:eval(cond, env), iftrue, iffalse)
 
       elseif form == 'begin' then
-         local _, first, rest = se.unpack(expr, {n = 2, tail = true})
-         if se.is_empty(rest) then
-            expr = first
+         local statements = se.cdr(expr)
+         if se.is_empty(statements) then
+            expr = '#<void>'
          else
-            self:eval(first, env)
-            expr = {'begin', rest}
+            local first, rest = se.unpack(statements, {n = 1, tail = true})
+
+            -- The 'define' form is only valid inside 'begin', where we
+            -- need to extend the current environment as we iterate down
+            -- the list of statements.
+            if type(first) == 'table' and first[1] == 'define' then
+               -- Only (define (fun ...) ...) is supported atm.
+               local _, spec, fun_body = se.unpack(first, { n = 2, tail = true })
+               local name, args = se.unpack(spec, { n = 1, tail = true })
+               assert(type(name) == 'string')
+               log('define ' .. name .. '\n')
+               env = push(name, self:eval({'lambda',{args,fun_body}}, env), env)
+               expr = {'begin', rest}
+            else
+               if se.is_empty(rest) then
+                  expr = first
+               else
+                  self:eval(first, env)
+                  expr = {'begin', rest}
+               end
+            end
          end
 
       elseif form == 'lambda' then
          local _, args, body = se.unpack(expr, { n = 2, tail = true })
-         return
+         expr =
             {class = 'closure',
              env   = env,
              args  = se.list_to_array(args),
@@ -137,7 +137,7 @@ function scheme:eval(expr, env)
          end
          log('app: ' .. type(fun) .. '\n')
          if type(fun) == 'function' then
-            return fun(unpack(arg_val))
+            expr = fun(unpack(arg_val))
          else
             assert(type(fun) == 'table')
             local new_env = fun.env
