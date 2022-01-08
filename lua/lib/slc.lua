@@ -23,6 +23,9 @@
 local se   = require('lib.se')
 local comp = require('lib.comp')
 
+local prompt = require('prompt')
+local function log(str) io.stderr:write(str) end
+function log_desc(obj) log(prompt.describe(obj) .. "\n") end
 
 local function ifte(c,t,f)
    if c then return t else return f end
@@ -65,14 +68,40 @@ form['lambda'] = function(self, expr)
 end
 
 form['begin'] = function(self, expr)
+   self:begin(expr,nil)
+end
+form['module-begin'] = function(self, expr)
+   -- FIXME: There is no support for infix atm.
+   self:w("local function add(a,b) return a + b end\n")
+   self:w("mod = {}\n")
+   local function register(var)
+      self:w("mod.",var," = ",var,"\n")
+   end
+   self:begin(expr, register)
+   self:w("return mod\n")
+end
+
+function slc:begin(expr, register)
    local _, forms = se.unpack(expr, {n = 1, tail = true})
    self:save_context(
       {'var'},
       function()
          local var = self.var
          for form, rest in se.elements(forms) do
-            self.var = ifte(se.is_empty(rest), var, nil)
-            self:compile(form)
+            -- Define is only valid inside begin.
+            if type(form) == 'table' and form[1] == 'define' then
+               local _, spec, fun_body = se.unpack(form, { n = 2, tail = true })
+               local name, args = se.unpack(spec, { n = 1, tail = true })
+               assert(type(name) == 'string')
+               -- log('define ' .. name .. '\n')
+               self.var = name
+               self:w("local ", self.var, "; ")
+               self:compile({'lambda',{args,fun_body}})
+               if register then register(self.var) end
+            else
+               self.var = ifte(se.is_empty(rest), var, nil)
+               self:compile(form)
+            end
          end
       end)
 end
@@ -139,6 +168,33 @@ function slc:compile(expr)
    end
 end
 
+function slc:to_string(expr)
+   local buf = {}
+   self:save_context(
+      {'write'},
+      function()
+         self.write = function(_, str) table.insert(buf, str) end
+         self:compile(expr)
+      end)
+   return table.concat(buf,"")
+end
+function slc:eval(expr)
+   local lua_code = self:compile_to_string(expr)
+   return loadstring(lua_code)
+end
+
+function slc:loadscheme(filename)
+   local stream = io.open(filename,"r")
+   local parser = se.new(stream)
+   parser.log = function(self, str) io.stderr:write(str) end
+   local exprs = parser:read_multi()
+   local expr = {'module-begin',exprs}
+   stream:close()
+   local str = self:to_string(expr)
+   log(str)
+   return loadstring(str)
+end
+
 function slc:reset()
    self.sym_n = 0
    assert(0 == self.indent)
@@ -156,5 +212,6 @@ function slc.new()
    obj:reset()
    return obj
 end
+
 
 return slc

@@ -1,4 +1,5 @@
 (define (x a b) (add a b))
-;; (add 1 2)
+(define (y z q) (add z q))
+; (add 1 2)
 (x 1 2)
 
