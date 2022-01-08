@@ -27,6 +27,11 @@ local comp = require('lib.comp')
 local function ifte(c,t,f)
    if c then return t else return f end
 end
+local function maybe_assign(var)
+   if not var then return "" end
+   return {var, " = "}
+end
+
 
 -- Shorthand for container type conversions
 local l = se.list
@@ -35,42 +40,39 @@ local a = se.list_to_array
 local form = {}
 local slc = { form = form }
 
+
 function slc:se_comment(expr)
-   self:w(self:tab(), "-- ", se.iolist(expr), "\n")
+   self:w("-- ", se.iolist(expr), "\n", self:tab())
 end
 
 slc.symbol_prefix = '_'
 
 form['lambda'] = function(self, expr)
    local _, args, body = se.unpack(expr, {n = 2, tail = true})
-   self:w(self:tab(), "function(", comp.clist(a(args)), ")\n")
-   self:indented(
+   self:w(maybe_assign(self.var),"function(", comp.clist(a(args)), ")\n")
+   self:save_context(
+      {'var'},
       function()
-         assert(not self.var)
-         self.var = self:gensym()
-         self:w(self:tab(), "local ", self.var, "; ")
-         self:compile({'begin',body})
-         self:w("return ", self.var, "\n")
+         self:indented(
+            function()
+               self.var = self:gensym()
+               self:w(self:tab(), "local ", self.var, "; ")
+               self:compile({'begin',body})
+               self:w("return ", self.var, "\n", self:tab())
+            end)
       end)
-   self:w("end\n")
+   self:w("end\n", self:tab())
 end
 
 form['begin'] = function(self, expr)
    local _, forms = se.unpack(expr, {n = 1, tail = true})
-
-   -- Behavior is different for outer begin (function body), or inner
-   -- (inside a let* or an explicit begin).
-   local last_form_var = ifte(outer, "return ", FIXME_var_var)
    self:save_context(
       {'var'},
       function()
          local var = self.var
          for form, rest in se.elements(forms) do
-            -- FIXME: This is not correct: only works in the body of a
-            -- function.
             self.var = ifte(se.is_empty(rest), var, nil)
             self:compile(form)
-            self:w(self:tab())
          end
       end)
 end
@@ -91,8 +93,7 @@ function slc:block(fun)
          self:w(self:tab())
          fun()
       end)
-   -- self:w("\n",self:tab())
-   self:w("end\n")
+   self:w("end\n", self:tab())
 end
 
 
@@ -109,25 +110,19 @@ form['let*'] = function(self, expr)
                   self.var = var
                   self:w("local ",var,"; ")
                   self:compile(var_expr)
-                  self:w(self:tab())
                end
          end)
          self:compile({'begin', forms})
    end)
 end
 
-local function maybe_assign(var)
-   if not var then return "" end
-   return {var, " = "}
-end
-
 function slc:compile(expr)
    if type(expr) == 'string' then
       -- Variable reference
-      self:w(maybe_assign(self.var),expr,"\n")
+      self:w(maybe_assign(self.var),expr,"\n",self:tab())
    elseif type(expr) == 'number' then
       -- Constant
-      self:w(maybe_assign(self.var),expr,"\n")
+      self:w(maybe_assign(self.var),expr,"\n",self:tab())
    elseif type(expr) == 'table' then
       -- S-expression
       local form_name, form_args = se.unpack(expr, {n = 1, tail = true})
@@ -139,7 +134,7 @@ function slc:compile(expr)
          -- Application
          -- FIXME: convert to ANF
          self:w(maybe_assign(self.var),
-                form_name,"(",comp.clist(a(form_args)),")\n")
+                form_name,"(",comp.clist(a(form_args)),")\n",self:tab())
       end
    end
 end

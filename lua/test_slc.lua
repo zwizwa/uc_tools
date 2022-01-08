@@ -12,6 +12,7 @@ local a = se.list_to_array
 local function test()
    local expr = l('lambda',l('a','b'),
                   l('let*', l(l('c', l('add','a','b')),
+                              l('f', l('lambda',l('x'),'x')),
                               l('d', l('let*',
                                        l(l('x',123)),
                                        'x'))),
