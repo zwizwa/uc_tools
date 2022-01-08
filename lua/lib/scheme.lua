@@ -1,8 +1,11 @@
 -- Minimal Scheme interpreter.  This is intended just for evaluating
 -- test code.  Speed is not a concern.
-
+--
 -- Primitives are recognized by type 'function', bound in the initial
 -- environment by the user.
+--
+-- Continuations are not supported: eval uses the Lua call stack.
+-- Tail calls are properly optimized to support mutual recursion.
 
 local function ifte(c,t,f)
    if c then return t else return f end
@@ -28,9 +31,10 @@ end
 
 local scheme = {}
 
--- A special form _must_ reduce the current expression, and is allowd
--- to update the lexical environment.  Special forms can call
--- self:eval() in non-tail position.
+-- A special form _must_ reduce the current expression, and is allowed
+-- to update the lexical environment in which the next expression is
+-- evaluated.  Special forms can call self:eval() in non-tail
+-- position, but must leave the result of the evaluation in s.expr
 local form = {}
 scheme.form = form
 
@@ -56,16 +60,17 @@ form['begin'] = function(self, s)
    else
       local first, rest = se.unpack(statements, {n = 1, tail = true})
 
-      -- The 'define' form is only valid inside 'begin', where we need
-      -- to extend the current environment as we iterate down the list
-      -- of statements.
+      -- The 'define' form is only valid inside 'begin', where we can
+      -- extend the current environment as we iterate down the list of
+      -- statements.
       if type(first) == 'table' and first[1] == 'define' then
          -- Only (define (fun ...) ...) is supported atm.
          local _, spec, fun_body = se.unpack(first, { n = 2, tail = true })
          local name, args = se.unpack(spec, { n = 1, tail = true })
          assert(type(name) == 'string')
          log('define ' .. name .. '\n')
-         s.env = push(name, self:eval({'lambda',{args,fun_body}}, s.env), s.env)
+         local closure = self:eval({'lambda',{args,fun_body}}, s.env)
+         s.env = push(name, closure, s.env)
          s.expr = {'begin', rest}
       else
          if se.is_empty(rest) then
@@ -90,12 +95,10 @@ end
 
 -- Macros are forms that do not modify s.env
 function scheme.macro(fun)
-   return function(self, s)
-      s.expr = fun(s.expr)
-   end
+   return function(self, s) s.expr = fun(s.expr) end
 end
-form['module'] = scheme.macro(function(expr)
-   local _, _, mod_body = se.unpack(expr, { n = 2, tail = true })
+form['module-begin'] = scheme.macro(function(expr)
+   local _, mod_body = se.unpack(expr, { n = 1, tail = true })
    return {'begin',mod_body}
 end)
 
@@ -108,12 +111,12 @@ function scheme:eval(expr, env)
    })
 end
 
+-- Proper tail call handling means that eval cannot be called
+-- recursively in tail position.  Lua 5.1 doesn't have goto, so use a
+-- loop that updates the current interpreter state = current
+-- expression + current environment.
 function scheme:eval_loop(s)
 
-   -- This needs to run state machines, so will need proper tail call
-   -- handling.  This means that eval cannot be called recursively in
-   -- tail position.  Lua 5.1 doesn't have goto, so use a loop
-   -- instead.
    while true do
 
       assert(s.env)
@@ -122,11 +125,12 @@ function scheme:eval_loop(s)
       -- Atoms
       if type(s.expr) ~= 'table' then
          if type(s.expr) == 'string' then
-            -- Strings starting with '#' are primitives.
-            -- e.g. '#<void>'
             if 35 == string.byte(s.expr,1) then
+               -- Strings starting with '#' are primitives.
+               -- e.g. '#<void>'
                return s.expr
             else
+               -- Look up variable in environment.
                return ref(s.expr, s.env)
             end
          else
@@ -149,7 +153,8 @@ function scheme:eval_loop(s)
       local form_fn = self.form[form]
 
       if form_fn then
-         -- Special form or macro.
+         -- Special form or macro.  These are in a separate table to
+         -- make interpreter extension straightforward.
          form_fn(self, s)
 
       else
@@ -162,9 +167,11 @@ function scheme:eval_loop(s)
          end
          log('app: ' .. type(fun) .. '\n')
          if type(fun) == 'function' then
+            -- Primitive
             s.expr = fun(unpack(arg_val))
             if s.expr == nil then s.expr = '#<void>' end
          else
+            -- Closure
             assert(type(fun) == 'table')
             local new_env = fun.env
             for i = 1,#fun.args do
@@ -180,7 +187,7 @@ function scheme:eval_loop(s)
    end
 end
 
-function scheme:push_mod(tab)
+function scheme:define(tab)
    for k,v in pairs(tab) do
       self.mod_env = push(k,v,self.mod_env)
    end
@@ -207,9 +214,9 @@ function scheme.new(tables)
    }
    setmetatable(obj, {__index = scheme})
    -- install module level bindings
-   obj:push_mod(prim)
+   obj:define(prim)
    for _,tab in ipairs(tables or {}) do
-      obj:push_mod(tab)
+      obj:define(tab)
    end
    return obj
 end
