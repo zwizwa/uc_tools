@@ -64,6 +64,7 @@
 
 local se     = require('lib.se')
 local scheme = require('lib.scheme')
+local comp   = require('lib.comp')
 
 
 -- Tools
@@ -82,15 +83,6 @@ end
 local function ifte(c,t,f)
    if c then return t else return f end
 end
-local function clist(in_lst)
-   local lst = {}
-   for _,el in ipairs(in_lst) do
-      table.insert(lst, el)
-      table.insert(lst, ", ")
-   end
-   table.remove(lst, #lst)
-   return lst
-end
 
 
 -- Module
@@ -98,25 +90,6 @@ local smc = {}
 local form = {}
 smc.form = form
 
--- Make writing output syntax as convenient as possible.
--- Erlang style strings + multiple arguments.
-function smc:w(...)
-   for _,el in ipairs({...}) do
-      if type(el) == 'table' then
-         self:w(unpack(el))
-      else
-         self:write(el)
-      end
-   end
-end
-
-function smc:tab()
-   local strs = {}
-   for i=1,self.indent do
-      table.insert(strs,"  ")
-   end
-   return strs
-end
 
 -- Note that variables and cells are separate.  A variable is a Lua
 -- string that refers to a cell.  Cells can be aliased, e.g. inside an
@@ -125,17 +98,6 @@ end
 -- Cells are allocated on the C stack (if it is known that there is no
 -- suspend boundary between definition and reference), or in the
 -- persistent store otherwise.
-
-function smc:track_max(varname, val)
-   if self[varname] < val then
-      self[varname] = val
-   end
-end
-function smc:inc(countername)
-   local n = self[countername]
-   self[countername] = n + 1
-   return n
-end
 
 -- Introduce a varible.
 function smc:new_cell()
@@ -313,20 +275,6 @@ form['if'] = function(self, if_expr)
 end
 
 
--- Tracking the language's lexical scope can be implemented using
--- dynamic scope in the compiler, as it recurses into the syntax.
--- This function saves and restores a list of compiler keys
--- (e.g. 'env', 'stack_ptr', 'indent').  Note that 'env' is
--- implemented using a cons list instead of a hash table to facilitate
--- sharing.
-function smc:save_context(keys, inner_fun)
-   local saved = {}
-   for i,key in ipairs(keys) do saved[key] = self[key]  end
-   local rv = inner_fun()
-   for i,key in ipairs(keys) do self[key]  = saved[key] end
-   return rv
-end
-
 
 
 form['let*'] = function(self, expr)
@@ -403,7 +351,7 @@ form['module-begin'] = function(self, expr)
 
    if self.mod_prefix then modname = { self.mod_prefix, modname } end
    local args = { { "struct ", c.state_struct, " *", c.state_name } }
-   self:w("T ", modname, "(",clist(args),") {\n");
+   self:w("T ", modname, "(",comp.clist(args),") {\n");
 
    local nxt = {c.state_name, "->next"};
    self:w(self:tab(), "if(", nxt, ") goto *", nxt, ";\n")
@@ -463,7 +411,7 @@ form['provide'] = function(self, expr) end
 
 
 function smc:statement(name, ...)
-   return {name, "(", clist({...}), ");\n"}
+   return {name, "(", comp.clist({...}), ");\n"}
 end
 
 
@@ -725,16 +673,6 @@ local function check(typ,val)
    return val
 end
 
--- Generate symbols for let-insertion.  These use a prefix that is not
--- legal in the code so they never clash with source variables.
-function smc:gensym(prefix)
-   -- Generated symbols should not clash with any program text, which
-   -- is why we use the comment character here.
-   if not prefix then prefix = ";" end;
-   local n = self:inc('sym_n')
-   return prefix..n
-end
-
 -- Apply function to arguments, converting all arguments to A-Normal
 -- form if necessary.
 --
@@ -771,7 +709,7 @@ function smc:apply(expr)
       for i=2,#app_form do
          table.insert(args, self:atom_to_c_expr(app_form[i]))
       end
-      local c_expr = {fun_name, "(", clist(args), ")"}
+      local c_expr = {fun_name, "(", comp.clist(args), ")"}
       self:w(self:binding(c_expr))
       self:mark_bound(self.var)
       return
@@ -806,7 +744,7 @@ function smc:apply(expr)
                table.insert(dbg, {arg_name,"=",var_name})
             end
             -- The body can then be compiled in this local environment.
-            self:w(self:tab(), "/*inline:",clist(dbg),"*/\n")
+            self:w(self:tab(), "/*inline:",comp.clist(dbg),"*/\n")
             self:compile(fun_def.body)
          end)
    end
@@ -949,7 +887,13 @@ end
 function smc.new()
    local config = { state_name = "s", state_struct = "state" }
    local obj = { stack_ptr = 0, env = se.empty, indent = 1, config = config }
-   setmetatable(obj, {__index = smc})
+   local function index(_,k)
+      for _,tab in ipairs({obj, smc, comp}) do
+         local mem = rawget(tab, k)
+         if mem then return mem end
+      end
+   end
+   setmetatable(obj, {__index = index})
    return obj
 end
 

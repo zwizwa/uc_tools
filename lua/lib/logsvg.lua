@@ -152,7 +152,9 @@ function logsvg.render(e, logs)
 
    -- This likely means that the ping synchronization message is
    -- missing.  FIXME: Create a better error message.
-   assert(#merged_log > 0)
+   if #merged_log == 0 then
+      log('WARNING: merged_log is empty. sync ping missing?')
+   end
 
    local t_total = merged_log[#merged_log][2] -- adj_time field
    local y_total = t_total / e.ticks_per_pixel
