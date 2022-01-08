@@ -40,6 +40,16 @@
         (fun2))
     ))
 
+;; The .sm language only allows function definitions in the module
+;; form.  We do provide an 'entry point' with Scheme code that runs at
+;; compile time.
+(define (start)
+  (spawn fun1 1)
+  (spawn fun1 2)
+  )
+
+
+
 
 
 

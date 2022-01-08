@@ -1,30 +1,11 @@
 #!/usr/bin/env lua
 package.path = package.path .. ";./?.lua"
-local se  = require('lib.se')
 local smc = require('lib.smc')
-local prompt = require('prompt')
-local function log(str)
-   io.stderr:write(str)
-end
-local function log_desc(obj)
-   log(prompt.describe(obj))
-   log("\n")
-end
 local function compile(file)
    assert(file)
-   local stream = io.open(file,"r")
-   local parser = se.new(stream)
-   parser.log = function(self, str) io.stderr:write(str) end
-
-   local exprs = parser:read_multi()
-
-   -- log_desc(expr)
-   local interp = smc.new()
-   -- interp.config.first_pass_prefix = "dbg_pass1_"
-   interp.write = function(self, str) io.stdout:write(str) end
-
-   interp:compile_passes(
-      {'module',{se.list('module'),exprs}})
+   local comp = smc.new()
+   comp.write = function(self, str) io.stdout:write(str) end
+   comp:compile_module_file(file)
 end
 
 -- local file = "test.sm"

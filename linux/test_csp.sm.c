@@ -6,7 +6,7 @@ struct state {
 };
 
 // second pass
-T module(struct state *s) {
+T testmod(struct state *s) {
   if(s->next) goto *s->next;
 fun1:
   ({
@@ -69,6 +69,9 @@ fun2:
       });
     });
   });
+/* start inline only */
 }
 // stack_size: 1
 
+// spawn: fun1 1
+// spawn: fun1 2

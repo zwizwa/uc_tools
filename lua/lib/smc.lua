@@ -62,7 +62,8 @@
 -- transliteration to Racket.  That also informs some cleanup here.
 
 
-local se = require('lib.se')
+local se     = require('lib.se')
+local scheme = require('lib.scheme')
 
 
 -- Tools
@@ -394,11 +395,11 @@ end
 -- The module form compiles to a C function.  Functions with no
 -- arguments compile to goto lables inside such a function.
 
-form['module'] = function(self, expr)
+form['module-begin'] = function(self, expr)
    local c = self.config
    assert(not self.var)
-   local _, mod_spec, define_exprs = se.unpack(expr, {n = 2, tail = true})
-   local modname = se.unpack(mod_spec, {n = 1})
+   local _, define_exprs = se.unpack(expr, {n = 1, tail = true})
+   local modname = "testmod" -- FIXME
 
    if self.mod_prefix then modname = { self.mod_prefix, modname } end
    local args = { { "struct ", c.state_struct, " *", c.state_name } }
@@ -426,8 +427,12 @@ form['module'] = function(self, expr)
          assert(type(fname == 'string'))
          assert(body_expr)
          -- Keep track of syntax for later inlining.
-         self.funs[fname] = {args = args, body = body_expr}
+         self.funs[fname] = {
+            class = 'function', name = fname,
+            args = args, body = body_expr,
+         }
       end)
+
    for_defines(
       function(fname, args, body_expr)
          -- Only emit body if it is actually used.  We only have usage
@@ -449,6 +454,7 @@ form['module'] = function(self, expr)
       end)
 
    self:w("}\n");
+
 end
 
 -- Ignore Racket forms.
@@ -714,7 +720,7 @@ function smc:atom_to_c_expr(atom)
 end
 
 -- Type checking shorthand
-local function tc(typ,val)
+local function check(typ,val)
    assert(type(val) == typ)
    return val
 end
@@ -793,9 +799,9 @@ function smc:apply(expr)
             self.env = se.empty
             local dbg = {fun_name}
             for i=1, #app_form-1 do
-               local var_name = tc('string',app_form[i+1])
-               local arg_name = tc('string',fun_def.args[i])
-               local callsite_var = tc('table',self:ref(var_name, callsite_env))
+               local var_name = check('string',app_form[i+1])
+               local arg_name = check('string',fun_def.args[i])
+               local callsite_var = check('table',self:ref(var_name, callsite_env))
                self:push_alias(arg_name, callsite_var)
                table.insert(dbg, {arg_name,"=",var_name})
             end
@@ -893,6 +899,19 @@ function smc:compile_passes(expr)
    self:w("};\n")
 
    self:w(c_code)
+
+
+   -- The start function is executed at compile time.
+   local start = self.funs.start
+   local prim = {}
+   function prim.spawn(fun, arg)
+      self:w("// spawn: ", fun.name, " ", arg, "\n")
+   end
+   if start then
+      scheme.new({self.funs, prim}):eval(start.body)
+   end
+
+
 end
 
 -- Reset compiler state before executing a new pass.
@@ -913,11 +932,26 @@ function smc:reset()
 end
 
 
+function smc:compile_module_file(filename)
+   local stream = io.open(filename,"r")
+   local parser = se.new(stream)
+   parser.log = function(self, str) io.stderr:write(str) end
+   local exprs = parser:read_multi()
+   local expr = {'module-begin',exprs}
+   self:se_comment_i_n(expr)
+   stream:close()
+   self:compile_passes(expr)
+end
+
+
+
+
 function smc.new()
    local config = { state_name = "s", state_struct = "state" }
    local obj = { stack_ptr = 0, env = se.empty, indent = 1, config = config }
    setmetatable(obj, {__index = smc})
    return obj
 end
+
 
 return smc

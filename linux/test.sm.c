@@ -7,7 +7,7 @@ struct state {
 };
 
 // second pass
-T module(struct state *s) {
+T testmod(struct state *s) {
   if(s->next) goto *s->next;
 fun1:
   ({
