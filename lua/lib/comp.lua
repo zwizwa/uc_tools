@@ -2,6 +2,9 @@
 -- This is factored out from smc.lua to be re-used for different compilers.
 local comp = {}
 
+local se = require('lib.se')
+local l = se.list
+
 -- Make writing output syntax as convenient as possible.
 -- Erlang style strings + multiple arguments.
 function comp:w(...)
@@ -73,6 +76,34 @@ function comp:gensym(prefix)
    if not prefix then prefix = self.symbol_prefix or ";" end;
    local n = self:inc('sym_n')
    return prefix..n
+end
+
+
+-- Let insertion happens often enough, so make an abstraction.
+-- User needs to define :compile_letstar
+local let_insert = {}
+function comp:let_insert(config)
+   if not config then config = { string = true } end
+   local obj = {comp = self, bindings_list = se.empty, config = config}
+   setmetatable(obj, {__index = let_insert})
+   return obj
+end
+function let_insert:maybe_insert_var(expr)
+   if self.config[type(expr)] then return expr end
+   local var = self.comp:gensym()
+   self.bindings_list = {l(var, expr), self.bindings_list}
+   return var
+end
+function let_insert:compile(inner)
+   self.comp:compile_letstar(self.bindings_list, l(inner))
+end
+function let_insert:compile_inserts(inner)
+   if not self:bindings() then return false end
+   self:compile(inner)
+   return true
+end
+function let_insert:bindings()
+   return not se.is_empty(self.bindings_list)
 end
 
 

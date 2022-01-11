@@ -23,16 +23,11 @@ local function test1()
                     l('add','c','d'),
                     l('add','d','c')))
    local compiler = slc.new()
-   -- compiler:compile(expr)
-   local str = compiler:to_string(expr)
-   log(str)
-   local fun = loadstring("return " .. str)()
-   log_desc(fun)
-   fun(1, 2)
+   compiler:compile(expr)
 end
 
 local function test2()
-   local mod = slc.new():loadscheme('test_scheme.scm')()
+   local mod = slc.new():loadscheme('test_scheme.scm', log)
    log_desc({rv = mod.x(1,2)})
 end
 

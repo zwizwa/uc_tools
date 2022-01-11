@@ -48,7 +48,7 @@ function slc:se_comment(expr)
    self:w("-- ", se.iolist(expr), "\n", self:tab())
 end
 
-slc.symbol_prefix = '_'
+slc.symbol_prefix = '_r'
 
 form['lambda'] = function(self, expr)
    local _, args, body = se.unpack(expr, {n = 2, tail = true})
@@ -106,6 +106,7 @@ function slc:begin(expr, register)
       end)
 end
 
+
 function slc:indented(fun)
    self:save_context({'indent'},
       function()
@@ -115,7 +116,6 @@ function slc:indented(fun)
 end
 
 function slc:block(fun)
-   assert(self.var)
    self:w("do\n")
    self:indented(
       function()
@@ -128,6 +128,9 @@ end
 
 form['let*'] = function(self, expr)
    local _, bindings, forms = se.unpack(expr, {n = 2, tail = true})
+   self:compile_letstar(bindings, forms)
+end
+function slc:compile_letstar(bindings, forms)
    self:block(
       function()
          self:save_context(
@@ -145,14 +148,27 @@ form['let*'] = function(self, expr)
    end)
 end
 
+form['if'] = function(self, expr)
+   local _, condition, iftrue, iffalse = se.unpack(expr, {n = 4})
+   local li = self:let_insert({string = true, number = true})
+   condition = li:maybe_insert_var(condition)
+   if not li:compile_inserts({'if', condition, iftrue, iffalse}) then
+      local function ce(e)
+         self:indented(function()
+               self:w(self:tab());
+               self:compile(e)
+         end)
+      end
+      self:w('if ', condition, ' then\n');
+      ce(iftrue)
+      self:w('else\n')
+      ce(iffalse)
+      self:w('end\n',self:tab())
+   end
+end
+
 function slc:compile(expr)
-   if type(expr) == 'string' then
-      -- Variable reference
-      self:w(maybe_assign(self.var),expr,"\n",self:tab())
-   elseif type(expr) == 'number' then
-      -- Constant
-      self:w(maybe_assign(self.var),expr,"\n",self:tab())
-   elseif type(expr) == 'table' then
+   if type(expr) == 'table' then
       -- S-expression
       local form_name, form_args = se.unpack(expr, {n = 1, tail = true})
       assert(form_name and type(form_name == 'string'))
@@ -161,9 +177,27 @@ function slc:compile(expr)
          form_fn(self, expr)
       else
          -- Application
-         -- FIXME: convert to ANF
-         self:w(maybe_assign(self.var),
-                form_name,"(",comp.clist(a(form_args)),")\n",self:tab())
+         local li = self:let_insert({string = true, number = true})
+         local anf_args = {}
+         for arg in se.elements(form_args) do
+            table.insert(anf_args, li:maybe_insert_var(arg))
+         end
+         if not li:compile_inserts({form_name, se.array_to_list(anf_args)}) then
+            self:w(maybe_assign(self.var),
+                   form_name,"(",comp.clist(anf_args),")\n",self:tab())
+         end
+      end
+   else
+      -- Lua doesn't allow for naked variable references or constants,
+      -- so if there is no variable to bind, don't generate anything.
+      if self.var then
+         if type(expr) == 'string' then
+            -- Variable reference
+            self:w(maybe_assign(self.var),expr,"\n",self:tab())
+         elseif type(expr) == 'number' then
+            -- Constant
+            self:w(maybe_assign(self.var),expr,"\n",self:tab())
+         end
       end
    end
 end
@@ -183,16 +217,20 @@ function slc:eval(expr)
    return loadstring(lua_code)
 end
 
-function slc:loadscheme(filename)
+function slc:compile_module_file(filename, log)
    local stream = io.open(filename,"r")
    local parser = se.new(stream)
    parser.log = function(self, str) io.stderr:write(str) end
    local exprs = parser:read_multi()
    local expr = {'module-begin',exprs}
    stream:close()
-   local str = self:to_string(expr)
-   log(str)
-   return loadstring(str)
+   return self:to_string(expr)
+end
+
+function slc:loadscheme(filename, log)
+   local str = self:compile_module_file(filename, log)
+   if log then log(str) end
+   return loadstring(str)()
 end
 
 function slc:reset()

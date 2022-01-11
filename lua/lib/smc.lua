@@ -211,30 +211,6 @@ function smc:se_comment_i_n(expr)
    return {self:tab(),se_comment(expr),"\n"}
 end
 
--- Let insertion happens often enough, so make an abstraction.
-local let_insert = {}
-function smc:let_insert()
-   local obj = {comp = self, bindings_list = se.empty}
-   setmetatable(obj, {__index = let_insert})
-   return obj
-end
-function let_insert:maybe_insert_var(expr)
-   if type(expr) == 'string' then return expr end
-   local var = self.comp:gensym()
-   self.bindings_list = {l(var, expr), self.bindings_list}
-   return var
-end
-function let_insert:compile(inner)
-   self.comp:compile_letstar(self.bindings_list, l(inner))
-end
-function let_insert:compile_inserts(inner)
-   if not self:bindings() then return false end
-   self:compile(inner)
-   return true
-end
-function let_insert:bindings()
-   return not se.is_empty(self.bindings_list)
-end
 
 form['if'] = function(self, if_expr)
    local _, condition, expr_true, expr_false = se.unpack(if_expr, { n = 4 })
@@ -279,7 +255,6 @@ end
 
 form['let*'] = function(self, expr)
    local _, bindings, sequence = se.unpack(expr, { n = 2, tail = true })
-   assert(type(bindings) == 'table')
    self:compile_letstar(bindings, sequence)
 end
 form['begin'] = function(self, expr)
@@ -871,7 +846,7 @@ end
 
 
 function smc:compile_module_file(filename)
-   local stream = io.open(filename,"r")
+   local stream = io.open(filename,"r") or error("Can't open '" .. filename .. "'")
    local parser = se.new(stream)
    parser.log = function(self, str) io.stderr:write(str) end
    local exprs = parser:read_multi()
