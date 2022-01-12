@@ -208,8 +208,9 @@ end
 -- wrap-around (32bit, 72MHz) such that there is no aliasing.  In that
 -- case, we can just catch wraps here.
 
-function logsvg.read_log(filename, sync_re)
-   sync_re = sync_re or "^ping (.-)"
+function logsvg.read_log(filename, config)
+   if not config then config = {} end
+   local sync_re = config.sync_re or "^ping (.-)"
    local str = read_file(filename)
    local lines = {}
    local last = nil
@@ -217,9 +218,16 @@ function logsvg.read_log(filename, sync_re)
    local wraps = 0;
 
    for stamp, logline in string.gmatch(str, "([0123456789abcdef]-) (.-)\n") do
+
+      if config.max_lines and #lines > config.max_lines then return lines end
+
       -- log(n .. "\n")
       -- log(logline .. "\n")
       local n = tonumber(stamp,16)
+      if n == nil then
+         log("stamp error: " .. str .. "\n")
+         assert(n ~= nil)
+      end
       if not last then
          if string.match(logline, sync_re) then
             log("sync:" .. stamp .. ":" .. filename .. "\n")
