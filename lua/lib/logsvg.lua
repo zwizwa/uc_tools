@@ -187,17 +187,6 @@ function logsvg.repel(entries, delta_t)
 end
 
 
--- Put this in a tools library, together with the popen variant.
-local function read_file(filename)
-   local f = io.open(filename, "r+")
-   if not f then
-      error("cant_open:" .. filename)
-   end
-   local str = f:read('*a')
-   f:close()
-   return str
-end
-
 
 -- Read a time-stamped log.  For now this assumes that the timestamp
 -- is a 8-digit lower case hex number at the start of the line,
@@ -211,15 +200,20 @@ end
 function logsvg.read_log(filename, config)
    if not config then config = {} end
    local sync_re = config.sync_re or "^ping (.-)"
-   local str = read_file(filename)
    local lines = {}
    local last = nil
    local fist = nil
    local wraps = 0;
 
-   for stamp, logline in string.gmatch(str, "([0123456789abcdef]-) (.-)\n") do
 
-      if config.max_lines and #lines > config.max_lines then return lines end
+   for str in io.lines(filename) do
+      --log("line: " .. str .."\n")
+
+      local stamp, logline = string.match(str, "([0123456789abcdef]-) (.*)")
+
+      --log("stamp: " .. stamp .. "\n")
+      --log("logline: " .. logline .."\n")
+      -- if config.max_lines and #lines > config.max_lines then return lines end
 
       -- log(n .. "\n")
       -- log(logline .. "\n")
