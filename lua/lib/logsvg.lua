@@ -200,6 +200,7 @@ end
 function logsvg.read_log(filename, config)
    if not config then config = {} end
    local sync_re = config.sync_re or "^ping (.-)"
+   local max_lines = config.max_lines or 1000
    local lines = {}
    local last = nil
    local fist = nil
@@ -213,14 +214,21 @@ function logsvg.read_log(filename, config)
 
       --log("stamp: " .. stamp .. "\n")
       --log("logline: " .. logline .."\n")
-      -- if config.max_lines and #lines > config.max_lines then return lines end
+
+      -- By default we have a limit.  Generating large SVGs doesn't
+      -- work well, and is impossible to read anyway.  What this needs
+      -- is skip and range, or some trigger mechanism + range.
+      if max_lines and #lines > max_lines then return lines end
 
       -- log(n .. "\n")
       -- log(logline .. "\n")
       local n = tonumber(stamp,16)
       if n == nil then
-         log("stamp error: " .. str .. "\n")
-         assert(n ~= nil)
+         -- It's better to make this robust: reuse the previous time
+         -- stamp if there is one, and copy the entire line.
+         -- log("bad log line: " .. str .. "\n")
+         n = last or 0
+         logline = str
       end
       if not last then
          if string.match(logline, sync_re) then
