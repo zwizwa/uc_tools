@@ -220,16 +220,15 @@ function logsvg.read_log(filename, config)
       -- is skip and range, or some trigger mechanism + range.
       if max_lines and #lines > max_lines then return lines end
 
-      -- log(n .. "\n")
-      -- log(logline .. "\n")
       local n = tonumber(stamp,16)
-      if n == nil then
+      if not (stamp and logline and n) then
          -- It's better to make this robust: reuse the previous time
          -- stamp if there is one, and copy the entire line.
          -- log("bad log line: " .. str .. "\n")
          n = last or 0
          logline = str
       end
+
       if not last then
          if string.match(logline, sync_re) then
             log("sync:" .. stamp .. ":" .. filename .. "\n")

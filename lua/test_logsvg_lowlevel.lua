@@ -13,3 +13,5 @@ local logfile = arg[1]
 local max_lines = tonumber(arg[2])
 assert(logfile)
 logsvg.read_log(logfile, { max_lines = max_lines })
+
+-- Somehow it is printing out the whole file.
