@@ -38,9 +38,17 @@ local function test3()
    local mod = slc.new({ log = log, hoas = "_s" }):loadscheme('test_scheme.scm')
    -- Insert eval semantics.
    local eval = {prim = {}}
-   function eval:lambda(nb_args, fun)  return fun end
-   function eval:app(fun, ...) return fun(unpack({...})) end
-   log_desc(mod(eval))
+   function eval:lambda(nb_args, fun)
+      return fun
+   end
+   function eval:app(fun, ...)
+      return fun(unpack({...}))
+   end
+   function eval:ifte(cond,iftrue,iffalse)
+      if cond then return iftrue() else return iffalse() end
+   end
+   local me = mod(eval)
+   log_desc(eval:app(me.test_if))
    -- FIXME: This needs some work, but basic idea is there.
 end
 

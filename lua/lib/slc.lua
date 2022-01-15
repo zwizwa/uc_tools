@@ -1,6 +1,4 @@
 -- Limited Scheme to Lua compiler (no tail calls, continuations)
--- Also supports HOAS wrapping.
-
 
 -- Older notes:
 --
@@ -24,6 +22,9 @@
 -- This printer uses a different convention than smc.lua: the next
 -- expression in a let* or begin list can be compiled at point,
 -- i.e. the caller of :compile will perform the indentation.
+--
+-- HOAS wrapper was added.  Seemed simpler to add some conditionals
+-- here and there.
 
 local se   = require('lib.se')
 local comp = require('lib.comp')
@@ -66,6 +67,15 @@ function slc:is_bound(var)
    return false
 end
 
+function slc:compile_function_body(body)
+   self:parameterize(
+      {var = self:gensym()},
+      function()
+         self:w(self:tab(), "local ", self.var, "; ")
+         self:compile(body)
+         self:w("return ", self.var, "\n", self:tab())
+      end)
+end
 
 form['lambda'] = function(self, expr)
    local _, args, body = se.unpack(expr, {n = 2, tail = true})
@@ -80,10 +90,7 @@ form['lambda'] = function(self, expr)
          end
          self:indented(
             function()
-               self.var = self:gensym()
-               self:w(self:tab(), "local ", self.var, "; ")
-               self:compile({'begin',body})
-               self:w("return ", self.var, "\n", self:tab())
+               self:compile_function_body({'begin',body})
             end)
       end)
    self:w("end",
@@ -198,14 +205,14 @@ form['if'] = function(self, expr)
          self:w('end\n',self:tab())
       else
          local function ce(e)
+            self:w(self:tab(),"function()\n")
             self:save_context(
                {'var','indent'},
                function()
                   self:inc('indent')
-                  self:w(self:tab(),"function() ")
-                  self:compile(e)
-                  self:w(self:tab(),"end")
-            end)
+                  self:compile_function_body(e)
+               end)
+            self:w(self:tab(),"end")
          end
          self:w(maybe_assign(self.var))
          self:w(self.config.hoas,':ifte(',condition,', \n');

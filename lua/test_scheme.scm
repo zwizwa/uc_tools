@@ -9,7 +9,7 @@
 ;;
 (define (test_if)  (let* ((a (if 1 2 3))) a))
 
-;; (define (test_anf) (add 1 (add 2 3)))
+;; \(define (test_anf) (add 1 (add 2 3)))
 
 
 
