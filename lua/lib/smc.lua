@@ -88,7 +88,6 @@ end
 -- Module
 local smc = {}
 local form = {}
-smc.form = form
 
 
 -- Note that variables and cells are separate.  A variable is a Lua
@@ -235,17 +234,19 @@ form['if'] = function(self, if_expr)
          function()
             self:inc('indent')
             self.var = nil
+            self:w("({\n") ;
             self:compile(form)
+            self:w(self:tab(), "})")
          end)
    end
 
    local ccond = self:atom_to_c_expr(condition)
 
-   self:w(ccond, " ? ({\n")
-   compile_branch(expr_true)
-   self:w(self:tab(), "}) : ({\n")
-   compile_branch(expr_false)
-   self:w(self:tab(), "});\n")
+   self:w(ccond, " ? ")
+   compile_branch(expr_true);
+   self:w(" : ")
+   compile_branch(expr_false);
+   self:w(";\n")
 
    self:mark_bound(self.var)
 end
@@ -413,6 +414,8 @@ end
 -- Blocking forms.  See csp.h for the definition of the macros.  The
 -- task we have to do here is variable storage management.
 
+-- See also smc_cspc.lua
+
 function smc:local_lost()
    local bound = {}
    for var in se.elements(self.env) do
@@ -429,153 +432,6 @@ function smc:local_lost()
    return bound
 end
 
-form['read'] = function(self, expr)
-   local _, chan = se.unpack(expr, {n = 2})
-   self:local_lost()
-   local s = self.config.state_name
-   local t = {"&(", s, "->task)"}
-   self:w(self:tab(),
-          self:var_def(self.var),
-          self:statement("CSP_RCV_W", t, s, chan))
-   self:track_max('evt_size', 1)
-   self:mark_bound(self.var)
-end
-
-form['write'] = function(self, expr)
-   local _, chan, data_expr = se.unpack(expr, {n = 3})
-
-   local li = self:let_insert()
-   data_expr = li:maybe_insert_var(data_expr)
-   if li:compile_inserts(l('write', chan, data_expr)) then
-      return
-   end
-
-   -- Perform the reference _before_ marking the context as lost.  Our
-   -- reference here is used to initialize the evt msg before
-   -- executing return.
-   local cvar = self:atom_to_c_expr(data_expr)
-
-   self:local_lost()
-   local s = self.config.state_name
-   local t = {"&(", s, "->task)"}
-   self:w(self:tab(),self:statement("CSP_SND_W", t, s, chan, cvar))
-   self:track_max('evt_size', 1)
-end
-
--- This is what it is all about.
---
--- Generate csp.h CSP_EVT and CSP_SEL macro invocations + dispatch on
--- ->selected, starting from a multi-clause Scheme form:
---
--- (select
---   ((read  0 <var>) (... ref <var> ...))
---   ((write 1 <val>) (...))
---
--- This call blocks execution and resumes exactly one of the clauses.
-
-
--- FIXME
-form['select'] = function(self, expr)
-   local _, clauses_expr = se.unpack(expr, {n = 1, tail = true})
-   -- Collect read and write clauses separately.  They need to be
-   -- sorted before invoking CSP_SEL.
-   local clauses = { read = {}, write = {} }
-   -- Also rebuild the expression in case let insertion is necessary
-   local clauses_expr1 = se.empty
-   -- Keep track of bindings to perform ANF transformation if necessary
-   local li = self:let_insert()
-   for clause_expr in se.elements(clauses_expr) do
-      self:w(self:se_comment_i_n(clause_expr))
-      local head_expr, handle_expr = se.unpack(clause_expr, {n = 2})
-      local kind, chan, data_expr  = se.unpack(head_expr,   {n = 3})
-      if kind == 'write' then
-         -- Possibly needs let insertion.
-         data_expr = li:maybe_insert_var(data_expr)
-      else
-         assert(kind == 'read')
-      end
-      assert(type(data_expr) == 'string')
-      table.insert(clauses[kind],
-                   {chan = chan,
-                    var  = data_expr,
-                    expr = handle_expr})
-      clauses_expr1 = {l(l(kind, chan, data_expr), handle_expr),
-                       clauses_expr1}
-   end
-
-   -- Insert let if there were any non-variable forms.
-   if li:compile_inserts({'select', se.reverse(clauses_expr1)}) then
-      return
-   end
-
-   local s = self.config.state_name
-   local t = {"&(",s,"->task)"}
-
-   local function w(...)
-      self:w(self:tab(),{...})
-   end
-
-   -- The C case statement needs separate variable definition and
-   -- assignment.  For this the variable is marked as assign_later, such
-   -- that subsequent binding operations ignore that the variable has
-   -- already been bound and emit an assignment insted of a
-   -- definition.
-   self:w(self:tab(), self:var_def_assign_later(self.var), "{\n")
-   self:save_context(
-      {'indent','env','stack_ptr'},
-      function()
-         self:inc('indent')
-
-         -- Note: the CSP scheduler is used in zero-copy mode by
-         -- setting rcv buffer pointer to NULL.  Further we only use
-         -- the msg_buf in unboxed mode (unitptr_t machine word
-         -- .msg.buf.w).
-         local function stmt(...)
-            self:w(self:tab(),self:statement(unpack({...})))
-         end
-
-         local n_w = #(clauses.write)
-         local n_r = #(clauses.read)
-         self:track_max('evt_size', n_w + n_r)
-
-         for i,c in ipairs(clauses.write) do
-            local cvar = self:atom_to_c_expr(c.var)
-            stmt("CSP_EVT_BUF",t,i-1,c.chan,cvar,0)
-         end
-         for i,c in ipairs(clauses.read) do
-            stmt("CSP_EVT_BUF",t,n_w+i-1,c.chan,"NULL",0)
-         end
-
-         stmt("CSP_SEL",t,s,n_w,n_r)
-         self:local_lost()
-
-         local function w_case(evt,c,bind_var)
-            w("case ", evt, ": {\n")
-            self:save_context(
-               {'indent','env','stack_ptr'},
-               function()
-                  self:inc('indent')
-                  if bind_var then
-                     local v = self:new_var(bind_var)
-                     self:w(self:tab(),self:var_def(v),
-                            s,"->evt[",evt,"].msg.w;\n")
-                     self:mark_bound(v)
-                     self:push_var(v)
-                  end
-                  self:compile(c.expr)
-                  w("} break;\n");
-               end)
-         end
-
-         w("switch((",t,")->selected) {\n")
-         for i,c in ipairs(clauses.write) do w_case(i-1,c) end
-         for i,c in ipairs(clauses.read)  do w_case(n_w+i-1,c,c.var) end
-         w("}\n")
-   end)
-   w("};\n")
-
-
-end
 
 
 -- C representation of variable (lvalue/rvalue), and its type.
@@ -648,8 +504,9 @@ end
 function smc:atom_to_c_expr(atom)
    if type(atom) == 'string' then
       if atom:byte(1) == 95 then
-         -- A reference to a C variable not visible to Scheme.
-         -- This is used e.g. to implement argument passing.
+         -- Underscore is reserved for references to a C variables
+         -- that are not known by Scheme.  This is used e.g. to
+         -- implement argument passing.
          return atom
       else
          local v = self:ref(atom)
@@ -657,7 +514,7 @@ function smc:atom_to_c_expr(atom)
             local c_expr = self:cvar_and_ctype(v)
             return c_expr
          else
-            -- Keep track of free variables.
+            -- Free variables are assumed to be struct members.
             self.free[atom] = true
             return {self.config.state_name,"->",atom,"/*free*/"}
          end
@@ -681,7 +538,7 @@ end
 -- intermediate variables instead, giving the C compiler some room to
 -- optimize.
 function smc:arg(arg_nb)
-   return '_a' .. arg_nb
+   return '_' .. arg_nb
 end
 
 
@@ -863,7 +720,7 @@ function smc:compile_passes(expr)
    local start = self.funs.start
    local prim = {}
    function prim.spawn(fun, arg)
-      self:w("// spawn: ", fun.name, " ", arg, "\n")
+      self:w("// spawn: ", fun.name, " ", arg or "", "\n")
    end
    if start then
       scheme.new({self.funs, prim}):eval(start.body)
@@ -911,11 +768,24 @@ function smc:compile_module_file(filename)
 end
 
 
+-- This file sms.lua implements the state machine / computed goto
+-- functionality.  The scheduling primitives are implemented
+-- separately, to allow future implementation of different primitives.
 
+-- FIXME: forms should be mixin.
 
-function smc.new()
-   local config = { state_name = "s", state_struct = "state" }
-   local obj = { stack_ptr = 0, env = se.empty, indent = 1, config = config }
+-- FIXME: Simpler to directly import.
+function smc:import_forms(forms)
+   for name,impl in pairs(forms) do
+      -- log("form: " .. name .. "\n")
+      self.form[name] = impl
+   end
+end
+
+function smc.new(cfg)
+   local config = { state_name = "s", state_struct = "state", forms = {} }
+   for k,v in pairs(cfg or {}) do config[k] = v end
+   local obj = { stack_ptr = 0, env = se.empty, indent = 1, config = config, form = {} }
    local function index(_,k)
       for _,tab in ipairs({obj, smc, comp}) do
          local mem = rawget(tab, k)
@@ -923,6 +793,10 @@ function smc.new()
       end
    end
    setmetatable(obj, {__index = index})
+   obj:import_forms(form) -- Basic forms
+   for _,f in ipairs(config.forms) do
+      obj:import_forms(f) -- Extension forms
+   end
    return obj
 end
 

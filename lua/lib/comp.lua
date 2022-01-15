@@ -54,6 +54,22 @@ function comp:save_context(keys, inner_fun)
    return rv
 end
 
+-- New version using tables.
+-- This is a bit closer to SRFI-39 parameterize form.
+function comp:parameterize(bindings_tab, inner_fun)
+   local saved = {}
+   for key,val in pairs(bindings_tab) do
+      saved[key] = self[key]
+      self[key] = val
+   end
+   local rv = inner_fun()
+   for key,_ in pairs(bindings_tab) do
+      self[key] = saved[key];
+   end
+   return rv
+end
+
+
 -- Track maximum
 function comp:track_max(varname, val)
    if self[varname] < val then

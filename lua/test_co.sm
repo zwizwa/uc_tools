@@ -1,0 +1,20 @@
+#lang s-expr "sm.rkt" ;; -*- scheme -*-
+
+;; Test simpler co-routine abstraction.
+(define (fun1)
+  (fun2 (co 0 123)))
+(define (fun2 x)
+  (fun1))
+
+(define (start)
+  (spawn fun1)
+  (spawn fun1)
+  )
+
+
+
+
+
+
+
+

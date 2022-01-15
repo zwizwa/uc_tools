@@ -14,14 +14,14 @@
 ;; - set!
 ;; - multi-arg tail calls
 
-(define (fun1 x)
+(define (fun1 x y)
   (write 1 123)
   (let* ((a (read 0)))
     (write 1 a)
     (if (add a (read 0))
         (begin
           (write 1 a)
-          (fun1 a))
+          (fun1 a a))
         (fun2))))
   
 (define (fun2)
@@ -36,7 +36,7 @@
     ;; ((read 0 v1)      (send 1 v1))
     ;; ((send 1 (+ 1 2)) (send 1 123)))
     (if (add def 0)
-        (fun1 abc)
+        (fun1 abc abc)
         (fun2))
     ))
 
@@ -44,8 +44,8 @@
 ;; form.  We do provide an 'entry point' with Scheme code that runs at
 ;; compile time.
 (define (start)
-  (spawn fun1 1 0)
-  (spawn fun1 2 0)
+  (spawn fun1 1 0 0)
+  (spawn fun1 2 0 0)
   )
 
 
