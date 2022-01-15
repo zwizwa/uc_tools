@@ -9,7 +9,7 @@ struct state {
 // second pass
 T testmod(struct state *s) {
   if(s->next) goto *s->next;
-fun1:
+fun1:/*()*/
   ({
     ({
       s->e[0]/*a*/ = ({
@@ -74,7 +74,7 @@ fun1:
       goto fun2;
     });
   });
-fun2:
+fun2:/*()*/
   ({
     ({
       T r24/*abc*/ = 123;

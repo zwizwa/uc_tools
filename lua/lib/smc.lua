@@ -324,13 +324,6 @@ form['module-begin'] = function(self, expr)
    local _, define_exprs = se.unpack(expr, {n = 1, tail = true})
    local modname = "testmod" -- FIXME
 
-   if self.mod_prefix then modname = { self.mod_prefix, modname } end
-   local args = { { "struct ", c.state_struct, " *", c.state_name } }
-   self:w("T ", modname, "(",comp.clist(args),") {\n");
-
-   local nxt = {c.state_name, "->next"};
-   self:w(self:tab(), "if(", nxt, ") goto *", nxt, ";\n")
-
    -- 'define' is only defined inside a 'module' form.
    local function for_defines(f)
       for define_expr in se.elements(define_exprs) do
@@ -349,12 +342,30 @@ form['module-begin'] = function(self, expr)
       function(fname, args, body_expr)
          assert(type(fname == 'string'))
          assert(body_expr)
+         -- Keep track of storage needed for function calls
+         self:track_max('args_size_def', se.length(args))
          -- Keep track of syntax for later inlining.
          self.funs[fname] = {
             class = 'function', name = fname,
             args = args, body = body_expr,
          }
       end)
+
+   -- provide storage for function calls and write out C function entry
+   if self.mod_prefix then modname = { self.mod_prefix, modname } end
+   local args = { { "struct ", c.state_struct, " *", c.state_name } }
+   self:w("T ", modname, "(",comp.clist(args),") {\n");
+   local nxt = {c.state_name, "->next"};
+
+   -- in second pass, the max number of arguments actually used in
+   -- function application is known.  in first pass it is not, and we
+   -- bound it by max arguments of definitions.
+   local max_nb_args = self.args_size_app_last or self.args_size_def
+   for i=1,max_nb_args do
+      self:w(self:tab(), "T ", self:arg(i-1), ";\n")
+   end
+
+   self:w(self:tab(), "if(", nxt, ") goto *", nxt, ";\n")
 
    for_defines(
       function(fname, args, body_expr)
@@ -363,13 +374,22 @@ form['module-begin'] = function(self, expr)
          if (not self.labels_last) or self.labels_last[fname] then
             -- No closure support: make sure lex env is empty.
             assert(0 == se.length(self.env))
-            self:w(fname, ":\n");
+            self:w(fname, ":", se_comment(args), "\n");
             self:save_context(
                {'var','tail_position'},
                function()
                   self.tail_position = true
                   self.var = nil
-                  self:compile(body_expr)
+                  local nb_args = se.length(args)
+                  if nb_args == 0 then
+                     self:compile(body_expr)
+                  else
+                     local bindings = se.empty
+                     for i,var in ipairs(se.list_to_array(args)) do
+                        bindings = {se.list(var, self:arg(i-1)), bindings}
+                     end
+                     self:compile_letstar(se.reverse(bindings), se.list(body_expr))
+                  end
                end)
          else
             self:w("/* ", fname, " inline only */\n")
@@ -627,14 +647,20 @@ end
 -- Map Scheme atom (const or variable) to its C representation.
 function smc:atom_to_c_expr(atom)
    if type(atom) == 'string' then
-      local v = self:ref(atom)
-      if v then
-         local c_expr = self:cvar_and_ctype(v)
-         return c_expr
+      if atom:byte(1) == 95 then
+         -- A reference to a C variable not visible to Scheme.
+         -- This is used e.g. to implement argument passing.
+         return atom
       else
-         -- Keep track of free variables.
-         self.free[atom] = true
-         return {self.config.state_name,"->",atom,"/*free*/"}
+         local v = self:ref(atom)
+         if v then
+            local c_expr = self:cvar_and_ctype(v)
+            return c_expr
+         else
+            -- Keep track of free variables.
+            self.free[atom] = true
+            return {self.config.state_name,"->",atom,"/*free*/"}
+         end
       end
    else
       -- number or other const
@@ -647,6 +673,17 @@ local function check(typ,val)
    assert(type(val) == typ)
    return val
 end
+
+-- Function arguments do seem to need some intermediate storage, since
+-- there are always "two sides to the story".  I currently do not see
+-- how to insert function arguments into the context without causing
+-- permanent storage on the saved stack, so they are copied to
+-- intermediate variables instead, giving the C compiler some room to
+-- optimize.
+function smc:arg(arg_nb)
+   return '_a' .. arg_nb
+end
+
 
 -- Apply function to arguments, converting all arguments to A-Normal
 -- form if necessary.
@@ -692,7 +729,14 @@ function smc:apply(expr)
 
    -- Compile composite function call.
    if (self.tail_position) then
-      assert(#app_form == 1)
+      local nb_args = #app_form - 1
+      local fun_args = se.list_to_array(fun_def.args)
+      assert(nb_args == #fun_args)
+      self:track_max('args_size_app', nb_args)
+      for i,arg in ipairs(fun_args) do
+         self:w(self:tab(), self:arg(i-1), " = ", self:atom_to_c_expr(app_form[i+1]), ";\n")
+         --self:w(self:tab(),"/*assign ", i-1, " ", arg, "*/\n")
+      end
       local c_expr = {"goto ",app_form[1]}
       self:w(self:binding(c_expr))
       self:mark_bound(self.var)
@@ -780,10 +824,11 @@ function smc:compile_passes(expr)
       end)
 
    -- Second pass uses some information from the previous pass: the
-   -- information gathered about each storage cell, and information
-   -- about the goto labels.
-   self.cells_last  = self.cells
-   self.labels_last = self.labels
+   -- information gathered about each storage cell, information about
+   -- the goto labels, and nb vars necessary for argument passing.
+   self.cells_last         = self.cells
+   self.labels_last        = self.labels
+   self.args_size_app_last = self.args_size_app
 
    local c_code = {}
    self:save_context(
@@ -842,7 +887,8 @@ function smc:reset()
    -- Sizes
    self.stack_size = 0
    self.evt_size = 0
-   self.arg_size = 0
+   self.args_size_app = 0
+   self.args_size_def = 0
    -- Counters
    self.nb_sym = 0
    self.depth = 0

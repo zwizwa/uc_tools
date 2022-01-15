@@ -114,6 +114,18 @@ function se.reverse(lst)
    return l
 end
 
+-- FIXME: Test
+function se.map_to_array(fun, lst)
+   local arr = {}
+   for el in se.lements(lst) do
+      table.insert(arr, fn(el))
+   end
+   return arr
+end
+function se.map(fun, lst)
+   return se.array_to_list(se.map_to_array(fun,lst))
+end
+
 function se.array(lst)
    local arr = {}
    for el in se.elements(lst) do
@@ -144,7 +156,7 @@ function se.is_empty(lst)
 end
 
 function se.iolist(expr)
-   if type(expr) ~= 'table' then
+   if expr ~= empty and type(expr) ~= 'table' then
       return expr
    else
       local iol = {"("}
