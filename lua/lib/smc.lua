@@ -703,8 +703,13 @@ function smc:compile_passes(expr)
 
    -- Generate the struct definition, then append the C code.
    self:w("struct ", self.config.state_struct, " {\n")
-   self:w(self:tab(), "struct csp_task task; // ends in evt[]\n");
-   self:w(self:tab(), "struct csp_evt evt[", self.evt_size, "]; // nb events used\n");
+   if self.evt_size > 0 then
+      -- evt_size == 0 can be used as a proxy for there not being any
+      -- CSP calls.  FIXME: this is specific to csp.c so should
+      -- probably be moved.
+      self:w(self:tab(), "struct csp_task task; // ends in evt[]\n");
+      self:w(self:tab(), "struct csp_evt evt[", self.evt_size, "]; // nb events used\n");
+   end
    self:w(self:tab(), "void *next;\n")
 
    self:w(self:tab(), "T e[", self.stack_size, "];\n")

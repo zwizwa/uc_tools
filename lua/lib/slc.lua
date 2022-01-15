@@ -1,4 +1,9 @@
--- Scheme to Lua compiler.
+-- Limited Scheme to Lua compiler (no tail calls, continuations)
+-- Also supports HOAS wrapping.
+
+
+-- Older notes:
+--
 -- Is this worth it?
 --
 -- Yes.  It might be useful to plug this into the interpreter,
@@ -50,12 +55,29 @@ end
 
 slc.symbol_prefix = '_r'
 
+function slc:hoas(iolist)
+   return ifte(self.config.hoas, iolist, "")
+end
+
+function slc:is_bound(var)
+   for e in se.elements(self.env) do
+      if e == var then return true end
+   end
+   return false
+end
+
+
 form['lambda'] = function(self, expr)
    local _, args, body = se.unpack(expr, {n = 2, tail = true})
-   self:w(maybe_assign(self.var),"function(", comp.clist(a(args)), ")\n")
+   self:w(maybe_assign(self.var),
+          self:hoas({self.config.hoas,":lambda(",se.length(args),", "}),
+          "function(", comp.clist(a(args)), ")\n")
    self:save_context(
-      {'var'},
+      {'var','env'},
       function()
+         for var in se.elements(args) do
+            self.env = {var, self.env}
+         end
          self:indented(
             function()
                self.var = self:gensym()
@@ -64,21 +86,29 @@ form['lambda'] = function(self, expr)
                self:w("return ", self.var, "\n", self:tab())
             end)
       end)
-   self:w("end\n", self:tab())
+   self:w("end",
+          self:hoas(")"),
+          "\n", self:tab())
 end
 
 form['begin'] = function(self, expr)
    self:begin(expr,nil)
 end
 form['module-begin'] = function(self, expr)
-   -- FIXME: There is no support for infix atm.
-   self:w("local function add(a,b) return a + b end\n")
+   self:w(self:hoas({"return function(",self.config.hoas,")\n"}))
+   if not self.config.hoas then
+      -- FIXME: There is no support for infix atm so for testing we
+      -- insert this primitive.  Not necessary in HOAS mode where it
+      -- can be injected.
+      self:w("local function add(a,b) return a + b end\n")
+   end
    self:w("mod = {}\n")
    local function register(var)
       self:w("mod.",var," = ",var,"\n")
    end
    self:begin(expr, register)
    self:w("return mod\n")
+   self:w(self:hoas("end\n"))
 end
 
 function slc:begin(expr, register)
@@ -134,12 +164,13 @@ function slc:compile_letstar(bindings, forms)
    self:block(
       function()
          self:save_context(
-            {'var'},
+            {'var','env'},
             function()
                for form in se.elements(bindings) do
                   local var, var_expr = se.unpack(form, {n = 2})
                   assert(type(var) == 'string')
                   self.var = var
+                  self.env = {var, self.env}
                   self:w("local ",var,"; ")
                   self:compile(var_expr)
                end
@@ -183,8 +214,26 @@ function slc:compile(expr)
             table.insert(anf_args, li:maybe_insert_var(arg))
          end
          if not li:compile_inserts({form_name, se.array_to_list(anf_args)}) then
-            self:w(maybe_assign(self.var),
-                   form_name,"(",comp.clist(anf_args),")\n",self:tab())
+
+            local function _w(iol)
+               self:w(maybe_assign(self.var),iol,"\n",self:tab())
+            end
+
+            if self.config.hoas then
+               local function lookup(var)
+                  -- Non-lexical variables need to be explicitly
+                  -- defined in the primitive dictionary.  Note 'var'
+                  -- is not a good name here.
+                  return ifte(type(var) == 'string' and self:is_bound(var),
+                              var,{self.config.hoas,".prim.",var})
+               end
+               form_name = lookup(form_name)
+               for i=1,#anf_args do anf_args[i] = lookup(anf_args[i]) end
+
+               _w({self.config.hoas,":app(",form_name,", ",comp.clist(anf_args),")"})
+            else
+               _w({form_name,"(",comp.clist(anf_args),")"})
+            end
          end
       end
    else
@@ -217,35 +266,36 @@ function slc:eval(expr)
    return loadstring(lua_code)
 end
 
-function slc:compile_module_file(filename, log)
+function slc:compile_module_file(filename)
    local stream = io.open(filename,"r")
    local parser = se.new(stream)
-   parser.log = function(self, str) io.stderr:write(str) end
+   parser.log = self.config.log
    local exprs = parser:read_multi()
    local expr = {'module-begin',exprs}
    stream:close()
    return self:to_string(expr)
 end
 
-function slc:loadscheme(filename, log)
-   local str = self:compile_module_file(filename, log)
-   if log then log(str) end
+function slc:loadscheme(filename)
+   local str = self:compile_module_file(filename)
+   if self.config.log then self.config.log(str) end
    return loadstring(str)()
 end
 
 function slc:reset()
    self.nb_sym = 0
+   self.env = se.empty
    assert(0 == self.indent)
 end
 
-function slc.new()
+function slc.new(config)
    local function index(obj,k)
       for _,tab in ipairs({obj, slc, comp}) do
          local mem = rawget(tab, k)
          if mem then return mem end
       end
    end
-   local obj = { indent = 0 }
+   local obj = { indent = 0, config = config or {} }
    setmetatable(obj, {__index = index})
    obj:reset()
    return obj

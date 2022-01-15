@@ -4,6 +4,7 @@
 (define (fun1)
   (fun2 (co 0 123)))
 (define (fun2 x)
+  (yield)
   (fun1))
 
 (define (start)

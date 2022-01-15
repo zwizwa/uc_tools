@@ -27,9 +27,23 @@ local function test1()
 end
 
 local function test2()
-   local mod = slc.new():loadscheme('test_scheme.scm', log)
+   log("-- test2: compile to concrete lua\n")
+   local mod = slc.new({ log = log }):loadscheme('test_scheme.scm')
+   -- Execute code, print result
    log_desc({rv = mod.x(1,2)})
+end
+
+local function test3()
+   log("-- test3: compile to lua hoas\n")
+   local mod = slc.new({ log = log, hoas = "_s" }):loadscheme('test_scheme.scm')
+   -- Insert eval semantics.
+   local eval = {prim = {}}
+   function eval:lambda(nb_args, fun)  return fun end
+   function eval:app(fun, ...) return fun(unpack({...})) end
+   log_desc(mod(eval))
+   -- FIXME: This needs some work, but basic idea is there.
 end
 
 -- test1()
 test2()
+test3()
