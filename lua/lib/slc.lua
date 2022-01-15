@@ -184,17 +184,36 @@ form['if'] = function(self, expr)
    local li = self:let_insert({string = true, number = true})
    condition = li:maybe_insert_var(condition)
    if not li:compile_inserts({'if', condition, iftrue, iffalse}) then
-      local function ce(e)
-         self:indented(function()
-               self:w(self:tab());
-               self:compile(e)
-         end)
+      if not self.config.hoas then
+         local function ce(e)
+            self:indented(function()
+                  self:w(self:tab());
+                  self:compile(e)
+            end)
+         end
+         self:w('if ', condition, ' then\n');
+         ce(iftrue)
+         self:w('else\n')
+         ce(iffalse)
+         self:w('end\n',self:tab())
+      else
+         local function ce(e)
+            self:save_context(
+               {'var','indent'},
+               function()
+                  self:inc('indent')
+                  self:w(self:tab(),"function() ")
+                  self:compile(e)
+                  self:w(self:tab(),"end")
+            end)
+         end
+         self:w(maybe_assign(self.var))
+         self:w(self.config.hoas,':ifte(',condition,', \n');
+         ce(iftrue)
+         self:w(', \n')
+         ce(iffalse)
+         self:w(')\n',self:tab())
       end
-      self:w('if ', condition, ' then\n');
-      ce(iftrue)
-      self:w('else\n')
-      ce(iffalse)
-      self:w('end\n',self:tab())
    end
 end
 
