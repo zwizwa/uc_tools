@@ -234,7 +234,7 @@ function slc:loadscheme(filename, log)
 end
 
 function slc:reset()
-   self.sym_n = 0
+   self.nb_sym = 0
    assert(0 == self.indent)
 end
 

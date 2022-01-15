@@ -417,7 +417,7 @@ form['read'] = function(self, expr)
    self:w(self:tab(),
           self:var_def(self.var),
           self:statement("CSP_RCV_W", t, s, chan))
-   self:track_max('nb_evt', 1)
+   self:track_max('evt_size', 1)
    self:mark_bound(self.var)
 end
 
@@ -439,7 +439,7 @@ form['write'] = function(self, expr)
    local s = self.config.state_name
    local t = {"&(", s, "->task)"}
    self:w(self:tab(),self:statement("CSP_SND_W", t, s, chan, cvar))
-   self:track_max('nb_evt', 1)
+   self:track_max('evt_size', 1)
 end
 
 -- This is what it is all about.
@@ -516,7 +516,7 @@ form['select'] = function(self, expr)
 
          local n_w = #(clauses.write)
          local n_r = #(clauses.read)
-         self:track_max('nb_evt', n_w + n_r)
+         self:track_max('evt_size', n_w + n_r)
 
          for i,c in ipairs(clauses.write) do
             local cvar = self:atom_to_c_expr(c.var)
@@ -802,7 +802,7 @@ function smc:compile_passes(expr)
    -- Generate the struct definition, then append the C code.
    self:w("struct ", self.config.state_struct, " {\n")
    self:w(self:tab(), "struct csp_task task; // ends in evt[]\n");
-   self:w(self:tab(), "struct csp_evt evt[", self.nb_evt, "]; // nb events used\n");
+   self:w(self:tab(), "struct csp_evt evt[", self.evt_size, "]; // nb events used\n");
    self:w(self:tab(), "void *next;\n")
 
    self:w(self:tab(), "T e[", self.stack_size, "];\n")
@@ -829,19 +829,27 @@ end
 
 -- Reset compiler state before executing a new pass.
 function smc:reset()
-   self.cells = {}
-   self.labels = {}
-   self.stack_size = 0
-   self.sym_n = 0
-   self.funs = {}
-   self.depth = 0
-   self.free = {}
-   self.nb_evt = 0
-   self.var = nil
-   self.tail_position = false
+   -- Consistency checks: these need to come back to their reset
+   -- position after a compilation pass.
    assert(0 == se.length(self.env))
    assert(0 == self.stack_ptr)
    assert(1 == self.indent)
+   -- Lists
+   self.cells = {}
+   self.labels = {}
+   self.funs = {}
+   self.free = {}
+   -- Sizes
+   self.stack_size = 0
+   self.evt_size = 0
+   self.arg_size = 0
+   -- Counters
+   self.nb_sym = 0
+   self.depth = 0
+   -- Current variable box
+   self.var = nil
+   -- Is current expression in tail position?
+   self.tail_position = false
 end
 
 

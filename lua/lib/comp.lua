@@ -74,7 +74,7 @@ function comp:gensym(prefix)
    -- Generated symbols should not clash with any program text, which
    -- is why we use the comment character here.
    if not prefix then prefix = self.symbol_prefix or ";" end;
-   local n = self:inc('sym_n')
+   local n = self:inc('nb_sym')
    return prefix..n
 end
 
