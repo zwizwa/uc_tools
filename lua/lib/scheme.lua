@@ -11,7 +11,7 @@ local function ifte(c,t,f)
    if c then return t else return f end
 end
 local function log(str)
-   io.stderr:write(str)
+   -- io.stderr:write(str)
 end
 
 

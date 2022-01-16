@@ -327,26 +327,15 @@ form['module-begin'] = function(self, expr)
 
    -- 'define' is only allowed inside a 'module-begin' form.
    -- FIXME: Later that should probably be relaxed a bit.
-   local function for_toplevel_forms(code_def, data_def)
+   local function for_toplevel_forms(f)
       for define_expr in se.elements(define_exprs) do
-         local define, name_or_fun_spec, body_exprs =
+         local define, fun_spec, body_exprs =
             se.unpack(define_expr, {n = 2, tail = true})
-         if type(name_or_fun_spec) == 'string' then
-            local name = name_or_fun_spec
-            local expr = se.unpack(body_exprs, {n = 1})
-            -- FIXME: support (define _ (lambda _ _)) syntax also.
-            -- For now this is strictly a data definition.
-            if data_def then
-               data_def(name, expr)
-            end
-         else
-            local fun_spec = name_or_fun_spec
-            local body_expr = {'begin', body_exprs}
-            assert(define == 'define')
-            local fname, args = se.unpack(fun_spec, {n = 1, tail = true})
-            assert(body_expr)
-            code_def(fname, args, body_expr)
-         end
+         local body_expr = {'begin', body_exprs}
+         assert(define == 'define')
+         local fname, args = se.unpack(fun_spec, {n = 1, tail = true})
+         assert(body_expr)
+         f(fname, args, body_expr)
       end
    end
 
@@ -355,12 +344,8 @@ form['module-begin'] = function(self, expr)
    -- inlining and to collect information necessary for allocation.
    -- also just collect the data expressions.
 
-   -- The toplevel bindings need to be unique, so collect them in
-   -- tables.  However they do need to be evaluated in order.  For the
-   -- lambda expressions this doesn't matter, but for the data
-   -- expressions it does.  FIXME: Restore order later.
+   -- The toplevel bindings are unique, so collect them in a table.
    self.funs = {}
-   self.data = {}
 
    for_toplevel_forms(
       -- function definition
@@ -375,24 +360,7 @@ form['module-begin'] = function(self, expr)
             class = 'function', name = fname,
             args = args, body = body_expr,
          }
-      end,
-      -- data definition
-      function(name, expr)
-         assert(nil == self.data[name])
-         table.insert(self.data, {name, expr})
       end)
-
-
-   -- as a first foray into partial evaluation, all toplevel forms
-   -- that are not functions will be evaluated at compile time.
-   local prim = {}
-   function prim.spawn(fun, arg)
-      self:w("// spawn: ", fun.name, " ", arg or "", "\n")
-   end
-   local interp = scheme.new({self.funs, self.data, prim})
-   for name,expr in pairs(self.data) do
-      interp:eval(expr)
-   end
 
    -- emit main C function
    if self.mod_prefix then modname = { self.mod_prefix, modname } end
@@ -767,20 +735,35 @@ function smc:compile_passes(expr)
 
    self:w(c_code)
 
+   -- We only run this in the second pass.  The first pass' C code
+   -- output is currently only of use for debugging.
+   self:start()
+end
 
-   -- The start function is executed at compile time.
-   -- FIXME: It's important to be really careful with partial evaluation hacks.
-   -- Maybe put this back later, but for now this is done differently.
-   -- local start = self.funs.start
-   -- local prim = {}
-   -- function prim.spawn(fun, arg)
-   --    self:w("// spawn: ", fun.name, " ", arg or "", "\n")
-   -- end
-   -- if start then
-   --    scheme.new({self.funs, prim}):eval(start.body)
-   -- end
+function smc:start()
 
-
+   -- Semantics: the program is suspended after execution of 'start',
+   -- and before any external events arrive.  The generated C code
+   -- implements the behavior of the program, implementing only the
+   -- effect of 'start'.  This way instantiation code can be used to
+   -- perform some specialization.
+   --
+   --
+   local start = self.funs.start
+   local prim = {}
+   prim['spawn!'] = function(task, fun, arg)
+      self:w("// spawn: ", task, " ", fun.name, " ", arg or "", "\n")
+   end
+   local task_nb = 0
+   prim['make-task'] = function(fun)
+      -- self:w("// make-task\n")
+      local nb = task_nb
+      task_nb = task_nb + 1
+      return nb
+   end
+   if start then
+      scheme.new({self.funs, prim}):eval(start.body)
+   end
 end
 
 -- Reset compiler state before executing a new pass.

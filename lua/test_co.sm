@@ -7,10 +7,6 @@
   (yield)
   (fun1))
 
-;; First attempt: perform partial evaluation where possible, but be
-;; explicit about at least one function that will be executed at
-;; compile time to produce static structures.
-;;
 ;; I'd like to use the following story to act as a design guide to
 ;; give this the proper semantics:
 ;;
@@ -23,14 +19,16 @@
 ;; Now replace "memory image" with "generated C program", and replace
 ;; the single machine with a host machine that runs the scheme program
 ;; to generate the C program, and a target machine that runs the
-;; compiled program as if it was resuming a memory image.
+;; compiled C program as if it was resuming a memory image.  I.e. the
+;; generated C program can contain some static data structures that
+;; would be the result of executing the start function.
+;;
+;; This is quite close to the meaning of a non-staged Scheme program
+;; with the restriction that the start function can not be referenced
+;; by the code that implements the task network.
 
 (define (start)
   (let* ((task1 (make-task))
          (task2 (make-task)))
-    (spawn task1 fun1 task2)
-    (spawn task2 fun1 task1)))
-
-
-         
-  
+    (spawn! task1 fun1 task2)
+    (spawn! task2 fun1 task1)))
