@@ -7,15 +7,30 @@
   (yield)
   (fun1))
 
+;; First attempt: perform partial evaluation where possible, but be
+;; explicit about at least one function that will be executed at
+;; compile time to produce static structures.
+;;
+;; I'd like to use the following story to act as a design guide to
+;; give this the proper semantics:
+;;
+;; This scheme program is started.  It performs some initialization
+;; and then spawns a number of tasks that wait for events to happen.
+;; Before any events happen, the memory image is serialized to disk,
+;; the machine is turned off, then the machine is turned on again, the
+;; memory image is loaded again and the program is resumed.
+;;
+;; Now replace "memory image" with "generated C program", and replace
+;; the single machine with a host machine that runs the scheme program
+;; to generate the C program, and a target machine that runs the
+;; compiled program as if it was resuming a memory image.
+
 (define (start)
-  (spawn fun1)
-  (spawn fun1)
-  )
+  (let* ((task1 (make-task))
+         (task2 (make-task)))
+    (spawn task1 fun1 task2)
+    (spawn task2 fun1 task1)))
 
 
-
-
-
-
-
-
+         
+  

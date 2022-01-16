@@ -49,7 +49,6 @@ local function test3()
    end
    local me = mod(eval)
    log_desc(eval:app(me.test_if))
-   -- FIXME: This needs some work, but basic idea is there.
 end
 
 -- test1()

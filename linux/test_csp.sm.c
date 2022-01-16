@@ -83,5 +83,3 @@ fun2:/*()*/
 }
 // stack_size: 1
 
-// spawn: fun1 1
-// spawn: fun1 2

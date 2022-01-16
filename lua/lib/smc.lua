@@ -325,22 +325,47 @@ form['module-begin'] = function(self, expr)
    local _, define_exprs = se.unpack(expr, {n = 1, tail = true})
    local modname = "testmod" -- FIXME
 
-   -- 'define' is only defined inside a 'module' form.
-   local function for_defines(f)
+   -- 'define' is only allowed inside a 'module-begin' form.
+   -- FIXME: Later that should probably be relaxed a bit.
+   local function for_toplevel_forms(code_def, data_def)
       for define_expr in se.elements(define_exprs) do
-         local define, fun_spec, body_exprs =
+         local define, name_or_fun_spec, body_exprs =
             se.unpack(define_expr, {n = 2, tail = true})
-         local body_expr = {'begin', body_exprs}
-         assert(define == 'define')
-         local fname, args = se.unpack(fun_spec, {n = 1, tail = true})
-         assert(body_expr)
-         f(fname, args, body_expr)
+         if type(name_or_fun_spec) == 'string' then
+            local name = name_or_fun_spec
+            local expr = se.unpack(body_exprs, {n = 1})
+            -- FIXME: support (define _ (lambda _ _)) syntax also.
+            -- For now this is strictly a data definition.
+            if data_def then
+               data_def(name, expr)
+            end
+         else
+            local fun_spec = name_or_fun_spec
+            local body_expr = {'begin', body_exprs}
+            assert(define == 'define')
+            local fname, args = se.unpack(fun_spec, {n = 1, tail = true})
+            assert(body_expr)
+            code_def(fname, args, body_expr)
+         end
       end
    end
 
-   -- perform two passes to allow for backreferences.
-   for_defines(
+   -- we iterate twice over the definitions.  first iteration builds
+   -- the name to syntax map to allow for back-references and function
+   -- inlining and to collect information necessary for allocation.
+   -- also just collect the data expressions.
+
+   -- The toplevel bindings need to be unique, so collect them in
+   -- tables.  However they do need to be evaluated in order.  For the
+   -- lambda expressions this doesn't matter, but for the data
+   -- expressions it does.  FIXME: Restore order later.
+   self.funs = {}
+   self.data = {}
+
+   for_toplevel_forms(
+      -- function definition
       function(fname, args, body_expr)
+         assert(nil == self.funs[fname])
          assert(type(fname == 'string'))
          assert(body_expr)
          -- Keep track of storage needed for function calls
@@ -350,25 +375,47 @@ form['module-begin'] = function(self, expr)
             class = 'function', name = fname,
             args = args, body = body_expr,
          }
+      end,
+      -- data definition
+      function(name, expr)
+         assert(nil == self.data[name])
+         table.insert(self.data, {name, expr})
       end)
 
-   -- provide storage for function calls and write out C function entry
+
+   -- as a first foray into partial evaluation, all toplevel forms
+   -- that are not functions will be evaluated at compile time.
+   local prim = {}
+   function prim.spawn(fun, arg)
+      self:w("// spawn: ", fun.name, " ", arg or "", "\n")
+   end
+   local interp = scheme.new({self.funs, self.data, prim})
+   for name,expr in pairs(self.data) do
+      interp:eval(expr)
+   end
+
+   -- emit main C function
    if self.mod_prefix then modname = { self.mod_prefix, modname } end
    local args = { { "struct ", c.state_struct, " *", c.state_name } }
    self:w("T ", modname, "(",comp.clist(args),") {\n");
-   local nxt = {c.state_name, "->next"};
 
-   -- in second pass, the max number of arguments actually used in
-   -- function application is known.  in first pass it is not, and we
-   -- bound it by max arguments of definitions.
+   -- allocate 'registers' usef for function/coroutine argument
+   -- passing.
+   --
+   -- in the second compiler pass, the max number of arguments
+   -- actually used in function application is known.  in first pass
+   -- it is not, and we bound it by max arguments of definitions.
+   local nxt = {c.state_name, "->next"};
    local max_nb_args = self.args_size_app_last or self.args_size_def
    for i=1,max_nb_args do
       self:w(self:tab(), "T ", self:arg(i-1), ";\n")
    end
 
+   -- emit code to jump to the current resume point
    self:w(self:tab(), "if(", nxt, ") goto *", nxt, ";\n")
 
-   for_defines(
+   -- compile all functions
+   for_toplevel_forms(
       function(fname, args, body_expr)
          -- Only emit body if it is actually used.  We only have usage
          -- information in the second pass when labels_last is defined.
@@ -722,14 +769,16 @@ function smc:compile_passes(expr)
 
 
    -- The start function is executed at compile time.
-   local start = self.funs.start
-   local prim = {}
-   function prim.spawn(fun, arg)
-      self:w("// spawn: ", fun.name, " ", arg or "", "\n")
-   end
-   if start then
-      scheme.new({self.funs, prim}):eval(start.body)
-   end
+   -- FIXME: It's important to be really careful with partial evaluation hacks.
+   -- Maybe put this back later, but for now this is done differently.
+   -- local start = self.funs.start
+   -- local prim = {}
+   -- function prim.spawn(fun, arg)
+   --    self:w("// spawn: ", fun.name, " ", arg or "", "\n")
+   -- end
+   -- if start then
+   --    scheme.new({self.funs, prim}):eval(start.body)
+   -- end
 
 
 end

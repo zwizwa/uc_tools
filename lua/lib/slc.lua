@@ -1,30 +1,18 @@
 -- Limited Scheme to Lua compiler (no tail calls, continuations)
-
--- Older notes:
 --
--- Is this worth it?
+-- Notes:
 --
--- Yes.  It might be useful to plug this into the interpreter,
--- essentially for the lambda forms.  However, it will probably have
--- some limitations, e.g. tail calls will be difficult to make work
--- properly without some kind of outer interpreter loop.
+-- . Straightforward compilation. No tail calls, no continuations.
 --
--- So this is just a doodle.
+-- . Extending this to higher order syntax (HOAS) was straightforward
+--   to do by adding conditionals to emit extra wrapper functions.
 --
--- The tail call optimization could actually do the same as the
--- interpreter, replacing expressions with thunks?
+-- . This C code printer uses a different convention than smc.lua: the
+--   next expression in a let* or begin list can be compiled at point,
+--   i.e. the caller of :compile will perform the indentation.
 --
--- Other problem is nesting let: there are some optimizations
--- possible, but it might be simplest to compile all blocks in the
--- same way (declare var + assign inside block), and add an explicit
--- return at the end.
---
--- This printer uses a different convention than smc.lua: the next
--- expression in a let* or begin list can be compiled at point,
--- i.e. the caller of :compile will perform the indentation.
---
--- HOAS wrapper was added.  Seemed simpler to add some conditionals
--- here and there.
+-- . As long as this doesn't handle infinite loops or very large data
+--   structures, the lack of tail call optimization is probably ok.
 
 local se   = require('lib.se')
 local comp = require('lib.comp')
@@ -212,7 +200,7 @@ form['if'] = function(self, expr)
                   self:inc('indent')
                   self:compile_function_body(e)
                end)
-            self:w(self:tab(),"end")
+            self:w("end")
          end
          self:w(maybe_assign(self.var))
          self:w(self.config.hoas,':ifte(',condition,', \n');

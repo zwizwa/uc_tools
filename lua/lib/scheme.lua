@@ -11,7 +11,7 @@ local function ifte(c,t,f)
    if c then return t else return f end
 end
 local function log(str)
-   -- io.stderr:write(str)
+   io.stderr:write(str)
 end
 
 
@@ -23,6 +23,12 @@ local function ref(var_name, env)
          return v.val
       end
    end
+   log('current bindings:\n')
+   for v in se.elements(env) do
+      log(' ')
+      log(v.var)
+   end
+   log('\n')
    error('undefined var ' .. var_name)
 end
 local function push(var, val, env)
