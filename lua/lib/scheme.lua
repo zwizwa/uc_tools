@@ -177,6 +177,7 @@ function scheme:is_value(s)
       return true
    end
 
+   -- Expression
    return false
 end
 
