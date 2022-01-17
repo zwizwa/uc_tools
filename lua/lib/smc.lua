@@ -68,14 +68,8 @@ local comp   = require('lib.comp')
 
 
 -- Tools
-local prompt = require('prompt')
-local function log(str)
-   io.stderr:write(str)
-end
-local function log_desc(thing)
-   log(prompt.describe(thing))
-   log("\n")
-end
+require('lib.log')
+
 local l = se.list
 local function is_form(expr, form)
    return type(expr) == 'table' and expr[1] == form
@@ -316,6 +310,55 @@ function smc:compile_letstar(bindings, sequence)
 end
 
 
+local function for_begin(begin_expr, def, other)
+   local _begin, exprs = se.unpack(begin_expr, {n = 1, tail = true})
+   assert(_begin == 'begin' or _begin == 'module-begin')
+   for expr in se.elements(exprs) do
+      -- FIXME: This only supports (define (name . args) ...)
+      -- Maybe generalize to proper Scheme later?
+      if ('define' == se.car(expr)) then
+         local define, fun_spec, body_exprs =
+            se.unpack(expr, {n = 2, tail = true})
+         local body_expr = {'begin', body_exprs}
+         assert(define == 'define')
+         local fname, args = se.unpack(fun_spec, {n = 1, tail = true})
+         assert(body_expr)
+         def(fname, args, body_expr)
+      else
+         if other then
+            other(expr)
+         end
+      end
+   end
+end
+
+local function collect_defs(self, tab, begin_expr)
+   for_begin(
+      begin_expr,
+      function(fname, args, body_expr)
+         assert(nil == tab[fname])
+         assert(type(fname == 'string'))
+         assert(body_expr)
+         -- Keep track of storage needed for function calls
+         -- FIXME: Add a separate pass for this, then remove 'self' arg.
+         self:track_max('args_size_def', se.length(args))
+         -- Keep track of syntax for later inlining.  This is the same
+         -- representation as scheme.lua closures.
+         tab[fname] = {
+            class = 'closure',
+            name = fname,
+            args = se.list_to_array(args),
+            body = body_expr,
+            env = se.empty,
+         }
+   end)
+end
+
+
+local function is_closure(thing)
+   return thing and type(thing) == 'table' and thing.class == 'closure'
+end
+
 -- The module form compiles to a C function.  Functions with no
 -- arguments compile to goto lables inside such a function.
 
@@ -325,21 +368,8 @@ form['module-begin'] = function(self, expr)
    local _, define_exprs = se.unpack(expr, {n = 1, tail = true})
    local modname = "testmod" -- FIXME
 
-   -- 'define' is only allowed inside a 'module-begin' form.
-   -- FIXME: Later that should probably be relaxed a bit.
-   local function for_toplevel_forms(f)
-      for define_expr in se.elements(define_exprs) do
-         local define, fun_spec, body_exprs =
-            se.unpack(define_expr, {n = 2, tail = true})
-         local body_expr = {'begin', body_exprs}
-         assert(define == 'define')
-         local fname, args = se.unpack(fun_spec, {n = 1, tail = true})
-         assert(body_expr)
-         f(fname, args, body_expr)
-      end
-   end
 
-   -- we iterate twice over the definitions.  first iteration builds
+   -- We iterate twice over the definitions.  first iteration builds
    -- the name to syntax map to allow for back-references and function
    -- inlining and to collect information necessary for allocation.
    -- also just collect the data expressions.
@@ -347,34 +377,17 @@ form['module-begin'] = function(self, expr)
    -- The toplevel bindings are unique, so collect them in a table.
    self.funs = {}
 
-   for_toplevel_forms(
-      -- function definition
-      function(fname, args, body_expr)
-         assert(nil == self.funs[fname])
-         assert(type(fname == 'string'))
-         assert(body_expr)
-         -- Keep track of storage needed for function calls
-         self:track_max('args_size_def', se.length(args))
-         -- Keep track of syntax for later inlining.  This is the same
-         -- representation as scheme.lua closures.
-         self.funs[fname] = {
-            class = 'closure',
-            name = fname,
-            args = args,
-            body = body_expr,
-            env = se.empty,
-         }
-      end)
+   collect_defs(self, self.funs, expr)
 
-   -- emit main C function
+   -- Emit main C function
    if self.mod_prefix then modname = { self.mod_prefix, modname } end
    local args = { { "struct ", c.state_struct, " *", c.state_name } }
    self:w("T ", modname, "(",comp.clist(args),") {\n");
 
-   -- allocate 'registers' usef for function/coroutine argument
+   -- Allocate 'registers' usef for function/coroutine argument
    -- passing.
    --
-   -- in the second compiler pass, the max number of arguments
+   -- In the second compiler pass, the max number of arguments
    -- actually used in function application is known.  in first pass
    -- it is not, and we bound it by max arguments of definitions.
    local nxt = {c.state_name, "->next"};
@@ -383,46 +396,125 @@ form['module-begin'] = function(self, expr)
       self:w(self:tab(), "T ", self:arg(i-1), ";\n")
    end
 
-   -- emit code to jump to the current resume point
+   -- Emit code to jump to the current resume point
    self:w(self:tab(), "if(", nxt, ") goto *", nxt, ";\n")
 
-   -- FIXME: To use the new approach, do not compile the functions
-   -- directly.  Instead, run 'start' and compile the closures it
-   -- produces.
+   -- The C cursor is now at a point where we can start emitting
+   -- functions implemented as goto labels followed by statements.
 
-   -- compile all functions
-   for_toplevel_forms(
-      function(fname, args, body_expr)
-         -- Only emit body if it is actually used.  We only have usage
-         -- information in the second pass when labels_last is defined.
-         if (not self.labels_last) or self.labels_last[fname] then
-            -- No closure support: make sure lex env is empty.
-            assert(0 == se.length(self.env))
-            self:w(fname, ":", se_comment(args), "\n");
-            self:save_context(
-               {'var','tail_position'},
-               function()
-                  self.tail_position = true
-                  self.var = nil
-                  local nb_args = se.length(args)
-                  if nb_args == 0 then
-                     self:compile(body_expr)
-                  else
-                     local bindings = se.empty
-                     for i,var in ipairs(se.list_to_array(args)) do
-                        bindings = {se.list(var, self:arg(i-1)), bindings}
-                     end
-                     self:compile_letstar(se.reverse(bindings), se.list(body_expr))
-                  end
-               end)
-         else
-            self:w("/* ", fname, " inline only */\n")
-         end
-      end)
+   -- We don't do this directly from source code.  Instead we start
+   -- interpreting a Scheme function 'start', that will call 'spawn!'
+   -- to start tasks.
+
+   -- The border between evaluation and compilation is that function
+   -- 'spawn!' which is passed a closure.
+   local prim = {}
+   prim['spawn!'] = function(closure)
+      assert(is_closure(closure))
+      self:w("// spawn1: ", se.iolist(closure.body), "\n")
+
+      -- Conceptually, spawn! evaluates the closure in a new task
+      -- context.  This is implemented by generating the code for the
+      -- task at current C cursor.
+
+      -- But there is a complication: the expression might be wrapped
+      -- in a number of lambdas and apps.  In order to find the proper
+      -- point, we single-step an interpreter.
+      local s = {env = closure.env, expr = closure.body}
+      local scm = scheme.new({})
+      local function step() scm:eval_step(s) end
+      -- Now we don't have a good stop criterion yet.  For now just
+      -- stop when the first expression is a definition.
+      step(s)
+      step(s)
+      self:w("// spawn2: ", se.iolist(s.expr), "\n")
+
+      -- Collect the definitions
+      local defs = {}
+      collect_defs(self, defs, s.expr)
+      log_desc({defs = defs})
+
+      -- And compile
+      for_begin(
+         s.expr,
+         function(n,a,b)
+            -- All definitions are compiled
+            self:w("// fun ", n, "\n")
+            self:compile_fundef(n,a,b)
+         end,
+         function(other)
+            -- The other expressions are currently limited: there can
+            -- be only one, and it is the entry point.
+            self:w("// other: ", se.iolist(other), "\n")
+            self:compile_fundef('entry',se.empty,other)
+         end)
+
+
+      -- log_desc({compile_closure = closure})
+      -- log_desc({spawn_closure_env = closure.env})
+
+      -- each closure is treated as an entry into the compiled space.
+      -- the 'begin' form it contains will contain definitions.
+
+      --local begin, exprs = se.unpack(closure.body, { n = 1, tail = true })
+      --assert(begin == 'begin')
+
+
+      --local defs = {}
+      --collect_defs(self, defs, exprs)
+      -- log_se(exprs)
+      -- log_desc({defs = defs})
+   end
+
+   local task_nb = 0
+   prim['make-task'] = function(fun)
+      self:w("// make-task\n")
+      local nb = task_nb
+      task_nb = task_nb + 1
+      return nb
+   end
+
+   local start = self.funs.start
+   assert(start)
+   scheme.new({self.funs, prim}):eval(start.body)
+
+
+   -- FIXME: OLD
+   -- for_begin_forms(define_exprs, function(n,a,b) self:compile_fundef(n,a,b) end)
 
    self:w("}\n");
 
 end
+
+
+function smc:compile_fundef(fname, args, body_expr)
+   -- Only emit body if it is actually used.  We only have usage
+   -- information in the second pass when labels_last is defined.
+   if (not self.labels_last) or self.labels_last[fname] then
+      -- No closure support: make sure lex env is empty.
+      assert(0 == se.length(self.env))
+      self:w(fname, ":", se_comment(args), "\n");
+      self:save_context(
+         {'var','tail_position'},
+         function()
+            self.tail_position = true
+            self.var = nil
+            local nb_args = se.length(args)
+            if nb_args == 0 then
+               self:compile(body_expr)
+            else
+               local bindings = se.empty
+               for i,var in ipairs(se.list_to_array(args)) do
+                  bindings = {se.list(var, self:arg(i-1)), bindings}
+               end
+               self:compile_letstar(se.reverse(bindings), se.list(body_expr))
+            end
+      end)
+   else
+      self:w("/* ", fname, " inline only */\n")
+   end
+end
+
 
 -- Ignore Racket forms.
 form['require'] = function(self, expr) end
@@ -550,7 +642,10 @@ end
 
 -- Type checking shorthand
 local function check(typ,val)
-   assert(type(val) == typ)
+   if type(val) == typ then return val end
+   log_w(se.iolist(val))
+   log("\n")
+   error('not type ' .. typ)
    return val
 end
 
@@ -610,7 +705,7 @@ function smc:apply(expr)
    -- Compile composite function call.
    if (self.tail_position) then
       local nb_args = #app_form - 1
-      local fun_args = se.list_to_array(fun_def.args)
+      local fun_args = fun_def.args
       assert(nb_args == #fun_args)
       self:track_max('args_size_app', nb_args)
       for i,arg in ipairs(fun_args) do
@@ -635,6 +730,7 @@ function smc:apply(expr)
             local callsite_env = self.env
             self.env = se.empty
             local dbg = {fun_name}
+            -- log_desc(fun_def)
             for i=1, #app_form-1 do
                local var_name = check('string',app_form[i+1])
                local arg_name = check('string',fun_def.args[i])
@@ -743,36 +839,8 @@ function smc:compile_passes(expr)
 
    self:w(c_code)
 
-   -- We only run this in the second pass.  The first pass' C code
-   -- output is currently only of use for debugging.
-   self:start()
 end
 
-function smc:start()
-
-   -- Semantics: the program is suspended after execution of 'start',
-   -- and before any external events arrive.  The generated C code
-   -- implements the behavior of the program, implementing only the
-   -- effect of 'start'.  This way instantiation code can be used to
-   -- perform some specialization.
-   --
-   --
-   local start = self.funs.start
-   local prim = {}
-   prim['spawn!'] = function(task, fun, arg)
-      self:w("// spawn: ", task, " ", fun.name or "<lambda>", " ", arg or "", "\n")
-   end
-   local task_nb = 0
-   prim['make-task'] = function(fun)
-      -- self:w("// make-task\n")
-      local nb = task_nb
-      task_nb = task_nb + 1
-      return nb
-   end
-   if start then
-      scheme.new({self.funs, prim}):eval(start.body)
-   end
-end
 
 -- Reset compiler state before executing a new pass.
 function smc:reset()

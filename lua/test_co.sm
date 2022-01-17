@@ -1,11 +1,16 @@
 #lang s-expr "sm.rkt" ;; -*- scheme -*-
 
 ;; Test simpler co-routine abstraction.
-(define (fun1)
-  (fun2 (co 0 123)))
-(define (fun2 x)
-  (yield)
+(define (prog1 self other)
+  (define (fun1)
+    (co other 123)
+    (fun1))
   (fun1))
+
+          
+;(define (fun2 x)
+;  (yield)
+;  (fun1))
 
 ;; I'd like to use the following story to act as a design guide to
 ;; give this the proper semantics:
@@ -30,5 +35,5 @@
 (define (start)
   (let* ((task1 (make-task))
          (task2 (make-task)))
-    (spawn! task1 fun1 task2)
-    (spawn! task2 fun1 task1)))
+    (spawn! (lambda () (prog1 task1 task2)))
+    ))

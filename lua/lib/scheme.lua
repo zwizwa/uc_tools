@@ -12,8 +12,13 @@ local function ifte(c,t,f)
    if c then return t else return f end
 end
 local function log(str)
-   -- io.stderr:write(str)
+   io.stderr:write(str)
 end
+
+require('lib.log')
+--local log = log
+--local log_desc = log_desc
+--local log_hex = log_hex
 
 
 local se = require('lib.se')
@@ -54,6 +59,7 @@ form['lambda'] = function(self, s)
       body  = {'begin', body},
       name  = nil,
    }
+   -- log_desc({lambda = s.expr})
 end
 
 form['if'] = function(self, s)
@@ -119,81 +125,103 @@ function scheme:eval(expr, env)
    })
 end
 
+function scheme:eval_app(s)
+   -- Application
+   local fun_expr, args_expr = se.unpack(s.expr, { n = 1, tail = true })
+   local fun = self:eval(fun_expr, s.env)
+   local arg_val = {}
+   for arg_expr in se.elements(args_expr) do
+      table.insert(arg_val, self:eval(arg_expr, s.env))
+   end
+   -- log('app: ' .. type(fun) .. '\n')
+   if type(fun) == 'function' then
+      -- Primitive
+      s.expr = fun(unpack(arg_val))
+      if s.expr == nil then s.expr = '#<void>' end
+   else
+      -- Closure
+      assert(type(fun) == 'table')
+      local new_env = fun.env
+      for i = 1,#fun.args do
+         local var = fun.args[i]
+         if var ~= '_' then
+            new_env = push(var, arg_val[i], new_env)
+         end
+      end
+      s.env = new_env
+      s.expr = fun.body
+   end
+end
+
+
+function scheme:is_value(s)
+   -- Atoms
+   if type(s.expr) ~= 'table' then
+      if type(s.expr) == 'string' then
+         if 35 == string.byte(s.expr,1) then
+            -- Strings starting with '#' are primitives.
+            -- e.g. '#<void>'
+            return true
+         else
+            -- Variable reference
+            return false
+         end
+      else
+         -- Constant
+         return true
+      end
+   end
+
+   -- Abstract objects
+   if s.expr.class then
+      return true
+   end
+
+   return false
+end
+
+
+
+
 -- Proper tail call handling means that eval cannot be called
 -- recursively in tail position.  Lua 5.1 doesn't have goto, so use a
 -- loop that updates the current interpreter state = current
 -- expression + current environment.
 function scheme:eval_loop(s)
+   while not self:is_value(s) do
+      self:eval_step(s)
+   end
+   return s.expr
+end
 
-   while true do
+function scheme:eval_step(s)
+   assert(s.env)
+   assert(s.expr)
 
-      assert(s.env)
-      assert(s.expr)
-
-      -- Atoms
-      if type(s.expr) ~= 'table' then
-         if type(s.expr) == 'string' then
-            if 35 == string.byte(s.expr,1) then
-               -- Strings starting with '#' are primitives.
-               -- e.g. '#<void>'
-               return s.expr
-            else
-               -- Look up variable in environment.
-               return ref(s.expr, s.env)
-            end
-         else
-            -- Constant
-            return s.expr
-         end
-      end
-
-      -- Abstract objects
-      if s.expr.class then
-         return s.expr
-      end
+   -- If we get past is_value(), all strings are variable
+   -- references.
+   if type(s.expr) == 'string' then
+      -- Look up variable in environment.
+      s.expr = ref(s.expr, s.env)
+   else
 
       -- Expressions
       local form, tail = unpack(s.expr)
       assert(form)
 
-      log('form = ' .. form .. '\n')
-
+      -- log('form = ' .. form .. '\n')
       local form_fn = self.form[form]
-
       if form_fn then
          -- Special form or macro.  These are in a separate table to
          -- make interpreter extension straightforward.
          form_fn(self, s)
-
       else
-         -- Application
-         local fun_expr, args_expr = se.unpack(s.expr, { n = 1, tail = true })
-         local fun = self:eval(fun_expr, s.env)
-         local arg_val = {}
-         for arg_expr in se.elements(args_expr) do
-            table.insert(arg_val, self:eval(arg_expr, s.env))
-         end
-         log('app: ' .. type(fun) .. '\n')
-         if type(fun) == 'function' then
-            -- Primitive
-            s.expr = fun(unpack(arg_val))
-            if s.expr == nil then s.expr = '#<void>' end
-         else
-            -- Closure
-            assert(type(fun) == 'table')
-            local new_env = fun.env
-            for i = 1,#fun.args do
-               local var = fun.args[i]
-               if var ~= '_' then
-                  new_env = push(var, arg_val[i], new_env)
-               end
-            end
-            s.env = new_env
-            s.expr = fun.body
-         end
+         -- Primitive or form application.
+         self:eval_app(s)
       end
    end
 end
+
 
 function scheme:define(tab)
    for k,v in pairs(tab) do
