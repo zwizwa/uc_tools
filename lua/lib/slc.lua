@@ -14,6 +14,11 @@
 -- . As long as this doesn't handle infinite loops or very large data
 --   structures, the lack of tail call optimization is probably ok.
 
+-- As for context: This is probably a distraction.  For slc.lua I'm
+-- sticking with scheme.lua, a more direct Scheme interpreter that can
+-- do tail calls.  Also, HOAS is not what I am looking for at this
+-- time, as macros are probably a better bet for exploratory work.
+
 local se   = require('lib.se')
 local comp = require('lib.comp')
 

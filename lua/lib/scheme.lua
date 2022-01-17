@@ -1,11 +1,12 @@
--- Minimal Scheme interpreter.  This is intended just for evaluating
--- test code.  Speed is not a concern.
+-- Minimal Scheme interpreter.  Used in smc.lua for partial
+-- evaluation.  Speed is not a concern.
 --
 -- Primitives are recognized by type 'function', bound in the initial
 -- environment by the user.
 --
--- Continuations are not supported: eval uses the Lua call stack.
--- Tail calls are properly optimized to support mutual recursion.
+-- Continuations are not supported: eval uses the Lua call stack to
+-- recurse.  However tail calls are properly optimized to support
+-- (mutual) tail recursion.
 
 local function ifte(c,t,f)
    if c then return t else return f end
@@ -50,7 +51,8 @@ form['lambda'] = function(self, s)
       class = 'closure',
       env   = s.env,
       args  = se.list_to_array(args),
-      body  = {'begin', body}
+      body  = {'begin', body},
+      name  = nil,
    }
 end
 

@@ -355,10 +355,14 @@ form['module-begin'] = function(self, expr)
          assert(body_expr)
          -- Keep track of storage needed for function calls
          self:track_max('args_size_def', se.length(args))
-         -- Keep track of syntax for later inlining.
+         -- Keep track of syntax for later inlining.  This is the same
+         -- representation as scheme.lua closures.
          self.funs[fname] = {
-            class = 'function', name = fname,
-            args = args, body = body_expr,
+            class = 'closure',
+            name = fname,
+            args = args,
+            body = body_expr,
+            env = se.empty,
          }
       end)
 
@@ -381,6 +385,10 @@ form['module-begin'] = function(self, expr)
 
    -- emit code to jump to the current resume point
    self:w(self:tab(), "if(", nxt, ") goto *", nxt, ";\n")
+
+   -- FIXME: To use the new approach, do not compile the functions
+   -- directly.  Instead, run 'start' and compile the closures it
+   -- produces.
 
    -- compile all functions
    for_toplevel_forms(
@@ -752,7 +760,7 @@ function smc:start()
    local start = self.funs.start
    local prim = {}
    prim['spawn!'] = function(task, fun, arg)
-      self:w("// spawn: ", task, " ", fun.name, " ", arg or "", "\n")
+      self:w("// spawn: ", task, " ", fun.name or "<lambda>", " ", arg or "", "\n")
    end
    local task_nb = 0
    prim['make-task'] = function(fun)
