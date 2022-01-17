@@ -434,19 +434,35 @@ form['module-begin'] = function(self, expr)
       collect_defs(self, defs, s.expr)
       log_desc({defs = defs})
 
-      -- And compile
-      for_begin(
-         s.expr,
-         function(n,a,b)
-            -- All definitions are compiled
-            self:w("// fun ", n, "\n")
-            self:compile_fundef(n,a,b)
-         end,
-         function(other)
-            -- The other expressions are currently limited: there can
-            -- be only one, and it is the entry point.
-            self:w("// other: ", se.iolist(other), "\n")
-            self:compile_fundef('entry',se.empty,other)
+      -- And compile.
+      -- The lexical context consists of:
+      -- 1. Top level defines (can still be used as inline functions)
+      -- 2. Defines in the program's body (compiled as goto labels)
+      -- So we need to build it from scratch
+      local ctx = {}
+      for k,v in pairs(self.funs) do ctx[k]=v end
+      for k,v in pairs(defs)      do ctx[k]=v end
+      self:parameterize(
+         { funs = ctx },
+         function()
+            local entry = {}
+            for_begin(
+               s.expr,
+               function(n,a,b)
+                  -- All definitions are compiled
+                  self:w("// fun ", n, "\n")
+                  self:compile_fundef(n,a,b)
+               end,
+               function(other)
+                  -- This handles (define ...) ... <init-expr> ...
+                  -- But does re-ordering so will accept incorrect
+                  -- interleaving of definitions and statements.
+                  self:w("// other: ", se.iolist(other), "\n")
+                  table.insert(entry, other)
+            end)
+            -- Collect the other forms as entry code.
+            -- FIXME: generate the label name?
+            self:compile_fundef('entry',se.empty,{'begin',se.array_to_list(entry)})
          end)
 
 
@@ -803,7 +819,7 @@ function smc:compile_passes(expr)
    -- information gathered about each storage cell, information about
    -- the goto labels, and nb vars necessary for argument passing.
    self.cells_last         = self.cells
-   self.labels_last        = self.labels
+   -- self.labels_last        = self.labels
    self.args_size_app_last = self.args_size_app
 
    local c_code = {}
