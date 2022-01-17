@@ -410,7 +410,9 @@ form['module-begin'] = function(self, expr)
    -- actually used in function application is known.  in first pass
    -- it is not, and we bound it by max arguments of definitions.
    local nxt = {c.state_name, "->next"};
-   local max_nb_args = self.args_size_app_last or self.args_size_def
+   -- local max_nb_args = self.args_size_app_last or self.args_size_def
+   -- FIXME
+   local max_nb_args = 3
    for i=1,max_nb_args do
       self:w(self:tab(), "T ", self:arg(i-1), ";\n")
    end
@@ -428,9 +430,11 @@ form['module-begin'] = function(self, expr)
    -- The border between evaluation and compilation is that function
    -- 'spawn!' which is passed a closure.
    local prim = {}
+   local closure_nb = 0
    prim['spawn!'] = function(closure)
       assert(is_closure(closure))
-      self:w("// spawn1: ", se.iolist(closure.body), "\n")
+      self:w("// spawn eval:\n")
+      self:w("// ", se.iolist(closure.body), "\n")
 
       -- Conceptually, spawn! evaluates the closure in a new task
       -- context.  This is implemented by generating the code for the
@@ -445,7 +449,7 @@ form['module-begin'] = function(self, expr)
       local function step() scm:eval_step(s) end
       repeat
          step(s)
-         self:w("// spawn2: ", se.iolist(s.expr), "\n")
+         self:w("// ", se.iolist(s.expr), "\n")
       until (is_task_definition(s.expr))
       local defs = {}
       collect_defs(self, defs, s.expr)
@@ -461,22 +465,25 @@ form['module-begin'] = function(self, expr)
       for k,v in pairs(self.funs) do funs[k]=v end
       for k,v in pairs(defs)      do funs[k]=v end
       self:parameterize(
-         { funs = funs },
+         { funs = funs,
+           label_prefix = {"c",closure_nb,"_"} },
          function()
             for_begin(
                s.expr,
                function(n,a,b)
                   -- All definitions are compiled
-                  self:w("// fun ", n, "\n")
+                  -- self:w("// fun ", n, "\n")
                   self:compile_fundef(n,a,b)
                end,
                function(begin_expr)
                   -- The tail with definitions stripped is compiled as
                   -- entry point
-                  self:w("// entry: ", se.iolist(begin_expr), "\n")
+                  -- self:w("// entry: ", se.iolist(begin_expr), "\n")
                   self:compile_fundef('entry',se.empty,begin_expr)
                end)
          end)
+
+      closure_nb = closure_nb + 1
    end
 
    local task_nb = 0
@@ -502,7 +509,7 @@ function smc:compile_fundef(fname, args, body_expr)
    if (not self.labels_last) or self.labels_last[fname] then
       -- No closure support: make sure lex env is empty.
       assert(0 == se.length(self.env))
-      self:w(fname, ":", se_comment(args), "\n");
+      self:w(self:mangle_label(fname), ":", se_comment(args), "\n");
       self:save_context(
          {'var','tail_position'},
          function()
@@ -668,6 +675,13 @@ function smc:arg(arg_nb)
    return '_' .. arg_nb
 end
 
+function smc:mangle_label(name)
+   if self.label_prefix then
+      return {self.label_prefix, name}
+   else
+      return name
+   end
+end
 
 -- Apply function to arguments, converting all arguments to A-Normal
 -- form if necessary.
@@ -721,7 +735,7 @@ function smc:apply(expr)
          self:w(self:tab(), self:arg(i-1), " = ", self:atom_to_c_expr(app_form[i+1]), ";\n")
          --self:w(self:tab(),"/*assign ", i-1, " ", arg, "*/\n")
       end
-      local c_expr = {"goto ",app_form[1]}
+      local c_expr = {"goto ", self:mangle_label(app_form[1])}
       self:w(self:binding(c_expr))
       self:mark_bound(self.var)
       self.labels[fun_name] = true

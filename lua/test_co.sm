@@ -36,4 +36,5 @@
   (let* ((task1 (make-task))
          (task2 (make-task)))
     (spawn! (lambda () (prog1 task1 task2)))
+    (spawn! (lambda () (prog1 task2 task1)))
     ))
