@@ -310,10 +310,13 @@ function smc:compile_letstar(bindings, sequence)
 end
 
 
+-- This only supports a subset of begin forms, where the first couple
+-- are defines, and the rest is a sequence.
+
 local function for_begin(begin_expr, def, other)
    local _begin, exprs = se.unpack(begin_expr, {n = 1, tail = true})
    assert(_begin == 'begin' or _begin == 'module-begin')
-   for expr in se.elements(exprs) do
+   for expr, rest in se.elements(exprs) do
       -- FIXME: This only supports (define (name . args) ...)
       -- Maybe generalize to proper Scheme later?
       if ('define' == se.car(expr)) then
@@ -325,9 +328,17 @@ local function for_begin(begin_expr, def, other)
          assert(body_expr)
          def(fname, args, body_expr)
       else
-         if other then
-            other(expr)
+         -- The first non-definition gets the remainder of the
+         -- expression.  Check that this doesn't contain more defines.
+         local seq = {expr, rest}
+         for expr in se.elements(seq) do
+            assert(not (type(expr) == 'table' and 'define' == se.car(expr)))
          end
+         if other then
+            other({'begin',seq})
+         end
+         -- Abort the outer iteration.
+         return
       end
    end
 end
@@ -445,7 +456,6 @@ form['module-begin'] = function(self, expr)
       self:parameterize(
          { funs = ctx },
          function()
-            local entry = {}
             for_begin(
                s.expr,
                function(n,a,b)
@@ -453,16 +463,12 @@ form['module-begin'] = function(self, expr)
                   self:w("// fun ", n, "\n")
                   self:compile_fundef(n,a,b)
                end,
-               function(other)
-                  -- This handles (define ...) ... <init-expr> ...
-                  -- But does re-ordering so will accept incorrect
-                  -- interleaving of definitions and statements.
-                  self:w("// other: ", se.iolist(other), "\n")
-                  table.insert(entry, other)
-            end)
-            -- Collect the other forms as entry code.
-            -- FIXME: generate the label name?
-            self:compile_fundef('entry',se.empty,{'begin',se.array_to_list(entry)})
+               function(begin_expr)
+                  -- The tail with definitions stripped is compiled as
+                  -- entry point
+                  self:w("// entry: ", se.iolist(begin_expr), "\n")
+                  self:compile_fundef('entry',se.empty,begin_expr)
+               end)
          end)
 
 
