@@ -343,6 +343,14 @@ local function for_begin(begin_expr, def, other)
    end
 end
 
+-- FIXME: Bad hack... I can't think of a general way to do this
+-- without annotation.  Works for now.
+local function is_task_definition(begin_expr)
+   local nb = 0
+   local ok, rv = pcall(for_begin, begin_expr, function() nb = nb + 1 end)
+   return ok and nb > 0
+end
+
 local function collect_defs(self, tab, begin_expr)
    for_begin(
       begin_expr,
@@ -430,31 +438,30 @@ form['module-begin'] = function(self, expr)
 
       -- But there is a complication: the expression might be wrapped
       -- in a number of lambdas and apps.  In order to find the proper
-      -- point, we single-step an interpreter.
+      -- point, we single-step an interpreter until we reach the
+      -- expression that contains the task definition.
       local s = {env = closure.env, expr = closure.body}
       local scm = scheme.new({})
       local function step() scm:eval_step(s) end
-      -- Now we don't have a good stop criterion yet.  For now just
-      -- stop when the first expression is a definition.
-      step(s)
-      step(s)
-      self:w("// spawn2: ", se.iolist(s.expr), "\n")
-
-      -- Collect the definitions
+      repeat
+         step(s)
+         self:w("// spawn2: ", se.iolist(s.expr), "\n")
+      until (is_task_definition(s.expr))
       local defs = {}
       collect_defs(self, defs, s.expr)
-      log_desc({defs = defs})
+
+      -- log_desc({defs = defs})
 
       -- And compile.
       -- The lexical context consists of:
       -- 1. Top level defines (can still be used as inline functions)
       -- 2. Defines in the program's body (compiled as goto labels)
       -- So we need to build it from scratch
-      local ctx = {}
-      for k,v in pairs(self.funs) do ctx[k]=v end
-      for k,v in pairs(defs)      do ctx[k]=v end
+      local funs = {}
+      for k,v in pairs(self.funs) do funs[k]=v end
+      for k,v in pairs(defs)      do funs[k]=v end
       self:parameterize(
-         { funs = ctx },
+         { funs = funs },
          function()
             for_begin(
                s.expr,
@@ -470,22 +477,6 @@ form['module-begin'] = function(self, expr)
                   self:compile_fundef('entry',se.empty,begin_expr)
                end)
          end)
-
-
-      -- log_desc({compile_closure = closure})
-      -- log_desc({spawn_closure_env = closure.env})
-
-      -- each closure is treated as an entry into the compiled space.
-      -- the 'begin' form it contains will contain definitions.
-
-      --local begin, exprs = se.unpack(closure.body, { n = 1, tail = true })
-      --assert(begin == 'begin')
-
-
-      --local defs = {}
-      --collect_defs(self, defs, exprs)
-      -- log_se(exprs)
-      -- log_desc({defs = defs})
    end
 
    local task_nb = 0
@@ -499,10 +490,6 @@ form['module-begin'] = function(self, expr)
    local start = self.funs.start
    assert(start)
    scheme.new({self.funs, prim}):eval(start.body)
-
-
-   -- FIXME: OLD
-   -- for_begin_forms(define_exprs, function(n,a,b) self:compile_fundef(n,a,b) end)
 
    self:w("}\n");
 
