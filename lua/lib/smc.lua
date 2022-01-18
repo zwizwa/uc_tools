@@ -819,6 +819,21 @@ function smc:compile(expr)
    end
 end
 
+function smc:compile_pass(expr)
+   local c_code = {}
+   self:save_context(
+      {'write','mod_prefix'},
+      function()
+         self.write = function(_, str)
+            table.insert(c_code, str)
+         end
+         self:reset()
+         self:compile(expr)
+         -- Debug stats
+         self:w("// stack_size: ",self.stack_size,"\n")
+      end)
+   return c_code
+end
 
 -- Don't bother with building intermediate representations.  The two
 -- passes emit C code directly.  The the shape of the C code is almost
@@ -827,28 +842,9 @@ end
 -- information gathered in the first pass to allocate variables in the
 -- state struct, or on the C stack, and to omit unused function
 -- definitions.
-function smc:compile_passes(expr)
-   self:save_context(
-      {'write','mod_prefix'},
-      function()
-         -- Override to suppress printing of first pass C output, which is
-         -- only neccessary for debugging variable allocation.
-         -- self.config.first_pass_prefix = "pass1_"  -- FIXME
-
-         if not self.config.first_pass_prefix then
-            self.write = function() end
-         else
-            self.mod_prefix = self.config.first_pass_prefix
-         end
-
-         self:reset()
-         self:w("\n// first pass\n")
-         -- FIXME: First pass does not generate valid C at this point.
-         self:w("#if 0\n")
-         self:compile(expr)
-         self:w("// stack_size: ",self.stack_size,"\n")
-         self:w("#endif\n")
-      end)
+function smc:compile_module(expr)
+   -- Firt pass
+   self:compile_pass(expr)
 
    -- Second pass uses some information from the previous pass: the
    -- information gathered about each storage cell, information about
@@ -928,7 +924,7 @@ function smc:compile_module_file(filename)
    local expr = {'module-begin',exprs}
    self:se_comment_i_n(expr)
    stream:close()
-   self:compile_passes(expr)
+   self:compile_module(expr)
 end
 
 
