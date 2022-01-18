@@ -881,7 +881,7 @@ end
 
 function smc:w_if0(c_code, comment)
    local c_n = {" // " , comment or "", "\n"}
-   self:w("#if 0", c_n, c_code, "#endif", c_n)
+   -- self:w("#if 0", c_n, c_code, "#endif", c_n)
 end
 
 -- FIXME: Not used
@@ -911,22 +911,53 @@ function smc:compile_module(mod_expr)
 
    local c_code = self:compile_2pass(mod_expr)
 
-   -- Generate the struct definition, then append the C code.
-   self:w("struct ", self.config.state_struct, " {\n")
-   if self.evt_size > 0 then
-      -- evt_size == 0 can be used as a proxy for there not being any
-      -- CSP calls.  FIXME: this is specific to csp.c so should
-      -- probably be moved.
-      self:w(self:tab(), "struct csp_task task; // ends in evt[]\n");
-      self:w(self:tab(), "struct csp_evt evt[", self.evt_size, "]; // nb events used\n");
-   end
-   self:w(self:tab(), "void *next;\n")
+   -- FIXME: Keep a single task struct with zero stack size, and fill
+   -- in stack size in state struct.
 
-   self:w(self:tab(), "T e[", self.stack_size[self.current_task], "];\n")
-   for v in pairs(self.free) do
-      self:w(self:tab(), "T ", v, ";\n")
+   local function task_name(i)
+      return {self.config.state_struct, "_task", i}
    end
-   self:w("};\n")
+
+   -- Generate task struct definitions
+   for i,size in ipairs(self.stack_size) do
+      self:w("struct ", task_name(i), " {\n")
+      self:w(self:tab(), "void *next;\n")
+      self:w(self:tab(), "T e[", self.stack_size[i], "];\n")
+      self:w("};\n")
+   end
+
+   for i,size in ipairs(self.stack_size) do
+      self:w("struct ", self.config.state_struct, " {\n")
+      for i,size in ipairs(self.stack_size) do
+         self:w(self:tab(), {"struct ", task_name(i), " ", "task", i, ";\n"})
+      end
+      -- Globals or task local?
+      for v in pairs(self.free) do
+         self:w(self:tab(), "T ", v, ";\n")
+      end
+      self:w("};\n")
+   end
+
+
+   -- Generate the struct definition, then append the C code.
+   -- self:w("struct ", self.config.state_struct, " {\n")
+
+   -- local task = 1 -- FIXME: One per task!
+   -- if self.evt_size[task] and self.evt_size[task] > 0 then
+   --    -- evt_size == 0 can be used as a proxy for there not being any
+   --    -- CSP calls.  FIXME: this is specific to csp.c so should
+   --    -- probably be moved.
+   --    self:w(self:tab(), "struct csp_task task; // ends in evt[]\n");
+   --    self:w(self:tab(), "struct csp_evt evt[", self.evt_size[task], "]; // nb events used\n");
+
+   --    self:w(self:tab(), "T e[", self.stack_size[self.current_task], "];\n")
+   --    for v in pairs(self.free) do
+   --       self:w(self:tab(), "T ", v, ";\n")
+   --    end
+   -- end
+
+   --self:w(self:tab(), "void *next;\n")
+   --self:w("};\n")
 
    self:w(c_code)
 
@@ -946,9 +977,8 @@ function smc:reset()
    self.funs = {}
    self.free = {}
    -- Sizes
-   self.current_task = 0
-   self.stack_size = {}
-   self.evt_size = 0
+   self.stack_size = {}   -- one per task
+   self.evt_size = {}     -- one per task
    self.args_size_app = 0
    self.args_size_def = 0
    -- Counters
