@@ -3,7 +3,9 @@
 ;; Test simpler co-routine abstraction.
 (define (prog1 chan)
   (define (fun1)
-    (co chan 123)
+    (co chan
+        (add (co chan 1)
+             (co chan 2)))
     (fun1))
   (fun1))
 

@@ -468,13 +468,39 @@ form['module-begin'] = function(self, expr)
       -- log_desc({defs = defs})
 
       -- And compile.
-      -- The lexical context consists of:
+      -- The global lexical context consists of:
       -- 1. Top level defines (can still be used as inline functions)
       -- 2. Defines in the program's body (compiled as goto labels)
       -- So we need to build it from scratch
+      --
+      -- Note that this is somewhat arbitrary to limit the program to
+      -- a single function that contains the recursive definitions.  I
+      -- currently do not see a way around that: we have to represent
+      -- things at some point!
       local funs = {}
       for k,v in pairs(self.funs) do funs[k]=v end
       for k,v in pairs(defs)      do funs[k]=v end
+
+
+      -- Two compiler passes are necessary to resolve the following issues:
+      -- . Per task:
+      --   . Stack depth
+      --   . Which cells can go on C stack
+      -- . Globally:
+      --   . Max number of registers used in function/coroutine calls
+      --   . Gensym
+
+      -- FIXME: The hardest one to translate is the cell information.
+      -- This used to be global, but no longer is.  I do want to keep
+      -- id numbers global.
+
+
+      -- FIXME: Two passes are compiled here to collect global
+      -- information.  It's a bit hard to refactor this.  Going to
+      -- have to give it a try and make it more explicit.
+
+
+      -- Note that
 
       -- FIXME: Put the two compiler passes here.  A lot of stats only
       -- apply to a single task: state stack depth + state/local alloc.
@@ -482,26 +508,40 @@ form['module-begin'] = function(self, expr)
       -- FIXME: Remove 'module-begin' form so there is no recursion
       -- possible?
 
-      self:parameterize(
-         { funs = funs,
-           label_prefix = {"c",closure_nb,"_"} },
+      self:parameterize({
+            funs = funs,
+            stack_size = 0,
+            label_prefix = {"c",task_nb,"_"}
+         },
          function()
-            for_begin(
-               s.expr,
-               function(n,a,b)
-                  -- All definitions are compiled
-                  -- self:w("// fun ", n, "\n")
-                  self:compile_fundef(n,a,b,s.env)
-               end,
-               function(begin_expr)
-                  -- The tail with definitions stripped is compiled as
-                  -- entry point
-                  -- self:w("// entry: ", se.iolist(begin_expr), "\n")
-                  self:compile_fundef('entry',se.empty,begin_expr,s.env)
-               end)
+            local function compile_pass()
+               return self:collect_output(
+                  function()
+                     for_begin(
+                        s.expr,
+                        function(n,a,b)
+                           -- All definitions are compiled
+                           -- self:w("// fun ", n, "\n")
+                           self:compile_fundef(n,a,b,s.env)
+                        end,
+                        function(begin_expr)
+                           -- The tail with definitions stripped is compiled as
+                           -- entry point
+                           -- self:w("// entry: ", se.iolist(begin_expr), "\n")
+                           self:compile_fundef('entry',se.empty,begin_expr,s.env)
+                        end)
+                     self:w("// stack_size: ",self.stack_size,"\n")
+                  end)
+            end
+            local c_code_1 = compile_pass()
+            -- self:save_last()
+            local c_code_2 = compile_pass()
+
+            self:w_if0(c_code_1, {"pass 1 task ", task_nb})
+            self:w(c_code_2)
          end)
 
-      closure_nb = closure_nb + 1
+      task_nb = task_nb + 1
    end
 
    local task_nb = 0
@@ -819,20 +859,53 @@ function smc:compile(expr)
    end
 end
 
-function smc:compile_pass(expr)
+function smc:collect_output(thunk)
    local c_code = {}
-   self:save_context(
-      {'write','mod_prefix'},
-      function()
-         self.write = function(_, str)
-            table.insert(c_code, str)
-         end
-         self:reset()
-         self:compile(expr)
-         -- Debug stats
-         self:w("// stack_size: ",self.stack_size,"\n")
-      end)
+   self:parameterize(
+      { write = function(_, str) table.insert(c_code, str) end },
+      thunk)
    return c_code
+end
+
+function smc:compile_pass(expr)
+   return
+      self:collect_output(
+         function()
+            self:reset()
+            self:compile(expr)
+            -- Debug stats
+            self:w("// stack_size: ",self.stack_size,"\n")
+         end)
+end
+
+function smc:save_last()
+   -- Second pass uses some information from the previous pass: the
+   -- information gathered about each storage cell, information about
+   -- the goto labels, and nb vars necessary for argument passing.
+   self.cells_last         = self.cells
+   self.labels_last        = self.labels
+   self.args_size_app_last = self.args_size_app
+end
+
+function smc:w_if0(c_code, comment)
+   local c_n = {" // " , comment or "", "\n"}
+   self:w("#if 0", c_n, c_code, "#endif", c_n)
+end
+
+-- FIXME: Not used
+function smc:compile_2pass(expr)
+
+   -- First pass
+   local c_code_1 = self:compile_pass(expr)
+
+   -- Debug print. Not used. Might no longer be valid C.
+   -- self:w_if0(c_code_1, "first pass")
+
+   -- Save info for second pass.
+   self:save_last()
+   -- Second pass
+   local c_code_2 = self:compile_pass(expr)
+   return c_code_2
 end
 
 -- Don't bother with building intermediate representations.  The two
@@ -842,20 +915,12 @@ end
 -- information gathered in the first pass to allocate variables in the
 -- state struct, or on the C stack, and to omit unused function
 -- definitions.
-function smc:compile_module(expr)
-   -- Firt pass
-   local c_code_1 = self:compile_pass(expr)
-   -- Debug print. Not sued. Might no longer be valid C.
-   -- self:w("#if 0 // first pass\n",c_code_1,"#endif\n")
+function smc:compile_module(mod_expr)
 
-   -- Second pass uses some information from the previous pass: the
-   -- information gathered about each storage cell, information about
-   -- the goto labels, and nb vars necessary for argument passing.
-   self.cells_last         = self.cells
-   -- self.labels_last        = self.labels
-   self.args_size_app_last = self.args_size_app
-
-   local c_code = self:compile_pass(expr)
+   -- FIXME: At the module level we do only one pass.
+   -- The two passes have been moved deeper, at the task level.
+   -- local c_code = self:compile_2pass(mod_expr)
+   local c_code = self:compile_pass(mod_expr)
 
    -- Generate the struct definition, then append the C code.
    self:w("struct ", self.config.state_struct, " {\n")
