@@ -158,6 +158,8 @@ end
 function se.iolist(expr)
    if expr ~= empty and type(expr) ~= 'table' then
       return expr
+   elseif type(expr) == 'table' and expr.class then
+      return {'#<',expr.class,'>'}
    else
       local iol = {"("}
       for el, rest in se.elements(expr) do

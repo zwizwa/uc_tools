@@ -113,7 +113,7 @@ function smc:new_cell()
 end
 
 function smc:new_var(var_name)
-   return {var = var_name, cell = self:new_cell()}
+   return {var = var_name, cell = self:new_cell(), class = 'cvar'}
 end
 
 -- Introduce the variable in the current lexical scope.
@@ -135,18 +135,28 @@ end
 function smc:ref(var_name, env)
    if not env then env = self.env end
 
+   -- log("ref, env:"); log_se(env); log("\n")
+
+
    -- search starts at last pushed variable.  this implements shadowing
    for v in se.elements(env) do
       if v.var == var_name then
-         -- We can only get references from the lexical environment,
-         -- and that should never contain unbound variables.
-         assert(v.cell.bind ~= 'unbound')
 
-         -- If this is a variable that crossed a suspension border,
-         -- mark it such that it gets stored in the state struct and
-         -- not on the C stack.
-         if v.cell.bind == 'lost' then
-            v.cell.bind = 'saved'
+         if v.cell then
+            -- We can only get references from the lexical
+            -- environment, and that should never contain unbound
+            -- variables.
+            assert(v.cell.bind ~= 'unbound')
+
+            -- If this is a variable that crossed a suspension border,
+            -- mark it such that it gets stored in the state struct and
+            -- not on the C stack.
+            if v.cell.bind == 'lost' then
+               v.cell.bind = 'saved'
+            end
+         else
+            -- Emphemeral, compile-time bindings created with partial
+            -- evaluation.  We don't need to do any marking here.
          end
          return v
       end
@@ -344,7 +354,8 @@ local function for_begin(begin_expr, def, other)
 end
 
 -- FIXME: Bad hack... I can't think of a general way to do this
--- without annotation.  Works for now.
+-- without annotation.  Basically, a task's thunk is evaluated until a
+-- form is found that contains a bunch of definitions. Works for now.
 local function is_task_definition(begin_expr)
    local nb = 0
    local ok, rv = pcall(for_begin, begin_expr, function() nb = nb + 1 end)
@@ -464,6 +475,13 @@ form['module-begin'] = function(self, expr)
       local funs = {}
       for k,v in pairs(self.funs) do funs[k]=v end
       for k,v in pairs(defs)      do funs[k]=v end
+
+      -- FIXME: Put the two compiler passes here.  A lot of stats only
+      -- apply to a single task: state stack depth + state/local alloc.
+
+      -- FIXME: Remove 'module-begin' form so there is no recursion
+      -- possible?
+
       self:parameterize(
          { funs = funs,
            label_prefix = {"c",closure_nb,"_"} },
@@ -473,13 +491,13 @@ form['module-begin'] = function(self, expr)
                function(n,a,b)
                   -- All definitions are compiled
                   -- self:w("// fun ", n, "\n")
-                  self:compile_fundef(n,a,b)
+                  self:compile_fundef(n,a,b,s.env)
                end,
                function(begin_expr)
                   -- The tail with definitions stripped is compiled as
                   -- entry point
                   -- self:w("// entry: ", se.iolist(begin_expr), "\n")
-                  self:compile_fundef('entry',se.empty,begin_expr)
+                  self:compile_fundef('entry',se.empty,begin_expr,s.env)
                end)
          end)
 
@@ -487,9 +505,9 @@ form['module-begin'] = function(self, expr)
    end
 
    local task_nb = 0
-   prim['make-task'] = function(fun)
-      self:w("// make-task\n")
+   prim['make-channel'] = function(fun)
       local nb = task_nb
+      self:w("// make-channel: ", nb, "\n")
       task_nb = task_nb + 1
       return nb
    end
@@ -503,7 +521,7 @@ form['module-begin'] = function(self, expr)
 end
 
 
-function smc:compile_fundef(fname, args, body_expr)
+function smc:compile_fundef(fname, args, body_expr, env)
    -- Only emit body if it is actually used.  We only have usage
    -- information in the second pass when labels_last is defined.
    if (not self.labels_last) or self.labels_last[fname] then
@@ -511,8 +529,9 @@ function smc:compile_fundef(fname, args, body_expr)
       assert(0 == se.length(self.env))
       self:w(self:mangle_label(fname), ":", se_comment(args), "\n");
       self:save_context(
-         {'var','tail_position'},
+         {'var','tail_position','env'},
          function()
+            self.env = env
             self.tail_position = true
             self.var = nil
             local nb_args = se.length(args)
@@ -555,9 +574,13 @@ function smc:local_lost()
       -- This is used later when the variable is referenced to
       -- (lazily) turn it into a 'saved' variable, so in the second
       -- pass it can be allocated in the state struct.
-      if var.cell.bind == 'local' then
-         table.insert(bound, n)
-         var.cell.bind = 'lost'
+      if var.cell then
+         if var.cell.bind == 'local' then
+            table.insert(bound, n)
+            var.cell.bind = 'lost'
+         end
+      else
+         -- Ephemeral variables don't need marking.
       end
    end
    return bound
@@ -568,8 +591,13 @@ end
 -- C representation of variable (lvalue/rvalue), and its type.
 function smc:cvar_and_ctype(v)
    local comment = {"/*", v.var, "*/"}
+   -- Only concrete variables are supported here.
+   -- If this fails on an ephemeral variable, handle it one layer up
+   if not v.cell then
+      error("variable '" .. v.var .. "' is not available at run time")
+   end
    if v.cell.c_index then
-      return {self.config.state_name,"->e[",v.cell.c_index,"]", comment}
+      return {self.config.state_name,"->e[",v.cell.c_index,"]", comment}, false
    else
       return {"r",v.cell.id,comment}, "T"
    end

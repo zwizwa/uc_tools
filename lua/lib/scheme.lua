@@ -38,7 +38,8 @@ local function ref(var_name, env)
    error('undefined var ' .. var_name)
 end
 local function push(var, val, env)
-   return se.cons({var = var, val = val}, env)
+   assert(val)
+   return se.cons({var = var, val = val, class = 'ivar'}, env)
 end
 
 local scheme = {}
@@ -131,6 +132,7 @@ function scheme:eval_app(s)
    local fun = self:eval(fun_expr, s.env)
    local arg_val = {}
    for arg_expr in se.elements(args_expr) do
+      assert(arg_expr)
       table.insert(arg_val, self:eval(arg_expr, s.env))
    end
    -- log('app: ' .. type(fun) .. '\n')
@@ -142,6 +144,7 @@ function scheme:eval_app(s)
       -- Closure
       assert(type(fun) == 'table')
       local new_env = fun.env
+      assert(#fun.args == se.length(args_expr))
       for i = 1,#fun.args do
          local var = fun.args[i]
          if var ~= '_' then
@@ -192,6 +195,7 @@ function scheme:eval_loop(s)
    while not self:is_value(s) do
       self:eval_step(s)
    end
+   assert(s.expr)
    return s.expr
 end
 

@@ -20,25 +20,33 @@ local l = se.list
 
 local form = {}
 
+require('lib.log')
+
 form['co'] = function(self, expr)
-   local _, task, data = se.unpack(expr, {n = 3})
+   local _, chan, data = se.unpack(expr, {n = 3})
    local li = self:let_insert()
-   task = li:maybe_insert_var(task)
+   chan = li:maybe_insert_var(chan)
    data = li:maybe_insert_var(data)
-   if not li:compile_inserts(l('co',task,data)) then
+   if not li:compile_inserts(l('co',chan,data)) then
       -- _0 = data; s->next=&&l1; s=task; goto s->next; l1: rv = _0;
       local label = self:gensym("l")
       local s = self.config.state_name
       local nxt = {s,"->next"}
-      local c_task = self:atom_to_c_expr(task)
       local c_data = self:atom_to_c_expr(data)
+      -- The task varariable is ephemeral.  We have to special-case its representation.
+      -- local c_task = self:atom_to_c_expr(task)
+      local v_chan = self:ref(chan)
+      -- log_desc({v_chan = v_chan})
+      assert(v_chan.val)
+      local c_chan = {"s->chan[", v_chan.val, "]"}
+
       -- Store data. Coroutine value passing re-uses the registers
       -- used for function calls.
       self:w(self:tab(), self:arg(0), " = ", c_data, ";\n")
       -- Set current task's resume point.
       self:w(self:tab(), nxt, " = &&", label, "; ")
       -- Switch task pointer and jump to task's resume point.
-      self:w(s, " = ", c_task, "; goto *", nxt, "; ")
+      self:w(s, " = ", c_chan, "; goto *", nxt, "; ")
       -- Local variables are lost after goto.
       self:local_lost()
       -- Other task will jump back to this resume point.
