@@ -844,7 +844,9 @@ end
 -- definitions.
 function smc:compile_module(expr)
    -- Firt pass
-   self:compile_pass(expr)
+   local c_code_1 = self:compile_pass(expr)
+   -- Debug print. Not sued. Might no longer be valid C.
+   -- self:w("#if 0 // first pass\n",c_code_1,"#endif\n")
 
    -- Second pass uses some information from the previous pass: the
    -- information gathered about each storage cell, information about
@@ -853,19 +855,7 @@ function smc:compile_module(expr)
    -- self.labels_last        = self.labels
    self.args_size_app_last = self.args_size_app
 
-   local c_code = {}
-   self:save_context(
-      {'write'},
-      function()
-         self.write = function(_, str)
-            table.insert(c_code, str)
-         end
-         self:reset()
-         self:w("\n// second pass\n")
-         self:compile(expr)
-         self:w("// stack_size: ",self.stack_size,"\n")
-         self:w("\n")
-      end)
+   local c_code = self:compile_pass(expr)
 
    -- Generate the struct definition, then append the C code.
    self:w("struct ", self.config.state_struct, " {\n")
