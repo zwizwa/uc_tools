@@ -441,7 +441,7 @@ form['module-begin'] = function(self, expr)
    -- The border between evaluation and compilation is that function
    -- 'spawn!' which is passed a closure.
    local prim = {}
-   local closure_nb = 0
+   local task_nb = 0
    prim['spawn!'] = function(closure)
       assert(is_closure(closure))
       self:w("// spawn eval:\n")
@@ -510,35 +510,23 @@ form['module-begin'] = function(self, expr)
 
       self:parameterize({
             funs = funs,
-            stack_size = 0,
-            label_prefix = {"c",task_nb,"_"}
+            task = task_nb,
+            label_prefix = {"c",task_nb,"_"}, -- FIXME: remove
          },
          function()
-            local function compile_pass()
-               return self:collect_output(
-                  function()
-                     for_begin(
-                        s.expr,
-                        function(n,a,b)
-                           -- All definitions are compiled
-                           -- self:w("// fun ", n, "\n")
-                           self:compile_fundef(n,a,b,s.env)
-                        end,
-                        function(begin_expr)
-                           -- The tail with definitions stripped is compiled as
-                           -- entry point
-                           -- self:w("// entry: ", se.iolist(begin_expr), "\n")
-                           self:compile_fundef('entry',se.empty,begin_expr,s.env)
-                        end)
-                     self:w("// stack_size: ",self.stack_size,"\n")
-                  end)
-            end
-            local c_code_1 = compile_pass()
-            -- self:save_last()
-            local c_code_2 = compile_pass()
-
-            self:w_if0(c_code_1, {"pass 1 task ", task_nb})
-            self:w(c_code_2)
+            for_begin(
+               s.expr,
+               function(n,a,b)
+                  -- All definitions are compiled
+                  -- self:w("// fun ", n, "\n")
+                  self:compile_fundef(n,a,b,s.env)
+               end,
+               function(begin_expr)
+                  -- The tail with definitions stripped is compiled as
+                  -- entry point
+                  -- self:w("// entry: ", se.iolist(begin_expr), "\n")
+                  self:compile_fundef('entry',se.empty,begin_expr,s.env)
+               end)
          end)
 
       task_nb = task_nb + 1
@@ -899,7 +887,7 @@ function smc:compile_2pass(expr)
    local c_code_1 = self:compile_pass(expr)
 
    -- Debug print. Not used. Might no longer be valid C.
-   -- self:w_if0(c_code_1, "first pass")
+   self:w_if0(c_code_1, "first pass")
 
    -- Save info for second pass.
    self:save_last()
@@ -917,10 +905,7 @@ end
 -- definitions.
 function smc:compile_module(mod_expr)
 
-   -- FIXME: At the module level we do only one pass.
-   -- The two passes have been moved deeper, at the task level.
-   -- local c_code = self:compile_2pass(mod_expr)
-   local c_code = self:compile_pass(mod_expr)
+   local c_code = self:compile_2pass(mod_expr)
 
    -- Generate the struct definition, then append the C code.
    self:w("struct ", self.config.state_struct, " {\n")
