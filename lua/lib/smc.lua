@@ -384,9 +384,15 @@ local function collect_defs(self, tab, begin_expr)
    end)
 end
 
-
 local function is_closure(thing)
    return thing and type(thing) == 'table' and thing.class == 'closure'
+end
+
+-- current tasks's next pointer containing resume point
+function smc:next()
+   local s = self.config.state_name
+   local t = self.current_task
+   return {s,"->t",t,".next"}
 end
 
 -- The module form compiles to a C function.  Functions with no
@@ -420,7 +426,7 @@ form['module-begin'] = function(self, expr)
    -- In the second compiler pass, the max number of arguments
    -- actually used in function application is known.  in first pass
    -- it is not, and we bound it by max arguments of definitions.
-   local nxt = {c.state_name, "->next"};
+   local nxt = {c.state_name, "->t1", ".next"}; -- FIXME: who's first
    -- local max_nb_args = self.args_size_app_last or self.args_size_def
    -- FIXME
    local max_nb_args = 3
@@ -510,9 +516,7 @@ form['module-begin'] = function(self, expr)
 
       self:parameterize({
             funs = funs,
-            current_task = task_nb,
-            label_prefix = {"c",task_nb,"_"}, -- FIXME: remove
-         },
+            current_task = task_nb         },
          function()
             for_begin(
                s.expr,
@@ -625,7 +629,11 @@ function smc:cvar_and_ctype(v)
       error("variable '" .. v.var .. "' is not available at run time")
    end
    if v.cell.c_index then
-      return {self.config.state_name,"->e[",v.cell.c_index,"]", comment}, false
+      local s = self.config.state_name
+      local t = self.current_task
+      local i = v.cell.c_index
+      -- return {s,"->e[",i,"]", comment}, false
+      return {s,"->t",t,".e[",i,"]", comment}, false
    else
       return {"r",v.cell.id,comment}, "T"
    end
@@ -732,11 +740,8 @@ function smc:arg(arg_nb)
 end
 
 function smc:mangle_label(name)
-   if self.label_prefix then
-      return {self.label_prefix, name}
-   else
-      return name
-   end
+   local label_prefix = {"t",self.current_task,"_"}
+   return {label_prefix, name}
 end
 
 -- Apply function to arguments, converting all arguments to A-Normal
@@ -918,25 +923,23 @@ function smc:compile_module(mod_expr)
       return {self.config.state_struct, "_task", i}
    end
 
-   -- Generate task struct definitions
+   self:w("struct task { void *next; T e[]; };\n");
+
+   self:w("struct ", self.config.state_struct, " {\n")
+
+   -- Tasks: header + storage for stack.
    for i,size in ipairs(self.stack_size) do
-      self:w("struct ", task_name(i), " {\n")
-      self:w(self:tab(), "void *next;\n")
-      self:w(self:tab(), "T e[", self.stack_size[i], "];\n")
-      self:w("};\n")
+      self:w(self:tab(), {"struct task ", "t", i, "; "})
+      self:w("T e",i,"[", self.stack_size[i], "];\n")
    end
 
-   for i,size in ipairs(self.stack_size) do
-      self:w("struct ", self.config.state_struct, " {\n")
-      for i,size in ipairs(self.stack_size) do
-         self:w(self:tab(), {"struct ", task_name(i), " ", "task", i, ";\n"})
-      end
-      -- Globals or task local?
-      for v in pairs(self.free) do
-         self:w(self:tab(), "T ", v, ";\n")
-      end
-      self:w("};\n")
+   -- Globals or task local?
+   for v in pairs(self.free) do
+      self:w(self:tab(), "T ", v, ";\n")
    end
+
+   self:w("};\n")
+
 
 
    -- Generate the struct definition, then append the C code.

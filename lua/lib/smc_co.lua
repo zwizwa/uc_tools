@@ -31,7 +31,7 @@ form['co'] = function(self, expr)
       -- _0 = data; s->next=&&l1; s=task; goto s->next; l1: rv = _0;
       local label = self:gensym("l")
       local s = self.config.state_name
-      local nxt = {s,"->next"}
+      local nxt = self:next()
       local c_data = self:atom_to_c_expr(data)
       -- The task varariable is ephemeral.  We have to special-case its representation.
       -- local c_task = self:atom_to_c_expr(task)
@@ -59,7 +59,7 @@ end
 form['yield'] = function(self, expr)
    local label = self:gensym("l")
    local s = self.config.state_name
-   local nxt = {s,"->next"}
+   local nxt = self:next()
    -- Set current task's resume point.
    self:w(self:tab(), nxt, " = &&", label, "; ")
    self:w("return; ");
