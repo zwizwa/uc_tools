@@ -105,7 +105,7 @@ function smc:new_cell()
       -- In the first pass this information is not known, so all
       -- variables are allocated in the state struct.
       cell.c_index = self:inc('stack_ptr')
-      self:track_max('stack_size', cell.c_index+1)
+      self:track_max_indexed('stack_size', self.current_task, cell.c_index+1)
    end
    -- self.var is the list of all created variables
    table.insert(self.cells, cell)
@@ -441,7 +441,7 @@ form['module-begin'] = function(self, expr)
    -- The border between evaluation and compilation is that function
    -- 'spawn!' which is passed a closure.
    local prim = {}
-   local task_nb = 0
+   local task_nb = 1
    prim['spawn!'] = function(closure)
       assert(is_closure(closure))
       self:w("// spawn eval:\n")
@@ -510,7 +510,7 @@ form['module-begin'] = function(self, expr)
 
       self:parameterize({
             funs = funs,
-            task = task_nb,
+            current_task = task_nb,
             label_prefix = {"c",task_nb,"_"}, -- FIXME: remove
          },
          function()
@@ -862,7 +862,11 @@ function smc:compile_pass(expr)
             self:reset()
             self:compile(expr)
             -- Debug stats
-            self:w("// stack_size: ",self.stack_size,"\n")
+            self:w("// stack_sizes:")
+            for _,size in ipairs(self.stack_size) do
+               self:w(" ", size)
+            end
+            self:w("\n")
          end)
 end
 
@@ -918,7 +922,7 @@ function smc:compile_module(mod_expr)
    end
    self:w(self:tab(), "void *next;\n")
 
-   self:w(self:tab(), "T e[", self.stack_size, "];\n")
+   self:w(self:tab(), "T e[", self.stack_size[self.current_task], "];\n")
    for v in pairs(self.free) do
       self:w(self:tab(), "T ", v, ";\n")
    end
@@ -942,7 +946,8 @@ function smc:reset()
    self.funs = {}
    self.free = {}
    -- Sizes
-   self.stack_size = 0
+   self.current_task = 0
+   self.stack_size = {}
    self.evt_size = 0
    self.args_size_app = 0
    self.args_size_def = 0

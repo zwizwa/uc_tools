@@ -71,10 +71,19 @@ end
 
 
 -- Track maximum
+--
 function comp:track_max(varname, val)
    if self[varname] < val then
       self[varname] = val
    end
+end
+-- FIXME: it is not a good idea to create defaults on nil, but going
+-- to do it here anyway to make current refactoring simpler...
+function comp:track_max_indexed(varname, n, val)
+   assert(n)
+   local max = self[varname][n] or 0
+   if max < val then max = val end
+   self[varname][n] = max
 end
 
 -- Counter
