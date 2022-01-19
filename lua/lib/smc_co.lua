@@ -31,7 +31,7 @@ local function schedule(self, chan)
    -- For now just transfer between 2 coroutines.
    local t = self.current_task
    self:w("/*sch:",t,"*/ ")
-   local other_task = 3 - t
+   local other_task = 1 - t
    local other_nxt = self:next(other_task)
    return other_nxt
 end

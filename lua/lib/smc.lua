@@ -369,9 +369,6 @@ local function collect_defs(self, tab, begin_expr)
          assert(nil == tab[fname])
          assert(type(fname == 'string'))
          assert(body_expr)
-         -- Keep track of storage needed for function calls
-         -- FIXME: Add a separate pass for this, then remove 'self' arg.
-         self:track_max('args_size_def', se.length(args))
          -- Keep track of syntax for later inlining.  This is the same
          -- representation as scheme.lua closures.
          tab[fname] = {
@@ -402,7 +399,6 @@ form['module-begin'] = function(self, expr)
    local c = self.config
    assert(not self.var)
    local _, define_exprs = se.unpack(expr, {n = 1, tail = true})
-   local modname = "testmod" -- FIXME
 
 
    -- We iterate twice over the definitions.  first iteration builds
@@ -424,8 +420,10 @@ form['module-begin'] = function(self, expr)
 
 
    -- Emit main C function
+   local modname = "testmod" -- FIXME
+   local s  = self.config.state_name
    if self.mod_prefix then modname = { self.mod_prefix, modname } end
-   local args = { { "struct ", c.state_struct, " *", c.state_name } }
+   local args = { { "struct ", c.state_struct, " *", s } }
    self:w("T ", modname, "(",comp.clist(args),") {\n");
 
    -- Allocate 'registers' usef for function/coroutine argument
@@ -434,12 +432,9 @@ form['module-begin'] = function(self, expr)
    -- In the second compiler pass, the max number of arguments
    -- actually used in function application is known.  in first pass
    -- it is not, and we bound it by max arguments of definitions.
-
-   -- local max_nb_args = self.args_size_app_last or self.args_size_def
-   -- FIXME
-   local max_nb_args = 3
-   for i=1,max_nb_args do
-      self:w(self:tab(), "T ", self:arg(i-1), ";\n")
+   assert(self.args_size_app) -- defined during bulk compile
+   for i=0,self.args_size_app do
+      self:w(self:tab(), "T ", self:arg(i), ";\n")
    end
 
    -- Emit code to jump to the current resume point
@@ -449,7 +444,13 @@ form['module-begin'] = function(self, expr)
    -- Emit bootstrap code, executed on first entry to the function.
    -- Unfortunately we do not have access to the labels outside of the
    -- function so cannot generate this ahead of time.
-   -- FIXME
+   assert(self.nb_tasks) -- defined during bulk compile
+   for i=1,self.nb_tasks do
+      self:w(self:tab(), s, "->t",i-1,".next=&&t",i-1,"_entry;\n");
+   end
+   -- It doesn't (shouldn't!) matter which one we start first, so pick
+   -- task 1.
+   self:w(self:tab(), "goto t1_entry;\n")
 
    self:w(c_bulk)
 
@@ -468,10 +469,10 @@ function smc:compile_tasks()
    -- The border between evaluation and compilation is that function
    -- 'spawn!' which is passed a closure.
    local prim = {}
-   local task_nb = 1
+   local task_nb = 0
    prim['spawn!'] = function(closure)
       assert(is_closure(closure))
-      self:w("// spawn eval:\n")
+      self:w("// spawn! ",task_nb,"\n")
       self:w("// ", se.iolist(closure.body), "\n")
 
       -- Conceptually, spawn! evaluates the closure in a new task
@@ -918,7 +919,6 @@ function smc:save_last()
    -- the goto labels, and nb vars necessary for argument passing.
    self.cells_last         = self.cells
    self.labels_last        = self.labels
-   self.args_size_app_last = self.args_size_app
 end
 
 function smc:w_if0(c_code, comment)
@@ -970,7 +970,7 @@ function smc:compile_module(mod_expr)
    self:w(self:tab(), "void *next;\n")
 
    -- Tasks: header + storage for stack.
-   for i,size in ipairs(self.stack_size) do
+   for i=0,self.nb_tasks-1 do
       self:w(self:tab(), {"struct task ", "t", i, "; "})
       self:w("T e",i,"[", self.stack_size[i], "];\n")
    end
@@ -1025,7 +1025,6 @@ function smc:reset()
    self.stack_size = {}   -- one per task
    self.evt_size = {}     -- one per task
    self.args_size_app = 0
-   self.args_size_def = 0
    -- Counters
    self.nb_sym = 0
    self.depth = 0
