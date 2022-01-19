@@ -277,7 +277,7 @@ end
 -- Abstracted out since we use it in a couple of places.
 function smc:compile_letstar(bindings, sequence)
 
-   self:w(self:tab(),self:var_def(self.var),"({\n")
+   self:w(self:tab(), self:var_def_assign_later(self.var), "{\n")
 
    self:save_context(
       {'env','stack_ptr','indent','var','tail_position'},
@@ -285,6 +285,7 @@ function smc:compile_letstar(bindings, sequence)
          self:inc('indent')
 
          local tail_position = self.tail_position
+         local saved_var = self.var
 
          -- Compile binding forms as expressions assigned to variables
          -- (self.var ~= nil).
@@ -310,14 +311,14 @@ function smc:compile_letstar(bindings, sequence)
 
          for form, rest_expr in se.elements(sequence) do
             assert(form)
-            self.tail_position = tail_position and se.is_empty(rest_expr)
-            -- Var is nil because we use statement expressions.
-            self.var = nil
+            local last_expr = se.is_empty(rest_expr)
+            self.tail_position = tail_position and last_expr
+            self.var = ifte(last_expr, saved_var, nil)
             self:compile(form)
          end
    end)
 
-   self:w(self:tab(), "});\n")
+   self:w(self:tab(), "};\n")
 
    -- Only mark after it's actually bound in the C text.
    self:mark_bound(self.var)
