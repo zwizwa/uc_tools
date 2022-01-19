@@ -37,23 +37,27 @@ local function schedule(self, chan)
 end
 
 
-form['co'] = function(self, expr)
-   local _, chan, data = se.unpack(expr, {n = 3})
+local function co(self, form, chan, data)
    local li = self:let_insert()
    chan = li:maybe_insert_var(chan)
-   data = li:maybe_insert_var(data)
+   if data then
+      data = li:maybe_insert_var(data)
+   end
    if not li:compile_inserts(l('co',chan,data)) then
-      -- _0 = data; s->next=&&l1; s=task; goto s->next; l1: rv = _0;
-      local label = self:gensym("l")
-      local s = self.config.state_name
-      local nxt = self:next()
-      local c_data = self:atom_to_c_expr(data)
 
-      -- Store data to be transferred. Coroutine value passing re-uses
-      -- the registers used for function tail calls.
-      self:w(self:tab(), self:arg(0), " = ", c_data, "; ")
+      self:w(self:tab())
+      if (data) then
+         -- Store data to be transferred. Coroutine value passing re-uses
+         -- the registers used for function tail calls.
+         local c_data = self:atom_to_c_expr(data)
+         self:w(self:arg(0), " = ", c_data, "; ")
+      end
+
       -- Set current task's resume point.
-      self:w(nxt, " = &&", label, "; ")
+      local label = self:gensym("l")
+      local self_nxt = self:next()
+      self:w(self_nxt, " = &&", label, "; ")
+
       -- Perform scheduling
       -- The task varariable is ephemeral.  Scheduling is performed at
       -- compile time as much as possible.
@@ -69,12 +73,30 @@ form['co'] = function(self, expr)
    end
 end
 
+form['co'] = function(self, expr)
+   local _, chan, data = se.unpack(expr, {n = 3})
+   co(self, 'co', chan, data)
+end
+form['write'] = function(self, expr)
+   local _, chan, data = se.unpack(expr, {n = 3})
+   co(self, 'write', chan)
+end
+form['read'] = function(self, expr)
+   local _, chan = se.unpack(expr, {n = 2})
+   co(self, 'read', chan, 0)
+end
+
+
+
 form['yield'] = function(self, expr)
    local label = self:gensym("l")
    local s = self.config.state_name
-   local nxt = self:next()
-   -- Set current task's resume point.
-   self:w(self:tab(), nxt, " = &&", label, "; ")
+   -- Set network resume point and exit network.
+   -- Note that we do not need to save the task's resume point, since
+   -- C function entry will resume here via s->next.
+   self:w(self:tab(),
+          self.config.state_name,"->next",
+           " = &&", label, "; ")
    self:w("return; ");
    -- Local variables are lost after return.
    self:local_lost()

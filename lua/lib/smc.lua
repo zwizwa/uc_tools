@@ -105,7 +105,8 @@ function smc:new_cell()
       -- In the first pass this information is not known, so all
       -- variables are allocated in the state struct.
       cell.c_index = self:inc('stack_ptr')
-      self:track_max_indexed('stack_size', self.current_task, cell.c_index+1)
+      -- Note that self.current_task is 0-based
+      self:track_max_indexed('stack_size', self.current_task + 1, cell.c_index+1)
    end
    -- self.var is the list of all created variables
    table.insert(self.cells, cell)
@@ -256,8 +257,6 @@ form['if'] = function(self, if_expr)
 end
 
 
-
-
 form['let*'] = function(self, expr)
    local _, bindings, sequence = se.unpack(expr, { n = 2, tail = true })
    self:compile_letstar(bindings, sequence)
@@ -265,6 +264,12 @@ end
 form['begin'] = function(self, expr)
    local _, sequence = se.unpack(expr, { n = 1, tail = true })
    self:compile_letstar(se.empty, sequence)
+end
+form['let'] = function(self, expr)
+   -- This is here as a guard to not trigger other obscure errors.
+   error("ERROR: Use 'let*' instead of 'let'\n")
+   --local let = form['let*']
+   --let(self,expr)
 end
 
 
@@ -389,7 +394,7 @@ end
 function smc:next(t)
    local s  = self.config.state_name
    local tc = self.current_task
-   return {s, "->t", t or tc, ".next"}
+   return {s, "->t", t or tc}
 end
 
 -- The module form compiles to a C function.  Functions with no
@@ -444,13 +449,12 @@ form['module-begin'] = function(self, expr)
    -- Emit bootstrap code, executed on first entry to the function.
    -- Unfortunately we do not have access to the labels outside of the
    -- function so cannot generate this ahead of time.
-   assert(self.nb_tasks) -- defined during bulk compile
-   for i=1,self.nb_tasks do
-      self:w(self:tab(), s, "->t",i-1,".next=&&t",i-1,"_entry;\n");
+   local nb_tasks = #self.stack_size
+   for i=1,nb_tasks do
+      self:w(self:tab(), s, "->t",i-1,"=&&t",i-1,"_entry;\n");
    end
-   -- It doesn't (shouldn't!) matter which one we start first, so pick
-   -- task 1.
-   self:w(self:tab(), "goto t1_entry;\n")
+   -- It shouldn't matter which one we start first.
+   self:w(self:tab(), "goto t0_entry;\n")
 
    self:w(c_bulk)
 
@@ -541,6 +545,7 @@ function smc:compile_tasks()
             current_task = task_nb,
          },
          function()
+            self.stack_size[task_nb + 1] = 0
             for_begin(
                s.expr,
                function(n,a,b)
@@ -574,8 +579,6 @@ function smc:compile_tasks()
    local start = self.funs.start
    assert(start)
    scheme.new({self.funs, prim}):eval(start.body)
-
-   self.nb_tasks = task_nb
 
 end
 
@@ -668,7 +671,7 @@ function smc:cvar_and_ctype(v)
       local t = self.current_task
       local i = v.cell.c_index
       -- return {s,"->e[",i,"]", comment}, false
-      return {s,"->t",t,".e[",i,"]", comment}, false
+      return {s,"->e",t,"[",i,"]", comment}, false
    else
       return {"r",v.cell.id,comment}, "T"
    end
@@ -849,7 +852,10 @@ function smc:apply(expr)
          {'env','stack_ptr','depth'},
          function()
             -- FIXME: ad-hoc infinite loop guard
-            assert(self:inc('depth') < 10)
+            if self.depth > 10 then
+               error(fun_name .. ":inline loop")
+            end
+            self:inc('depth')
 
             -- Inlining links the environment inside the function body
             -- to cells accessible through the callsite environment.
@@ -908,12 +914,6 @@ function smc:compile_pass(expr)
          function()
             self:reset()
             self:compile(expr)
-            -- Debug stats
-            self:w("// stack_sizes:")
-            for _,size in ipairs(self.stack_size) do
-               self:w(" ", size)
-            end
-            self:w("\n")
          end)
 end
 
@@ -964,8 +964,6 @@ function smc:compile_module(mod_expr)
       return {self.config.state_struct, "_task", i}
    end
 
-   self:w("struct task { void *next; T e[]; };\n");
-
    self:w("struct ", self.config.state_struct, " {\n")
 
    -- This is for resuming on C function entry.  Since all tasks are
@@ -974,13 +972,16 @@ function smc:compile_module(mod_expr)
    self:w(self:tab(), "void *next;\n")
 
    -- Tasks: header + storage for stack.
-   for i=0,self.nb_tasks-1 do
-      self:w(self:tab(), {"struct task ", "t", i, "; "})
-      self:w("T e",i,"[", self.stack_size[i], "];\n")
+   for i,size in ipairs(self.stack_size) do
+      self:w(self:tab(), {"void *t", i-1, ";"})
+      if size > 0 then
+         self:w(" T e",i-1,"[", size, "];")
+      end
+      self:w("\n")
    end
 
    -- Globals or task local?
-   for v in pairs(self.free) do
+   for v in se.elements(self.free) do
       self:w(self:tab(), "T ", v, ";\n")
    end
 

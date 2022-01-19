@@ -6,8 +6,17 @@
     (co chan
         (let* ((a (co chan 1)))
           (add a (co chan 2))))
-    (fun1))
+    (yield)
+    (fun1)
+    )
   (fun1))
+
+(define (prog2 chan)
+  (define (main)
+    (let* ((x (read chan)))
+      (write chan (add x 1))
+      (main)))
+  (main))
 
           
 ;(define (fun2 x)
@@ -37,5 +46,5 @@
 (define (start)
   (let* ((c (make-channel)))
     (spawn! (lambda () (prog1 c)))
-    (spawn! (lambda () (prog1 c)))
+    (spawn! (lambda () (prog2 c)))
     ))
