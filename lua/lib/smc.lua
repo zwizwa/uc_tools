@@ -551,7 +551,7 @@ function smc:compile_tasks()
                function(begin_expr)
                   -- The tail with definitions stripped is compiled as
                   -- entry point
-                  self:w("// entry: ", se.iolist(begin_expr), "\n")
+                  -- self:w("// entry: ", se.iolist(begin_expr), "\n")
                   self:compile_fundef('entry',se.empty,begin_expr,s.env)
 
                   -- Mark it used so it doesn't get collected.
@@ -653,7 +653,11 @@ end
 
 -- C representation of variable (lvalue/rvalue), and its type.
 function smc:cvar_and_ctype(v)
+   -- It's not useful to print generated symbol names.
    local comment = {"/*", v.var, "*/"}
+   if v.var:byte(1) == 59 then comment = "" end
+
+
    -- Only concrete variables are supported here.
    -- If this fails on an ephemeral variable, handle it one layer up
    if not v.cell then
