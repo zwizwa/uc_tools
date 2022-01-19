@@ -82,7 +82,7 @@ form['select'] = function(self, expr)
 
          local n_w = #(clauses.write)
          local n_r = #(clauses.read)
-         self:track_max('evt_size', n_w + n_r)
+         self:track_max_indexed('evt_size', self.current_task, n_w + n_r)
 
          for i,c in ipairs(clauses.write) do
             local cvar = self:atom_to_c_expr(c.var)

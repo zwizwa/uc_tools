@@ -22,6 +22,21 @@ local form = {}
 
 require('lib.log')
 
+local function schedule(self, chan)
+   -- FIXME: Later, get scheduler info from compile-time schannel variable
+   local v_chan = self:ref(chan)
+   -- log_desc({v_chan = v_chan})
+   assert(v_chan.val)
+
+   -- For now just transfer between 2 coroutines.
+   local t = self.current_task
+   self:w("/*sch:",t,"*/ ")
+   local other_task = 3 - t
+   local other_nxt = self:next(other_task)
+   return other_nxt
+end
+
+
 form['co'] = function(self, expr)
    local _, chan, data = se.unpack(expr, {n = 3})
    local li = self:let_insert()
@@ -33,24 +48,22 @@ form['co'] = function(self, expr)
       local s = self.config.state_name
       local nxt = self:next()
       local c_data = self:atom_to_c_expr(data)
-      -- The task varariable is ephemeral.  We have to special-case its representation.
-      -- local c_task = self:atom_to_c_expr(task)
-      local v_chan = self:ref(chan)
-      -- log_desc({v_chan = v_chan})
-      assert(v_chan.val)
-      local c_chan = {"s->chan[", v_chan.val, "]"}
 
-      -- Store data. Coroutine value passing re-uses the registers
-      -- used for function calls.
-      self:w(self:tab(), self:arg(0), " = ", c_data, ";\n")
+      -- Store data to be transferred. Coroutine value passing re-uses
+      -- the registers used for function tail calls.
+      self:w(self:tab(), self:arg(0), " = ", c_data, "; ")
       -- Set current task's resume point.
-      self:w(self:tab(), nxt, " = &&", label, "; ")
-      -- Switch task pointer and jump to task's resume point.
-      self:w(s, " = ", c_chan, "; goto *", nxt, "; ")
-      -- Local variables are lost after goto.
-      self:local_lost()
+      self:w(nxt, " = &&", label, "; ")
+      -- Perform scheduling
+      -- The task varariable is ephemeral.  Scheduling is performed at
+      -- compile time as much as possible.
+      local other_nxt = schedule(self, chan)
+
+      self:w("goto *", other_nxt, "; ")
       -- Other task will jump back to this resume point.
       self:w(label, ":\n")
+      -- C local variables are lost when we jump back into this code.
+      self:local_lost()
       self:w(self:binding(self:arg(0)))
       self:mark_bound(self.var)
    end

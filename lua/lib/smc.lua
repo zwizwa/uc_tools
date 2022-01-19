@@ -389,10 +389,10 @@ local function is_closure(thing)
 end
 
 -- current tasks's next pointer containing resume point
-function smc:next()
-   local s = self.config.state_name
-   local t = self.current_task
-   return {s,"->t",t,".next"}
+function smc:next(t)
+   local s  = self.config.state_name
+   local tc = self.current_task
+   return {s, "->t", t or tc, ".next"}
 end
 
 -- The module form compiles to a C function.  Functions with no
@@ -415,6 +415,14 @@ form['module-begin'] = function(self, expr)
 
    collect_defs(self, self.funs, expr)
 
+
+   -- Compile the bulk of the C code.  This produces some information
+   -- such as the number of tasks that is necessary to generate entry
+   -- code.
+   local c_bulk = self:collect_output(
+      function() self:compile_tasks() end)
+
+
    -- Emit main C function
    if self.mod_prefix then modname = { self.mod_prefix, modname } end
    local args = { { "struct ", c.state_struct, " *", c.state_name } }
@@ -426,7 +434,7 @@ form['module-begin'] = function(self, expr)
    -- In the second compiler pass, the max number of arguments
    -- actually used in function application is known.  in first pass
    -- it is not, and we bound it by max arguments of definitions.
-   local nxt = {c.state_name, "->t1", ".next"}; -- FIXME: who's first
+
    -- local max_nb_args = self.args_size_app_last or self.args_size_def
    -- FIXME
    local max_nb_args = 3
@@ -435,7 +443,20 @@ form['module-begin'] = function(self, expr)
    end
 
    -- Emit code to jump to the current resume point
-   self:w(self:tab(), "if(", nxt, ") goto *", nxt, ";\n")
+   local resume = {c.state_name, "->next"}
+   self:w(self:tab(), "if(", resume, ") goto *", resume, ";\n")
+
+   -- Emit bootstrap code, executed on first entry to the function.
+   -- Unfortunately we do not have access to the labels outside of the
+   -- function so cannot generate this ahead of time.
+   -- FIXME
+
+   self:w(c_bulk)
+
+   self:w("}\n");
+end
+
+function smc:compile_tasks()
 
    -- The C cursor is now at a point where we can start emitting
    -- functions implemented as goto labels followed by statements.
@@ -516,7 +537,8 @@ form['module-begin'] = function(self, expr)
 
       self:parameterize({
             funs = funs,
-            current_task = task_nb         },
+            current_task = task_nb,
+         },
          function()
             for_begin(
                s.expr,
@@ -528,19 +550,23 @@ form['module-begin'] = function(self, expr)
                function(begin_expr)
                   -- The tail with definitions stripped is compiled as
                   -- entry point
-                  -- self:w("// entry: ", se.iolist(begin_expr), "\n")
+                  self:w("// entry: ", se.iolist(begin_expr), "\n")
                   self:compile_fundef('entry',se.empty,begin_expr,s.env)
+
+                  -- Mark it used so it doesn't get collected.
+                  local label = self:mangle_label('entry')
+                  self.labels[label] = true
                end)
          end)
 
       task_nb = task_nb + 1
    end
 
-   local task_nb = 0
+   local channel_nb = 0
    prim['make-channel'] = function(fun)
-      local nb = task_nb
+      local nb = channel_nb
       self:w("// make-channel: ", nb, "\n")
-      task_nb = task_nb + 1
+      channel_nb = channel_nb + 1
       return nb
    end
 
@@ -548,7 +574,7 @@ form['module-begin'] = function(self, expr)
    assert(start)
    scheme.new({self.funs, prim}):eval(start.body)
 
-   self:w("}\n");
+   self.nb_tasks = task_nb
 
 end
 
@@ -556,10 +582,14 @@ end
 function smc:compile_fundef(fname, args, body_expr, env)
    -- Only emit body if it is actually used.  We only have usage
    -- information in the second pass when labels_last is defined.
-   if (not self.labels_last) or self.labels_last[fname] then
+
+   local label = self:mangle_label(fname)
+   -- log_desc(self.labels_last)
+
+   if (not self.labels_last) or self.labels_last[label] then
       -- No closure support: make sure lex env is empty.
       assert(0 == se.length(self.env))
-      self:w(self:mangle_label(fname), ":", se_comment(args), "\n");
+      self:w(label, ":", se_comment(args), "\n");
       self:save_context(
          {'var','tail_position','env'},
          function()
@@ -576,7 +606,7 @@ function smc:compile_fundef(fname, args, body_expr, env)
                end
                self:compile_letstar(se.reverse(bindings), se.list(body_expr))
             end
-      end)
+         end)
    else
       self:w("/* ", fname, " inline only */\n")
    end
@@ -692,7 +722,9 @@ end
 -- Write expression, and if there is a current variable 'hole', emit
 -- variable definition as well.
 function smc:binding(c_expr)
-   return {self:tab(), self:var_def(self.var), c_expr, ";\n"};
+   local vardef = self:var_def(self.var)
+   assert(c_expr)
+   return {self:tab(), vardef, c_expr, ";\n"};
 end
 
 -- Map Scheme atom (const or variable) to its C representation.
@@ -740,8 +772,12 @@ function smc:arg(arg_nb)
 end
 
 function smc:mangle_label(name)
-   local label_prefix = {"t",self.current_task,"_"}
-   return {label_prefix, name}
+   -- This creates a string instead of an iolist, because it's used to
+   -- index a table.
+   assert(self.current_task)
+   return "t" .. self.current_task .. "_" .. name
+   -- local label_prefix = {"t",self.current_task,"_"}
+   -- return {label_prefix, name}
 end
 
 -- Apply function to arguments, converting all arguments to A-Normal
@@ -796,10 +832,11 @@ function smc:apply(expr)
          self:w(self:tab(), self:arg(i-1), " = ", self:atom_to_c_expr(app_form[i+1]), ";\n")
          --self:w(self:tab(),"/*assign ", i-1, " ", arg, "*/\n")
       end
-      local c_expr = {"goto ", self:mangle_label(app_form[1])}
+      local label = self:mangle_label(app_form[1])
+      local c_expr = {"goto ", label}
       self:w(self:binding(c_expr))
       self:mark_bound(self.var)
-      self.labels[fun_name] = true
+      self.labels[label] = true
    else
       -- Non-tail calls are inlined as we do not support the call
       -- stack necessary for "real" calls.
@@ -926,6 +963,11 @@ function smc:compile_module(mod_expr)
    self:w("struct task { void *next; T e[]; };\n");
 
    self:w("struct ", self.config.state_struct, " {\n")
+
+   -- This is for resuming on C function entry.  Since all tasks are
+   -- inlined anyway, it seems simplest to collaps task+pointer into a
+   -- single pointer, and set this on function return (yield).
+   self:w(self:tab(), "void *next;\n")
 
    -- Tasks: header + storage for stack.
    for i,size in ipairs(self.stack_size) do

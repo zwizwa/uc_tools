@@ -1,18 +1,8 @@
 #lang s-expr "sm.rkt" ;; -*- scheme -*-
 
-;; Subset of Scheme representing sm.h style protothreads.
-;;
-;; This is a test file that (evetually should) compile(s) to testable
-;; code.  See test.sm for a nonsense code example exercising all
-;; forms.
+;; FIXME: This broke.  Focus is on test_co.sm first.
 
-;(let* ((a 123)
-;       (b 345))
-;      (add a b 1))
-
-;; TODO:
-;; - set!
-;; - multi-arg tail calls
+(define (prog1 c1 c2)
 
 (define (fun1 x y)
   (write 1 123)
@@ -40,14 +30,20 @@
         (fun2))
     ))
 
+(fun2)
+
+)
+
 ;; The .sm language only allows function definitions in the module
 ;; form.  We do provide an 'entry point' with Scheme code that runs at
 ;; compile time.
-(define (start)
-  (spawn fun1 1 0 0)
-  (spawn fun1 2 0 0)
-  )
 
+(define (start)
+  (let* ((c1 (make-channel))
+         (c2 (make-channel)))
+    (spawn! (lambda () (prog1 c1 c2)))
+    (spawn! (lambda () (prog1 c2 c1)))
+    ))
 
 
 
