@@ -83,7 +83,7 @@ form['write'] = function(self, expr)
 end
 form['read'] = function(self, expr)
    local _, chan = se.unpack(expr, {n = 2})
-   co(self, 'read', chan, 0)
+   co(self, 'read', chan, nil)
 end
 
 

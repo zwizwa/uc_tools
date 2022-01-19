@@ -56,6 +56,9 @@ end
 
 -- New version using tables.
 -- This is a bit closer to SRFI-39 parameterize form.
+--
+-- Note that setting a table value to nil is the same as it not being
+-- there, so that doesn't work!
 function comp:parameterize(bindings_tab, inner_fun)
    local saved = {}
    for key,val in pairs(bindings_tab) do
