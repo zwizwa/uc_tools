@@ -72,7 +72,8 @@ local function co(self, form, chan, data)
 
       self:w("goto *", other_nxt, "; ")
       -- Other task will jump back to this resume point.
-      self:w(label, ":\n")
+      -- Semicolon after label acts as statement.
+      self:w(label, ":;\n")
       -- C local variables are lost when we jump back into this code.
       self:local_lost()
 
@@ -114,7 +115,8 @@ form['yield'] = function(self, expr)
       -- Local variables are lost after return.
       self:local_lost()
       -- Other task will jump back to this resume point.
-      self:w(label, ":\n");
+      -- Semicolon after label acts as statement.
+      self:w(label, ":;\n");
    end
 end
 

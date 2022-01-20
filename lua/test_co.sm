@@ -9,7 +9,6 @@
       (write chan i) ;; send data to other task
       (let* ((reply (read chan))) ;; get response
         (yield reply) ;; send it to C caller
-        (add 1 2) ;; FIXME: stub
         ))
     (main)) ;; again
   (main) ;; entry point
@@ -28,7 +27,7 @@
     (let* ((req (read chan)))
       (write chan (add1 req))
       (main)))
-  ;; (reca) ;; recursion error test
+  ;; (reca) ;; inline recursion error test
   (main))
 
           
@@ -58,6 +57,6 @@
 
 (define (start)
   (let* ((c (make-channel)))
-    (spawn! (lambda () (client c)))
     (spawn! (lambda () (server c)))
+    (spawn! (lambda () (client c)))
     ))
