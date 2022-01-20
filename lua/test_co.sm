@@ -13,7 +13,7 @@
 
 (define (prog2 chan)
   (define (main)
-    (let* ((x (read chan)))
+    (let* ((x (if (read chan) 0 1)))
       (write chan (add x 1))
       (main)))
   (main))

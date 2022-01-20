@@ -94,6 +94,11 @@ function comp:inc(countername)
    self[countername] = n + 1
    return n
 end
+function comp:dec(countername)
+   local n = self[countername]
+   self[countername] = n - 1
+   return n
+end
 
 -- Generate symbols for let-insertion.  These use a prefix that is not
 -- legal in the code so they never clash with source variables.

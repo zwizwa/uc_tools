@@ -231,25 +231,25 @@ form['if'] = function(self, if_expr)
    -- and propagate var=nil since value of last expression in
    -- statement expression eventually ends up in this variable.
 
-   self:w(self:tab(), self:var_def(self.var))
+   self:w(self:tab(), self:var_def_assign_later(self.var))
 
    local function compile_branch(form)
       self:save_context(
          {'env','stack_ptr','indent','var'},
          function()
+            self:w("{\n") ;
             self:inc('indent')
-            self.var = nil
-            self:w("({\n") ;
             self:compile(form)
-            self:w(self:tab(), "})")
+            self:dec('indent')
+            self:w(self:tab(), "}")
          end)
    end
 
    local ccond = self:atom_to_c_expr(condition)
 
-   self:w(ccond, " ? ")
+   self:w("if (",ccond,") ")
    compile_branch(expr_true);
-   self:w(" : ")
+   self:w(" else ")
    compile_branch(expr_false);
    self:w(";\n")
 
@@ -716,13 +716,24 @@ end
 -- For variables that are defined without value and assigned later,
 -- the definition is only necessary for C local variables.  If they
 -- are on the stack this does not emit any C code.
+--
+-- Note: this has side-effect, so only call when it is actually
+-- written out!
+--
+-- FIXME: Is there a better way to deal with this?
+--
 function smc:var_def_assign_later(v)
    if not v then return "" end
-   v.cell.assign_later = true
-   if not v.cell.c_index then
-      local var, typ = self:cvar_and_ctype(v)
-      return {ifte(typ,{typ, " "}, ""), var, "; "}
+   if not v.cell.assign_later then
+      v.cell.assign_later = true
+      if not v.cell.c_index then
+         local var, typ = self:cvar_and_ctype(v)
+         return {ifte(typ,{typ, " "}, ""), var, "; "}
+      else
+         return ""
+      end
    else
+      -- don't re-emit definition
       return ""
    end
 end

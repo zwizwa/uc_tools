@@ -46,6 +46,12 @@ local function co(self, form, chan, data)
    if not li:compile_inserts(l('co',chan,data)) then
 
       self:w(self:tab())
+
+      -- Declare variable before label.  Can only jump to a statement,
+      -- not a declaration.  Do it at the begining of line, which is
+      -- easier to read.
+      self:w(self:var_def_assign_later(self.var))
+
       if (data) then
          -- Store data to be transferred. Coroutine value passing re-uses
          -- the registers used for function tail calls.
@@ -68,6 +74,7 @@ local function co(self, form, chan, data)
       self:w(label, ":\n")
       -- C local variables are lost when we jump back into this code.
       self:local_lost()
+
       self:w(self:binding(self:arg(0)))
       self:mark_bound(self.var)
    end
@@ -97,7 +104,7 @@ form['yield'] = function(self, expr)
    self:w(self:tab(),
           self.config.state_name,"->next",
            " = &&", label, "; ")
-   self:w("return; ");
+   self:w("return 0; ");
    -- Local variables are lost after return.
    self:local_lost()
    -- Other task will jump back to this resume point.
