@@ -1,31 +1,34 @@
 #lang s-expr "sm.rkt" ;; -*- scheme -*-
 
 ;; Test simpler co-routine abstraction.
-(define (prog1 chan)
-  (define (add1 x) (add x 1))
+;; Test application is a client and a server thread.
 
-  (define (fun1)
-    (co chan
-        (let* ((a (co chan 1)))
-          (add1 (add a (co chan 2)))))
-    (yield)
-    (fun1)
-    )
-  (fun1))
+(define (client chan)
+  (define (main)
+    (for ((i (in-range 3)))
+      (write chan i) ;; send data to other task
+      (let* ((reply (read chan))) ;; get response
+        (yield reply) ;; send it to C caller
+        (add 1 2) ;; FIXME: stub
+        ))
+    (main)) ;; again
+  (main) ;; entry point
+  )
 
 ;; Inline + recursion error test.
 (define (reca) (recb))
 (define (recb) (recc))
 (define (recc) (reca))
 
+;; FIXME: use if
 
-(define (prog2 chan)
+(define (server chan)
+  (define (add1 x) (add x 1)) ;; will be inlined
   (define (main)
-    (let* ((x (if (read chan) 0 1)))
-      (write chan (add 1 x))
+    (let* ((req (read chan)))
+      (write chan (add1 req))
       (main)))
   ;; (reca) ;; recursion error test
-  (main)
   (main))
 
           
@@ -55,6 +58,6 @@
 
 (define (start)
   (let* ((c (make-channel)))
-    (spawn! (lambda () (prog1 c)))
-    (spawn! (lambda () (prog2 c)))
+    (spawn! (lambda () (client c)))
+    (spawn! (lambda () (server c)))
     ))

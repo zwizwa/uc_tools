@@ -87,7 +87,7 @@ form['co'] = function(self, expr)
 end
 form['write'] = function(self, expr)
    local _, chan, data = se.unpack(expr, {n = 3})
-   co(self, 'write', chan)
+   co(self, 'write', chan, data)
 end
 form['read'] = function(self, expr)
    local _, chan = se.unpack(expr, {n = 2})
@@ -97,19 +97,25 @@ end
 
 
 form['yield'] = function(self, expr)
-   local label = self:gensym("l")
-   local s = self.config.state_name
-   -- Set network resume point and exit network.
-   -- Note that we do not need to save the task's resume point, since
-   -- C function entry will resume here via s->next.
-   self:w(self:tab(),
-          self.config.state_name,"->next",
-           " = &&", label, "; ")
-   self:w("return 0; ");
-   -- Local variables are lost after return.
-   self:local_lost()
-   -- Other task will jump back to this resume point.
-   self:w(label, ":\n");
+   local _, data = se.unpack(expr, {n = 2})
+   local li = self:let_insert()
+   data = li:maybe_insert_var(data)
+   if not li:compile_inserts(l('yield',data)) then
+      local label = self:gensym("l")
+      local s = self.config.state_name
+      -- Set network resume point and exit network.  Note that we do
+      -- not need to save the task's resume point, since C function
+      -- entry will resume here via s->next.
+      self:w(self:tab(),
+             self.config.state_name,"->next",
+             " = &&", label, "; ")
+      local c_data = self:atom_to_c_expr(data)
+      self:w("return ", c_data, "; ");
+      -- Local variables are lost after return.
+      self:local_lost()
+      -- Other task will jump back to this resume point.
+      self:w(label, ":\n");
+   end
 end
 
 

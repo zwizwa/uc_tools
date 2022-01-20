@@ -12,7 +12,10 @@ void send(uint32_t val) {}
 
 int main(int argc, char **argv) {
     struct state s = {};
-    testmod(&s);
+    for (int i=0; i<10; i++) {
+        T rv = testmod(&s);
+        LOG("%d -> %d\n", i, rv);
+    }
     return 0;
 }
 
