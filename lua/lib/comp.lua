@@ -17,6 +17,12 @@ function comp:w(...)
    end
 end
 
+-- E.g. for debug output
+function comp:w_if0(c_code, comment)
+   local c_n = {" // " , comment or "", "\n"}
+   self:w("#if 0", c_n, c_code, "#endif", c_n)
+end
+
 -- Default implementation writes to stdout.
 function comp:write(str)
    io.stdout:write(str)

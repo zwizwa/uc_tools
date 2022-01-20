@@ -22,8 +22,8 @@
 --   essentially implementing a stack.  The compiler can guarantee the
 --   stack size at compile time.
 --
--- * Basic program form is scheme's let* mapped to GCC statement
---   expressions.
+-- * Basic program form is scheme's let* / begin mapped to C99 blocks
+--   (compound statements)
 --
 -- * Second pass can distinguish between saved and local variables,
 --   which can be used to optimize the stack allocation.
@@ -60,6 +60,8 @@
 -- way.  Also there is a limit to 2-pass compilation.  At some point
 -- the tracking needed becomes too spread out.  I started
 -- transliteration to Racket.  That also informs some cleanup here.
+--
+-- Refactored a bit and found groove again, sticking to Lua until done.
 
 
 local se     = require('lib.se')
@@ -227,10 +229,6 @@ form['if'] = function(self, if_expr)
    end
 
    -- See also implementation of 'let*'.
-   -- We use statement expressions here as well, so write var def here
-   -- and propagate var=nil since value of last expression in
-   -- statement expression eventually ends up in this variable.
-
    self:w(self:tab(), self:var_def_assign_later(self.var))
 
    local function compile_branch(form)
@@ -251,7 +249,7 @@ form['if'] = function(self, if_expr)
    compile_branch(expr_true);
    self:w(" else ")
    compile_branch(expr_false);
-   self:w(";\n")
+   self:w("\n")
 
    self:mark_bound(self.var)
 end
@@ -285,7 +283,7 @@ function smc:compile_letstar(bindings, sequence)
          self:inc('indent')
 
          local tail_position = self.tail_position
-         local saved_var = self.var
+         local var = self.var
 
          -- Compile binding forms as expressions assigned to variables
          -- (self.var ~= nil).
@@ -302,8 +300,6 @@ function smc:compile_letstar(bindings, sequence)
          end
 
          -- Compile inner forms as statements (self.var == nil).
-         -- C handles value passing of the last statement since we're
-         -- inside a statement expression.
          local n_inner = se.length(sequence)
          assert(n_inner > 0)
 
@@ -313,12 +309,12 @@ function smc:compile_letstar(bindings, sequence)
             assert(form)
             local last_expr = se.is_empty(rest_expr)
             self.tail_position = tail_position and last_expr
-            self.var = ifte(last_expr, saved_var, nil)
+            self.var = ifte(last_expr, var, nil)
             self:compile(form)
          end
    end)
 
-   self:w(self:tab(), "};\n")
+   self:w(self:tab(), "}\n")
 
    -- Only mark after it's actually bound in the C text.
    self:mark_bound(self.var)
@@ -744,7 +740,7 @@ end
 function smc:binding(c_expr)
    local vardef = self:var_def(self.var)
    assert(c_expr)
-   return {self:tab(), vardef, c_expr, ";\n"};
+   return {self:tab(), vardef, c_expr, ";\n"}
 end
 
 -- Map Scheme atom (const or variable) to its C representation.
@@ -929,30 +925,16 @@ function smc:compile_pass(expr)
          end)
 end
 
-function smc:save_last()
-   -- Second pass uses some information from the previous pass: the
-   -- information gathered about each storage cell, information about
-   -- the goto labels, and nb vars necessary for argument passing.
-   self.cells_last         = self.cells
-   self.labels_last        = self.labels
-end
-
-function smc:w_if0(c_code, comment)
-   local c_n = {" // " , comment or "", "\n"}
-   -- self:w("#if 0", c_n, c_code, "#endif", c_n)
-end
-
--- FIXME: Not used
 function smc:compile_2pass(expr)
-
    -- First pass
    local c_code_1 = self:compile_pass(expr)
-
-   -- Debug print. Not used. Might no longer be valid C.
-   self:w_if0(c_code_1, "first pass")
-
-   -- Save info for second pass.
-   self:save_last()
+   -- Code output is not used. Might no longer be valid C.
+   -- self:w_if0(c_code_1, "first pass")
+   -- Second pass uses some information from the previous pass: the
+   -- information gathered about each storage cell and information
+   -- about the goto labels.
+   self.cells_last  = self.cells
+   self.labels_last = self.labels
    -- Second pass
    local c_code_2 = self:compile_pass(expr)
    return c_code_2
