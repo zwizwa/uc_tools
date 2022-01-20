@@ -2,10 +2,12 @@
 
 ;; Test simpler co-routine abstraction.
 (define (prog1 chan)
+  (define (add1 x) (add x 1))
+
   (define (fun1)
     (co chan
         (let* ((a (co chan 1)))
-          (add a (co chan 2))))
+          (add1 (add a (co chan 2)))))
     (yield)
     (fun1)
     )
@@ -16,12 +18,14 @@
 (define (recb) (recc))
 (define (recc) (reca))
 
+
 (define (prog2 chan)
   (define (main)
     (let* ((x (if (read chan) 0 1)))
-      (write chan (add x 1))
+      (write chan (add 1 x))
       (main)))
-  (reca) ;; recursion error test
+  ;; (reca) ;; recursion error test
+  (main)
   (main))
 
           

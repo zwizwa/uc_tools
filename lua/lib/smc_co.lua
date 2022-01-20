@@ -25,6 +25,7 @@ require('lib.log')
 local function schedule(self, chan)
    -- FIXME: Later, get scheduler info from compile-time schannel variable
    local v_chan = self:ref(chan)
+   assert(v_chan)
    -- log_desc({v_chan = v_chan})
    assert(v_chan.val)
 

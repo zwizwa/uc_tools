@@ -164,6 +164,9 @@ function smc:ref(var_name, env)
          return v
       end
    end
+   -- This should probably be an error.
+   error('unbound variable ' .. var_name)
+
    return nil
 end
 
@@ -364,7 +367,7 @@ local function is_task_definition(begin_expr)
    return ok and nb > 0
 end
 
-local function collect_defs(self, tab, begin_expr)
+local function collect_defs(self, tab, begin_expr, env)
    for_begin(
       begin_expr,
       function(fname, args, body_expr)
@@ -378,7 +381,7 @@ local function collect_defs(self, tab, begin_expr)
             name = fname,
             args = se.list_to_array(args),
             body = body_expr,
-            env = se.empty,
+            env = env,
          }
    end)
 end
@@ -411,7 +414,7 @@ form['module-begin'] = function(self, expr)
    -- The toplevel bindings are unique, so collect them in a table.
    self.funs = {}
 
-   collect_defs(self, self.funs, expr)
+   collect_defs(self, self.funs, expr, se.empty)
 
 
    -- Compile the bulk of the C code.  This produces some information
@@ -492,7 +495,7 @@ function smc:compile_tasks()
          self:w("// ", se.iolist(s.expr), "\n")
       until (is_task_definition(s.expr))
       local defs = {}
-      collect_defs(self, defs, s.expr)
+      collect_defs(self, defs, s.expr, s.env)
 
       -- log_desc({defs = defs})
 
@@ -581,6 +584,9 @@ end
 
 
 function smc:compile_fundef(fname, args, body_expr, env)
+
+   -- self:w("/*compile_fundef, env:",se.iolist(env),"*/")
+
    -- Only emit body if it is actually used.  We only have usage
    -- information in the second pass when labels_last is defined.
 
@@ -857,23 +863,23 @@ function smc:apply(expr)
       -- Non-tail calls are inlined as we do not support the call
       -- stack necessary for "real" calls.
       self:save_context(
-         {'env','stack_ptr','recinc'},
+         {'env','stack_ptr','recinl'},
          function()
             -- Recursion guard is implemented using a list.  If the
             -- function is already in the list, we error out.
-            local new_recinc = {fun_name, self.recinc}
-            for fun in se.elements(self.recinc) do
+            local new_recinl = {fun_name, self.recinl}
+            for fun in se.elements(self.recinl) do
                if fun == fun_name then
-                  local arr = se.list_to_array(se.reverse(new_recinc))
+                  local arr = se.list_to_array(se.reverse(new_recinl))
                   error(fun_name .. ": inlining loop: " .. table.concat(arr," -> "))
                end
             end
-            self.recinc = new_recinc
+            self.recinl = new_recinl
 
             -- Inlining links the environment inside the function body
             -- to cells accessible through the callsite environment.
             local callsite_env = self.env
-            self.env = se.empty
+            self.env = fun_def.env
             local dbg = {fun_name}
             -- log_desc(fun_def)
             for i=1, #app_form-1 do
@@ -884,7 +890,9 @@ function smc:apply(expr)
                table.insert(dbg, {arg_name,"=",var_name})
             end
             -- The body can then be compiled in this local environment.
-            self:w(self:tab(), "/*inline:",comp.clist(dbg),"*/\n")
+            self:w(self:tab(), "/*inline:",comp.clist(dbg),
+                   -- ", env:",se.iolist(fun_def.env),
+                   "*/\n")
             self:compile(fun_def.body)
          end)
    end
@@ -1031,7 +1039,7 @@ function smc:reset()
    self.args_size_app = 0
    -- Counters
    self.nb_sym = 0
-   self.recinc = se.empty
+   self.recinl = se.empty
    -- Current variable box
    self.var = nil
    -- Is current expression in tail position?
