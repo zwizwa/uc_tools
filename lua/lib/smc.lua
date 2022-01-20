@@ -857,13 +857,18 @@ function smc:apply(expr)
       -- Non-tail calls are inlined as we do not support the call
       -- stack necessary for "real" calls.
       self:save_context(
-         {'env','stack_ptr','depth'},
+         {'env','stack_ptr','recinc'},
          function()
-            -- FIXME: ad-hoc infinite loop guard
-            if self.depth > 10 then
-               error(fun_name .. ":inline loop")
+            -- Recursion guard is implemented using a list.  If the
+            -- function is already in the list, we error out.
+            local new_recinc = {fun_name, self.recinc}
+            for fun in se.elements(self.recinc) do
+               if fun == fun_name then
+                  local arr = se.list_to_array(se.reverse(new_recinc))
+                  error(fun_name .. ": inlining loop: " .. table.concat(arr," -> "))
+               end
             end
-            self:inc('depth')
+            self.recinc = new_recinc
 
             -- Inlining links the environment inside the function body
             -- to cells accessible through the callsite environment.
@@ -1026,7 +1031,7 @@ function smc:reset()
    self.args_size_app = 0
    -- Counters
    self.nb_sym = 0
-   self.depth = 0
+   self.recinc = se.empty
    -- Current variable box
    self.var = nil
    -- Is current expression in tail position?
