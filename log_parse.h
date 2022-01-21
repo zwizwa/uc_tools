@@ -71,19 +71,19 @@ static inline void log_parse_tick(struct log_parse *s, uint8_t c) {
             /* 32-bit hex time-stamped line. */
             if (s->ts_line_cb) {
                 __label__ abort;
-                if ((s->len >= 9) && (s->line[8] == ' ')) {
-                    // hex_to_bin() doesn't check the nibbles are
-                    // valid, so we do that separately.
-                    for (uintptr_t i=0; i<8; i++) {
-                        if (-1 == hex_char2int_check(s->line[i])) { goto abort; }
-                    }
-                    uint8_t buf[4];
-                    hex_to_bin(s->line, buf, 4);
-                    uint32_t ts = read_be(buf, 4);
-                    s->ts_line_cb(s, ts, s->line+9, s->len-9);
-                    goto read_line;
+                if (s->len < 0) goto abort;
+                if (s->line[8] != ' ') goto abort;
+                // hex_to_bin() doesn't check the nibbles are
+                // valid, so we do that separately.
+                for (uintptr_t i=0; i<8; i++) {
+                    if (-1 == hex_char2int_check(s->line[i])) { goto abort; }
                 }
-                abort:;
+                uint8_t buf[4];
+                hex_to_bin(s->line, buf, 4);
+                uint32_t ts = read_be(buf, 4);
+                s->ts_line_cb(s, ts, s->line+9, s->len-9);
+                goto read_line;
+              abort:;
             }
             /* normal line. */
             if (s->line_cb) {
@@ -104,7 +104,7 @@ static inline void log_parse_tick(struct log_parse *s, uint8_t c) {
     while(s->len < s->bin_len) {
         LOG_PARSE_GETC(s);
         s->line[s->len++] = c;
-        LOG("%d %d %02x\n", s->len, s->bin_len, c);
+        // LOG("%d %d %02x\n", s->len, s->bin_len, c);
     }
     uint32_t ts = read_be(s->line, 4);
     if (s->bin_cb) {
