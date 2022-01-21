@@ -119,7 +119,10 @@ local function cvar_iolist(var)
    return {"<#cvar:",var.var,">"}
 end
 function smc:new_var(var_name)
-   return {var = var_name, cell = self:new_cell(), class = 'cvar', iolist = cvar_iolist}
+   local cell = self:new_cell()
+   cell.orig_var = var_name
+   -- log("new_var:" .. cell.id .. ":" .. var_name .. "\n")
+   return {var = var_name, cell = cell, class = 'cvar', iolist = cvar_iolist}
 end
 
 -- Introduce the variable in the current lexical scope.
@@ -136,6 +139,12 @@ function smc:push_alias(alias_name, v)
    self.env = se.cons(v_alias, self.env)
    return v_alias
 end
+
+local function cell_bind(cell, bind)
+   cell.bind = bind
+   -- if cell.id == 6 then log_desc(cell) end
+end
+
 
 -- Map a variable name to variable slot in the environment.
 function smc:ref(var_name, env)
@@ -158,7 +167,8 @@ function smc:ref(var_name, env)
             -- mark it such that it gets stored in the state struct and
             -- not on the C stack.
             if v.cell.bind == 'lost' then
-               v.cell.bind = 'saved'
+               -- self:w("/*saved:",v.var,"*/")
+               cell_bind(v.cell, 'saved')
             end
          else
             -- Emphemeral, compile-time bindings created with partial
@@ -596,28 +606,38 @@ function smc:compile_fundef(fname, args, body_expr, env)
    local label = self:mangle_label(fname)
    -- log_desc(self.labels_last)
 
-   if (not self.labels_last) or self.labels_last[label] then
-      -- No closure support: make sure lex env is empty.
-      assert(0 == se.length(self.env))
-      self:w(label, ":", se_comment(args), "\n");
-      self:save_context(
-         {'var','tail_position','env'},
+   local c_code =
+      self:collect_output(
          function()
-            self.env = env
-            self.tail_position = true
-            self.var = nil
-            local nb_args = se.length(args)
-            if nb_args == 0 then
-               self:compile(body_expr)
-            else
-               local bindings = se.empty
-               for i,var in ipairs(se.list_to_array(args)) do
-                  bindings = {se.list(var, self:arg(i-1)), bindings}
-               end
-               self:compile_letstar(se.reverse(bindings), se.list(body_expr))
-            end
+            -- No closure support: make sure lex env is empty.
+            assert(0 == se.length(self.env))
+            self:w(label, ":", se_comment(args), "\n");
+            self:save_context(
+               {'var','tail_position','env'},
+               function()
+                  self.env = env
+                  self.tail_position = true
+                  self.var = nil
+                  local nb_args = se.length(args)
+                  if nb_args == 0 then
+                     self:compile(body_expr)
+                  else
+                     local bindings = se.empty
+                     for i,var in ipairs(se.list_to_array(args)) do
+                        bindings = {se.list(var, self:arg(i-1)), bindings}
+                     end
+                     self:compile_letstar(se.reverse(bindings), se.list(body_expr))
+                  end
+            end)
          end)
+
+   if (not self.labels_last) or self.labels_last[label] then
+      self:w(c_code)
    else
+      -- If code is never called, don't emit it.  Note that we do need
+      -- to go through the compilation step above to ensure the
+      -- iteration pattern doesn't change, so we generate the code and
+      -- then drop it.
       self:w("/* ", fname, " inline only */\n")
    end
 end
@@ -649,13 +669,13 @@ function smc:local_lost()
       if var.cell then
          if var.cell.bind == 'local' then
             table.insert(bound, n)
-            var.cell.bind = 'lost'
+            cell_bind(var.cell, 'lost')
          end
       else
          -- Ephemeral variables don't need marking.
       end
    end
-   self:w("/*lost:",se.iolist(self.env),"*/")
+   -- self:w("/*lost:",se.iolist(self.env),"*/")
    return bound
 end
 
@@ -665,15 +685,14 @@ end
 function smc:cvar_and_ctype(v)
    -- It's not useful to print generated symbol names.
    local comment = {"/*", v.var, "*/"}
-   if v.var:byte(1) == 59 then comment = "" end
+   -- if v.var:byte(1) == 59 then comment = "" end
 
 
    -- Only concrete variables are supported here.
    -- If this fails on an ephemeral variable, handle it one layer up
    if not v.cell then
       error("variable '" .. v.var .. "' is not available at run time")
-   end
-   if v.cell.c_index then
+   elseif v.cell.c_index then
       local s = self.config.state_name
       local t = self.current_task
       local i = v.cell.c_index
@@ -694,7 +713,7 @@ function smc:mark_bound(v)
       return
    end
    if v.cell.bind == 'unbound' or v.cell.assign_later then
-      v.cell.bind = 'local'
+      cell_bind(v.cell, 'local')
    end
 end
 
@@ -942,18 +961,33 @@ function smc:compile_pass(expr)
          end)
 end
 
+function smc:cell_table()
+   local tab = {}
+   for i,cell in ipairs(self.cells) do
+      table.insert(tab, {"// ", cell.id, " ", cell.bind, " ", cell.orig_var or "?", "\n"})
+   end
+   return tab
+end
+
 function smc:compile_2pass(expr)
    -- First pass
    local c_code_1 = self:compile_pass(expr)
-   -- Code output is not used. Might no longer be valid C.
-   -- self:w_if0(c_code_1, "first pass")
+
+   -- Code output is not used. Might no longer be valid C.  But it is
+   -- useful to dump this + stats for debugging.
+   -- self:w_if0({c_code_1, self:cell_table()}, "first pass")
    -- Second pass uses some information from the previous pass: the
    -- information gathered about each storage cell and information
    -- about the goto labels.
-   self.cells_last  = self.cells
-   self.labels_last = self.labels
+   self.cells_last  = self.cells   ; self.cells = {}
+   self.labels_last = self.labels  ; self.lables = {}
    -- Second pass
    local c_code_2 = self:compile_pass(expr)
+
+   -- If iteration pattern is the same, the tables should be the same.
+   -- We just check size here.
+   assert(#self.cells == #self.cells_last)
+
    return c_code_2
 end
 
