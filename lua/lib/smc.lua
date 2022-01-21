@@ -115,8 +115,11 @@ function smc:new_cell()
    return cell
 end
 
+local function cvar_iolist(var)
+   return {"<#cvar:",var.var,">"}
+end
 function smc:new_var(var_name)
-   return {var = var_name, cell = self:new_cell(), class = 'cvar'}
+   return {var = var_name, cell = self:new_cell(), class = 'cvar', iolist = cvar_iolist}
 end
 
 -- Introduce the variable in the current lexical scope.
@@ -652,6 +655,7 @@ function smc:local_lost()
          -- Ephemeral variables don't need marking.
       end
    end
+   self:w("/*lost:",se.iolist(self.env),"*/")
    return bound
 end
 

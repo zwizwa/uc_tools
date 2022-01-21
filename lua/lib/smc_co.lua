@@ -48,11 +48,6 @@ local function co(self, form, chan, data)
 
       self:w(self:tab())
 
-      -- Declare variable before label.  Can only jump to a statement,
-      -- not a declaration.  Do it at the begining of line, which is
-      -- easier to read.
-      self:w(self:var_def_assign_later(self.var))
-
       if (data) then
          -- Store data to be transferred. Coroutine value passing re-uses
          -- the registers used for function tail calls.

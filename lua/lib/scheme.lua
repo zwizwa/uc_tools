@@ -37,9 +37,12 @@ local function ref(var_name, env)
    log('\n')
    error('undefined var ' .. var_name)
 end
+local function ivar_iolist(var)
+   return {"<#ivar:",var.var,">"}
+end
 local function push(var, val, env)
    assert(val)
-   return se.cons({var = var, val = val, class = 'ivar'}, env)
+   return se.cons({var = var, val = val, class = 'ivar', iolist = ivar_iolist}, env)
 end
 
 local scheme = {}

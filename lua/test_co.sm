@@ -4,14 +4,11 @@
 ;; Test application is a client and a server thread.
 
 (define (client chan)
-  (define (rpc i)
-    (write chan i)
-    (read chan))
   (define (main)
     (for ((i (in-range 10)))
       ;; 'rpc' gets inlined.  the 2 calls produce 4 blocking points.
-      (let* ((x (rpc i))
-             (y (rpc (add 100 i))))
+      (let* ((x (co chan i))
+             (y (co chan (add 100 i))))
         ;; 'yield' performs coroutine call to C end.
         (yield (add x y))
         (main))))
@@ -27,12 +24,15 @@
 
 (define (server chan)
   (define (add1 x) (add x 1)) ;; will be inlined
-  (define (main)
-    (let* ((req (read chan)))
-      (write chan (add1 req))
-      (main)))
+  (define (main prev_rpl)
+    ;; Note that this is backwards!
+    (let* ((req (co chan prev_rpl))
+           (rpl (add1 req)))
+      (main rpl)))
   ;; (reca) ;; inline recursion error test
-  (main))
+  ;; client will ignore the first "reply?
+  ;; yeah coroutines are a bit raw...
+  (main 0))
 
           
 ;(define (fun2 x)
@@ -61,6 +61,6 @@
 
 (define (start)
   (let* ((c (make-channel)))
-    (spawn! (lambda () (server c)))
+    (spawn! (lambda () (server c))) ;; needs to come first
     (spawn! (lambda () (client c)))
     ))
