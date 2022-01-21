@@ -35,8 +35,11 @@ struct log_parse {
     void *next;
     uint8_t line[LOG_PARSE_MAX_LINE_LEN];
     uintptr_t len;
-    void (*line_cb)(struct log_parse *, const uint8_t *, uintptr_t);
+    uintptr_t bin_len;
+    void (*line_cb)   (struct log_parse *, const uint8_t *, uintptr_t);
     void (*ts_line_cb)(struct log_parse *, uint32_t, const uint8_t *, uintptr_t);
+    void (*bin_cb)    (struct log_parse *, uint32_t, const uint8_t *, uintptr_t);
+
 };
 
 /* Implemented as a coroutine using computed goto. */
@@ -47,11 +50,16 @@ struct log_parse {
 
 static inline void log_parse_tick(struct log_parse *s, uint8_t c) {
     if (s->next) goto *s->next;
+
+    /* Default protocol is lines of ASCII text (all chars < 128) */
   read_line:
     s->len = 0;
     for(;;) {
         LOG_PARSE_GETC(s);
-        if (c != '\n') {
+        if (c >= 0x80) {
+            goto read_bin;
+        }
+        else if (c != '\n') {
             if (s->len < LOG_PARSE_MAX_LINE_LEN) {
                 s->line[s->len++] = c;
             }
@@ -85,7 +93,25 @@ static inline void log_parse_tick(struct log_parse *s, uint8_t c) {
             /* fallthrough */
             goto read_line;
         }
+
     }
+    /* Binary messages consist of tag byte containing size, 4 bytes of
+       32 bit big endian rolling time stamp + max 127 payload
+       bytes. */
+  read_bin:
+    s->bin_len = c - 0x80 + 4;
+    s->len = 0;
+    while(s->len < s->bin_len) {
+        LOG_PARSE_GETC(s);
+        s->line[s->len++] = c;
+        LOG("%d %d %02x\n", s->len, s->bin_len, c);
+    }
+    uint32_t ts = read_be(s->line, 4);
+    if (s->bin_cb) {
+        s->bin_cb(s, ts, s->line+4, s->len-4);
+    }
+    goto read_line;
+
 }
 static inline void log_parse_write(struct log_parse *s, const uint8_t *buf, uintptr_t len) {
     while(len > 0) {
