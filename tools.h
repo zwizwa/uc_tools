@@ -10,7 +10,7 @@ int32_t hex_char2int_check(uint8_t ch);   // invalid -> -1
 int32_t dec_char2int_check(uint8_t ch);   // invalid -> -1
 
 void bin_to_hex(const uint8_t *in, uint32_t nb_in, uint8_t *hex_out);
-int hex_to_bin(const uint8_t *in_hex, uint8_t *buf, uint32_t size);
+int hex_to_bin(const uint8_t *in_hex, uint8_t *out, uint32_t nb_out);
 
 uint32_t read_hex_byte(const uint8_t *c);
 uint32_t read_hex_u32_le(const uint8_t *c);
