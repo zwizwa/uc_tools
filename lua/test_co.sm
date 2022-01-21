@@ -4,13 +4,17 @@
 ;; Test application is a client and a server thread.
 
 (define (client chan)
+  (define (rpc i)
+    (write chan i)
+    (read chan))
   (define (main)
-    (for ((i (in-range 3)))
-      (write chan i) ;; send data to other task
-      (let* ((reply (read chan))) ;; get response
-        (yield reply) ;; send it to C caller
-        ))
-    (main)) ;; again
+    (for ((i (in-range 10)))
+      ;; 'rpc' gets inlined.  the 2 calls produce 4 blocking points.
+      (let* ((x (rpc i))
+             (y (rpc (add 100 i))))
+        ;; 'yield' performs coroutine call to C end.
+        (yield (add x y))
+        (main))))
   (main) ;; entry point
   )
 
