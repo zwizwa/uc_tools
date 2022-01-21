@@ -1150,6 +1150,39 @@ struct port *port_open_(const char *spec_ro) {
         return p;
     }
 
+#if 0 // FIXME: Subtle bug?  No time to fix atm.
+    // UDP-BROADCAST:<bc_addr>:<port>
+    if (!strcmp(tok, "UDP-BROADCAST")) {
+        ASSERT(tok = strtok(NULL, delim));
+        const char *bc_addr = tok;
+        ASSERT(tok = strtok(NULL, delim));
+        uint16_t port = atoi(tok);
+        ASSERT(NULL == (tok = strtok(NULL, delim)));
+        //LOG("UDP:%s:%d\n", host, port);
+
+        struct port_open_udp_opts opts = {
+            .bind_port = 0, // don't bind
+            .allow_broadcast = 1
+        };
+
+        struct port *p = port_open_udp_opts(&opts);
+        struct udp_port *up = (void*)p;
+
+        assert_gethostbyname(&up->broadcast_addr, bc_addr);
+        up->broadcast_addr.sin_port = htons(port);
+        up->broadcast_addr.sin_family = AF_INET;
+        p->broadcast = 1; // always broadcast
+
+        // FIXME: HACK: This is here so the test in udp_guard() will
+        // pass.  The guard needs to be updated to support
+        // broadcast-only sockets, but I have no time to test it atm
+        // so not changing that path.
+        up->peer.sin_port = htons(port);
+
+        return p;
+    }
+#endif
+
     // UDP-BIND:<bind_port>:<host>:<port>[:<bc_addr>]
     if (!strcmp(tok, "UDP-BIND")) {
         ASSERT(tok = strtok(NULL, delim));
