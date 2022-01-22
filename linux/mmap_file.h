@@ -1,6 +1,13 @@
 #ifndef MMAP_FILE
 #define MMAP_FILE
 
+/* For mremap.  Note that other headers might include mman.h so be
+   sure to be first. */
+#define _GNU_SOURCE
+#include <unistd.h>
+#include <sys/mman.h>
+
+
 /* A sane interface for memory-mapped read/write files: growable arrays. */
 #include "assert_mmap.h"
 #include "assert_write.h"

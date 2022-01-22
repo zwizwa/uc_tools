@@ -4,6 +4,7 @@
 // This implements the more general instantiated minmax api
 #define MOD_MINMAX
 
+#define _GNU_SOURCE
 #include "mmap_file.h"
 
 #include <stdint.h>

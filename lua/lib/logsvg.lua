@@ -7,6 +7,19 @@
 
 local list = require('lib.tools.list')
 
+
+-- Modeled after elfutils/init.lua
+-- See there about how to package as lua rock later.
+
+-- Note that the path is a bit arbitrary, but it is done in a way that
+-- will (eventually) be least amount of friction for a luarocks build
+-- script.  For local development we can just symlink the .so to the
+-- correct place.
+
+local log_parse_lua51 = require('log_parse_lua51')
+assert("log_parse_lua51" == log_parse_lua51.name())
+
+
 local logsvg = {}
 
 local prompt = require('prompt')
@@ -187,6 +200,26 @@ function logsvg.repel(entries, delta_t)
 end
 
 
+-- Alternative implementation, using the log_parse C parser + memory
+-- mapped files.
+function logsvg.read_log_parse(filename, config)
+   if not config then config = {} end
+   local sync_re = config.sync_re or "^ping (.-)"
+   local max_lines = config.max_lines or 1000
+   local lines = {}
+   local last = nil
+   local fist = nil
+   local wraps = 0;
+
+   local p = log_parse_lua51.new_log_file(filename)
+   assert(p)
+
+   --for str in io.lines(filename) do
+   --end
+
+   error('done')
+end
+
 
 -- Read a time-stamped log.  For now this assumes that the timestamp
 -- is a 8-digit lower case hex number at the start of the line,
@@ -198,6 +231,7 @@ end
 -- case, we can just catch wraps here.
 
 function logsvg.read_log(filename, config)
+
    if not config then config = {} end
    local sync_re = config.sync_re or "^ping (.-)"
    local max_lines = config.max_lines or 1000
@@ -205,7 +239,6 @@ function logsvg.read_log(filename, config)
    local last = nil
    local fist = nil
    local wraps = 0;
-
 
    for str in io.lines(filename) do
       --log("line: " .. str .."\n")
@@ -255,7 +288,7 @@ end
 function logsvg.render_logfiles(e, filenames)
    assert(e.repel)
    local function process(filename)
-      local l = logsvg.read_log(filename)
+      local l = logsvg.read_log_parse(filename)
       return logsvg.repel(l, e.repel)
    end
 

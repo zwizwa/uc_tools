@@ -2,6 +2,7 @@
 #define ASSERT_READ_H
 
 #include "macros.h"
+#include <unistd.h>
 
 static inline ssize_t assert_read(int fd, void *vbuf, size_t nb) {
     unsigned char *buf = vbuf;

@@ -21,6 +21,7 @@
 // functions in the lib instead?
 
 #include "tools.h"
+#include "uct_byteswap.h"
 
 
 #ifndef LOG_PARSE_H
@@ -35,15 +36,22 @@
 #define LOG_PARSE_MAX_LINE_LEN 1024
 #endif
 
+typedef uintptr_t log_parse_status_t;
+#define LOG_PARSE_STATUS_CONTINUE 0
+
+struct log_parse;
+
+typedef log_parse_status_t (*log_parse_cb)(
+    struct log_parse *, uint32_t, const uint8_t *, uintptr_t);
+
 struct log_parse {
     void *next;
     uint8_t line[LOG_PARSE_MAX_LINE_LEN];
     uintptr_t len;
     uintptr_t bin_len;
-    void (*line_cb)   (struct log_parse *, const uint8_t *, uintptr_t);
-    void (*ts_line_cb)(struct log_parse *, uint32_t, const uint8_t *, uintptr_t);
-    void (*bin_cb)    (struct log_parse *, uint32_t, const uint8_t *, uintptr_t);
-
+    log_parse_cb line_cb;
+    log_parse_cb ts_line_cb;
+    log_parse_cb ts_bin_cb;
 };
 
 /* Implemented as a coroutine using computed goto. */
@@ -89,7 +97,7 @@ static inline void log_parse_tick(struct log_parse *s, uint8_t c) {
             }
             /* normal line. */
             if (s->line_cb) {
-                s->line_cb(s, s->line, s->len);
+                s->line_cb(s, 0, s->line, s->len);
                 goto read_line;
             }
             /* fallthrough */
@@ -111,8 +119,8 @@ static inline void log_parse_tick(struct log_parse *s, uint8_t c) {
     /* Timestamp is in host order, which is currently set to little
        endian. */
     uint32_t ts =  LOG_PARSE_SWAP_U32(read_be(s->line, 4));
-    if (s->bin_cb) {
-        s->bin_cb(s, ts, s->line+4, s->len-4);
+    if (s->ts_bin_cb) {
+        s->ts_bin_cb(s, ts, s->line+4, s->len-4);
     }
     goto read_line;
 
