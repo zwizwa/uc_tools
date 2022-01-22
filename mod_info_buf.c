@@ -63,25 +63,53 @@ int32_t info_level_current = 0;
 
 uint32_t info_overflow_errors = 0;
 
+void info_mark_overflow(uint32_t room) {
+    info_overflow_errors++;
+    if (room) {
+        /* Write an indicator that there was an overflow. */
+        uint32_t offset = (info_buf.hdr.write_next++) & INFO_MASK;
+        info_buf.buf[offset] = '?';
+    }
+}
+
+static inline void __attribute__((always_inline)) info_write_byte_no_check(uint8_t b) {
+    uint32_t offset = (info_buf.hdr.write_next++) & INFO_MASK;
+    info_buf.buf[offset] = b;
+}
+
 KEEP int info_write(uint8_t *buf, uintptr_t size) {
     /* Do one check, then write the buffer if it fits in a tight loop. */
     uint32_t room = INFO_SIZE - (info_buf.hdr.write_next - info_buf.hdr.read_next);
     if (likely(room > size)) {
         for(uintptr_t i=0; i<size; i++) {
-            uint32_t offset = (info_buf.hdr.write_next++) & INFO_MASK;
-            info_buf.buf[offset] = buf[i];
+            info_write_byte_no_check(buf[i]);
         }
     }
     else {
-        info_overflow_errors++;
-        if (room) {
-            /* Write an indicator that there was an overflow. */
-            uint32_t offset = (info_buf.hdr.write_next++) & INFO_MASK;
-            info_buf.buf[offset] = '?';
-        }
+        info_mark_overflow(room);
     }
     return 0;
 }
+
+KEEP int info_bin(uint32_t stamp, uint8_t *buf, uintptr_t size) {
+    /* Do one check, then write the buffer if it fits in a tight loop. */
+    uint32_t room = INFO_SIZE - (info_buf.hdr.write_next - info_buf.hdr.read_next);
+    if (likely(room > (size + 5)) && (size <= 127)) {
+        info_write_byte_no_check(0x80 + size);
+        const uint8_t *s = (void*)&stamp;
+        for(uintptr_t i=0; i<4; i++) {
+            info_write_byte_no_check(s[i]);
+        }
+        for(uintptr_t i=0; i<size; i++) {
+            info_write_byte_no_check(buf[i]);
+        }
+    }
+    else {
+        info_mark_overflow(room);
+    }
+    return 0;
+}
+
 
 KEEP int info_putchar_raw(int c) {
 #if 0 // A quick way to turn off logging

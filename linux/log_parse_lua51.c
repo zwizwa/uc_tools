@@ -95,7 +95,9 @@ struct log_parse_ud {
     /* It seems easier to parameterize the callbacks then to install
        different callbacks for each iteration mode. */
     int out_type;
-    /* simple binding mechanism. */
+    /* Keep track of the file that the parser is associated to.  This
+       is just for tracking, is not dereferenced until we get the same
+       pointer from Lua. */
     struct log_file_ud *ud_file;
 };
 static void write_hex_u32(uint8_t *buf, uint32_t val, uint32_t nb) {
@@ -246,6 +248,7 @@ static struct log_parse_ud *log_parse_next(lua_State *L, int out_type) {
         ud_parse->ud_file != ud_file) {
         log_parse_init(&ud_parse->s, ud_file->file.buf);
         ud_parse->ud_file = ud_file;
+        ud_parse->offset = 0;
     }
 
     // FIXME: check that offset is actually inside the file

@@ -202,8 +202,8 @@ end
 -- Alternative implementation, using the log_parse C parser + memory
 -- mapped files.
 --
--- FIXME: Prev is hacky with cross-coupled variables... just
--- duplicating code for now.
+-- FIXME: Copy-pased from earlier implementation.  Both should
+-- probably be refactored or old should be deleted.
 function logsvg.read_log_parse(filename, config)
    if not config then config = {} end
    local sync_re = config.sync_re or "^ping (.-)"
@@ -213,6 +213,7 @@ function logsvg.read_log_parse(filename, config)
    local fist = nil
    local wraps = 0;
 
+   -- FIXME: Let the C code do the scanning.
    for n, logline in log_parse.ts_lines(filename) do
       if max_lines and #lines > max_lines then return lines end
       -- log_desc({n = n, logline = logline})
@@ -281,6 +282,7 @@ function logsvg.read_log(filename, config)
          logline = str
       end
 
+      -- FIXME: shouldn't this be first?  it does seem to work though...
       if not last then
          if string.match(logline, sync_re) then
             log("sync:" .. stamp .. ":" .. filename .. "\n")

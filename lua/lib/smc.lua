@@ -452,7 +452,9 @@ form['module-begin'] = function(self, expr)
    -- it is not, and we bound it by max arguments of definitions.
    assert(self.args_size_app) -- defined during bulk compile
    for i=0,self.args_size_app do
-      self:w(self:tab(), "T ", self:arg(i), ";\n")
+      local a = self:arg(i)
+      -- FIXME: It generates unused variables.  Added (void) as workaround.
+      self:w(self:tab(), "T ",a , "; (void)", a, ";\n")
    end
 
    -- Emit code to jump to the current resume point

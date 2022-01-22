@@ -1,30 +1,29 @@
 #ifndef INFO_BIN_H
 #define INFO_BIN_H
 
-/* Binary trace logger.
+/* Binary trace logger, piggy-backed on a text logger.
+   Assumes the text logger produces 7-bit clean ASCII.
+
+   We use the bytes 0x80-0xFF as a marker to indicate a time stamped message follows.
+   The type stamp is 32 bits host order.
+   The low 7 bits in the marker byte contain the number of bytes _after_ the timestamp.
 
    The point of this is to be fast, since infof() extended with ascii
    timestamping is very slow.
 
-   So keep it simple:
-   0x80 - 0xFF indicates a binary message follows, payload size post timestamp is 7 LSBs
-   4 bytes timestamp, host order
-   n bytes payload
-
+   Encoding should probably be custom to encode high volume messages
+   with a small amount of bytes in order not to cause buffer
+   overflows.
 */
 
 
 
 #include "cycle_counter.h"
 
-#define INFO_BIN_U32(...) {                                     \
-        uint32_t msg[] = {0, cycle_counter(), __VA_ARGS__};     \
-        info_bin_write(((uint8_t*)msg)+3, sizeof(msg)-3);       \
+#define INFO_BIN_U8(...) {                                      \
+        uint8_t msg[] = {__VA_ARGS__};                          \
+        info_bin(cycle_counter(), msg, sizeof(msg));            \
     }
-static inline void info_bin_write(uint8_t *buf, uint32_t size) {
-    buf[0] = (size - 5) | 0x80;
-    info_write(buf, size);
-}
 
 
 

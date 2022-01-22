@@ -48,6 +48,7 @@ static inline void info_puts(char *buf) {
 }
 #if 1
 int info_write(uint8_t *buf, uintptr_t size);
+int info_bin(uint32_t stamp, uint8_t *buf, uintptr_t size);
 #else
 static inline void info_write(uint8_t *buf, uint32_t len) {
     while(len--) info_putchar(*buf++);
