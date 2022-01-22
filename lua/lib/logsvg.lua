@@ -214,7 +214,7 @@ function logsvg.read_log_parse(filename, config)
    local wraps = 0;
 
    -- FIXME: Let the C code do the scanning.
-   for n, logline in log_parse.ts_lines(filename) do
+   for n, logline in log_parse.ts_lines(filename, { wind = {0} }) do
       if max_lines and #lines > max_lines then return lines end
       -- log_desc({n = n, logline = logline})
       assert(n)

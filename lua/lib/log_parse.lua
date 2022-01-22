@@ -25,9 +25,16 @@ function log_parse.lines(file)
    return gen
 end
 
-function log_parse.ts_lines(file)
-   local file = C.new_log_file(file)
+function log_parse.ts_lines(filename, config)
+   -- FIXME: C code only supports a single byte prefix atm.
+   local wind_prefix = config and config.wind and config.wind[1]
+   local file = C.new_log_file(filename)
    local parse = C.new_log_parse()
+   if wind_prefix then
+      local offset = C.wind_prefix(parse, file, wind_prefix)
+      -- io.stderr:write(filename .. ": wind offset = " .. offset .. "\n")
+   end
+
    local function gen() return C.next_ts_string(parse, file) end
    return gen
 end

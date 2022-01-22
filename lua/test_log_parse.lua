@@ -1,3 +1,5 @@
+-- FIXME: Turn these into assert tests.
+
 local log_parse = require('lib.log_parse')
 local prompt = require('prompt')
 
@@ -88,6 +90,7 @@ local function test6()
 end
 
 local function test7()
+   log("\ntest7\n")
    local parse = log_parse.C.new_log_parse()
    local file  = log_parse.C.new_log_file(trace)
    local rv = log_parse.C.wind_prefix(parse, file, 0)
