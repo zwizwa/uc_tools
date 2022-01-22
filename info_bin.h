@@ -7,7 +7,7 @@
    timestamping is very slow.
 
    So keep it simple:
-   0x80 - 0xFF indicates a binary message follows, payload size is 7 LSBs
+   0x80 - 0xFF indicates a binary message follows, payload size post timestamp is 7 LSBs
    4 bytes timestamp, host order
    n bytes payload
 
@@ -22,7 +22,7 @@
         info_bin_write(((uint8_t*)msg)+3, sizeof(msg)-3);       \
     }
 static inline void info_bin_write(uint8_t *buf, uint32_t size) {
-    buf[0] = (size - 4) | 0x80;
+    buf[0] = (size - 5) | 0x80;
     info_write(buf, size);
 }
 

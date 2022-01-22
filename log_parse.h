@@ -26,6 +26,10 @@
 #ifndef LOG_PARSE_H
 #define LOG_PARSE_H
 
+/* By default binary log timestamps are little endian. */
+#ifndef LOG_PARSE_SWAP_U32
+#define LOG_PARSE_SWAP_U32(x) SWAP_U32(x)
+#endif
 
 #ifndef LOG_PARSE_MAX_LINE_LEN
 #define LOG_PARSE_MAX_LINE_LEN 1024
@@ -59,12 +63,10 @@ static inline void log_parse_tick(struct log_parse *s, uint8_t c) {
         if (c >= 0x80) {
             goto read_bin;
         }
-        else if (c != '\n') {
-            if (s->len < LOG_PARSE_MAX_LINE_LEN) {
-                s->line[s->len++] = c;
-            }
+        if (s->len < LOG_PARSE_MAX_LINE_LEN) {
+            s->line[s->len++] = c;
         }
-        else {
+        if (c == '\n') {
             /* Line is ready.  Use fallthrough to hand it over to the
                most specific callback first. */
 
@@ -106,7 +108,9 @@ static inline void log_parse_tick(struct log_parse *s, uint8_t c) {
         s->line[s->len++] = c;
         // LOG("%d %d %02x\n", s->len, s->bin_len, c);
     }
-    uint32_t ts = read_be(s->line, 4);
+    /* Timestamp is in host order, which is currently set to little
+       endian. */
+    uint32_t ts =  LOG_PARSE_SWAP_U32(read_be(s->line, 4));
     if (s->bin_cb) {
         s->bin_cb(s, ts, s->line+4, s->len-4);
     }
