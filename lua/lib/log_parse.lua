@@ -14,19 +14,29 @@ function log_parse.new()
    return obj
 end
 
+-- FIXME: C.reset is not needed?
+
+-- Create iterator.  Allow parser to be re-used, e.g. to first wind
+-- parser to a certain offset, then use it as Lua iterator.
 function log_parse.lines(file, parse)
    local file = C.new_log_file(file)
-   if parse then
-      -- Re-use parser.  FIXME: Clean up semantics.  What we want to
-      -- do is proably to implement certain start conditions, such as
-      -- scanning up to sync point in C code before passing things to
-      -- Lua.  For now just call reset, which resets offset to 0.
-      C.reset(parse)
-   else
+   if not parse then
       parse = C.new_log_parse()
    end
    local function gen()
-      return C.next(parse, file)
+      return C.next_string(parse, file)
+      -- FIXME: Test end condition
+   end
+   return gen
+end
+
+function log_parse.indices(file, parse)
+   local file = C.new_log_file(file)
+   if not parse then
+      parse = C.new_log_parse()
+   end
+   local function gen()
+      return C.next_index(parse, file)
       -- FIXME: Test end condition
    end
    return gen

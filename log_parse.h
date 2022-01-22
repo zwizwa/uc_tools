@@ -52,6 +52,7 @@ struct log_parse {
     uintptr_t line_len;
     uintptr_t bin_len;
     const uint8_t *in;
+    const uint8_t *in_mark;  /* only valid for stable *in */
     uintptr_t in_len;
     log_parse_cb line_cb;
     log_parse_cb ts_line_cb;
@@ -59,6 +60,9 @@ struct log_parse {
 };
 
 /* Implemented as a coroutine using computed goto. */
+
+/* FIXME: Optimization: In case the underlying storage is stable, we
+   don't need to copy anything to the line buffer. */
 
 /* Character will be in 'c' variable. */
 #define LOG_PARSE_GETC(s) \
@@ -70,6 +74,7 @@ static inline log_parse_status_t log_parse_tick(struct log_parse *s, uint8_t c) 
 
     /* Default protocol is lines of ASCII text (all chars < 128) */
   read_line:
+    s->in_mark = s->in;
     s->line_len = 0;
     for(;;) {
         LOG_PARSE_GETC(s);
@@ -96,6 +101,7 @@ static inline log_parse_status_t log_parse_tick(struct log_parse *s, uint8_t c) 
                 uint8_t buf[4];
                 hex_to_bin(s->line, buf, 4);
                 uint32_t ts = read_be(buf, 4);
+                s->in_mark += 9;
                 status = s->ts_line_cb(s, ts, s->line+9, s->line_len-9);
                 goto read_line;
               abort:;
@@ -114,6 +120,7 @@ static inline log_parse_status_t log_parse_tick(struct log_parse *s, uint8_t c) 
        32 bit big endian rolling time stamp + max 127 payload
        bytes. */
   read_bin:
+    s->in_mark = s->in;
     s->bin_len = c - 0x80 + 4;
     s->line_len = 0;
     while(s->line_len < s->bin_len) {
@@ -125,6 +132,7 @@ static inline log_parse_status_t log_parse_tick(struct log_parse *s, uint8_t c) 
        endian. */
     uint32_t ts =  LOG_PARSE_SWAP_U32(read_be(s->line, 4));
     if (s->ts_bin_cb) {
+        s->in_mark += 4;
         status = s->ts_bin_cb(s, ts, s->line+4, s->line_len-4);
     }
     goto read_line;
@@ -157,6 +165,8 @@ static inline void log_parse_write_cstring(struct log_parse *s, const char *str)
 static inline void log_parse_init(struct log_parse *s) {
     memset(s, 0, sizeof(*s));
     log_parse_tick(s, 0); // run up to the first read.
+    // FIXME: This will cause the mark to be wrong!
+    // So set s->in_mark explicitly for mmap files.
 }
 
 
