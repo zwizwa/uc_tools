@@ -1,6 +1,8 @@
 local log_parse = {}
 
 local C = require('log_parse_lua51')
+log_parse.C = C -- Exposed, but this is not intended to be stable
+
 
 function log_parse.new()
    local obj = { parse = C.new_log_parse() }

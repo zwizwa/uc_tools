@@ -99,6 +99,8 @@ struct log_parse_ud {
        is just for tracking, is not dereferenced until we get the same
        pointer from Lua. */
     struct log_file_ud *ud_file;
+    /* For searching. */
+    uint8_t prefix;
 };
 static void write_hex_u32(uint8_t *buf, uint32_t val, uint32_t nb) {
     uint8_t hex[] = "0123456789abcdef";
@@ -234,12 +236,7 @@ static int cmd_to_string_mv(lua_State *L) {
     return ud->nb_rv;
 }
 
-/* Yield to parser to provide a single output element of specified type.
-   Lua arguments are alwyays the same (parse,file). */
-static struct log_parse_ud *log_parse_next(lua_State *L, int out_type) {
-    struct log_file_ud *ud_file   = L_log_file(L, -1);
-    struct log_parse_ud *ud_parse = L_log_parse(L, -2);
-
+void bind_parse(struct log_parse_ud *ud_parse, struct log_file_ud *ud_file) {
     /* Note that we're creating a tight coupling from parser to file
        object: parser has pointers into mmap file.  For the first
        call, we associate the parser.  On subsequent calls we check
@@ -250,16 +247,65 @@ static struct log_parse_ud *log_parse_next(lua_State *L, int out_type) {
         ud_parse->ud_file = ud_file;
         ud_parse->offset = 0;
     }
+}
 
-    // FIXME: check that offset is actually inside the file
-    log_parse_parameterize(L, ud_parse);
-    ud_parse->out_type = out_type;
-    ud_parse->mode     = LOG_PARSE_STATUS_YIELD;
+
+/* Continue parsing at offset. */
+void parse_continue_at_offset(
+    struct log_parse_ud *ud_parse, struct log_file_ud *ud_file)
+{
     ud_parse->s.in     = ud_file->file.buf  + ud_parse->offset;
     ud_parse->s.in_len = ud_file->file.size - ud_parse->offset;
     log_parse_continue(&ud_parse->s);
     ud_parse->offset = ud_parse->s.in - (const uint8_t*)ud_file->file.buf;
+}
+
+/* Yield to parser to provide a single output element of specified type.
+   Lua arguments are alwyays the same (parse,file). */
+static struct log_parse_ud *log_parse_next(lua_State *L, int out_type) {
+    struct log_file_ud *ud_file   = L_log_file(L, -1);
+    struct log_parse_ud *ud_parse = L_log_parse(L, -2);
+    // FIXME: check that offset is actually inside the file
+    bind_parse(ud_parse, ud_file);
+    log_parse_parameterize(L, ud_parse);
+    ud_parse->mode     = LOG_PARSE_STATUS_YIELD;
+    ud_parse->out_type = out_type;
+    parse_continue_at_offset(ud_parse, ud_file);
     return ud_parse;
+}
+
+// FIXME: For now this is hardcoded to single byte prefix search.
+// FIXME: Not tested
+static log_parse_status_t ts_find_cb(
+    struct log_parse *s, uint32_t ts,
+    const uint8_t *line, uintptr_t len)
+{
+    struct log_parse_ud *ud = (void*)s;
+    if ((len > 1) && (line[0]) == ud->prefix) {
+        //lua_pushboolean(ud->L, 1);
+        //FIXME: the offset of the line would be more useful.
+        //Track that separately.
+        lua_pushnumber(ud->L, mmap_file_offset(ud));
+        ud->nb_rv++;
+        return LOG_PARSE_STATUS_YIELD;
+    }
+    else {
+        return LOG_PARSE_STATUS_CONTINUE;
+    }
+}
+static int cmd_wind_prefix(lua_State *L) {
+    uint8_t prefix                = L_number(L, -1);
+    struct log_file_ud *ud_file   = L_log_file(L, -2);
+    struct log_parse_ud *ud_parse = L_log_parse(L, -3);
+    bind_parse(ud_parse, ud_file);
+    ud_parse->L = L;
+    ud_parse->nb_rv = 0;
+    ud_parse->s.line_cb    = ts_find_cb;
+    ud_parse->s.ts_line_cb = ts_find_cb;
+    ud_parse->s.ts_bin_cb  = ts_find_cb;
+    ud_parse->prefix = prefix;
+    parse_continue_at_offset(ud_parse, ud_file);
+    return ud_parse->nb_rv;
 }
 
 /* Combine parser and mmap file to create an interator. */
@@ -312,6 +358,7 @@ int luaopen_log_parse_lua51 (lua_State *L) {
     FUN(next_ts_string);
     FUN(next_offset);
     FUN(next_index);
+    FUN(wind_prefix);
     return 1;
 #undef FUN
 }

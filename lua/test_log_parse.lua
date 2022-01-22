@@ -87,10 +87,16 @@ local function test6()
    log(nb .. " lines in " .. trace .. "\n")
 end
 
-
+local function test7()
+   local parse = log_parse.C.new_log_parse()
+   local file  = log_parse.C.new_log_file(trace)
+   local rv = log_parse.C.wind_prefix(parse, file, 0)
+   log_desc({found_offset = rv or 'not_found'})
+end
 
 test1() ; test1()
 test3()
 test4()
 test5()
 test6()
+test7()
