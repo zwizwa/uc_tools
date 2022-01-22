@@ -26,6 +26,14 @@
 
 */
 
+/* What I want:
+   - set up test system to insert a trigger
+   - let log system scan for that trigger
+   So what is most important is fast scanning, so do not do that in Lua.
+*/
+
+
+
 // FIXME: For some reason this (which is already in os_linux.h) is not
 // enough to expose mremap.
 // #define _GNU_SOURCE
@@ -45,7 +53,6 @@
 struct log_file_ud {
     struct mmap_file file;
     lua_State *L;
-    uint32_t nb_rv;
 };
 static int gc_log_file(lua_State *L) {
     return 0;
@@ -66,6 +73,11 @@ static int cmd_new_log_file(lua_State *L) {
     push_log_file(L, (const char*)filename);
     return 1;
 }
+static struct log_file_ud *L_log_file(lua_State *L, int index) {
+    ASSERT(luaL_checkudata(L, index, T_LOG_FILE));
+    struct log_file_ud *ud = lua_touserdata(L, index);
+    return ud;
+}
 
 
 /* Wrap log_parse.h iterator. */
@@ -75,6 +87,7 @@ struct log_parse_ud {
     lua_State *L;
     uint32_t nb_rv;
     log_parse_status_t mode;
+    uintptr_t offset;
 };
 static void write_hex_u32(uint8_t *buf, uint32_t val, uint32_t nb) {
     uint8_t hex[] = "0123456789abcdef";
@@ -147,23 +160,45 @@ static struct log_parse_ud *L_log_parse(lua_State *L, int index) {
     struct log_parse_ud *ud = lua_touserdata(L, index);
     return ud;
 }
-/* Push a string fragment into the state machine.  For each complete
-   log line or binary message a callback is invoked, which pushes a
-   string to the Lua stack. */
-static int cmd_log_parse_to_string(lua_State *L) {
-    struct log_parse_ud *ud = L_log_parse(L, -2);
+
+/* Approximation of the semantics of Scheme's parameterize.
+   These values are only valid during the extent of the call. */
+static void log_parse_parameterize(lua_State *L, struct log_parse_ud *ud) {
     ud->L = L;
     ud->nb_rv = 0;
     ud->s.line_cb    = to_string_line_cb;
     ud->s.ts_line_cb = to_string_ts_line_cb;
     ud->s.ts_bin_cb  = to_string_bin_cb;
     ud->mode = LOG_PARSE_STATUS_CONTINUE;
+}
+
+/* Push a string fragment into the state machine.  For each complete
+   log line or binary message a callback is invoked, which pushes a
+   string to the Lua stack. */
+static int cmd_log_parse_to_string(lua_State *L) {
+    struct log_parse_ud *ud = L_log_parse(L, -2);
     const uint8_t *data = (const uint8_t *)lua_tostring(L, -1);
     ASSERT(data);
     size_t len = lua_strlen(L, -1);
+    log_parse_parameterize(L, ud);
     log_parse_write(&ud->s, data, len);
     return ud->nb_rv;
 }
+
+/* Combine parser and mmap file to create an interator. */
+static int cmd_log_parse_next(lua_State *L) {
+    struct log_file_ud *ud_file   = L_log_file(L, -1);
+    struct log_parse_ud *ud_parse = L_log_parse(L, -2);
+    log_parse_parameterize(L, ud_parse);
+    ud_parse->mode = LOG_PARSE_STATUS_YIELD;
+    ud_parse->s.in     = ud_file->file.buf  + ud_parse->offset;
+    ud_parse->s.in_len = ud_file->file.size - ud_parse->offset;
+    log_parse_continue(&ud_parse->s);
+    ud_parse->offset = ud_parse->s.in - (const uint8_t*)ud_file->file.buf;
+    return ud_parse->nb_rv;
+}
+// FIXME: reset counter
+
 
 
 
@@ -185,6 +220,7 @@ int luaopen_log_parse_lua51 (lua_State *L) {
     FUN(log_parse_to_string);
     FUN(new_log_parse);
     FUN(new_log_file);
+    FUN(log_parse_next);
     return 1;
 #undef FUN
 }

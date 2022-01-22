@@ -38,6 +38,8 @@
 
 typedef uintptr_t log_parse_status_t;
 #define LOG_PARSE_STATUS_CONTINUE 0
+#define LOG_PARSE_STATUS_END 1
+#define LOG_PARSE_STATUS_YIELD 2
 
 struct log_parse;
 
@@ -47,8 +49,10 @@ typedef log_parse_status_t (*log_parse_cb)(
 struct log_parse {
     void *next;
     uint8_t line[LOG_PARSE_MAX_LINE_LEN];
-    uintptr_t len;
+    uintptr_t line_len;
     uintptr_t bin_len;
+    const uint8_t *in;
+    uintptr_t in_len;
     log_parse_cb line_cb;
     log_parse_cb ts_line_cb;
     log_parse_cb ts_bin_cb;
@@ -58,21 +62,22 @@ struct log_parse {
 
 /* Character will be in 'c' variable. */
 #define LOG_PARSE_GETC(s) \
-    { __label__ resume; s->next = &&resume; return; resume:; }
+    { __label__ resume; s->next = &&resume; return status; resume:; }
 
-static inline void log_parse_tick(struct log_parse *s, uint8_t c) {
+static inline log_parse_status_t log_parse_tick(struct log_parse *s, uint8_t c) {
+    log_parse_status_t status = LOG_PARSE_STATUS_CONTINUE;
     if (s->next) goto *s->next;
 
     /* Default protocol is lines of ASCII text (all chars < 128) */
   read_line:
-    s->len = 0;
+    s->line_len = 0;
     for(;;) {
         LOG_PARSE_GETC(s);
         if (c >= 0x80) {
             goto read_bin;
         }
-        if (s->len < LOG_PARSE_MAX_LINE_LEN) {
-            s->line[s->len++] = c;
+        if (s->line_len < LOG_PARSE_MAX_LINE_LEN) {
+            s->line[s->line_len++] = c;
         }
         if (c == '\n') {
             /* Line is ready.  Use fallthrough to hand it over to the
@@ -81,7 +86,7 @@ static inline void log_parse_tick(struct log_parse *s, uint8_t c) {
             /* 32-bit hex time-stamped line. */
             if (s->ts_line_cb) {
                 __label__ abort;
-                if (s->len < 0) goto abort;
+                if (s->line_len < 0) goto abort;
                 if (s->line[8] != ' ') goto abort;
                 // hex_to_bin() doesn't check the nibbles are
                 // valid, so we do that separately.
@@ -91,13 +96,13 @@ static inline void log_parse_tick(struct log_parse *s, uint8_t c) {
                 uint8_t buf[4];
                 hex_to_bin(s->line, buf, 4);
                 uint32_t ts = read_be(buf, 4);
-                s->ts_line_cb(s, ts, s->line+9, s->len-9);
+                status = s->ts_line_cb(s, ts, s->line+9, s->line_len-9);
                 goto read_line;
               abort:;
             }
-            /* normal line. */
+            /* line without timestamp, or failed timestamp parse */
             if (s->line_cb) {
-                s->line_cb(s, 0, s->line, s->len);
+                status = s->line_cb(s, 0, s->line, s->line_len);
                 goto read_line;
             }
             /* fallthrough */
@@ -110,27 +115,40 @@ static inline void log_parse_tick(struct log_parse *s, uint8_t c) {
        bytes. */
   read_bin:
     s->bin_len = c - 0x80 + 4;
-    s->len = 0;
-    while(s->len < s->bin_len) {
+    s->line_len = 0;
+    while(s->line_len < s->bin_len) {
         LOG_PARSE_GETC(s);
-        s->line[s->len++] = c;
-        // LOG("%d %d %02x\n", s->len, s->bin_len, c);
+        s->line[s->line_len++] = c;
+        // LOG("%d %d %02x\n", s->line_len, s->bin_len, c);
     }
     /* Timestamp is in host order, which is currently set to little
        endian. */
     uint32_t ts =  LOG_PARSE_SWAP_U32(read_be(s->line, 4));
     if (s->ts_bin_cb) {
-        s->ts_bin_cb(s, ts, s->line+4, s->len-4);
+        status = s->ts_bin_cb(s, ts, s->line+4, s->line_len-4);
     }
     goto read_line;
 
 }
-static inline void log_parse_write(struct log_parse *s, const uint8_t *buf, uintptr_t len) {
-    while(len > 0) {
-        log_parse_tick(s, *buf++);
-        len--;
+static inline log_parse_status_t log_parse_continue(struct log_parse *s) {
+    log_parse_status_t status;
+    while(s->in_len > 0) {
+        status = log_parse_tick(s, *s->in++);
+        /* Callbacks can issue stop conditions. */
+        if (status != LOG_PARSE_STATUS_CONTINUE) return status;
+        s->in_len--;
     }
+    /* Stop condition = end of input data. */
+    return LOG_PARSE_STATUS_END;
 }
+static inline log_parse_status_t log_parse_write(
+    struct log_parse *s, const uint8_t *buf, uintptr_t len)
+{
+    s->in = buf;
+    s->in_len = len;
+    return log_parse_continue(s);
+}
+
 static inline void log_parse_write_cstring(struct log_parse *s, const char *str) {
     uintptr_t len = strlen(str);
     log_parse_write(s, (const uint8_t *)str, len);

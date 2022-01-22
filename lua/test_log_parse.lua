@@ -1,14 +1,19 @@
-local log_parse_lua51 = require('log_parse_lua51')
+local log_parse = require('log_parse_lua51')
 
-local parse = log_parse_lua51.new_log_parse()
+local parse = log_parse.new_log_parse()
 
 local function pack(...)
    return {...}
 end
 
-local function test()
+local function log(str)
+   io.stderr:write(str)
+end
+
+-- Push fragment, collect all lines.
+local function test1()
 local rv = pack(
-log_parse_lua51.log_parse_to_string(
+log_parse.log_parse_to_string(
    parse,
    "rdm\nabc\ndef\n1234def1 lala\n"
 
@@ -26,10 +31,24 @@ log_parse_lua51.log_parse_to_string(
    .. "end\n"
 ))
 for i,v in ipairs(rv) do
-   io.write(i .. " " .. v)
+   log(i .. " " .. v)
 end
 end
 
-test()
-test()
+--test1()
+--test1()
 
+-- Use mmap file
+local function test2()
+   local file = log_parse.new_log_file("test.trace")
+   assert(file)
+   local function gen()
+      return log_parse.log_parse_next(parse, file)
+   end
+   -- Print the first 10 messages
+   for i=1,10 do
+      log(gen())
+   end
+end
+
+test2()
