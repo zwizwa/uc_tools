@@ -16,29 +16,24 @@ end
 
 -- FIXME: C.reset is not needed?
 
--- Create iterator.  Allow parser to be re-used, e.g. to first wind
--- parser to a certain offset, then use it as Lua iterator.
-function log_parse.lines(file, parse)
+function log_parse.lines(file)
    local file = C.new_log_file(file)
-   if not parse then
-      parse = C.new_log_parse()
-   end
-   local function gen()
-      return C.next_string(parse, file)
-      -- FIXME: Test end condition
-   end
+   local parse = C.new_log_parse()
+   local function gen() return C.next_string(parse, file) end
    return gen
 end
 
-function log_parse.indices(file, parse)
+function log_parse.ts_lines(file)
    local file = C.new_log_file(file)
-   if not parse then
-      parse = C.new_log_parse()
-   end
-   local function gen()
-      return C.next_index(parse, file)
-      -- FIXME: Test end condition
-   end
+   local parse = C.new_log_parse()
+   local function gen() return C.next_ts_string(parse, file) end
+   return gen
+end
+
+function log_parse.indices(file)
+   local file = C.new_log_file(file)
+   local parse = C.new_log_parse()
+   local function gen() return C.next_index(parse, file) end
    return gen
 end
 

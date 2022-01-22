@@ -16,8 +16,7 @@ local list = require('lib.tools.list')
 -- script.  For local development we can just symlink the .so to the
 -- correct place.
 
-local log_parse_lua51 = require('log_parse_lua51')
-assert("log_parse_lua51" == log_parse_lua51.name())
+local log_parse = require('lib.log_parse')
 
 
 local logsvg = {}
@@ -202,6 +201,9 @@ end
 
 -- Alternative implementation, using the log_parse C parser + memory
 -- mapped files.
+--
+-- FIXME: Prev is hacky with cross-coupled variables... just
+-- duplicating code for now.
 function logsvg.read_log_parse(filename, config)
    if not config then config = {} end
    local sync_re = config.sync_re or "^ping (.-)"
@@ -211,13 +213,30 @@ function logsvg.read_log_parse(filename, config)
    local fist = nil
    local wraps = 0;
 
-   local p = log_parse_lua51.new_log_file(filename)
-   assert(p)
+   for n, logline in log_parse.ts_lines(filename) do
+      if max_lines and #lines > max_lines then return lines end
+      -- log_desc({n = n, logline = logline})
+      assert(n)
+      assert(logline)
+      if not last then
+         if string.match(logline, sync_re) then
+            log("sync:" .. n .. ":" .. filename .. "\n")
+            last  = n
+            first = n
+         end
+      end
+      if last then
+         local diff = n - last
+         if (diff < 0) then
+            wraps = wraps + 1
+         end
+         local adjusted_n = n - first + wraps * 0x100000000
+         last = n
+         table.insert(lines, {adjusted_n, adjusted_n, logline})
+      end
+   end
 
-   --for str in io.lines(filename) do
-   --end
-
-   error('done')
+   return lines
 end
 
 

@@ -75,8 +75,22 @@ local function test5()
    log(nb .. " lines in " .. trace .. "\n")
 end
 
+local function test6()
+   log("\ntest6\n")
+   local nb = 0
+   for ts, line in log_parse.ts_lines(trace) do
+      if (nb < 3) then
+         log_desc({ts = ts, line = line})
+      end
+      nb = nb + 1
+   end
+   log(nb .. " lines in " .. trace .. "\n")
+end
+
+
 
 test1() ; test1()
 test3()
 test4()
 test5()
+test6()

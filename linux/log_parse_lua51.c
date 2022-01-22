@@ -5,12 +5,11 @@
 
    Some context:
 
-   - log_parse.h is a parser (actually just a lexer) for the ad-hoc
-     log file format used in uc_tools and derivative firmware.  it
-     supports textual logs + escape for short (127 byte) time-stamped
-     binary messages.  it works by feeding it log fragments, and it
-     will invoke one of a collection of callbacks per log message
-     type.
+   - log_parse.h is a parser (scanner) for the ad-hoc log file format
+     used in uc_tools and derivative firmware.  it supports textual
+     logs + escape for short (127 byte) time-stamped binary messages.
+     it works by feeding it log fragments, and it will invoke one of a
+     collection of callbacks per log message type.
 
    - this file uses the log_parse.h state machine and provides
      callbacks that convert the different message types to strings, to
@@ -83,15 +82,15 @@ static struct log_file_ud *L_log_file(lua_State *L, int index) {
 /* Wrap log_parse.h iterator. */
 #define T_LOG_PARSE "uc_tools.log_parse"
 
-#define OUT_NOTHING 0
-#define OUT_STRING  1
-#define OUT_INDEX   2  /* Generate time stamp number + spans instead of strings. */
+#define OUT_NOTHING   0  /* Don't push anything. */
+#define OUT_STRING    1  /* Single string containing timestamp. */
+#define OUT_INDEX     2  /* Generate time stamp number + spans instead of strings. */
+#define OUT_TS_STRING 3  /* Timestamp number + string logline */
 struct log_parse_ud {
     struct log_parse s;
     lua_State *L;
     uint32_t nb_rv;
     log_parse_status_t mode;
-    const uint8_t *start;
     uintptr_t offset;
     /* It seems easier to parameterize the callbacks then to install
        different callbacks for each iteration mode. */
@@ -106,35 +105,36 @@ static void write_hex_u32(uint8_t *buf, uint32_t val, uint32_t nb) {
     }
 }
 static uintptr_t mmap_file_offset(struct log_parse_ud *ud) {
-    /* A bit of a spaghetti hack... The offset is obtained through a
-       side channel.  In log_parse.h the current ->in pointer is saved
-       when the state machine starts collecting a message.  This only
-       makes sense when these pointers are stable, e.g. in the case of
-       a memory mapped file.  When feeding the parser with chinks,
-       that pointer is probably just a pointer to some temporary
-       storage and the idea of file offset doesn't make any sense.
-       This is the simplest way I could figure out how to track the
-       original location of the data to implement OUT_INDEX. */
-    return ud->s.in_mark - ud->start;
+    /* log_parser.h will save ->in in ->in_mark before invoking the
+       callbacks. If ->in is stable, e.g. for mmap files as we are
+       using it, we can compute the file offset this way. */
+    ASSERT(ud->ud_file);
+    const uint8_t *start = ud->ud_file->file.buf;
+    return ud->s.in_mark - start;
 }
 static log_parse_status_t ts_line_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
 {
     struct log_parse_ud *ud = (void*)s;
-    if (OUT_STRING == ud->out_type) {
+    if (OUT_INDEX == ud->out_type) {
+        lua_pushnumber(ud->L, ts);
+        lua_pushnumber(ud->L, mmap_file_offset(ud));
+        lua_pushnumber(ud->L, len);
+        ud->nb_rv += 3;
+    }
+    else if (OUT_TS_STRING == ud->out_type) {
+        lua_pushnumber(ud->L, ts);
+        lua_pushlstring(ud->L, (const char*)line, len);
+        ud->nb_rv += 2;
+    }
+    else if (OUT_STRING == ud->out_type) {
         uint8_t out[len + 9];
         write_hex_u32(out, ts, 8);
         out[8] = ' ';
         memcpy(out+9, line, len);
         lua_pushlstring(ud->L, (const char*)out, sizeof(out));
         ud->nb_rv++;
-    }
-    else if (OUT_INDEX == ud->out_type) {
-        lua_pushnumber(ud->L, ts);
-        lua_pushnumber(ud->L, mmap_file_offset(ud));
-        lua_pushnumber(ud->L, len);
-        ud->nb_rv += 3;
     }
     return ud->mode;
 }
@@ -148,12 +148,30 @@ static log_parse_status_t line_cb(
     return ts_line_cb(s, ts_dummy, line, len);
 }
 
-static log_parse_status_t bin_cb(
+static log_parse_status_t ts_bin_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
 {
     struct log_parse_ud *ud = (void*)s;
-    if (OUT_STRING == ud->out_type) {
+    if (OUT_INDEX == ud->out_type) {
+        lua_pushnumber(ud->L, ts);
+        lua_pushnumber(ud->L, mmap_file_offset(ud));
+        lua_pushnumber(ud->L, len);
+        ud->nb_rv += 3;
+    }
+    else if (OUT_TS_STRING == ud->out_type) {
+        uint8_t out[len*3];
+        memset(out,' ',sizeof(out));
+        for (int i=0; i<len; i++) {
+            uint8_t *w = out + i*3;
+            write_hex_u32(w, line[i], 2);
+        }
+        out[sizeof(out)-1] = '\n';
+        lua_pushnumber(ud->L, ts);
+        lua_pushlstring(ud->L, (const char*)out, sizeof(out));
+        ud->nb_rv += 2;
+    }
+    else if (OUT_STRING == ud->out_type) {
         uint8_t out[len*3 + 9];
         write_hex_u32(out, ts, 8);
         for (int i=0; i<len; i++) {
@@ -164,12 +182,6 @@ static log_parse_status_t bin_cb(
         out[sizeof(out)-1] = '\n';
         lua_pushlstring(ud->L, (const char*)out, sizeof(out));
         ud->nb_rv++;
-    }
-    else if (OUT_INDEX == ud->out_type) {
-        lua_pushnumber(ud->L, ts);
-        lua_pushnumber(ud->L, mmap_file_offset(ud));
-        lua_pushnumber(ud->L, len);
-        ud->nb_rv += 3;
     }
     return ud->mode;
 }
@@ -202,7 +214,7 @@ static void log_parse_parameterize(lua_State *L, struct log_parse_ud *ud) {
     ud->nb_rv = 0;
     ud->s.line_cb    = line_cb;
     ud->s.ts_line_cb = ts_line_cb;
-    ud->s.ts_bin_cb  = bin_cb;
+    ud->s.ts_bin_cb  = ts_bin_cb;
     ud->mode = LOG_PARSE_STATUS_CONTINUE;
     ud->out_type = OUT_STRING;
 }
@@ -242,15 +254,17 @@ static struct log_parse_ud *log_parse_next(lua_State *L, int out_type) {
     ud_parse->mode     = LOG_PARSE_STATUS_YIELD;
     ud_parse->s.in     = ud_file->file.buf  + ud_parse->offset;
     ud_parse->s.in_len = ud_file->file.size - ud_parse->offset;
-    ud_parse->start    = (const uint8_t*)ud_file->file.buf;
     log_parse_continue(&ud_parse->s);
-    ud_parse->offset = ud_parse->s.in - ud_parse->start;
+    ud_parse->offset = ud_parse->s.in - (const uint8_t*)ud_file->file.buf;
     return ud_parse;
 }
 
 /* Combine parser and mmap file to create an interator. */
 static int cmd_next_string(lua_State *L) {
     return log_parse_next(L, OUT_STRING)->nb_rv;
+}
+static int cmd_next_ts_string(lua_State *L) {
+    return log_parse_next(L, OUT_TS_STRING)->nb_rv;
 }
 /* Optimization: same iteration as cmd_next_string, but don't generate
    a Lua string or any other intermediate data.  Return offset
@@ -292,6 +306,7 @@ int luaopen_log_parse_lua51 (lua_State *L) {
     FUN(to_string_mv);
     FUN(reset);
     FUN(next_string);
+    FUN(next_ts_string);
     FUN(next_offset);
     FUN(next_index);
     return 1;
