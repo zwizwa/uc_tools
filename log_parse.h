@@ -162,12 +162,17 @@ static inline void log_parse_write_cstring(struct log_parse *s, const char *str)
     log_parse_write(s, (const uint8_t *)str, len);
 }
 
-static inline void log_parse_init(struct log_parse *s) {
+static inline void log_parse_init(struct log_parse *s, const uint8_t *stable_in) {
     memset(s, 0, sizeof(*s));
-    log_parse_tick(s, 0); // run up to the first read.
-    // FIXME: This will cause the mark to be wrong!
-    // So set s->in_mark explicitly for mmap files.
-}
+    // run up to the first read.
+    log_parse_tick(s, 0);
 
+    // associate parser to stable input.  in this mode the ->in_mark
+    // can be used, but we need to patch it here because starting the
+    // machine will have set it to zero.
+    if (stable_in) {
+        s->in_mark = stable_in;
+    }
+}
 
 #endif

@@ -96,6 +96,8 @@ struct log_parse_ud {
     /* It seems easier to parameterize the callbacks then to install
        different callbacks for each iteration mode. */
     int out_type;
+    /* simple binding mechanism. */
+    struct log_file_ud *ud_file;
 };
 static void write_hex_u32(uint8_t *buf, uint32_t val, uint32_t nb) {
     uint8_t hex[] = "0123456789abcdef";
@@ -175,7 +177,7 @@ static struct log_parse_ud *push_log_parse(lua_State *L) {
     struct log_parse_ud *ud = lua_newuserdata(L, sizeof(*ud));
     ASSERT(ud);
     memset(ud,0,sizeof(*ud));
-    log_parse_init(&ud->s);
+    log_parse_init(&ud->s, NULL);
     luaL_getmetatable(L, T_LOG_PARSE);
     lua_setmetatable(L, -2);
     return ud;
@@ -223,6 +225,17 @@ static int cmd_to_string_mv(lua_State *L) {
 static struct log_parse_ud *log_parse_next(lua_State *L, int out_type) {
     struct log_file_ud *ud_file   = L_log_file(L, -1);
     struct log_parse_ud *ud_parse = L_log_parse(L, -2);
+
+    /* Note that we're creating a tight coupling from parser to file
+       object: parser has pointers into mmap file.  For the first
+       call, we associate the parser.  On subsequent calls we check
+       that the file is still the same.  If not, reset parser. */
+    if (!ud_parse->ud_file ||
+        ud_parse->ud_file != ud_file) {
+        log_parse_init(&ud_parse->s, ud_file->file.buf);
+        ud_parse->ud_file = ud_file;
+    }
+
     // FIXME: check that offset is actually inside the file
     log_parse_parameterize(L, ud_parse);
     ud_parse->out_type = out_type;
@@ -230,10 +243,6 @@ static struct log_parse_ud *log_parse_next(lua_State *L, int out_type) {
     ud_parse->s.in     = ud_file->file.buf  + ud_parse->offset;
     ud_parse->s.in_len = ud_file->file.size - ud_parse->offset;
     ud_parse->start    = (const uint8_t*)ud_file->file.buf;
-    // FIXME: workaround for init bug
-    if (!ud_parse->s.in_mark) {
-        ud_parse->s.in_mark = ud_parse->s.in;
-    }
     log_parse_continue(&ud_parse->s);
     ud_parse->offset = ud_parse->s.in - ud_parse->start;
     return ud_parse;
