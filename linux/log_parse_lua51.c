@@ -175,7 +175,7 @@ static void log_parse_parameterize(lua_State *L, struct log_parse_ud *ud) {
 /* Push a string fragment into the state machine.  For each complete
    log line or binary message a callback is invoked, which pushes a
    string to the Lua stack. */
-static int cmd_log_parse_to_string(lua_State *L) {
+static int cmd_to_string_mv(lua_State *L) {
     struct log_parse_ud *ud = L_log_parse(L, -2);
     const uint8_t *data = (const uint8_t *)lua_tostring(L, -1);
     ASSERT(data);
@@ -186,7 +186,7 @@ static int cmd_log_parse_to_string(lua_State *L) {
 }
 
 /* Combine parser and mmap file to create an interator. */
-static int cmd_log_parse_next(lua_State *L) {
+static int cmd_next(lua_State *L) {
     struct log_file_ud *ud_file   = L_log_file(L, -1);
     struct log_parse_ud *ud_parse = L_log_parse(L, -2);
     log_parse_parameterize(L, ud_parse);
@@ -197,9 +197,11 @@ static int cmd_log_parse_next(lua_State *L) {
     ud_parse->offset = ud_parse->s.in - (const uint8_t*)ud_file->file.buf;
     return ud_parse->nb_rv;
 }
-// FIXME: reset counter
-
-
+static int cmd_reset(lua_State *L) {
+    struct log_parse_ud *ud_parse = L_log_parse(L, -1);
+    ud_parse->offset = 0;
+    return 0;
+}
 
 
 /* init */
@@ -217,10 +219,11 @@ int luaopen_log_parse_lua51 (lua_State *L) {
     new_lua_metatable(L, T_LOG_FILE,   gc_log_file);
     lua_newtable(L);
     FUN(name);
-    FUN(log_parse_to_string);
     FUN(new_log_parse);
     FUN(new_log_file);
-    FUN(log_parse_next);
+    FUN(to_string_mv);
+    FUN(reset);
+    FUN(next);
     return 1;
 #undef FUN
 }
