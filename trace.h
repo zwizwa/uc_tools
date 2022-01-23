@@ -37,15 +37,18 @@
    - The tag preceeds the variable to make this easy to grep.  E.g. if
      you know the tag, the statement can be grepped as 'TRACE(some_tag'
 
-   For implementation this file provides a number of macros to declare
-   and define the structure types that create the lists of tags and
-   types.
+   For implementation see:
+   trace_text.h
+   trace_bin.h
+
+   Those files provide a number of macros to declare and define the
+   structure types that create the lists of tags and types.
 
  */
 
 #include <stdint.h>
 
-/* API & MACRO IMPL */
+/* API  */
 struct trace_namespace;
 extern const struct trace_namespace trace_namespace;
 
@@ -60,10 +63,7 @@ extern const struct trace_namespace trace_namespace;
 #define TRACE(ns_tag,ns_types,...)                              \
     TRACE_NS((&trace_namespace),ns_tag,ns_types,__VA_ARGS__)
 
-struct trace_base {
-    void (*begin)(const char *);
-    void (*end)(void);
-};
+struct trace_base;
 struct trace_tags;
 struct trace_types;
 struct trace_namespace {
@@ -73,39 +73,5 @@ struct trace_namespace {
 };
 
 typedef void (*trace_write_fn)(uintptr_t arg);
-
-/* Macros for declaring structures and defining structure instances
-   based on list macros FOR_TRACE_TAGS and FOR_TRACE_TYPES.  Concrete
-   examples, probably good enough to use as is. */
-
-#define DECL_TRACE_TAG_MEMBER(name)  const char *name;
-#define DECL_TRACE_TAGS_STRUCT() struct trace_tags { FOR_TRACE_TAGS(DECL_TRACE_TAG_MEMBER) }
-
-#define DECL_TRACE_TYPE_MEMBER(name) trace_write_fn name;
-#define DECL_TRACE_TYPES_STRUCT() struct trace_types { FOR_TRACE_TYPES(DECL_TRACE_TYPE_MEMBER) }
-
-#define DEF_TRACE_TAG(name) .name = #name,
-#define DEF_TRACE_TAGS_STRUCT(name) const struct trace_tags name = { FOR_TRACE_TAGS(DEF_TRACE_TAG) }
-
-#define DEF_TRACE_TYPE(name) .name = trace_write_##name,
-#define DEF_TRACE_TYPES_STRUCT(name) const struct trace_types name = { FOR_TRACE_TYPES(DEF_TRACE_TYPE) }
-
-/* Top level definition macro for the C file using standard names. */
-#define DEF_TRACE_STRUCTS()\
-DEF_TRACE_TAGS_STRUCT(trace_tags); \
-DEF_TRACE_TYPES_STRUCT(trace_types); \
-const struct trace_base trace_base = { \
-    .begin = trace_begin, \
-    .end   = trace_end, \
-}; \
-const struct trace_namespace trace_namespace = { \
-    .base  = &trace_base, \
-    .tags  = &trace_tags, \
-    .types = &trace_types, \
-}
-
-
-
-
 
 #endif
