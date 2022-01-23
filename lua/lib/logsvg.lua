@@ -208,13 +208,25 @@ function logsvg.read_log_parse(filename, config)
    if not config then config = {} end
    local sync_re = config.sync_re or "^ping (.-)"
    local max_lines = config.max_lines or 1000
+   local bin_to_string = config.bin_to_string
    local lines = {}
    local last = nil
    local fist = nil
    local wraps = 0;
 
+   local ts_lines = log_parse.ts_lines
+   -- If there is a binary to string converter supplied, we can use
+   -- the iterator that doesn't convert the binaries to hex.
+   if bin_to_string then ts_lines = log_parse.ts_lines_bin end
+
    -- FIXME: Let the C code do the scanning.
-   for n, logline in log_parse.ts_lines(filename, { wind = {0} }) do
+   for n, logline, is_bin in ts_lines(filename, { wind = {0} }) do
+
+      -- User can plug in binary log message parser
+      if is_bin and bin_to_string then
+         logline = bin_to_string(logline)
+      end
+
       if max_lines and #lines > max_lines then return lines end
       -- log_desc({n = n, logline = logline})
       assert(n)
@@ -309,7 +321,9 @@ end
 function logsvg.render_logfiles(e, filenames)
    assert(e.repel)
    local function process(filename)
-      local l = logsvg.read_log_parse(filename)
+      -- Just re-use the environemnt object for parser config as well.
+      local config = e
+      local l = logsvg.read_log_parse(filename, config)
       return logsvg.repel(l, e.repel)
    end
 
