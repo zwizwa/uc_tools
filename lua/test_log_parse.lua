@@ -97,9 +97,25 @@ local function test7()
    log_desc({found_offset = rv or 'not_found'})
 end
 
+local function test8()
+   log("\ntest8\n")
+   local nb = 0
+   for ts, line, is_bin in log_parse.ts_bin(trace) do
+      if is_bin then
+         if (nb < 3) then
+            log_desc({ts = ts, line = line, is_bin = is_bin})
+         end
+         nb = nb + 1
+      end
+   end
+   log(nb .. " lines in " .. trace .. "\n")
+end
+
+
 test1() ; test1()
 test3()
 test4()
 test5()
 test6()
 test7()
+test8()

@@ -86,6 +86,7 @@ static struct log_file_ud *L_log_file(lua_State *L, int index) {
 #define OUT_STRING    1  /* Single string containing timestamp. */
 #define OUT_INDEX     2  /* Generate time stamp number + spans instead of strings. */
 #define OUT_TS_STRING 3  /* Timestamp number + string logline */
+#define OUT_TS_BIN    4  /* As OUT_TS_STRING, but don't convert to hex. */
 struct log_parse_ud {
     struct log_parse s;
     lua_State *L;
@@ -127,7 +128,8 @@ static log_parse_status_t ts_line_cb(
         lua_pushnumber(ud->L, len);
         ud->nb_rv += 3;
     }
-    else if (OUT_TS_STRING == ud->out_type) {
+    else if ((OUT_TS_STRING == ud->out_type) ||
+             (OUT_TS_BIN == ud->out_type)) {
         lua_pushnumber(ud->L, ts);
         lua_pushlstring(ud->L, (const char*)line, len);
         ud->nb_rv += 2;
@@ -161,6 +163,14 @@ static log_parse_status_t ts_bin_cb(
         lua_pushnumber(ud->L, ts);
         lua_pushnumber(ud->L, mmap_file_offset(ud));
         lua_pushnumber(ud->L, len);
+        ud->nb_rv += 3;
+    }
+    else if (OUT_TS_BIN == ud->out_type) {
+        /* Same as OUT_TS_STRING, but don't convert to hex, and leave
+           extra 'true' argument to distinguish.  */
+        lua_pushnumber(ud->L, ts);
+        lua_pushlstring(ud->L, (const char*)line, len);
+        lua_pushboolean(ud->L, 1);
         ud->nb_rv += 3;
     }
     else if (OUT_TS_STRING == ud->out_type) {
@@ -315,6 +325,9 @@ static int cmd_next_string(lua_State *L) {
 static int cmd_next_ts_string(lua_State *L) {
     return log_parse_next(L, OUT_TS_STRING)->nb_rv;
 }
+static int cmd_next_ts_bin(lua_State *L) {
+    return log_parse_next(L, OUT_TS_BIN)->nb_rv;
+}
 /* Optimization: same iteration as cmd_next_string, but don't generate
    a Lua string or any other intermediate data.  Return offset
    instead. */
@@ -356,7 +369,8 @@ int luaopen_log_parse_lua51 (lua_State *L) {
     FUN(reset);
     FUN(next_string);
     FUN(next_ts_string);
-    FUN(next_offset);
+    FUN(next_ts_bin);
+    FUN(next_offset); // broken
     FUN(next_index);
     FUN(wind_prefix);
     return 1;
