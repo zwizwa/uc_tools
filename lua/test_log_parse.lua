@@ -100,7 +100,7 @@ end
 local function test8()
    log("\ntest8\n")
    local nb = 0
-   for ts, line, is_bin in log_parse.ts_bin(trace) do
+   for ts, line, is_bin in log_parse.ts_lines_bin(trace) do
       if is_bin then
          if (nb < 3) then
             log_desc({ts = ts, line = line, is_bin = is_bin})

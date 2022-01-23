@@ -341,12 +341,6 @@ static int cmd_next_offset(lua_State *L) {
 static int cmd_next_index(lua_State *L) {
     return log_parse_next(L, OUT_INDEX)->nb_rv;
 }
-static int cmd_reset(lua_State *L) {
-    struct log_parse_ud *ud_parse = L_log_parse(L, -1);
-    ud_parse->offset = 0;
-    return 0;
-}
-
 
 /* init */
 static int cmd_name(lua_State *L) {
@@ -366,7 +360,6 @@ int luaopen_log_parse_lua51 (lua_State *L) {
     FUN(new_log_parse);
     FUN(new_log_file);
     FUN(to_string_mv);
-    FUN(reset);
     FUN(next_string);
     FUN(next_ts_string);
     FUN(next_ts_bin);

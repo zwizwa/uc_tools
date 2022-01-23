@@ -1,8 +1,10 @@
 local log_parse = {}
 
 local C = require('log_parse_lua51')
-log_parse.C = C -- Exposed, but this is not intended to be stable
 
+-- Exposed mostly for testing.
+-- This this is not intended to be a stable API
+log_parse.C = C
 
 function log_parse.new()
    local obj = { parse = C.new_log_parse() }
@@ -16,42 +18,29 @@ function log_parse.new()
    return obj
 end
 
--- FIXME: C.reset is not needed?
--- FIXME: Remove some duplication?
 
-function log_parse.lines(file)
-   local file = C.new_log_file(file)
+function log_parse.lines_with_next(filename, config, nxt)
+   assert(filename)
+   assert(nxt)
+   -- FIXME: C code only supports a single byte prefix atm.
+   local wind_prefix = config and config.wind and config.wind[1]
+   local file = C.new_log_file(filename)
    local parse = C.new_log_parse()
-   local function gen() return C.next_string(parse, file) end
-   return gen
+   if wind_prefix then
+      local offset = C.wind_prefix(parse, file, wind_prefix)
+      -- io.stderr:write(filename .. ": wind offset = " .. offset .. "\n")
+   end
+   return function() return nxt(parse, file) end
 end
 
+function log_parse.lines(filename, config)
+   return log_parse.lines_with_next(filename, config, C.next_string)
+end
 function log_parse.ts_lines(filename, config)
-   -- FIXME: C code only supports a single byte prefix atm.
-   local wind_prefix = config and config.wind and config.wind[1]
-   local file = C.new_log_file(filename)
-   local parse = C.new_log_parse()
-   if wind_prefix then
-      local offset = C.wind_prefix(parse, file, wind_prefix)
-      -- io.stderr:write(filename .. ": wind offset = " .. offset .. "\n")
-   end
-
-   local function gen() return C.next_ts_string(parse, file) end
-   return gen
+   return log_parse.lines_with_next(filename, config, C.next_ts_string)
 end
-
-function log_parse.ts_bin(filename, config)
-   -- FIXME: C code only supports a single byte prefix atm.
-   local wind_prefix = config and config.wind and config.wind[1]
-   local file = C.new_log_file(filename)
-   local parse = C.new_log_parse()
-   if wind_prefix then
-      local offset = C.wind_prefix(parse, file, wind_prefix)
-      -- io.stderr:write(filename .. ": wind offset = " .. offset .. "\n")
-   end
-
-   local function gen() return C.next_ts_bin(parse, file) end
-   return gen
+function log_parse.ts_lines_bin(filename, config)
+   return log_parse.lines_with_next(filename, config, C.next_ts_bin)
 end
 
 function log_parse.indices(file)
