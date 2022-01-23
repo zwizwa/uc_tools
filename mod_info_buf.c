@@ -91,7 +91,8 @@ KEEP int info_write(uint8_t *buf, uintptr_t size) {
     return 0;
 }
 
-KEEP int info_bin(uint32_t stamp, uint8_t *buf, uintptr_t size) {
+/* This might not be necessary. */
+int info_bin(uint32_t stamp, uint8_t *buf, uintptr_t size) {
     /* Do one check, then write the buffer if it fits in a tight loop. */
     uint32_t room = INFO_SIZE - (info_buf.hdr.write_next - info_buf.hdr.read_next);
     if (likely(room > (size + 5)) && (size <= 127)) {
@@ -109,6 +110,7 @@ KEEP int info_bin(uint32_t stamp, uint8_t *buf, uintptr_t size) {
     }
     return 0;
 }
+
 
 
 KEEP int info_putchar_raw(int c) {

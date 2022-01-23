@@ -4,7 +4,7 @@
 /* Structured trace logging, API.
 
    The problem this tries to solve is to have a logging/tracing API
-   that is easly converted from exisiting printf-style log messages,
+   that is easly converted from existing printf-style log messages,
    and that can be implemented either by print-style log messages, or
    by a binary serialization protocol.
 
@@ -26,16 +26,18 @@
    - The entry point to the trace mechanism is a macro, since we need
      some symbol manipulation.
 
-   - The only thing the macro does is to introduce scope: it will bind
-     the variable t to a pointer to a stuct of trace_types, which are
-     user defined serialization functions.
+   - The macro handles the tag and introduces scope: it will bind the
+     variable t to a pointer to a stuct of trace_types, which are user
+     defined serialization functions.
 
    - Not used (for now it's simpler to keep things flat), but possible
      in future: each tag could in theory have its own name space of
      trace types.
 
    - The tag preceeds the variable to make this easy to grep.  E.g. if
-     you know the tag, the statement can be grepped as 'TRACE(some_tag'
+     you know the tag, the statement can be grepped as
+     'TRACE(some_tag' as long as that convention is kept in the
+     source.
 
    For implementation see:
    trace_text.h
@@ -48,9 +50,7 @@
 
 #include <stdint.h>
 
-/* API  */
-struct trace_namespace;
-extern const struct trace_namespace trace_namespace;
+/* API */
 
 /* Create local 'ns' scope and execute pre/post functions by abusing a
    for(;;) construct and C expression syntax. */
@@ -59,6 +59,9 @@ extern const struct trace_namespace trace_namespace;
             ({ns->base->begin(ns->tags->ns_tag); ns->types;});          \
         ns_types;                                                       \
         ns_types=({ns->base->end();(typeof(ns_types))0;}))
+
+struct trace_namespace;
+extern const struct trace_namespace trace_namespace;
 
 #define TRACE(ns_tag,ns_types,...)                              \
     TRACE_NS((&trace_namespace),ns_tag,ns_types,__VA_ARGS__)
