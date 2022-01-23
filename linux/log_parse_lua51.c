@@ -82,11 +82,17 @@ static struct log_file_ud *L_log_file(lua_State *L, int index) {
 /* Wrap log_parse.h iterator. */
 #define T_LOG_PARSE "uc_tools.log_parse"
 
+/* Different output records.
+   This has gotten a bit arbitrary.
+   Maybe refactor?  Otoh this is almost done, but at least rename these. */
+
 #define OUT_NOTHING   0  /* Don't push anything. */
 #define OUT_STRING    1  /* Single string containing timestamp. */
 #define OUT_INDEX     2  /* Generate time stamp number + spans instead of strings. */
 #define OUT_TS_STRING 3  /* Timestamp number + string logline */
 #define OUT_TS_BIN    4  /* As OUT_TS_STRING, but don't convert to hex. */
+#define OUT_BIN       5  /* As OUT_STRING, converting ts to hex but not the binary message. */
+
 struct log_parse_ud {
     struct log_parse s;
     lua_State *L;
@@ -134,7 +140,8 @@ static log_parse_status_t ts_line_cb(
         lua_pushlstring(ud->L, (const char*)line, len);
         ud->nb_rv += 2;
     }
-    else if (OUT_STRING == ud->out_type) {
+    else if ((OUT_STRING == ud->out_type) ||
+             (OUT_BIN == ud->out_type)) {
         uint8_t out[len + 9];
         write_hex_u32(out, ts, 8);
         out[8] = ' ';
@@ -197,6 +204,14 @@ static log_parse_status_t ts_bin_cb(
         lua_pushlstring(ud->L, (const char*)out, sizeof(out));
         ud->nb_rv++;
     }
+    else if (OUT_BIN == ud->out_type) {
+        uint8_t out[9 + len];
+        write_hex_u32(out, ts, 8);
+        out[8] = 0; // OUT_STRING has ' ' here
+        memcpy(out+9, line, len);
+        lua_pushlstring(ud->L, (const char*)out, sizeof(out));
+        ud->nb_rv++;
+    }
     return ud->mode;
 }
 static struct log_parse_ud *push_log_parse(lua_State *L) {
@@ -236,14 +251,21 @@ static void log_parse_parameterize(lua_State *L, struct log_parse_ud *ud) {
 /* Push a string fragment into the state machine.  For each complete
    log line or binary message a callback is invoked, which pushes a
    string to the Lua stack. */
-static int cmd_to_string_mv(lua_State *L) {
+static int to_thing_mv(lua_State *L, int out_type) {
     struct log_parse_ud *ud = L_log_parse(L, -2);
     const uint8_t *data = (const uint8_t *)lua_tostring(L, -1);
     ASSERT(data);
     size_t len = lua_strlen(L, -1);
     log_parse_parameterize(L, ud);
+    ud->out_type = out_type;
     log_parse_write(&ud->s, data, len);
     return ud->nb_rv;
+}
+static int cmd_to_string_mv(lua_State *L) {
+    return to_thing_mv(L, OUT_STRING);
+}
+static int cmd_to_bin_mv(lua_State *L) {
+    return to_thing_mv(L, OUT_BIN);
 }
 
 void bind_parse(struct log_parse_ud *ud_parse, struct log_file_ud *ud_file) {
@@ -360,6 +382,7 @@ int luaopen_log_parse_lua51 (lua_State *L) {
     FUN(new_log_parse);
     FUN(new_log_file);
     FUN(to_string_mv);
+    FUN(to_bin_mv);
     FUN(next_string);
     FUN(next_ts_string);
     FUN(next_ts_bin);
