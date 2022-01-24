@@ -66,9 +66,11 @@ uint32_t info_overflow_errors = 0;
 void info_mark_overflow(uint32_t room) {
     info_overflow_errors++;
     if (room) {
-        /* Write an indicator that there was an overflow. */
+        /* Write an indicator that there was an overflow.  FIXME: Is
+           it better not to duplicate these?  It is possible that 0xFF
+           is part of a previous binary message. */
         uint32_t offset = (info_buf.hdr.write_next++) & INFO_MASK;
-        info_buf.buf[offset] = '?';
+        info_buf.buf[offset] = 0xFF;
     }
 }
 
@@ -137,12 +139,6 @@ int info_putchar(int c) {
     return info_putchar_raw(c);
 }
 
-/* This is counterproductive: when overflow happens, it is usually due
- * to some runaway process.  In that case it is much more useful to
- * have a slight indicator of overrun, instead of dumping a huge
- * number of '?' characters.  So for now it is disabled.  TODO: A
- * little more elegance. */
-
 KEEP uint32_t info_read(uint8_t *buf, uint32_t len) {
     uint32_t nb = 0;
     for(;;) {
@@ -153,15 +149,10 @@ KEEP uint32_t info_read(uint8_t *buf, uint32_t len) {
             *buf++ = info_buf.buf[info_buf.hdr.read_next & INFO_MASK];
             len--; nb++;
         }
-        else {
-            /* Not reached: overflows are preented at the write
-             * end. */
-            *buf++ ='?';
-            len--; nb++;
-        }
         info_buf.hdr.read_next++;
     }
 }
+
 KEEP uint32_t info_read_crlf(uint8_t *buf, uint32_t len) {
     uint32_t nb = 0;
     for(;;) {
@@ -177,12 +168,6 @@ KEEP uint32_t info_read_crlf(uint8_t *buf, uint32_t len) {
             *buf++ = c;
             len--; nb++;
         }
-#ifdef INFO_LOG_OVERFLOW
-        else {
-            *buf++ ='?'; // be verbose about buffer overrun
-            len--; nb++;
-        }
-#endif
         info_buf.hdr.read_next++;
     }
 }
