@@ -57,6 +57,8 @@ struct log_parse {
     log_parse_cb line_cb;
     log_parse_cb ts_line_cb;
     log_parse_cb ts_bin_cb;
+    log_parse_cb overflow_cb;
+    uintptr_t nb;
 };
 
 /* Implemented as a coroutine using computed goto. */
@@ -69,11 +71,13 @@ struct log_parse {
     { __label__ resume; s->next = &&resume; return status; resume:; }
 
 static inline log_parse_status_t log_parse_tick(struct log_parse *s, uint8_t c) {
+    s->nb++;
     log_parse_status_t status = LOG_PARSE_STATUS_CONTINUE;
     if (s->next) goto *s->next;
 
     /* Default protocol is lines of ASCII text (all chars < 128) */
   read_line:
+    // LOG("rl %d %p\n", s->nb, s->in);
     s->in_mark = s->in;
     s->line_len = 0;
     for(;;) {
@@ -85,6 +89,7 @@ static inline log_parse_status_t log_parse_tick(struct log_parse *s, uint8_t c) 
             s->line[s->line_len++] = c;
         }
         if (c == '\n') {
+            __label__ done;
             /* Line is ready.  Use fallthrough to hand it over to the
                most specific callback first. */
 
@@ -103,15 +108,16 @@ static inline log_parse_status_t log_parse_tick(struct log_parse *s, uint8_t c) 
                 uint32_t ts = read_be(buf, 4);
                 s->in_mark += 9;
                 status = s->ts_line_cb(s, ts, s->line+9, s->line_len-9);
-                goto read_line;
+                goto done;
               abort:;
             }
             /* line without timestamp, or failed timestamp parse */
             if (s->line_cb) {
                 status = s->line_cb(s, 0, s->line, s->line_len);
-                goto read_line;
+                goto done;
             }
             /* fallthrough */
+          done:
             goto read_line;
         }
 
@@ -120,7 +126,15 @@ static inline log_parse_status_t log_parse_tick(struct log_parse *s, uint8_t c) 
        32 bit big endian rolling time stamp + max 127 payload
        bytes. */
   read_bin:
+    /* FIXME: Spill if there is data? */
     s->in_mark = s->in;
+    if (c == 0xFF) {
+        /* Overflow character. */
+        if (s->overflow_cb) {
+            status = s->overflow_cb(s, 0, NULL, 0);
+        }
+        goto read_line;
+    }
     s->bin_len = c - 0x80 + 4;
     s->line_len = 0;
     while(s->line_len < s->bin_len) {
@@ -141,10 +155,11 @@ static inline log_parse_status_t log_parse_tick(struct log_parse *s, uint8_t c) 
 static inline log_parse_status_t log_parse_continue(struct log_parse *s) {
     log_parse_status_t status;
     while(s->in_len > 0) {
-        status = log_parse_tick(s, *s->in++);
+        status = log_parse_tick(s, *s->in);
+        s->in++;
+        s->in_len--;
         /* Callbacks can issue stop conditions. */
         if (status != LOG_PARSE_STATUS_CONTINUE) return status;
-        s->in_len--;
     }
     /* Stop condition = end of input data. */
     return LOG_PARSE_STATUS_END;

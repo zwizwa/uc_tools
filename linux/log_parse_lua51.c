@@ -54,6 +54,7 @@ struct log_file_ud {
     lua_State *L;
 };
 static int gc_log_file(lua_State *L) {
+    LOG("FIXME: gc_log_file()\n");
     return 0;
 }
 static struct log_file_ud *push_log_file(lua_State *L, const char *filename) {
