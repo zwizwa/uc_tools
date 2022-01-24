@@ -63,6 +63,9 @@ end
 function log_parse.ts_lines_bin(filename, config)
    return log_parse.lines_with_next(filename, config, C.next_ts_bin)
 end
+function log_parse.ts_bin(filename, config)
+   return log_parse.lines_with_next(filename, config, C.next_bin)
+end
 
 function log_parse.indices(file)
    local file = C.new_log_file(file)

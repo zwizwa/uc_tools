@@ -351,6 +351,9 @@ static int cmd_next_ts_string(lua_State *L) {
 static int cmd_next_ts_bin(lua_State *L) {
     return log_parse_next(L, OUT_TS_BIN)->nb_rv;
 }
+static int cmd_next_bin(lua_State *L) {
+    return log_parse_next(L, OUT_BIN)->nb_rv;
+}
 /* Optimization: same iteration as cmd_next_string, but don't generate
    a Lua string or any other intermediate data.  Return offset
    instead. */
@@ -387,6 +390,7 @@ int luaopen_log_parse_lua51 (lua_State *L) {
     FUN(next_string);
     FUN(next_ts_string);
     FUN(next_ts_bin);
+    FUN(next_bin);
     FUN(next_offset); // broken
     FUN(next_index);
     FUN(wind_prefix);
