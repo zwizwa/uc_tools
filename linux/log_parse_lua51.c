@@ -128,6 +128,11 @@ static uintptr_t mmap_file_offset(struct log_parse_ud *ud) {
     return ud->s.in_mark - start;
 }
 
+/* The callbacks are named <cb_name>_<out_type_name>_cb.
+   These all receive log_parse_ud as context, which has Lua context.
+   Lua result values are passed onto the stack + nb_rv is marked. 
+*/
+
 static log_parse_status_t ts_line_OUT_INDEX_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
@@ -274,16 +279,10 @@ static void log_parse_parameterize(lua_State *L, struct log_parse_ud *ud,
                                    int mode) {
     ud->L = L;
     ud->nb_rv = 0;
-    ud->s.cb = *cb;
+    ud->s.cb = cb;
     ud->mode = mode;
 }
 
-#define LET_CBS(cbs,tag) \
-    struct log_parse_cbs cbs = { \
-        .line    =  ts_line_##tag##_cb, \
-        .ts_line =  ts_line_##tag##_cb, \
-        .ts_bin  =  ts_bin_##tag##_cb, \
-    }
 
 
 /* Push a string fragment into the state machine.  For each complete
@@ -298,13 +297,31 @@ static int to_thing_mv(lua_State *L, struct log_parse_cbs *cb) {
     log_parse_write(&ud->s, data, len);
     return ud->nb_rv;
 }
+
+/* Callback bundles per output type. */
+// FIXME: .line is the same as .ts_line here.
+// In practice this only happens for junk lines.
+// Maybe rename it to "junk" instead?
+#define LET_CBS(cbs,tag) \
+    struct log_parse_cbs cbs = { \
+        .line    =  ts_line_##tag##_cb, \
+        .ts_line =  ts_line_##tag##_cb, \
+        .ts_bin  =  ts_bin_##tag##_cb, \
+    }
+LET_CBS(cbs_OUT_STRING,    OUT_STRING);
+LET_CBS(cbs_OUT_INDEX,     OUT_INDEX);
+LET_CBS(cbs_OUT_TS_STRING, OUT_TS_STRING);
+LET_CBS(cbs_OUT_TS_BIN,    OUT_TS_BIN);
+LET_CBS(cbs_OUT_BIN,       OUT_BIN);
+
+
+
+
 static int cmd_to_string_mv(lua_State *L) {
-    LET_CBS(cbs, OUT_STRING);
-    return to_thing_mv(L, &cbs);
+    return to_thing_mv(L, &cbs_OUT_STRING);
 }
 static int cmd_to_bin_mv(lua_State *L) {
-    LET_CBS(cbs, OUT_BIN);
-    return to_thing_mv(L, &cbs);
+    return to_thing_mv(L, &cbs_OUT_BIN);
 }
 
 void bind_parse(struct log_parse_ud *ud_parse, struct log_file_ud *ud_file) {
@@ -372,37 +389,34 @@ static int cmd_wind_prefix(lua_State *L) {
     bind_parse(ud_parse, ud_file);
     ud_parse->L = L;
     ud_parse->nb_rv = 0;
-    ud_parse->s.cb.line    = ts_find_cb;
-    ud_parse->s.cb.ts_line = ts_find_cb;
-    ud_parse->s.cb.ts_bin  = ts_find_cb;
+    struct log_parse_cbs cbs = {
+        .line    = ts_find_cb,
+        .ts_line = ts_find_cb,
+        .ts_bin  = ts_find_cb,
+    };
+    ud_parse->s.cb = &cbs;
     ud_parse->prefix = prefix;
     parse_continue_at_offset(ud_parse, ud_file);
     return ud_parse->nb_rv;
 }
 
 
-
 /* Combine parser and mmap file to create an interator. */
 static int cmd_next_string(lua_State *L) {
-    LET_CBS(cbs,OUT_STRING);
-    return log_parse_next_cb(L, &cbs)->nb_rv;
+    return log_parse_next_cb(L, &cbs_OUT_STRING)->nb_rv;
 }
 static int cmd_next_ts_string(lua_State *L) {
-    LET_CBS(cbs,OUT_TS_STRING);
-    return log_parse_next_cb(L, &cbs)->nb_rv;
+    return log_parse_next_cb(L, &cbs_OUT_TS_STRING)->nb_rv;
 }
 static int cmd_next_ts_bin(lua_State *L) {
-    LET_CBS(cbs,OUT_TS_BIN);
-    return log_parse_next_cb(L, &cbs)->nb_rv;
+    return log_parse_next_cb(L, &cbs_OUT_TS_BIN)->nb_rv;
 }
 static int cmd_next_bin(lua_State *L) {
-    LET_CBS(cbs,OUT_BIN);
-    return log_parse_next_cb(L, &cbs)->nb_rv;
+    return log_parse_next_cb(L, &cbs_OUT_BIN)->nb_rv;
 }
 /* Same as OUT_STRING, but return timestamp, offset, len instead. */
 static int cmd_next_index(lua_State *L) {
-    LET_CBS(cbs,OUT_INDEX);
-    return log_parse_next_cb(L, &cbs)->nb_rv;
+    return log_parse_next_cb(L, &cbs_OUT_INDEX)->nb_rv;
 }
 
 /* init */

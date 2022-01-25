@@ -48,7 +48,8 @@ typedef log_parse_status_t (*log_parse_cb)(
 
 /* A collection of callbacks is useful as an object in itself (a
    representation of the meaning/interpretation of a stream), so
-   separate it out. */
+   separate it out.  In the main struct these are set up as a pointer
+   to avoid copying in the log_parse_lua51.c iterator code. */
 struct log_parse_cbs {
     log_parse_cb line;
     log_parse_cb ts_line;
@@ -64,7 +65,7 @@ struct log_parse {
     const uint8_t *in;
     const uint8_t *in_mark;  /* only valid for stable *in */
     uintptr_t in_len;
-    struct log_parse_cbs cb;
+    struct log_parse_cbs *cb;
     uintptr_t nb;
 };
 
@@ -101,7 +102,7 @@ static inline log_parse_status_t log_parse_tick(struct log_parse *s, uint8_t c) 
                most specific callback first. */
 
             /* 32-bit hex time-stamped line. */
-            if (s->cb.ts_line) {
+            if (s->cb->ts_line) {
                 __label__ abort;
                 if (s->line_len < 0) goto abort;
                 if (s->line[8] != ' ') goto abort;
@@ -114,13 +115,13 @@ static inline log_parse_status_t log_parse_tick(struct log_parse *s, uint8_t c) 
                 hex_to_bin(s->line, buf, 4);
                 uint32_t ts = read_be(buf, 4);
                 s->in_mark += 9;
-                status = s->cb.ts_line(s, ts, s->line+9, s->line_len-9);
+                status = s->cb->ts_line(s, ts, s->line+9, s->line_len-9);
                 goto done;
               abort:;
             }
             /* line without timestamp, or failed timestamp parse */
-            if (s->cb.line) {
-                status = s->cb.line(s, 0, s->line, s->line_len);
+            if (s->cb->line) {
+                status = s->cb->line(s, 0, s->line, s->line_len);
                 goto done;
             }
             /* fallthrough */
@@ -137,8 +138,8 @@ static inline log_parse_status_t log_parse_tick(struct log_parse *s, uint8_t c) 
     s->in_mark = s->in;
     if (c == 0xFF) {
         /* Overflow character. */
-        if (s->cb.overflow) {
-            status = s->cb.overflow(s, 0, NULL, 0);
+        if (s->cb->overflow) {
+            status = s->cb->overflow(s, 0, NULL, 0);
         }
         goto read_line;
     }
@@ -152,9 +153,9 @@ static inline log_parse_status_t log_parse_tick(struct log_parse *s, uint8_t c) 
     /* Timestamp is in host order, which is currently set to little
        endian. */
     uint32_t ts =  LOG_PARSE_SWAP_U32(read_be(s->line, 4));
-    if (s->cb.ts_bin) {
+    if (s->cb->ts_bin) {
         s->in_mark += 4;
-        status = s->cb.ts_bin(s, ts, s->line+4, s->line_len-4);
+        status = s->cb->ts_bin(s, ts, s->line+4, s->line_len-4);
     }
     goto read_line;
 
