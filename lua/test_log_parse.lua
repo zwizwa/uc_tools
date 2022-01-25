@@ -41,7 +41,7 @@ local trace = "test.trace"
 
 -- Use mmap file
 local function test2()
-   local gen = log_parse.lines_string({file=trace})
+   local gen = log_parse.messages({file=trace, next=log_parse.next_string})
    -- Print the first 10 messages
    for i=1,10 do
       log(gen())
@@ -59,7 +59,7 @@ end
 local function test4()
    log("\ntest4\n")
    local nb = 0
-   for line in log_parse.lines_string({file=trace}) do
+   for line in log_parse.messages({file=trace, next=log_parse.next_string}) do
       nb = nb + 1
    end
    log(nb .. " lines in " .. trace .. "\n")
@@ -80,7 +80,7 @@ end
 local function test6()
    log("\ntest6\n")
    local nb = 0
-   for ts, line in log_parse.ts_lines({file=trace}) do
+   for ts, line in log_parse.messages({file=trace, next=log_parse.next_ts_string}) do
       if (nb < 3) then
          log_desc({ts = ts, line = line})
       end
@@ -100,7 +100,10 @@ end
 local function test8()
    log("\ntest8\n")
    local nb = 0
-   for ts, line, is_bin in log_parse.ts_lines_bin({file=trace}) do
+   for ts, line, is_bin in log_parse.messages({
+         file=trace,
+         next=log_parse.next_ts_bin
+   }) do
       if is_bin then
          if (nb < 3) then
             log_desc({ts = ts, line = line, is_bin = is_bin})

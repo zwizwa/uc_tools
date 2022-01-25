@@ -63,23 +63,23 @@ log_parse.next_ts_string = C.next_ts_string
 log_parse.next_ts_bin    = C.next_ts_bin
 log_parse.next_bin       = C.next_bin
 
--- FIXME: These will be removed.  Use config.
-function log_parse.lines_string(config)
-   config.next = C.next_string
-   return log_parse.messages(config)
-end
-function log_parse.ts_messages(config)
-   config.next = C.next_ts_string
-   return log_parse.messages(config)
-end
-function log_parse.ts_lines_bin(config)
-   config.next = C.next_ts_bin
-   return log_parse.messages(config)
-end
-function log_parse.ts_bin(config)
-   config.next = C.next_bin
-   return log_parse.messages(config)
-end
+-- Use {next = ...} in config
+-- function log_parse.lines_string(config)
+--    config.next = C.next_string
+--    return log_parse.messages(config)
+-- end
+-- function log_parse.ts_messages(config)
+--    config.next = C.next_ts_string
+--    return log_parse.messages(config)
+-- end
+-- function log_parse.ts_lines_bin(config)
+--    config.next = C.next_ts_bin
+--    return log_parse.messages(config)
+-- end
+-- function log_parse.ts_bin(config)
+--    config.next = C.next_bin
+--    return log_parse.messages(config)
+-- end
 
 function log_parse.indices(file)
    local file = C.new_log_file(file)
