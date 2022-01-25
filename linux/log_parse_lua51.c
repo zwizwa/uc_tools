@@ -38,11 +38,22 @@
 
 /* Output types:
 
-   string     Single string containing hex timestamp.
-   bin        As string, converting ts to hex but not the binary message.
    index      Generate time stamp number + spans instead of strings.
-   ts_string  Timestamp number + string logline
-   ts_raw     As ts_string, but don't convert log message to hex.
+
+   string     Single string containing hex timestamp.
+   raw        As string, converting ts to hex but not the binary message. Space is 0 for binary.
+
+   ts_string  Timestamp number + string logline (orig or hex from binary)
+   ts_raw     Timestamp number + string or original binary log
+
+   Put differently, string, raw produce just a single string with
+   encoding of whether this was hexified binary or not encoded in the
+   string at position 9 (space place).
+
+   While ts_string, ts_raw produce a timestamp number, a string
+   (containing either original bin/string or hexified bin), and ts_raw
+   contains an extra boolean indicating this is a binary message.
+
 */
 
 
@@ -146,7 +157,7 @@ static log_parse_status_t ts_line_string_cb(
     ud->nb_rv++;
     return ud->mode;
 }
-#define ts_line_bin_cb ts_line_string_cb // REUSE
+#define ts_line_raw_cb ts_line_string_cb // REUSE
 
 static log_parse_status_t ts_bin_index_cb(
     struct log_parse *s, uint32_t ts,
@@ -210,7 +221,7 @@ static log_parse_status_t ts_bin_string_cb(
     return ud->mode;
 }
 
-static log_parse_status_t ts_bin_bin_cb(
+static log_parse_status_t ts_bin_raw_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
 {
@@ -285,11 +296,11 @@ static int to_thing_mv(lua_State *L, struct log_parse_cbs *cb) {
         .ts_line =  ts_line_##tag##_cb, \
         .ts_bin  =  ts_bin_##tag##_cb, \
     }
-LET_CBS(cbs_string,    string);
 LET_CBS(cbs_index,     index);
+LET_CBS(cbs_string,    string);
+LET_CBS(cbs_raw,       raw);
 LET_CBS(cbs_ts_string, ts_string);
 LET_CBS(cbs_ts_raw,    ts_raw);
-LET_CBS(cbs_bin,       bin);
 
 
 
@@ -297,8 +308,8 @@ LET_CBS(cbs_bin,       bin);
 static int cmd_to_string_mv(lua_State *L) {
     return to_thing_mv(L, &cbs_string);
 }
-static int cmd_to_bin_mv(lua_State *L) {
-    return to_thing_mv(L, &cbs_bin);
+static int cmd_to_raw_mv(lua_State *L) {
+    return to_thing_mv(L, &cbs_raw);
 }
 
 void bind_parse(struct log_parse_ud *ud_parse, struct log_file_ud *ud_file) {
@@ -380,9 +391,9 @@ static int cmd_wind_prefix(lua_State *L) {
 
 /* Combine parser and mmap file to create an interator. */
 static int cmd_next_string(lua_State *L)    { return log_parse_next_cb(L, &cbs_string)->nb_rv; }
+static int cmd_next_raw(lua_State *L)       { return log_parse_next_cb(L, &cbs_raw)->nb_rv; }
 static int cmd_next_ts_string(lua_State *L) { return log_parse_next_cb(L, &cbs_ts_string)->nb_rv; }
 static int cmd_next_ts_raw(lua_State *L)    { return log_parse_next_cb(L, &cbs_ts_raw)->nb_rv; }
-static int cmd_next_bin(lua_State *L)       { return log_parse_next_cb(L, &cbs_bin)->nb_rv; }
 /* Same as string, but return timestamp, offset, len instead. */
 static int cmd_next_index(lua_State *L)     { return log_parse_next_cb(L, &cbs_index)->nb_rv; }
 
@@ -404,11 +415,11 @@ int luaopen_log_parse_lua51 (lua_State *L) {
     FUN(new_log_parse);
     FUN(new_log_file);
     FUN(to_string_mv);
-    FUN(to_bin_mv);
+    FUN(to_raw_mv);
     FUN(next_string);
     FUN(next_ts_string);
     FUN(next_ts_raw);
-    FUN(next_bin);
+    FUN(next_raw);
     FUN(next_index);
     FUN(wind_prefix);
     return 1;

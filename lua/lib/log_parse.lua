@@ -11,7 +11,7 @@ function log_parse.new(config)
    local obj = { parse = C.new_log_parse() }
    local push_chunk = C.to_string_mv
    if bin_to_string then
-      push_chunk = C.to_bin_mv
+      push_chunk = C.to_raw_mv
    end
    function obj:to_strings(chunk)
       -- FIXME: C routine just pushes to Lua stack.  Can that actually
@@ -59,9 +59,9 @@ end
 
 -- Expose these so they can be passed as .messages({next = ...})
 log_parse.next_string    = C.next_string
+log_parse.next_raw       = C.next_raw
 log_parse.next_ts_string = C.next_ts_string
 log_parse.next_ts_raw    = C.next_ts_raw
-log_parse.next_bin       = C.next_bin
 
 -- Use {next = ...} in config
 -- function log_parse.lines_string(config)
