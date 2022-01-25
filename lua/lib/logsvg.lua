@@ -217,7 +217,7 @@ function logsvg.read_log_parse(filename, config)
    local nxt = log_parse.next_ts_string
    -- If there is a binary to string converter supplied, we can use
    -- the iterator that doesn't convert the binaries to hex.
-   if bin_to_string then nxt = log_parse.next_ts_bin end
+   if bin_to_string then nxt = log_parse.next_ts_raw end
    assert(nxt)
 
    -- FIXME: Let the C code do the scanning.

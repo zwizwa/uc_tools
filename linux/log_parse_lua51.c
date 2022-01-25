@@ -42,7 +42,7 @@
    bin        As string, converting ts to hex but not the binary message.
    index      Generate time stamp number + spans instead of strings.
    ts_string  Timestamp number + string logline
-   ts_bin     As ts_string, but don't convert to hex.
+   ts_raw     As ts_string, but don't convert log message to hex.
 */
 
 
@@ -131,7 +131,7 @@ static log_parse_status_t ts_line_ts_string_cb(
     return ud->mode;
 }
 
-#define ts_line_ts_bin_cb ts_line_ts_string_cb // REUSE
+#define ts_line_ts_raw_cb ts_line_ts_string_cb // REUSE
 
 static log_parse_status_t ts_line_string_cb(
     struct log_parse *s, uint32_t ts,
@@ -160,7 +160,7 @@ static log_parse_status_t ts_bin_index_cb(
     return ud->mode;
 }
 
-static log_parse_status_t ts_bin_ts_bin_cb(
+static log_parse_status_t ts_bin_ts_raw_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
 {
@@ -288,7 +288,7 @@ static int to_thing_mv(lua_State *L, struct log_parse_cbs *cb) {
 LET_CBS(cbs_string,    string);
 LET_CBS(cbs_index,     index);
 LET_CBS(cbs_ts_string, ts_string);
-LET_CBS(cbs_ts_bin,    ts_bin);
+LET_CBS(cbs_ts_raw,    ts_raw);
 LET_CBS(cbs_bin,       bin);
 
 
@@ -381,7 +381,7 @@ static int cmd_wind_prefix(lua_State *L) {
 /* Combine parser and mmap file to create an interator. */
 static int cmd_next_string(lua_State *L)    { return log_parse_next_cb(L, &cbs_string)->nb_rv; }
 static int cmd_next_ts_string(lua_State *L) { return log_parse_next_cb(L, &cbs_ts_string)->nb_rv; }
-static int cmd_next_ts_bin(lua_State *L)    { return log_parse_next_cb(L, &cbs_ts_bin)->nb_rv; }
+static int cmd_next_ts_raw(lua_State *L)    { return log_parse_next_cb(L, &cbs_ts_raw)->nb_rv; }
 static int cmd_next_bin(lua_State *L)       { return log_parse_next_cb(L, &cbs_bin)->nb_rv; }
 /* Same as string, but return timestamp, offset, len instead. */
 static int cmd_next_index(lua_State *L)     { return log_parse_next_cb(L, &cbs_index)->nb_rv; }
@@ -407,7 +407,7 @@ int luaopen_log_parse_lua51 (lua_State *L) {
     FUN(to_bin_mv);
     FUN(next_string);
     FUN(next_ts_string);
-    FUN(next_ts_bin);
+    FUN(next_ts_raw);
     FUN(next_bin);
     FUN(next_index);
     FUN(wind_prefix);

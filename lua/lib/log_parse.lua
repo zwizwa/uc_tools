@@ -60,7 +60,7 @@ end
 -- Expose these so they can be passed as .messages({next = ...})
 log_parse.next_string    = C.next_string
 log_parse.next_ts_string = C.next_ts_string
-log_parse.next_ts_bin    = C.next_ts_bin
+log_parse.next_ts_raw    = C.next_ts_raw
 log_parse.next_bin       = C.next_bin
 
 -- Use {next = ...} in config
@@ -73,10 +73,10 @@ log_parse.next_bin       = C.next_bin
 --    return log_parse.messages(config)
 -- end
 -- function log_parse.ts_lines_bin(config)
---    config.next = C.next_ts_bin
+--    config.next = C.next_ts_raw
 --    return log_parse.messages(config)
 -- end
--- function log_parse.ts_bin(config)
+-- function log_parse.ts_raw(config)
 --    config.next = C.next_bin
 --    return log_parse.messages(config)
 -- end

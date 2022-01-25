@@ -106,7 +106,7 @@ local function test8()
    local nb = 0
    for ts, line, is_bin in log_parse.messages({
          file=trace,
-         next=log_parse.next_ts_bin
+         next=log_parse.next_ts_raw
    }) do
       if is_bin then
          if (nb < 3) then
