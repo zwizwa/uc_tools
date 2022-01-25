@@ -23,6 +23,10 @@
    - later, this could be extended by other analyzer state machines
      instead of simple conversion to string.  e.g. for status panel.
 
+   - this also acts as an example/experiment on how to solve this KIND
+     of problem: represent an iterator in lua, parameterize the
+     element representation.
+
 */
 
 /* What I want:
@@ -130,31 +134,61 @@ static uintptr_t mmap_file_offset(struct log_parse_ud *ud) {
     const uint8_t *start = ud->ud_file->file.buf;
     return ud->s.in_mark - start;
 }
+
+static log_parse_status_t ts_line_OUT_INDEX_cb(
+    struct log_parse *s, uint32_t ts,
+    const uint8_t *line, uintptr_t len)
+{
+    struct log_parse_ud *ud = (void*)s;
+    lua_pushnumber(ud->L, ts);
+    lua_pushnumber(ud->L, mmap_file_offset(ud));
+    lua_pushnumber(ud->L, len);
+    ud->nb_rv += 3;
+    return ud->mode;
+}
+static log_parse_status_t ts_line_OUT_TS_STRING_cb(
+    struct log_parse *s, uint32_t ts,
+    const uint8_t *line, uintptr_t len)
+{
+    struct log_parse_ud *ud = (void*)s;
+    lua_pushnumber(ud->L, ts);
+    lua_pushlstring(ud->L, (const char*)line, len);
+    ud->nb_rv += 2;
+    return ud->mode;
+}
+#define ts_line_OUT_TS_BIN_cb ts_line_OUT_TS_STRING_cb // REUSE
+static log_parse_status_t ts_line_OUT_STRING_cb(
+    struct log_parse *s, uint32_t ts,
+    const uint8_t *line, uintptr_t len)
+{
+    struct log_parse_ud *ud = (void*)s;
+    uint8_t out[len + 9];
+    write_hex_u32(out, ts, 8);
+    out[8] = ' ';
+    memcpy(out+9, line, len);
+    lua_pushlstring(ud->L, (const char*)out, sizeof(out));
+    ud->nb_rv++;
+    return ud->mode;
+}
+#define ts_line_OUT_BIN_cb ts_line_OUT_STRING_cb // REUSE
+
+// FIXME: remove this
 static log_parse_status_t ts_line_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
 {
     struct log_parse_ud *ud = (void*)s;
     if (OUT_INDEX == ud->out_type) {
-        lua_pushnumber(ud->L, ts);
-        lua_pushnumber(ud->L, mmap_file_offset(ud));
-        lua_pushnumber(ud->L, len);
-        ud->nb_rv += 3;
+        return ts_line_OUT_INDEX_cb(s,ts,line,len);
     }
     else if ((OUT_TS_STRING == ud->out_type) ||
              (OUT_TS_BIN == ud->out_type)) {
-        lua_pushnumber(ud->L, ts);
-        lua_pushlstring(ud->L, (const char*)line, len);
-        ud->nb_rv += 2;
+        return ts_line_OUT_TS_STRING_cb(s,ts,line,len);
     }
     else if ((OUT_STRING == ud->out_type) ||
              (OUT_BIN == ud->out_type)) {
-        uint8_t out[len + 9];
-        write_hex_u32(out, ts, 8);
-        out[8] = ' ';
-        memcpy(out+9, line, len);
-        lua_pushlstring(ud->L, (const char*)out, sizeof(out));
-        ud->nb_rv++;
+        return ts_line_OUT_STRING_cb(s,ts,line,len);
+
     }
     return ud->mode;
 }
@@ -168,56 +202,98 @@ static log_parse_status_t line_cb(
     return ts_line_cb(s, ts_dummy, line, len);
 }
 
+static log_parse_status_t ts_bin_OUT_INDEX_cb(
+    struct log_parse *s, uint32_t ts,
+    const uint8_t *line, uintptr_t len)
+{
+    struct log_parse_ud *ud = (void*)s;
+    lua_pushnumber(ud->L, ts);
+    lua_pushnumber(ud->L, mmap_file_offset(ud));
+    lua_pushnumber(ud->L, len);
+    ud->nb_rv += 3;
+    return ud->mode;
+}
+static log_parse_status_t ts_bin_OUT_TS_BIN_cb(
+    struct log_parse *s, uint32_t ts,
+    const uint8_t *line, uintptr_t len)
+{
+    struct log_parse_ud *ud = (void*)s;
+    /* Same as OUT_TS_STRING, but don't convert to hex, and leave
+       extra 'true' argument to distinguish.  */
+    lua_pushnumber(ud->L, ts);
+    lua_pushlstring(ud->L, (const char*)line, len);
+    lua_pushboolean(ud->L, 1);
+    ud->nb_rv += 3;
+    return ud->mode;
+}
+static log_parse_status_t ts_bin_OUT_TS_STRING_cb(
+    struct log_parse *s, uint32_t ts,
+    const uint8_t *line, uintptr_t len)
+{
+    struct log_parse_ud *ud = (void*)s;
+    uint8_t out[len*3];
+    memset(out,' ',sizeof(out));
+    for (int i=0; i<len; i++) {
+        uint8_t *w = out + i*3;
+        write_hex_u32(w, line[i], 2);
+    }
+    out[sizeof(out)-1] = '\n';
+    lua_pushnumber(ud->L, ts);
+    lua_pushlstring(ud->L, (const char*)out, sizeof(out));
+    ud->nb_rv += 2;
+    return ud->mode;
+}
+static log_parse_status_t ts_bin_OUT_STRING_cb(
+    struct log_parse *s, uint32_t ts,
+    const uint8_t *line, uintptr_t len)
+{
+    struct log_parse_ud *ud = (void*)s;
+    uint8_t out[len*3 + 9];
+    write_hex_u32(out, ts, 8);
+    for (int i=0; i<len; i++) {
+        uint8_t *w = out + 8 + i*3;
+        w[0] = ' ';
+        write_hex_u32(w+1, line[i], 2);
+    }
+    out[sizeof(out)-1] = '\n';
+    lua_pushlstring(ud->L, (const char*)out, sizeof(out));
+    ud->nb_rv++;
+    return ud->mode;
+}
+static log_parse_status_t ts_bin_OUT_BIN_cb(
+    struct log_parse *s, uint32_t ts,
+    const uint8_t *line, uintptr_t len)
+{
+    struct log_parse_ud *ud = (void*)s;
+    uint8_t out[9 + len];
+    write_hex_u32(out, ts, 8);
+    out[8] = 0; // OUT_STRING has ' ' here
+    memcpy(out+9, line, len);
+    lua_pushlstring(ud->L, (const char*)out, sizeof(out));
+    ud->nb_rv++;
+    return ud->mode;
+}
+
+// FIXME: remove this
 static log_parse_status_t ts_bin_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
 {
     struct log_parse_ud *ud = (void*)s;
     if (OUT_INDEX == ud->out_type) {
-        lua_pushnumber(ud->L, ts);
-        lua_pushnumber(ud->L, mmap_file_offset(ud));
-        lua_pushnumber(ud->L, len);
-        ud->nb_rv += 3;
+        return ts_bin_OUT_INDEX_cb(s,ts,line,len);
     }
     else if (OUT_TS_BIN == ud->out_type) {
-        /* Same as OUT_TS_STRING, but don't convert to hex, and leave
-           extra 'true' argument to distinguish.  */
-        lua_pushnumber(ud->L, ts);
-        lua_pushlstring(ud->L, (const char*)line, len);
-        lua_pushboolean(ud->L, 1);
-        ud->nb_rv += 3;
+        return ts_bin_OUT_TS_BIN_cb(s,ts,line,len);
     }
     else if (OUT_TS_STRING == ud->out_type) {
-        uint8_t out[len*3];
-        memset(out,' ',sizeof(out));
-        for (int i=0; i<len; i++) {
-            uint8_t *w = out + i*3;
-            write_hex_u32(w, line[i], 2);
-        }
-        out[sizeof(out)-1] = '\n';
-        lua_pushnumber(ud->L, ts);
-        lua_pushlstring(ud->L, (const char*)out, sizeof(out));
-        ud->nb_rv += 2;
+        return ts_bin_OUT_TS_STRING_cb(s,ts,line,len);
     }
     else if (OUT_STRING == ud->out_type) {
-        uint8_t out[len*3 + 9];
-        write_hex_u32(out, ts, 8);
-        for (int i=0; i<len; i++) {
-            uint8_t *w = out + 8 + i*3;
-            w[0] = ' ';
-            write_hex_u32(w+1, line[i], 2);
-        }
-        out[sizeof(out)-1] = '\n';
-        lua_pushlstring(ud->L, (const char*)out, sizeof(out));
-        ud->nb_rv++;
+        return ts_bin_OUT_STRING_cb(s,ts,line,len);
     }
     else if (OUT_BIN == ud->out_type) {
-        uint8_t out[9 + len];
-        write_hex_u32(out, ts, 8);
-        out[8] = 0; // OUT_STRING has ' ' here
-        memcpy(out+9, line, len);
-        lua_pushlstring(ud->L, (const char*)out, sizeof(out));
-        ud->nb_rv++;
+        return ts_bin_OUT_BIN_cb(s,ts,line,len);
     }
     return ud->mode;
 }
@@ -249,9 +325,9 @@ static void log_parse_parameterize(lua_State *L, struct log_parse_ud *ud,
                                    int out_type, int mode) {
     ud->L = L;
     ud->nb_rv = 0;
-    ud->s.line_cb    = line_cb;
-    ud->s.ts_line_cb = ts_line_cb;
-    ud->s.ts_bin_cb  = ts_bin_cb;
+    ud->s.cb.line    = line_cb;
+    ud->s.cb.ts_line = ts_line_cb;
+    ud->s.cb.ts_bin  = ts_bin_cb;
     ud->mode = mode;
     ud->out_type = out_type;
 }
@@ -302,6 +378,8 @@ void parse_continue_at_offset(
 
 /* Yield to parser to provide a single output element of specified type.
    Lua arguments are alwyays the same (parse,file). */
+// FIXME: transpose this to use a separate callback struct instead of
+// out_type parameterization.
 static struct log_parse_ud *log_parse_next(lua_State *L, int out_type) {
     struct log_file_ud *ud_file   = L_log_file(L, -1);
     struct log_parse_ud *ud_parse = L_log_parse(L, -2);
@@ -338,9 +416,9 @@ static int cmd_wind_prefix(lua_State *L) {
     bind_parse(ud_parse, ud_file);
     ud_parse->L = L;
     ud_parse->nb_rv = 0;
-    ud_parse->s.line_cb    = ts_find_cb;
-    ud_parse->s.ts_line_cb = ts_find_cb;
-    ud_parse->s.ts_bin_cb  = ts_find_cb;
+    ud_parse->s.cb.line    = ts_find_cb;
+    ud_parse->s.cb.ts_line = ts_find_cb;
+    ud_parse->s.cb.ts_bin  = ts_find_cb;
     ud_parse->prefix = prefix;
     parse_continue_at_offset(ud_parse, ud_file);
     return ud_parse->nb_rv;
