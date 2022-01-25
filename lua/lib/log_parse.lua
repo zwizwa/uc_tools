@@ -40,9 +40,12 @@ function log_parse.new(config)
 end
 
 
-function log_parse.lines_with_next(filename, config, nxt)
-   assert(filename)
-   assert(nxt)
+function log_parse.messages(config)
+   assert(config)
+   assert(config.next)
+   assert(config.file)
+   local filename = config.file
+   local nxt = config.next
    -- FIXME: C code only supports a single byte prefix atm.
    local wind_prefix = config and config.wind and config.wind[1]
    local file = C.new_log_file(filename)
@@ -54,17 +57,28 @@ function log_parse.lines_with_next(filename, config, nxt)
    return function() return nxt(parse, file) end
 end
 
-function log_parse.lines(filename, config)
-   return log_parse.lines_with_next(filename, config, C.next_string)
+-- Expose these so they can be passed as .messages({next = ...})
+log_parse.next_string    = C.next_string
+log_parse.next_ts_string = C.next_ts_string
+log_parse.next_ts_bin    = C.next_ts_bin
+log_parse.next_bin       = C.next_bin
+
+-- FIXME: These will be removed.  Use config.
+function log_parse.lines_string(config)
+   config.next = C.next_string
+   return log_parse.messages(config)
 end
-function log_parse.ts_lines(filename, config)
-   return log_parse.lines_with_next(filename, config, C.next_ts_string)
+function log_parse.ts_messages(config)
+   config.next = C.next_ts_string
+   return log_parse.messages(config)
 end
-function log_parse.ts_lines_bin(filename, config)
-   return log_parse.lines_with_next(filename, config, C.next_ts_bin)
+function log_parse.ts_lines_bin(config)
+   config.next = C.next_ts_bin
+   return log_parse.messages(config)
 end
-function log_parse.ts_bin(filename, config)
-   return log_parse.lines_with_next(filename, config, C.next_bin)
+function log_parse.ts_bin(config)
+   config.next = C.next_bin
+   return log_parse.messages(config)
 end
 
 function log_parse.indices(file)

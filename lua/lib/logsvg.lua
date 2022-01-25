@@ -214,13 +214,17 @@ function logsvg.read_log_parse(filename, config)
    local fist = nil
    local wraps = 0;
 
-   local ts_lines = log_parse.ts_lines
+   local nxt = log_parse.next_ts_string
    -- If there is a binary to string converter supplied, we can use
    -- the iterator that doesn't convert the binaries to hex.
-   if bin_to_string then ts_lines = log_parse.ts_lines_bin end
+   if bin_to_string then nxt = log_parse.next_ts_bin end
+   assert(nxt)
 
    -- FIXME: Let the C code do the scanning.
-   for n, logline, is_bin in ts_lines(filename, { wind = {0} }) do
+   for n, logline, is_bin in log_parse.messages(
+      {file = filename,
+       wind = {0},
+       next = nxt }) do
 
       -- User can plug in binary log message parser
       if is_bin and bin_to_string then
