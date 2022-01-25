@@ -106,13 +106,6 @@ struct log_parse_ud {
     uint32_t nb_rv;
     log_parse_status_t mode;
     uintptr_t offset;
-    /* It seems easier to parameterize the callbacks then to install
-       different callbacks for each iteration mode.
-       FIXME: That turned out to be a bad idea.  Transpose it: remove
-       parameterization, but install dedicated callbacks at the entry
-       point from Lua.
-    */
-    // int out_type;
     /* Keep track of the file that the parser is associated to.  This
        is just for tracking, is not dereferenced until we get the same
        pointer from Lua. */
@@ -146,6 +139,7 @@ static log_parse_status_t ts_line_OUT_INDEX_cb(
     ud->nb_rv += 3;
     return ud->mode;
 }
+
 static log_parse_status_t ts_line_OUT_TS_STRING_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
@@ -156,7 +150,9 @@ static log_parse_status_t ts_line_OUT_TS_STRING_cb(
     ud->nb_rv += 2;
     return ud->mode;
 }
+
 #define ts_line_OUT_TS_BIN_cb ts_line_OUT_TS_STRING_cb // REUSE
+
 static log_parse_status_t ts_line_OUT_STRING_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
@@ -172,39 +168,6 @@ static log_parse_status_t ts_line_OUT_STRING_cb(
 }
 #define ts_line_OUT_BIN_cb ts_line_OUT_STRING_cb // REUSE
 
-
-// FIXME: remove this
-#if 0
-static log_parse_status_t ts_line_cb(
-    struct log_parse *s, uint32_t ts,
-    const uint8_t *line, uintptr_t len)
-{
-    struct log_parse_ud *ud = (void*)s;
-    if (OUT_INDEX == ud->out_type) {
-        return ts_line_OUT_INDEX_cb(s,ts,line,len);
-    }
-    else if ((OUT_TS_STRING == ud->out_type) ||
-             (OUT_TS_BIN == ud->out_type)) {
-        return ts_line_OUT_TS_STRING_cb(s,ts,line,len);
-    }
-    else if ((OUT_STRING == ud->out_type) ||
-             (OUT_BIN == ud->out_type)) {
-        return ts_line_OUT_STRING_cb(s,ts,line,len);
-
-    }
-    return ud->mode;
-}
-static log_parse_status_t line_cb(
-    struct log_parse *s, uint32_t ts_dummy,
-    const uint8_t *line, uintptr_t len)
-{
-    /* FIXME: What we really want to do here is to pick the last time
-       stamp + annotate timestamp is missing in text. */
-    ASSERT(ts_dummy == 0);
-    return ts_line_cb(s, ts_dummy, line, len);
-}
-#endif
-
 static log_parse_status_t ts_bin_OUT_INDEX_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
@@ -216,6 +179,7 @@ static log_parse_status_t ts_bin_OUT_INDEX_cb(
     ud->nb_rv += 3;
     return ud->mode;
 }
+
 static log_parse_status_t ts_bin_OUT_TS_BIN_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
@@ -229,6 +193,7 @@ static log_parse_status_t ts_bin_OUT_TS_BIN_cb(
     ud->nb_rv += 3;
     return ud->mode;
 }
+
 static log_parse_status_t ts_bin_OUT_TS_STRING_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
@@ -246,6 +211,7 @@ static log_parse_status_t ts_bin_OUT_TS_STRING_cb(
     ud->nb_rv += 2;
     return ud->mode;
 }
+
 static log_parse_status_t ts_bin_OUT_STRING_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
@@ -263,6 +229,7 @@ static log_parse_status_t ts_bin_OUT_STRING_cb(
     ud->nb_rv++;
     return ud->mode;
 }
+
 static log_parse_status_t ts_bin_OUT_BIN_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
@@ -277,31 +244,7 @@ static log_parse_status_t ts_bin_OUT_BIN_cb(
     return ud->mode;
 }
 
-// FIXME: remove this
-#if 0
-static log_parse_status_t ts_bin_cb(
-    struct log_parse *s, uint32_t ts,
-    const uint8_t *line, uintptr_t len)
-{
-    struct log_parse_ud *ud = (void*)s;
-    if (OUT_INDEX == ud->out_type) {
-        return ts_bin_OUT_INDEX_cb(s,ts,line,len);
-    }
-    else if (OUT_TS_BIN == ud->out_type) {
-        return ts_bin_OUT_TS_BIN_cb(s,ts,line,len);
-    }
-    else if (OUT_TS_STRING == ud->out_type) {
-        return ts_bin_OUT_TS_STRING_cb(s,ts,line,len);
-    }
-    else if (OUT_STRING == ud->out_type) {
-        return ts_bin_OUT_STRING_cb(s,ts,line,len);
-    }
-    else if (OUT_BIN == ud->out_type) {
-        return ts_bin_OUT_BIN_cb(s,ts,line,len);
-    }
-    return ud->mode;
-}
-#endif
+
 static struct log_parse_ud *push_log_parse(lua_State *L) {
     struct log_parse_ud *ud = lua_newuserdata(L, sizeof(*ud));
     ASSERT(ud);
@@ -352,19 +295,16 @@ static int to_thing_mv(lua_State *L, struct log_parse_cbs *cb) {
     ASSERT(data);
     size_t len = lua_strlen(L, -1);
     log_parse_parameterize(L, ud, cb, LOG_PARSE_STATUS_CONTINUE);
-    // ud->out_type = OUT_STRING;
     log_parse_write(&ud->s, data, len);
     return ud->nb_rv;
 }
 static int cmd_to_string_mv(lua_State *L) {
     LET_CBS(cbs, OUT_STRING);
     return to_thing_mv(L, &cbs);
-    // return to_thing_mv(L, OUT_STRING);
 }
 static int cmd_to_bin_mv(lua_State *L) {
     LET_CBS(cbs, OUT_BIN);
     return to_thing_mv(L, &cbs);
-    // return to_thing_mv(L, OUT_BIN);
 }
 
 void bind_parse(struct log_parse_ud *ud_parse, struct log_file_ud *ud_file) {
@@ -393,18 +333,6 @@ void parse_continue_at_offset(
 
 /* Yield to parser to provide a single output element of specified type.
    Lua arguments are alwyays the same (parse,file). */
-// FIXME: transpose this to use a separate callback struct instead of
-// out_type parameterization.
-/* static struct log_parse_ud *log_parse_next(lua_State *L, int out_type) { */
-/*     struct log_file_ud *ud_file   = L_log_file(L, -1); */
-/*     struct log_parse_ud *ud_parse = L_log_parse(L, -2); */
-/*     // FIXME: check that offset is actually inside the file */
-/*     bind_parse(ud_parse, ud_file); */
-/*     log_parse_parameterize(L, ud_parse, LOG_PARSE_STATUS_YIELD); */
-/*     ud_parse->out_type = out_type; */
-/*     parse_continue_at_offset(ud_parse, ud_file); */
-/*     return ud_parse; */
-/* } */
 static struct log_parse_ud *log_parse_next_cb(
     lua_State *L, struct log_parse_cbs *cb)
 {
@@ -416,7 +344,6 @@ static struct log_parse_ud *log_parse_next_cb(
     parse_continue_at_offset(ud_parse, ud_file);
     return ud_parse;
 }
-
 
 
 // FIXME: For now this is hardcoded to single byte prefix search.
@@ -459,28 +386,23 @@ static int cmd_wind_prefix(lua_State *L) {
 static int cmd_next_string(lua_State *L) {
     LET_CBS(cbs,OUT_STRING);
     return log_parse_next_cb(L, &cbs)->nb_rv;
-    // return log_parse_next(L, OUT_STRING)->nb_rv;
 }
 static int cmd_next_ts_string(lua_State *L) {
     LET_CBS(cbs,OUT_TS_STRING);
     return log_parse_next_cb(L, &cbs)->nb_rv;
-    // return log_parse_next(L, OUT_TS_STRING)->nb_rv;
 }
 static int cmd_next_ts_bin(lua_State *L) {
     LET_CBS(cbs,OUT_TS_BIN);
     return log_parse_next_cb(L, &cbs)->nb_rv;
-    // return log_parse_next(L, OUT_TS_BIN)->nb_rv;
 }
 static int cmd_next_bin(lua_State *L) {
     LET_CBS(cbs,OUT_BIN);
     return log_parse_next_cb(L, &cbs)->nb_rv;
-    // return log_parse_next(L, OUT_BIN)->nb_rv;
 }
 /* Same as OUT_STRING, but return timestamp, offset, len instead. */
 static int cmd_next_index(lua_State *L) {
     LET_CBS(cbs,OUT_INDEX);
     return log_parse_next_cb(L, &cbs)->nb_rv;
-    // return log_parse_next(L, OUT_INDEX)->nb_rv;
 }
 
 /* init */
