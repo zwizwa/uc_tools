@@ -1,5 +1,15 @@
 -- Co-routine form for smc.lua
 --
+-- Couroutines miss synchronization, but they are a simpler mechanism
+-- that can be used in its own right, and to test the compiler.  So
+-- this intends to implement:
+
+-- 1. Coutines
+
+-- 2. CSP (later)
+
+-- EDIT: Below needs revision.
+
 -- Idea is to split up CSP implementation by first implementing a
 -- simple form of co-routines as an optimization for CSP task
 -- scheduling that doesn't need to touch any data structures
@@ -44,7 +54,7 @@ local function co(self, form, chan, data)
    if data then
       data = li:maybe_insert_var(data)
    end
-   if not li:compile_inserts(l('co',chan,data)) then
+   if not li:compile_inserts(l(form,chan,data)) then
 
       self:w(self:tab())
 

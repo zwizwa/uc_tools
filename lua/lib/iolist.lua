@@ -19,9 +19,13 @@ local function to_string(iol)
    write(function(atom) table.insert(out, atom) end, iol)
    return table.concat(out)
 end
+local function stream_writer(write_string)
+   return function(...) write(write_string,{...}) end
+end
 
 local iolist = {
    write = write,
+   stream_writer = stream_writer,
    to_string = to_string,
 }
 return iolist
