@@ -84,8 +84,10 @@ static struct log_file_ud *L_log_file(lua_State *L, int index) {
 #define T_LOG_PARSE "uc_tools.log_parse"
 
 /* Different output records.
-   This has gotten a bit arbitrary.
-   Maybe refactor?  Otoh this is almost done, but at least rename these. */
+   The names have gotten a bit arbitrary.
+   Maybe refactor?  Otoh this is almost done, but at least rename these.
+   The eyesore is OUT_BIN which is used in several places.
+*/
 
 #define OUT_NOTHING   0  /* Don't push anything. */
 #define OUT_STRING    1  /* Single string containing timestamp. */
@@ -101,7 +103,11 @@ struct log_parse_ud {
     log_parse_status_t mode;
     uintptr_t offset;
     /* It seems easier to parameterize the callbacks then to install
-       different callbacks for each iteration mode. */
+       different callbacks for each iteration mode.
+       FIXME: That turned out to be a bad idea.  Transpose it: remove
+       parameterization, but install dedicated callbacks at the entry
+       point from Lua.
+    */
     int out_type;
     /* Keep track of the file that the parser is associated to.  This
        is just for tracking, is not dereferenced until we get the same
@@ -239,14 +245,15 @@ static struct log_parse_ud *L_log_parse(lua_State *L, int index) {
 
 /* Approximation of the semantics of Scheme's parameterize.
    These values are only valid during the extent of the call. */
-static void log_parse_parameterize(lua_State *L, struct log_parse_ud *ud) {
+static void log_parse_parameterize(lua_State *L, struct log_parse_ud *ud,
+                                   int out_type, int mode) {
     ud->L = L;
     ud->nb_rv = 0;
     ud->s.line_cb    = line_cb;
     ud->s.ts_line_cb = ts_line_cb;
     ud->s.ts_bin_cb  = ts_bin_cb;
-    ud->mode = LOG_PARSE_STATUS_CONTINUE;
-    ud->out_type = OUT_STRING;
+    ud->mode = mode;
+    ud->out_type = out_type;
 }
 
 /* Push a string fragment into the state machine.  For each complete
@@ -257,7 +264,7 @@ static int to_thing_mv(lua_State *L, int out_type) {
     const uint8_t *data = (const uint8_t *)lua_tostring(L, -1);
     ASSERT(data);
     size_t len = lua_strlen(L, -1);
-    log_parse_parameterize(L, ud);
+    log_parse_parameterize(L, ud, OUT_STRING, LOG_PARSE_STATUS_CONTINUE);
     ud->out_type = out_type;
     log_parse_write(&ud->s, data, len);
     return ud->nb_rv;
@@ -300,9 +307,7 @@ static struct log_parse_ud *log_parse_next(lua_State *L, int out_type) {
     struct log_parse_ud *ud_parse = L_log_parse(L, -2);
     // FIXME: check that offset is actually inside the file
     bind_parse(ud_parse, ud_file);
-    log_parse_parameterize(L, ud_parse);
-    ud_parse->mode     = LOG_PARSE_STATUS_YIELD;
-    ud_parse->out_type = out_type;
+    log_parse_parameterize(L, ud_parse, out_type, LOG_PARSE_STATUS_YIELD);
     parse_continue_at_offset(ud_parse, ud_file);
     return ud_parse;
 }

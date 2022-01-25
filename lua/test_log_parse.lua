@@ -1,4 +1,8 @@
 -- FIXME: Turn these into assert tests.
+-- In addition to this, test these on api change:
+-- . app logsvg
+-- . app format_trace.lua
+-- . app console log
 
 local log_parse = require('lib.log_parse')
 local prompt = require('prompt')
