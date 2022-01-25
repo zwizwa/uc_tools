@@ -36,27 +36,11 @@
 */
 
 
-
-// FIXME: For some reason this (which is already in os_linux.h) is not
-// enough to expose mremap.
-// #define _GNU_SOURCE
-// Workaround:
-#define __USE_GNU
-#include <sys/mman.h>
-
-#include "log_parse.h"
-#include "mmap_file.h"
-
-// Lua headers are included in this file.
-#include "lua_tools.h"
+#include "log_parse_lua51.h"
 
 /* Wrap mmap_file.h read-only memory-mapped file.
    This is for handling large files. */
 #define T_LOG_FILE  "uc_tools.log_file"
-struct log_file_ud {
-    struct mmap_file file;
-    lua_State *L;
-};
 static int gc_log_file(lua_State *L) {
     LOG("FIXME: gc_log_file()\n");
     return 0;
@@ -93,26 +77,15 @@ static struct log_file_ud *L_log_file(lua_State *L, int index) {
    The eyesore is OUT_BIN which is used in several places.
 */
 
+#if 0
 #define OUT_NOTHING   0  /* Don't push anything. */
 #define OUT_STRING    1  /* Single string containing timestamp. */
 #define OUT_INDEX     2  /* Generate time stamp number + spans instead of strings. */
 #define OUT_TS_STRING 3  /* Timestamp number + string logline */
 #define OUT_TS_BIN    4  /* As OUT_TS_STRING, but don't convert to hex. */
 #define OUT_BIN       5  /* As OUT_STRING, converting ts to hex but not the binary message. */
+#endif
 
-struct log_parse_ud {
-    struct log_parse s;
-    lua_State *L;
-    uint32_t nb_rv;
-    log_parse_status_t mode;
-    uintptr_t offset;
-    /* Keep track of the file that the parser is associated to.  This
-       is just for tracking, is not dereferenced until we get the same
-       pointer from Lua. */
-    struct log_file_ud *ud_file;
-    /* For searching. */
-    uint8_t prefix;
-};
 static void write_hex_u32(uint8_t *buf, uint32_t val, uint32_t nb) {
     uint8_t hex[] = "0123456789abcdef";
     for (int i=0; i<nb; i++) {
@@ -272,17 +245,18 @@ static struct log_parse_ud *L_log_parse(lua_State *L, int index) {
     return ud;
 }
 
-/* Approximation of the semantics of Scheme's parameterize.
-   These values are only valid during the extent of the call. */
-static void log_parse_parameterize(lua_State *L, struct log_parse_ud *ud,
-                                   struct log_parse_cbs *cb,
-                                   int mode) {
+/* These values are only valid during the extent of the call. */
+static void log_parse_parameterize(
+    lua_State *L,
+    struct log_parse_ud *ud,
+    struct log_parse_cbs *cb,
+    int mode)
+{
     ud->L = L;
     ud->nb_rv = 0;
     ud->s.cb = cb;
     ud->mode = mode;
 }
-
 
 
 /* Push a string fragment into the state machine.  For each complete
