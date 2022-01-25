@@ -93,12 +93,6 @@ static struct log_file_ud *L_log_file(lua_State *L, int index) {
 /* Wrap log_parse.h iterator. */
 #define T_LOG_PARSE "uc_tools.log_parse"
 
-/* Different output records.
-   The names have gotten a bit arbitrary.
-   Maybe refactor?  Otoh this is almost done, but at least rename these.
-   The eyesore is bin which is used in several places.
-*/
-
 static void write_hex_u32(uint8_t *buf, uint32_t val, uint32_t nb) {
     uint8_t hex[] = "0123456789abcdef";
     for (int i=0; i<nb; i++) {
@@ -119,11 +113,15 @@ static uintptr_t mmap_file_offset(struct log_parse_ud *ud) {
    Lua result values are passed onto the stack + nb_rv is marked. 
 */
 
+static inline struct log_parse_ud *log_parse_ud(struct log_parse *s) {
+    return (void*)s;
+}
+
 static log_parse_status_t ts_line_index_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
 {
-    struct log_parse_ud *ud = (void*)s;
+    struct log_parse_ud *ud = log_parse_ud(s);
     lua_pushnumber(ud->L, ts);
     lua_pushnumber(ud->L, mmap_file_offset(ud));
     lua_pushnumber(ud->L, len);
@@ -135,7 +133,7 @@ static log_parse_status_t ts_line_ts_string_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
 {
-    struct log_parse_ud *ud = (void*)s;
+    struct log_parse_ud *ud = log_parse_ud(s);
     lua_pushnumber(ud->L, ts);
     lua_pushlstring(ud->L, (const char*)line, len);
     ud->nb_rv += 2;
@@ -148,7 +146,7 @@ static log_parse_status_t ts_line_string_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
 {
-    struct log_parse_ud *ud = (void*)s;
+    struct log_parse_ud *ud = log_parse_ud(s);
     uint8_t out[len + 9];
     write_hex_u32(out, ts, 8);
     out[8] = ' ';
@@ -163,7 +161,7 @@ static log_parse_status_t ts_bin_index_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
 {
-    struct log_parse_ud *ud = (void*)s;
+    struct log_parse_ud *ud = log_parse_ud(s);
     lua_pushnumber(ud->L, ts);
     lua_pushnumber(ud->L, mmap_file_offset(ud));
     lua_pushnumber(ud->L, len);
@@ -175,7 +173,7 @@ static log_parse_status_t ts_bin_ts_raw_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
 {
-    struct log_parse_ud *ud = (void*)s;
+    struct log_parse_ud *ud = log_parse_ud(s);
     /* Same as ts_string, but don't convert to hex, and leave
        extra 'true' argument to distinguish.  */
     lua_pushnumber(ud->L, ts);
@@ -189,7 +187,7 @@ static log_parse_status_t ts_bin_ts_string_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
 {
-    struct log_parse_ud *ud = (void*)s;
+    struct log_parse_ud *ud = log_parse_ud(s);
     uint8_t out[len*3];
     memset(out,' ',sizeof(out));
     for (int i=0; i<len; i++) {
@@ -207,7 +205,7 @@ static log_parse_status_t ts_bin_string_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
 {
-    struct log_parse_ud *ud = (void*)s;
+    struct log_parse_ud *ud = log_parse_ud(s);
     uint8_t out[len*3 + 9];
     write_hex_u32(out, ts, 8);
     for (int i=0; i<len; i++) {
@@ -225,7 +223,7 @@ static log_parse_status_t ts_bin_raw_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
 {
-    struct log_parse_ud *ud = (void*)s;
+    struct log_parse_ud *ud = log_parse_ud(s);
     uint8_t out[9 + len];
     write_hex_u32(out, ts, 8);
     out[8] = 0; // string has ' ' here
@@ -357,7 +355,7 @@ static log_parse_status_t ts_find_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
 {
-    struct log_parse_ud *ud = (void*)s;
+    struct log_parse_ud *ud = log_parse_ud(s);
     if ((len > 1) && (line[0]) == ud->prefix) {
         //lua_pushboolean(ud->L, 1);
         //FIXME: the offset of the line would be more useful.
