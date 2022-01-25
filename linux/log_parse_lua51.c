@@ -36,6 +36,17 @@
 */
 
 
+/* Output types:
+
+   string     Single string containing hex timestamp.
+   bin        As string, converting ts to hex but not the binary message.
+   index      Generate time stamp number + spans instead of strings.
+   ts_string  Timestamp number + string logline
+   ts_bin     As ts_string, but don't convert to hex.
+*/
+
+
+
 #include "log_parse_lua51.h"
 
 /* Wrap mmap_file.h read-only memory-mapped file.
@@ -74,17 +85,8 @@ static struct log_file_ud *L_log_file(lua_State *L, int index) {
 /* Different output records.
    The names have gotten a bit arbitrary.
    Maybe refactor?  Otoh this is almost done, but at least rename these.
-   The eyesore is OUT_BIN which is used in several places.
+   The eyesore is bin which is used in several places.
 */
-
-#if 0
-#define OUT_NOTHING   0  /* Don't push anything. */
-#define OUT_STRING    1  /* Single string containing timestamp. */
-#define OUT_INDEX     2  /* Generate time stamp number + spans instead of strings. */
-#define OUT_TS_STRING 3  /* Timestamp number + string logline */
-#define OUT_TS_BIN    4  /* As OUT_TS_STRING, but don't convert to hex. */
-#define OUT_BIN       5  /* As OUT_STRING, converting ts to hex but not the binary message. */
-#endif
 
 static void write_hex_u32(uint8_t *buf, uint32_t val, uint32_t nb) {
     uint8_t hex[] = "0123456789abcdef";
@@ -106,7 +108,7 @@ static uintptr_t mmap_file_offset(struct log_parse_ud *ud) {
    Lua result values are passed onto the stack + nb_rv is marked. 
 */
 
-static log_parse_status_t ts_line_OUT_INDEX_cb(
+static log_parse_status_t ts_line_index_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
 {
@@ -118,7 +120,7 @@ static log_parse_status_t ts_line_OUT_INDEX_cb(
     return ud->mode;
 }
 
-static log_parse_status_t ts_line_OUT_TS_STRING_cb(
+static log_parse_status_t ts_line_ts_string_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
 {
@@ -129,9 +131,9 @@ static log_parse_status_t ts_line_OUT_TS_STRING_cb(
     return ud->mode;
 }
 
-#define ts_line_OUT_TS_BIN_cb ts_line_OUT_TS_STRING_cb // REUSE
+#define ts_line_ts_bin_cb ts_line_ts_string_cb // REUSE
 
-static log_parse_status_t ts_line_OUT_STRING_cb(
+static log_parse_status_t ts_line_string_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
 {
@@ -144,9 +146,9 @@ static log_parse_status_t ts_line_OUT_STRING_cb(
     ud->nb_rv++;
     return ud->mode;
 }
-#define ts_line_OUT_BIN_cb ts_line_OUT_STRING_cb // REUSE
+#define ts_line_bin_cb ts_line_string_cb // REUSE
 
-static log_parse_status_t ts_bin_OUT_INDEX_cb(
+static log_parse_status_t ts_bin_index_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
 {
@@ -158,12 +160,12 @@ static log_parse_status_t ts_bin_OUT_INDEX_cb(
     return ud->mode;
 }
 
-static log_parse_status_t ts_bin_OUT_TS_BIN_cb(
+static log_parse_status_t ts_bin_ts_bin_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
 {
     struct log_parse_ud *ud = (void*)s;
-    /* Same as OUT_TS_STRING, but don't convert to hex, and leave
+    /* Same as ts_string, but don't convert to hex, and leave
        extra 'true' argument to distinguish.  */
     lua_pushnumber(ud->L, ts);
     lua_pushlstring(ud->L, (const char*)line, len);
@@ -172,7 +174,7 @@ static log_parse_status_t ts_bin_OUT_TS_BIN_cb(
     return ud->mode;
 }
 
-static log_parse_status_t ts_bin_OUT_TS_STRING_cb(
+static log_parse_status_t ts_bin_ts_string_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
 {
@@ -190,7 +192,7 @@ static log_parse_status_t ts_bin_OUT_TS_STRING_cb(
     return ud->mode;
 }
 
-static log_parse_status_t ts_bin_OUT_STRING_cb(
+static log_parse_status_t ts_bin_string_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
 {
@@ -208,14 +210,14 @@ static log_parse_status_t ts_bin_OUT_STRING_cb(
     return ud->mode;
 }
 
-static log_parse_status_t ts_bin_OUT_BIN_cb(
+static log_parse_status_t ts_bin_bin_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len)
 {
     struct log_parse_ud *ud = (void*)s;
     uint8_t out[9 + len];
     write_hex_u32(out, ts, 8);
-    out[8] = 0; // OUT_STRING has ' ' here
+    out[8] = 0; // string has ' ' here
     memcpy(out+9, line, len);
     lua_pushlstring(ud->L, (const char*)out, sizeof(out));
     ud->nb_rv++;
@@ -276,26 +278,27 @@ static int to_thing_mv(lua_State *L, struct log_parse_cbs *cb) {
 // FIXME: .line is the same as .ts_line here.
 // In practice this only happens for junk lines.
 // Maybe rename it to "junk" instead?
+
 #define LET_CBS(cbs,tag) \
     struct log_parse_cbs cbs = { \
         .line    =  ts_line_##tag##_cb, \
         .ts_line =  ts_line_##tag##_cb, \
         .ts_bin  =  ts_bin_##tag##_cb, \
     }
-LET_CBS(cbs_OUT_STRING,    OUT_STRING);
-LET_CBS(cbs_OUT_INDEX,     OUT_INDEX);
-LET_CBS(cbs_OUT_TS_STRING, OUT_TS_STRING);
-LET_CBS(cbs_OUT_TS_BIN,    OUT_TS_BIN);
-LET_CBS(cbs_OUT_BIN,       OUT_BIN);
+LET_CBS(cbs_string,    string);
+LET_CBS(cbs_index,     index);
+LET_CBS(cbs_ts_string, ts_string);
+LET_CBS(cbs_ts_bin,    ts_bin);
+LET_CBS(cbs_bin,       bin);
 
 
 
 
 static int cmd_to_string_mv(lua_State *L) {
-    return to_thing_mv(L, &cbs_OUT_STRING);
+    return to_thing_mv(L, &cbs_string);
 }
 static int cmd_to_bin_mv(lua_State *L) {
-    return to_thing_mv(L, &cbs_OUT_BIN);
+    return to_thing_mv(L, &cbs_bin);
 }
 
 void bind_parse(struct log_parse_ud *ud_parse, struct log_file_ud *ud_file) {
@@ -376,22 +379,12 @@ static int cmd_wind_prefix(lua_State *L) {
 
 
 /* Combine parser and mmap file to create an interator. */
-static int cmd_next_string(lua_State *L) {
-    return log_parse_next_cb(L, &cbs_OUT_STRING)->nb_rv;
-}
-static int cmd_next_ts_string(lua_State *L) {
-    return log_parse_next_cb(L, &cbs_OUT_TS_STRING)->nb_rv;
-}
-static int cmd_next_ts_bin(lua_State *L) {
-    return log_parse_next_cb(L, &cbs_OUT_TS_BIN)->nb_rv;
-}
-static int cmd_next_bin(lua_State *L) {
-    return log_parse_next_cb(L, &cbs_OUT_BIN)->nb_rv;
-}
-/* Same as OUT_STRING, but return timestamp, offset, len instead. */
-static int cmd_next_index(lua_State *L) {
-    return log_parse_next_cb(L, &cbs_OUT_INDEX)->nb_rv;
-}
+static int cmd_next_string(lua_State *L)    { return log_parse_next_cb(L, &cbs_string)->nb_rv; }
+static int cmd_next_ts_string(lua_State *L) { return log_parse_next_cb(L, &cbs_ts_string)->nb_rv; }
+static int cmd_next_ts_bin(lua_State *L)    { return log_parse_next_cb(L, &cbs_ts_bin)->nb_rv; }
+static int cmd_next_bin(lua_State *L)       { return log_parse_next_cb(L, &cbs_bin)->nb_rv; }
+/* Same as string, but return timestamp, offset, len instead. */
+static int cmd_next_index(lua_State *L)     { return log_parse_next_cb(L, &cbs_index)->nb_rv; }
 
 /* init */
 static int cmd_name(lua_State *L) {
