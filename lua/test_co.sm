@@ -60,7 +60,9 @@
 ;; by the code that implements the task network.
 
 (define (start)
-  (let* ((c (make-channel)))
-    (spawn! (lambda () (server c))) ;; needs to come first
-    (spawn! (lambda () (client c)))
+  (let* ((t1 (make-task))
+         (t2 (make-task))
+         (c (make-channel)))
+    (spawn! t1 (lambda () (server c))) ;; needs to come first
+    (spawn! t2 (lambda () (client c)))
     ))

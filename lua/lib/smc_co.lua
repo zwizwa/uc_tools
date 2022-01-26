@@ -32,38 +32,33 @@ local form = {}
 
 require('lib.log')
 
--- The definition of schedule is generic: here's a reference to
--- "something else", give me the label I need to jump to.  The
--- something else can currently be either a CSP channel, or a
--- coroutine.
-
+-- The scheduler() function takes a concurrency object (task, channel)
+-- and maps it to a task id that can be translated directly to a jump
+-- label.  Is probably too simple but will do for now.
+local scheduler = {}
+function scheduler.task(self,task)
+   assert(task and task.id)
+   local other_nxt = self:next(task.id)
+   return other_nxt
+end
+function scheduler.channel(self,chan)
+   -- For now just transfer between 2 coroutines.
+   -- FIXME: Not correct
+   -- FIXME: Later, get scheduler info from compile-time schannel variable
+   local t = self.current_task
+   self:w("/*sch:",t,"*/ ")
+   local other_task = 1 - t
+   local other_nxt = self:next(other_task)
+   return other_nxt
+end
 local function schedule(self, ref_thing)
-
-   local class = {}
-   function class.channel(chan)
-      -- For now just transfer between 2 coroutines.
-      -- FIXME: Later, get scheduler info from compile-time schannel variable
-      local t = self.current_task
-      self:w("/*sch:",t,"*/ ")
-      local other_task = 1 - t
-      local other_nxt = self:next(other_task)
-      return other_nxt
-   end
-   function class.task(task)
-      assert(task and task.id)
-      local other_nxt = self:next(task.id)
-      return other_nxt
-   end
-
    local var_thing = self:ref(ref_thing)
    assert(var_thing)
-   log_desc({var_thing = var_thing})
    local val = var_thing.val
    assert(val.class)
-   local f = class[val.class]
-   assert(f)
-   return f(val)
-
+   local sched = scheduler[val.class]
+   assert(sched)
+   return sched(self,val)
 end
 
 

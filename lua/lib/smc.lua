@@ -410,6 +410,11 @@ function smc:next(t)
    return {s, "->t", t or tc}
 end
 
+function smc:state_type()
+   assert(self.module_name)
+   return {"struct ", self.module_name, "_state"}
+end
+
 -- The module form compiles to a C function.  Functions with no
 -- arguments compile to goto lables inside such a function.
 
@@ -438,10 +443,11 @@ form['module-begin'] = function(self, expr)
 
 
    -- Emit main C function
-   local modname = self.module_name or "module"
+   local modname = self.module_name
+   assert(modname)
    local s  = self.config.state_name
    if self.mod_prefix then modname = { self.mod_prefix, modname } end
-   local args = { { "struct ", c.state_struct, " *", s } }
+   local args = { { self:state_type(), " *", s } }
    self:w("T ", modname, "(",comp.clist(args),") {\n");
 
    -- Allocate 'registers' usef for function/coroutine argument
@@ -468,8 +474,7 @@ form['module-begin'] = function(self, expr)
    for i=1,nb_tasks do
       self:w(self:tab(), s, "->t",i-1,"=&&t",i-1,"_entry;\n");
    end
-   -- It shouldn't matter which one we start first.
-   self:w(self:tab(), "goto t0_entry;\n")
+   self:w(self:tab(), "goto init_entry;\n")
 
    self:w(c_bulk)
 
@@ -485,12 +490,13 @@ function smc:compile_tasks()
    -- interpreting a Scheme function 'start', that will call 'spawn!'
    -- to start tasks.
 
-   -- The border between evaluation and compilation is that function
-   -- 'spawn!' which is passed a closure.
-   local prim = {}
-   local function spawn(task_nb, closure)
+   -- For concurrency without synchronization, the order of starting
+   -- the coroutines is important.  FIXME: This still isn't defined
+   -- well.
+
+   local function load_task(task_nb, closure)
       assert(is_closure(closure))
-      self:w("// spawn! ",task_nb,"\n")
+      self:w("// load_task! ",task_nb,"\n")
       self:w("// ", se.iolist(closure.body), "\n")
 
       -- Conceptually, spawn! evaluates the closure in a new task
@@ -581,13 +587,18 @@ function smc:compile_tasks()
 
    end
 
+   local prim = {}
 
-   -- Same as spawn!, but we register the task id in the coroutine
-   -- structure to allow for coroutine reference -> task number
-   -- resolution.
-   prim['spawn!'] = function(task, closure)
+   -- The border between evaluation and compilation is that function
+   -- 'spawn!' which is passed a closure.
+   prim['load-task!'] = function(task, closure)
       assert(task and task.class == 'task')
-      spawn(task.id, closure)
+      load_task(task.id, closure)
+   end
+   prim['resume-task!'] = function(task)
+      assert(task and task.class == 'task')
+      self:w("init_entry:\n")
+      self:w(self:tab(),"goto t", task.id, "_entry;\n");
    end
 
 
@@ -1041,11 +1052,8 @@ function smc:compile_module(mod_expr, config)
    -- FIXME: Keep a single task struct with zero stack size, and fill
    -- in stack size in state struct.
 
-   local function task_name(i)
-      return {self.config.state_struct, "_task", i}
-   end
 
-   self:w("struct ", self.config.state_struct, " {\n")
+   self:w(self:state_type(), " {\n")
 
    -- This is for resuming on C function entry.  Since all tasks are
    -- inlined anyway, it seems simplest to collaps task+pointer into a
@@ -1151,7 +1159,7 @@ function smc:import_forms(forms)
 end
 
 function smc.new(cfg)
-   local config = { state_name = "s", state_struct = "state", forms = {} }
+   local config = { state_name = "s", forms = {} }
    for k,v in pairs(cfg or {}) do config[k] = v end
    local obj = { stack_ptr = 0, env = se.empty, indent = 1, config = config, form = {} }
    local function index(_,k)
