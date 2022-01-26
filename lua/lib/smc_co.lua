@@ -40,7 +40,7 @@ require('lib.log')
 local function schedule(self, ref_thing)
 
    local class = {}
-   function class.chan(chan)
+   function class.channel(chan)
       -- For now just transfer between 2 coroutines.
       -- FIXME: Later, get scheduler info from compile-time schannel variable
       local t = self.current_task
@@ -49,12 +49,9 @@ local function schedule(self, ref_thing)
       local other_nxt = self:next(other_task)
       return other_nxt
    end
-   function class.cor(cr)
-      assert(cr and cr.task_nb)
-      local t = self.current_task
-      self:w("/*sch:",t,"*/ ")
-      local other_task = 1 - t
-      local other_nxt = self:next(other_task)
+   function class.task(task)
+      assert(task and task.id)
+      local other_nxt = self:next(task.id)
       return other_nxt
    end
 

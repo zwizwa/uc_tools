@@ -488,8 +488,7 @@ function smc:compile_tasks()
    -- The border between evaluation and compilation is that function
    -- 'spawn!' which is passed a closure.
    local prim = {}
-   local task_nb = 0
-   local function spawn(closure)
+   local function spawn(task_nb, closure)
       assert(is_closure(closure))
       self:w("// spawn! ",task_nb,"\n")
       self:w("// ", se.iolist(closure.body), "\n")
@@ -580,19 +579,15 @@ function smc:compile_tasks()
                end)
          end)
 
-      task_nb = task_nb + 1
    end
 
-
-   prim['spawn!'] = spawn
 
    -- Same as spawn!, but we register the task id in the coroutine
    -- structure to allow for coroutine reference -> task number
    -- resolution.
-   prim['start-coroutine!'] = function(cor, closure)
-      assert(cor and cor.class == 'cor')
-      cor.task_nb = task_nb
-      spawn(closure)
+   prim['spawn!'] = function(task, closure)
+      assert(task and task.class == 'task')
+      spawn(task.id, closure)
    end
 
 
@@ -606,24 +601,25 @@ function smc:compile_tasks()
    -- Channels are currently just represented as identifiers. This is
    -- how it is in csp.c as well.
 
-   local objs = {
-      chan = {},
-      cor  = {},
+   local registries = {
+      task = {},
+      channel = {},
    }
    local function new(typ)
-      assert(objs[typ])
-      local obj = {class = typ, id = #(objs[typ])}
-      table.insert(objs, obj)
+      local registry = registries[typ]
+      assert(registry)
+      local obj = {class = typ, id = #registry}
+      table.insert(registry, obj)
       self:w("// new ", typ, ": ", obj.id, "\n")
       return obj
    end
 
 
    prim['make-channel'] = function(fun)
-      return new('chan')
+      return new('channel')
    end
-   prim['make-coroutine'] = function(fun)
-      return new('cor')
+   prim['make-task'] = function(fun)
+      return new('task')
    end
 
    local start = self.funs.start
