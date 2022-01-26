@@ -32,19 +32,41 @@ local form = {}
 
 require('lib.log')
 
-local function schedule(self, chan)
-   -- FIXME: Later, get scheduler info from compile-time schannel variable
-   local v_chan = self:ref(chan)
-   assert(v_chan)
-   -- log_desc({v_chan = v_chan})
-   assert(v_chan.val)
+-- The definition of schedule is generic: here's a reference to
+-- "something else", give me the label I need to jump to.  The
+-- something else can currently be either a CSP channel, or a
+-- coroutine.
 
-   -- For now just transfer between 2 coroutines.
-   local t = self.current_task
-   self:w("/*sch:",t,"*/ ")
-   local other_task = 1 - t
-   local other_nxt = self:next(other_task)
-   return other_nxt
+local function schedule(self, ref_thing)
+
+   local class = {}
+   function class.chan(chan)
+      -- For now just transfer between 2 coroutines.
+      -- FIXME: Later, get scheduler info from compile-time schannel variable
+      local t = self.current_task
+      self:w("/*sch:",t,"*/ ")
+      local other_task = 1 - t
+      local other_nxt = self:next(other_task)
+      return other_nxt
+   end
+   function class.cor(cr)
+      assert(cr and cr.task_nb)
+      local t = self.current_task
+      self:w("/*sch:",t,"*/ ")
+      local other_task = 1 - t
+      local other_nxt = self:next(other_task)
+      return other_nxt
+   end
+
+   local var_thing = self:ref(ref_thing)
+   assert(var_thing)
+   log_desc({var_thing = var_thing})
+   local val = var_thing.val
+   assert(val.class)
+   local f = class[val.class]
+   assert(f)
+   return f(val)
+
 end
 
 

@@ -438,7 +438,7 @@ form['module-begin'] = function(self, expr)
 
 
    -- Emit main C function
-   local modname = "testmod" -- FIXME
+   local modname = self.module_name or "module"
    local s  = self.config.state_name
    if self.mod_prefix then modname = { self.mod_prefix, modname } end
    local args = { { "struct ", c.state_struct, " *", s } }
@@ -489,7 +489,7 @@ function smc:compile_tasks()
    -- 'spawn!' which is passed a closure.
    local prim = {}
    local task_nb = 0
-   prim['spawn!'] = function(closure)
+   local function spawn(closure)
       assert(is_closure(closure))
       self:w("// spawn! ",task_nb,"\n")
       self:w("// ", se.iolist(closure.body), "\n")
@@ -583,12 +583,47 @@ function smc:compile_tasks()
       task_nb = task_nb + 1
    end
 
-   local channel_nb = 0
+
+   prim['spawn!'] = spawn
+
+   -- Same as spawn!, but we register the task id in the coroutine
+   -- structure to allow for coroutine reference -> task number
+   -- resolution.
+   prim['start-coroutine!'] = function(cor, closure)
+      assert(cor and cor.class == 'cor')
+      cor.task_nb = task_nb
+      spawn(closure)
+   end
+
+
+   -- FIXME: Still not sure if I need two sync mechanisms or not...
+   -- The csp/channels and coroutines are completely separate
+   -- representations for now.  Mostly for practical reasons: I do not
+   -- understand how to build channels on top of coroutines yet, and
+   -- interface is different: instead of sending something to a
+   -- channel, something is sent to a coroutine directly.
+
+   -- Channels are currently just represented as identifiers. This is
+   -- how it is in csp.c as well.
+
+   local objs = {
+      chan = {},
+      cor  = {},
+   }
+   local function new(typ)
+      assert(objs[typ])
+      local obj = {class = typ, id = #(objs[typ])}
+      table.insert(objs, obj)
+      self:w("// new ", typ, ": ", obj.id, "\n")
+      return obj
+   end
+
+
    prim['make-channel'] = function(fun)
-      local nb = channel_nb
-      self:w("// make-channel: ", nb, "\n")
-      channel_nb = channel_nb + 1
-      return nb
+      return new('chan')
+   end
+   prim['make-coroutine'] = function(fun)
+      return new('cor')
    end
 
    local start = self.funs.start
@@ -1000,7 +1035,10 @@ end
 -- information gathered in the first pass to allocate variables in the
 -- state struct, or on the C stack, and to omit unused function
 -- definitions.
-function smc:compile_module(mod_expr)
+function smc:compile_module(mod_expr, config)
+   assert(config)
+   assert(config.module_name)
+   self.module_name = config.module_name
 
    local c_code = self:compile_2pass(mod_expr)
 
@@ -1090,12 +1128,15 @@ end
 function smc:compile_module_file(filename)
    local stream = io.open(filename,"r") or error("Can't open '" .. filename .. "'")
    local parser = se.new(stream)
+   local basename = string.gsub(filename, "(.*/)*(.*)", "%2")
+   local modname = string.gsub(basename, "(.*).sm", "%1")
+   assert(modname)
    parser.log = function(self, str) io.stderr:write(str) end
    local exprs = parser:read_multi()
    local expr = {'module-begin',exprs}
    self:se_comment_i_n(expr)
    stream:close()
-   self:compile_module(expr)
+   self:compile_module(expr, { module_name = modname })
 end
 
 

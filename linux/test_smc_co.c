@@ -13,7 +13,7 @@ void send(uint32_t val) {}
 int main(int argc, char **argv) {
     struct state s = {};
     for (int i=0; i<10; i++) {
-        T rv = testmod(&s);
+        T rv = test_co(&s);
         LOG("%d -> %d\n", i, rv);
     }
     return 0;
