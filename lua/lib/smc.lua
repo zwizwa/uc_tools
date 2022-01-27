@@ -435,6 +435,10 @@ function smc:compile_tasks(module_closure)
    -- . Interpret the function 'start' in an environment that has
    --   primitives for creating a task network.
    --
+   local start = scheme.ref('start',module_closure.env)
+   assert(start and start.class == 'closure')
+
+   --
    -- . The last function called in 'start' will invoke the compiler
    --   for each task's closure.
 
@@ -451,54 +455,41 @@ function smc:compile_tasks(module_closure)
       -- contain the mutually recursive local definitions of
       -- task_program that we will be compiling to C.
       --
-      -- The closure however is dereferenced.  We want "re-reference"
-      -- that to obtain the identifier 'main'.
+      -- By evaluating the task closure, we've lost the name.  We want
+      -- to "re-reference" that closure to obtain the identifier for
+      -- the entry function for that task.  Save it for generating
+      -- bootstrap code later.
+      task.entry = self:closure_name(task.closure)
 
-
-      -- The assumption made is the functions in the cl
-
-      local closure = task.closure
-      local task_nb = task.id
-      assert(closure and task_nb)
-
-      assert(is_closure(closure))
-      self:w("// task ",task_nb,"\n")
-      self:w("// closure ",se.iolist(closure.body),"\n")
-      self:w("// ", se.iolist(closure.body), "\n")
-      local entry = self:closure_name(closure)
-      assert(entry and type(entry) == 'string')
-      -- Picked up by C function entry code gen.
-      task.entry = entry
-
-      -- Compiler uses this to look up function definitions.  This
-      -- returns nil if there is no definition.  Note that primitives
-      -- are not stored in the environment.
+      -- Compiler will generate code for functions on demand for all
+      -- functions that have been referenced during compilation of
+      -- other functions, starting with the entry function.  We track
+      -- references with fun_def.
       local fun_defs = {}
       local function fun_def(_, fname)
-         local fun = scheme.ref(fname, closure.env, true)
-         -- log_w("fun_def ", fname, "\n")
+         assert(fname)
+         local fun = scheme.ref(fname, task.closure.env, true)
          if fun and not fun_defs[fname] then
             fun_defs[fname] = { compiled = false, closure = fun }
          end
          return fun
       end
       local function compile_function(fname)
-         -- log_w("compile_function ",fname, "\n")
          self:compile_fundef(fname, fun_def(self, fname))
          fun_defs[fname].compiled = true
       end
       self:parameterize({
             fun_def = fun_def,
-            current_task = task_nb,
+            current_task = task.id,
          },
          function()
             -- One stack per task.  Size is known after compilation.
-            self.stack_size[task_nb + 1] = 0
+            self.stack_size[task.id + 1] = 0
 
             -- Compile the entry point.  This will start filling up
             -- fun_defs with functions that are referenced but not
             -- compiled.
-            compile_function(entry)
+            compile_function(task.entry)
 
             -- Keep compiling as the list grows until all are
             -- compiled.
@@ -515,6 +506,12 @@ function smc:compile_tasks(module_closure)
          end)
    end
 
+   -- Primitives available during the evaluation of 'start'.  Note
+   -- that thesee are not available, or not the same, as what is
+   -- available during compilation of the C code.
+   local prim = {}
+
+   -- Some data constructors.
    self.registries = {
       task = {},
       channel = {},
@@ -527,31 +524,6 @@ function smc:compile_tasks(module_closure)
       self:w("// new ", typ, ": ", obj.id, "\n")
       return obj
    end
-
-   local prim = {}
-
-   -- The border between evaluation and compilation is that function
-   -- 'spawn!' which is passed a closure.
-   prim['load-task!'] = function(task, closure)
-      assert(task and task.class == 'task')
-      assert(is_closure(closure))
-      task.closure = closure
-   end
-
-   -- The 'start' function needs to end in a coroutine call into the
-   -- network.  This also is a demarcation between compile time and
-   -- run time.
-   prim['co'] = function(init_task, value)
-      assert(type(value) == 'number')
-      assert(init_task and init_task.class == 'task')
-      -- Compile all the tasks that were created during 'start'.
-      for _,task in ipairs(self.registries.task) do
-         compile_task(task)
-      end
-      -- Save entry
-      self.init_task = init_task
-   end
-
    prim['make-channel'] = function(fun)
       return new('channel')
    end
@@ -559,11 +531,30 @@ function smc:compile_tasks(module_closure)
       return new('task')
    end
 
-   local start = scheme.ref('start',module_closure.env)
-   assert(start and start.class == 'closure')
-   local scm = scheme.new({})
+   -- Each task is associated to a closure that we will compile to C.
+   prim['load-task!'] = function(task, closure)
+      assert(task and task.class == 'task')
+      assert(is_closure(closure))
+      task.closure = closure
+   end
+   -- The 'start' function needs to end in a coroutine call into the
+   -- network.  This primitive triggers the compilation to C,
+   -- effecitively dumping the continuation as C code.
+   prim['co'] = function(init_task, value)
+      assert(type(value) == 'number')
+      assert(init_task and init_task.class == 'task')
+      -- Compile all the tasks that were created during 'start'.
+      for _,task in ipairs(self.registries.task) do
+         compile_task(task)
+      end
+      -- Save the coroutine that starts up the network.
+      self.init_task = init_task
+   end
+
+   -- To glue it all together, create an environment to and evaluate
+   -- 'start' to put everything in motion.
    local env = scheme.push_primitives(module_closure.env, prim)
-   scm:eval(start.body, env)
+   scheme.new():eval(start.body, env)
 
 end
 
@@ -612,7 +603,7 @@ function smc:compile_fundef(fname, fclosure)
    if (not self.labels_last) or self.labels_last[label] then
       self:w(c_code)
    else
-      -- If code is never called, don't emit it.  Note that we do need
+      -- If code is never called, don't emit it.  Note that we DO need
       -- to go through the compilation step above to ensure the
       -- iteration pattern doesn't change, so we generate the code and
       -- then drop it.
@@ -983,10 +974,6 @@ function smc:compile_module_closure(closure, config)
    self.module_name = config.module_name
 
    local c_code = self:compile_module_closure_2pass(closure)
-
-   -- FIXME: Keep a single task struct with zero stack size, and fill
-   -- in stack size in state struct.
-
 
    self:w(self:state_type(), " {\n")
 
