@@ -187,7 +187,12 @@ function se.unpack_array(expr, config, body)
    if not config.tail then
       -- Do strict match by default.
       assert(config.n)
-      assert(len == config.n)
+      if len ~= config.n then
+         if config.no_match then
+            return config.no_match(expr)
+         end
+         error('bad_match, got:' .. len .. ", expected:" .. config.n)
+      end
    else
       if not config.n then config.n = len end
       if config.n > len then config.n = len end

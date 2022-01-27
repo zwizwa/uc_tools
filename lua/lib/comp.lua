@@ -144,7 +144,18 @@ function let_insert:bindings()
    return not se.is_empty(self.bindings_list)
 end
 
-
+function comp.unpack_binding(binding, void)
+   assert(binding)
+   local var_name, maybe_expr = se.unpack(binding, { n = 1, tail = true })
+   -- support empty bindings to support letrec (scheme_macros.lua)
+   local expr = void or '#<void>'
+   if not se.is_empty(maybe_expr) then
+      expr = se.unpack(maybe_expr, {n = 1 })
+   end
+   assert(type(var_name) == 'string')
+   assert(expr)
+   return var_name, expr
+end
 
 
 return comp

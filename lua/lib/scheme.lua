@@ -15,18 +15,21 @@ local function log(str)
    io.stderr:write(str)
 end
 
-require('lib.log')
---local log = log
---local log_desc = log_desc
---local log_hex = log_hex
-
-
 local se = require('lib.se')
-local function ref(var_name, env)
+local iolist = require('lib.iolist')
+local comp = require('lib.comp')
+
+require('lib.log')
+local function log_w(...)   iolist.write(log, {...}) end
+local function log_se(expr) log_w(se.iolist(expr)) end
+
+
+
+local function ref_var(var_name, env)
    assert(type(var_name) == 'string')
    for v in se.elements(env) do
       if v.var == var_name then
-         return v.val
+         return v
       end
    end
    log('current bindings:\n')
@@ -37,6 +40,13 @@ local function ref(var_name, env)
    log('\n')
    error('undefined var ' .. var_name)
 end
+local function ref(var_name, env)
+   local var = ref_var(var_name, env)
+   assert(var and var.val)
+   return var.val
+end
+
+
 local function ivar_iolist(var)
    return {"<#ivar:",var.var,">"}
 end
@@ -72,17 +82,18 @@ form['if'] = function(self, s)
 end
 
 form['set!'] = function(self, s)
-   local _, name, exp = se.unpack(s.expr, { n = 2 })
-   local var = ref(name, s.env)
+   local _, name, exp = se.unpack(s.expr, { n = 3 })
+   local var = ref_var(name, s.env)
    var.val = self:eval(exp, s.env)
    s.expr = '#<void>'
 end
 
 
 form['let*'] = function(self, s)
+   log_se(s.expr) ; log("\n")
    local _, bindings, body = se.unpack(s.expr, { n = 2, tail = true })
    for binding in se.elements(bindings) do
-      local var, vexpr = se.unpack(binding, {n = 2 })
+      local var, vexpr = comp.unpack_binding(binding, '#<void>')
       s.env = push(var, self:eval(vexpr, s.env), s.env)
    end
    local val = '#<void>'

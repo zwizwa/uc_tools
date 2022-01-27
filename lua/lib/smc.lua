@@ -307,9 +307,7 @@ function smc:compile_letstar(bindings, sequence)
          -- (self.var ~= nil).
          local nb_bindings = se.length(bindings)
          for binding in se.elements(bindings) do
-            local var_name, expr = se.unpack(binding, { n = 2 })
-            assert(type(var_name) == 'string')
-            assert(expr)
+            local var_name, expr = self.unpack_binding(binding, '#<void>')
             local v = self:new_var(var_name)
             self.var = v
             self.tail_position = false
@@ -503,16 +501,18 @@ function smc:eval_to_defs(closure)
 
    -- This environment contains the closures we will be compiling and
    -- the entry point that the closure evaluated to.
-   for var in se.elements(s.env) do
-      if var.val == s.expr then
-         -- Recover the name of that entry point closure.
-         entry = var.var
-      end
+   for var in se.elements(closure.env) do
       if var.val.class == 'closure' then
-         -- And collect all closures in a table.
-         defs[var.var] = var.val
+         local cl = var.val
+         -- Collect all closures in a table.
+         defs[var.var] = cl
+         -- Recover the name of that entry point closure.
+         if cl == closure then
+            entry = var.var
+         end
       end
    end
+   assert(entry)
    return defs, entry
 end
 
