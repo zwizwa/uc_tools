@@ -1119,6 +1119,17 @@ function smc:compile_module_file(filename)
    assert(modname)
    local exprs = se.read_file_multi(filename)
    local expr = {'module-begin',exprs}
+
+   -- Evaluate using the interpreter in an empty environment.  This is
+   -- ok since the file should contain only definitions.  Insert a
+   -- sentinel lambda so this will evaluate to a closure that contains
+   -- all the definitions in the environment.
+   local scm = scheme.new()
+   local cl = scm:eval({'begin',se.append(exprs,l(l('lambda',l())))})
+   for el in se.elements(cl.env) do
+      log_se(el) ; log("\n")
+   end
+
    self:se_comment_i_n(expr)
    self:compile_module(expr, { module_name = modname })
 end
