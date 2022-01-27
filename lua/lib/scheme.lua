@@ -78,35 +78,6 @@ form['set!'] = function(self, s)
    s.expr = '#<void>'
 end
 
-form['begin'] = function(self, s)
-   local statements = se.cdr(s.expr)
-   if se.is_empty(statements) then
-      s.expr = '#<void>'
-   else
-      local first, rest = se.unpack(statements, {n = 1, tail = true})
-
-      -- The 'define' form is only valid inside 'begin', where we can
-      -- extend the current environment as we iterate down the list of
-      -- statements.
-      if type(first) == 'table' and first[1] == 'define' then
-         -- Only (define (fun ...) ...) is supported atm.
-         local _, spec, fun_body = se.unpack(first, { n = 2, tail = true })
-         local name, args = se.unpack(spec, { n = 1, tail = true })
-         assert(type(name) == 'string')
-         -- log('define ' .. name .. '\n')
-         local closure = self:eval({'lambda',{args,fun_body}}, s.env)
-         s.env = push(name, closure, s.env)
-         s.expr = {'begin', rest}
-      else
-         if se.is_empty(rest) then
-            s.expr = first
-         else
-            self:eval(first, s.env)
-            s.expr = {'begin', rest}
-         end
-      end
-   end
-end
 
 form['let*'] = function(self, s)
    local _, bindings, body = se.unpack(s.expr, { n = 2, tail = true })
@@ -114,18 +85,22 @@ form['let*'] = function(self, s)
       local var, vexpr = se.unpack(binding, {n = 2 })
       s.env = push(var, self:eval(vexpr, s.env), s.env)
    end
-   s.expr = {'begin', body}
+   local val = '#<void>'
+   for expr in se.elements(body) do
+      val = self:eval(expr, s.env)
+   end
+   s.expr = val
 end
 
 
 -- Macros are forms that do not modify s.env
 -- These are kept in a separate file as they can probably be reused.
 local macros = require('lib.scheme_macros')
-for k,v in pairs(macros) do
-   form[k] = scheme.macro(v)
-end
 function scheme.macro(fun)
    return function(self, s) s.expr = fun(s.expr) end
+end
+for k,v in pairs(macros) do
+   form[k] = scheme.macro(v)
 end
 
 

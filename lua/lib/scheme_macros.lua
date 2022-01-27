@@ -1,9 +1,9 @@
 -- Scheme macros are implemented as s-expression to s-expression converters.
 -- Used by e.g. scheme.lua but could be reused by other dialects.
 
--- We assume let* and set! are primitives, which are essentially basic
--- blocks with (SSA) variable declarations + assignment for creating
--- loops.
+-- We assume let*, set!, lambda are primitives, which are essentially
+-- basic blocks with (SSA) variable declarations + assignment for
+-- creating loops.
 
 -- Reductions:
 --
@@ -27,28 +27,36 @@ macro['module-begin'] = function(expr)
    return {'begin',mod_body}
 end
 
+local void = l('let*',l())
+
 -- Map definitions in begin form to letrec.
 macro['begin'] = function(expr)
    local _, exprs = se.unpack(expr, {n = 1, tail = true})
    local bindings = se.empty
-   if se.is_empty(exprs) then
-      return l('let*',l())
+   local function done()
+      if se.is_empty(bindings) then
+         -- 'begin' is common, so optimize lack of defs case
+         return {'let*',{l(), exprs}}
+      else
+         return {'letrec', {r(bindings), exprs}}
+      end
    end
-   do
+   while true do
+      if se.is_empty(exprs) then
+         return done()
+      end
       local expr, rest = se.unpack(exprs, {n = 1, tail = true})
       if type(expr) == 'table' and expr[1] == 'define' then
          -- For now we only support (define (name ...) ...)
          local _, spec, fun_body = se.unpack(expr, { n = 2, tail = true })
          local name, args = se.unpack(spec, { n = 1, tail = true })
          assert(type(name) == 'string')
-         -- log('define ' .. name .. '\n')
-         s.env = push(name, closure, s.env)
          bindings = {l(name, {'lambda',{args,fun_body}}), bindings}
+         exprs = rest
       else
-         return {'letrec', {r(bindings), exprs}}
+         return done()
       end
    end
-   return {'letrec', {r(bindings), l('#<void>')}}
 end
 
 -- Implement letrec on top of let* and set!
