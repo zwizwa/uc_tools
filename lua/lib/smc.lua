@@ -499,6 +499,7 @@ function smc:compile_tasks(module_closure)
       defs.test1 = nil
       defs.client = nil
       defs.server = nil
+      defs.add = nil
 
       assert(entry and type(entry) == 'string')
       -- Picked up by C function entry code gen.
@@ -508,15 +509,19 @@ function smc:compile_tasks(module_closure)
       -- returns nil if there is no definition.  Note that primitives
       -- are not stored in the environment.
       local fun_defs = {}
-      local function fun_def(_, fun_name)
-         local fun = scheme.ref(fun_name, closure.env, true)
-         log_w("fun_def ", fun_name, "\n")
-         if fun and not fun_defs[fun] then
-            fun_defs[fun] = { compiled = false }
+      local function fun_def(_, fname)
+         local fun = scheme.ref(fname, closure.env, true)
+         log_w("fun_def ", fname, "\n")
+         if fun and not fun_defs[fname] then
+            fun_defs[fname] = { compiled = false }
          end
          return fun
       end
-
+      local function compile_function(fname)
+         log_w("compile_function ",fname, "\n")
+         self:compile_fundef(fname, fun_def(self, fname))
+         fun_defs[fname].compiled = true
+      end
       self:parameterize({
             fun_def = fun_def,
             current_task = task_nb,
@@ -526,7 +531,7 @@ function smc:compile_tasks(module_closure)
 
             -- Compile the first function.
             for fname,fclosure in pairs(defs) do
-               self:compile_fundef(fname, fclosure)
+               compile_function(fname)
             end
          end)
    end
