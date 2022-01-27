@@ -351,6 +351,9 @@ end
 
 function smc:compile_module_closure_inner(module_closure)
    local c = self.config
+   local modname = self.module_name
+   if self.mod_prefix then modname = { self.mod_prefix, modname } end
+   assert(modname)
    assert(not self.var)
 
    -- Compile the bulk of the C code.  This produces some information
@@ -359,11 +362,11 @@ function smc:compile_module_closure_inner(module_closure)
    local c_bulk = self:collect_output(
       function() self:compile_tasks(module_closure) end)
 
+   -- The argument passed to the 'co' call in 'start'.
+   self:w("#define ", modname, "_init ", self.init_arg, "\n")
+
    -- Emit main C function
-   local modname = self.module_name
-   assert(modname)
    local s  = self.config.state_name
-   if self.mod_prefix then modname = { self.mod_prefix, modname } end
    local args = { { self:state_type(), " *", s }, {"T ", self:arg(0)} }
    self:w("T ", modname, "(",comp.clist(args),") {\n");
 
@@ -402,6 +405,7 @@ function smc:compile_module_closure_inner(module_closure)
    self:w(c_bulk)
 
    self:w("}\n");
+
 end
 
 
@@ -549,11 +553,14 @@ function smc:compile_tasks(module_closure)
       end
       -- Save the coroutine that starts up the network.
       self.init_task = init_task
+      -- Save the argument value.
+      self.init_arg = value
    end
 
    -- To glue it all together, create an environment to and evaluate
    -- 'start' to put everything in motion.
    local env = scheme.push_primitives(module_closure.env, prim)
+   assert(#start.args == 0)
    scheme.new():eval(start.body, env)
 
 end

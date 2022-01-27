@@ -32,7 +32,7 @@
   main)
 
 
-(define (start arg)
+(define (start)
   ;; The lowest level communication primitive is a coroutine call.
   ;; Startup is a 3-step process:
   ;; 1. Create the task structures

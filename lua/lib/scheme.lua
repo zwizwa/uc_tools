@@ -36,6 +36,8 @@ end
 
 local scheme = {}
 
+scheme.push = push
+
 function scheme.ref_var(var_name, env, allow_undefined)
    assert(type(var_name) == 'string')
    for v in se.elements(env) do
@@ -142,9 +144,7 @@ function scheme:eval_app(s)
       -- Primitive
       s.expr = fun.fun(unpack(arg_val))
       if s.expr == nil then s.expr = '#<void>' end
-   else
-      -- Closure
-      assert(type(fun) == 'table' and fun.class == 'closure')
+   elseif fun.class == 'closure' then
       local new_env = fun.env
       assert(#fun.args == se.length(args_expr))
       for i = 1,#fun.args do
@@ -155,6 +155,8 @@ function scheme:eval_app(s)
       end
       s.env = new_env
       s.expr = fun.body
+   else
+      error('bad app type ' .. fun.class)
    end
 end
 
