@@ -67,10 +67,12 @@
 local se     = require('lib.se')
 local scheme = require('lib.scheme')
 local comp   = require('lib.comp')
+local iolist = require('lib.iolist')
 
 
 -- Tools
 require('lib.log')
+local function log_w(...) iolist.write(log, {...}) end
 
 local l = se.list
 local function is_form(expr, form)
@@ -345,6 +347,15 @@ local function for_begin(begin_expr, def, other)
    local _begin, exprs = se.unpack(begin_expr, {n = 1, tail = true})
    assert(_begin == 'begin' or _begin == 'module-begin')
    for expr, rest in se.elements(exprs) do
+
+      -- Special-case this for now:
+      if se.is_empty(rest) and type(expr) == 'string' then
+         if other then
+            other(expr)
+         end
+         return
+      end
+
       -- FIXME: This only supports (define (name . args) ...)
       -- Maybe generalize to proper Scheme later?
       if ('define' == se.car(expr)) then
@@ -494,6 +505,81 @@ function smc:compile_tasks()
    -- the coroutines is important.  FIXME: This still isn't defined
    -- well.
 
+   local function compile_co_call(task, arg_ct_value, tasks)
+
+      assert(task and task.class == 'task')
+      local closure = task.closure
+      local task_nb = task.id
+      assert(closure)
+      assert(is_closure(closure))
+      assert(closure.env)
+      self:w("init_entry:\n")
+      self:w(self:tab(),"goto t", task.id, "_entry;\n");
+
+      -- log_w("env:",se.iolist(closure.env),"\n")
+      -- log_w("body:",se.iolist(closure.body),"\n")
+
+      local s = {env = closure.env, expr = closure.body}
+      local scm = scheme.new({})
+
+      -- FIXME: It's probably possible to just start compiling and
+      -- change representation accordingly, but that seems like a very
+      -- big change and I'm tired, so first attempt is to stick
+      -- closely to what was there...
+
+      -- local entry = scm:eval_loop(s)
+      -- assert(is_closure(s.expr))
+
+      local function step() scm:eval_step(s) end
+      repeat
+         step(s)
+         log_w("expr: ", se.iolist(s.expr), "\n")
+         self:w("// ", se.iolist(s.expr), "\n")
+      until (is_task_definition(s.expr))
+      local defs = {}
+      collect_defs(self, defs, s.expr, s.env)
+
+
+      -- At this point we have a representation of the function that
+      -- is the entry point of the coroutine loop.
+      log_w("env:",se.iolist(closure.env),"\n")
+      log_w("body:",se.iolist(closure.body),"\n")
+
+      -- We pretty much just start compiling.
+
+      local defs = {}
+      collect_defs(self, defs, s.expr, s.env)
+
+      local funs = {}
+      for k,v in pairs(self.funs) do funs[k]=v end
+      for k,v in pairs(defs)      do funs[k]=v end
+
+      self:parameterize({
+            funs = funs,
+            current_task = task_nb,
+         },
+         function()
+            self.stack_size[task_nb + 1] = 0
+            for_begin(
+               s.expr,
+               function(n,a,b)
+                  -- All definitions are compiled
+                  -- self:w("// fun ", n, "\n")
+                  self:compile_fundef(n,a,b,s.env)
+               end,
+               function(begin_expr)
+                  -- -- The tail with definitions stripped is compiled as
+                  -- -- entry point
+                  -- -- self:w("// entry: ", se.iolist(begin_expr), "\n")
+                  -- self:compile_fundef('entry',se.empty,begin_expr,s.env)
+
+                  -- -- Mark it used so it doesn't get collected.
+                  -- local label = self:mangle_label('entry')
+                  -- self.labels[label] = true
+               end)
+         end)
+   end
+
    local function load_task(task_nb, closure)
       assert(is_closure(closure))
       self:w("// load_task! ",task_nb,"\n")
@@ -516,6 +602,8 @@ function smc:compile_tasks()
       until (is_task_definition(s.expr))
       local defs = {}
       collect_defs(self, defs, s.expr, s.env)
+
+
 
       -- log_desc({defs = defs})
 
@@ -587,18 +675,35 @@ function smc:compile_tasks()
 
    end
 
+   local registries = {
+      task = {},
+      channel = {},
+   }
+   local function new(typ)
+      local registry = registries[typ]
+      assert(registry)
+      local obj = {class = typ, id = #registry}
+      table.insert(registry, obj)
+      self:w("// new ", typ, ": ", obj.id, "\n")
+      return obj
+   end
+
    local prim = {}
 
    -- The border between evaluation and compilation is that function
    -- 'spawn!' which is passed a closure.
    prim['load-task!'] = function(task, closure)
       assert(task and task.class == 'task')
-      load_task(task.id, closure)
+      assert(is_closure(closure))
+      task.closure = closure
    end
-   prim['resume-task!'] = function(task)
-      assert(task and task.class == 'task')
-      self:w("init_entry:\n")
-      self:w(self:tab(),"goto t", task.id, "_entry;\n");
+
+   -- The 'start' function needs to end in a coroutine call into the
+   -- network.  This also is a demarcation between compile time and
+   -- run time.
+
+   prim['co'] = function(task, value)
+      compile_co_call(task, value, registries.task)
    end
 
 
@@ -612,18 +717,6 @@ function smc:compile_tasks()
    -- Channels are currently just represented as identifiers. This is
    -- how it is in csp.c as well.
 
-   local registries = {
-      task = {},
-      channel = {},
-   }
-   local function new(typ)
-      local registry = registries[typ]
-      assert(registry)
-      local obj = {class = typ, id = #registry}
-      table.insert(registry, obj)
-      self:w("// new ", typ, ": ", obj.id, "\n")
-      return obj
-   end
 
 
    prim['make-channel'] = function(fun)
