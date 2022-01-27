@@ -180,6 +180,7 @@ function smc:ref(var_name, env)
       end
    end
    -- This should probably be an error.
+   log_w("env: ", se.iolist(env), "\n")
    error('unbound variable ' .. var_name)
 
    return nil
@@ -336,69 +337,6 @@ function smc:compile_letstar(bindings, sequence)
 
 end
 
-
--- This only supports a subset of begin forms, where the first couple
--- are defines, and the rest is a sequence.
-
-local function for_begin(begin_expr, def, other)
-   local _begin, exprs = se.unpack(begin_expr, {n = 1, tail = true})
-   assert(_begin == 'begin' or _begin == 'module-begin')
-   for expr, rest in se.elements(exprs) do
-
-      -- Special-case this for now:
-      --if se.is_empty(rest) and type(expr) == 'string' then
-      --   if other then
-      --      other(expr)
-      --   end
-      --   return
-      --end
-
-      -- FIXME: This only supports (define (name . args) ...)
-      -- Maybe generalize to proper Scheme later?
-      if ('define' == se.car(expr)) then
-         local define, fun_spec, body_exprs =
-            se.unpack(expr, {n = 2, tail = true})
-         local body_expr = {'begin', body_exprs}
-         assert(define == 'define')
-         local fname, args = se.unpack(fun_spec, {n = 1, tail = true})
-         assert(body_expr)
-         def(fname, args, body_expr)
-      else
-         -- The first non-definition gets the remainder of the
-         -- expression.  Check that this doesn't contain more defines.
-         local seq = {expr, rest}
-         for expr in se.elements(seq) do
-            assert(not (type(expr) == 'table' and 'define' == se.car(expr)))
-         end
-         if other then
-            other({'begin',seq})
-         end
-         -- Abort the outer iteration.
-         return
-      end
-   end
-end
-
-
-local function collect_defs(self, tab, begin_expr, env)
-   for_begin(
-      begin_expr,
-      function(fname, args, body_expr)
-         assert(nil == tab[fname])
-         assert(type(fname == 'string'))
-         assert(body_expr)
-         -- Keep track of syntax for later inlining.  This is the same
-         -- representation as scheme.lua closures.
-         tab[fname] = {
-            class = 'closure',
-            name = fname,
-            args = se.list_to_array(args),
-            body = body_expr,
-            env = env,
-         }
-   end)
-end
-
 local function is_closure(thing)
    return thing and type(thing) == 'table' and thing.class == 'closure'
 end
@@ -418,29 +356,15 @@ end
 -- The module form compiles to a C function.  Functions with no
 -- arguments compile to goto lables inside such a function.
 
-form['module-begin'] = function(self, expr)
+function smc:compile_module_closure_inner(closure)
    local c = self.config
    assert(not self.var)
-   local _, define_exprs = se.unpack(expr, {n = 1, tail = true})
-
-
-   -- We iterate twice over the definitions.  first iteration builds
-   -- the name to syntax map to allow for back-references and function
-   -- inlining and to collect information necessary for allocation.
-   -- also just collect the data expressions.
-
-   -- The toplevel bindings are unique, so collect them in a table.
-   self.funs = {}
-
-   collect_defs(self, self.funs, expr, se.empty)
-
 
    -- Compile the bulk of the C code.  This produces some information
    -- such as the number of tasks that is necessary to generate entry
    -- code.
    local c_bulk = self:collect_output(
-      function() self:compile_tasks() end)
-
+      function() self:compile_tasks(closure) end)
 
    -- Emit main C function
    local modname = self.module_name
@@ -487,35 +411,43 @@ end
 
 -- Gather function definitions from closure's environment.
 function smc:eval_to_defs(closure)
+   assert(closure and closure.class == 'closure')
+   -- log_w("task_env: ",  se.iolist(closure.env), "\n")
+   -- log_w("task_body: ", se.iolist(closure.body), "\n")
+   -- log_w("task_args: ", se.iolist(se.array_to_list(closure.args)), "\n")
 
    -- The closure evaluates to the entry function of the first
    -- coroutine call that starts up the network.  We use the Scheme
    -- interpreter to evaluate it, but will catch the environment of
    -- the evaluation before it would normally be discarded.
-
-   -- log_w("env: ",  se.iolist(closure.env), "\n")
-   -- log_w("expr: ", se.iolist(closure.body), "\n")
    local defs = {}
    local entry
 
    -- This environment contains the closures we will be compiling and
    -- the entry point that the closure evaluated to.
    for var in se.elements(closure.env) do
-      if var.val.class == 'closure' then
+      if type(var.val) == 'function' then
+         -- FIXME: Scheme interpreter stores primitives directly as
+         -- functions.  This should probably change.
+      else
          local cl = var.val
-         -- Collect all closures in a table.
-         defs[var.var] = cl
-         -- Recover the name of that entry point closure.
-         if cl == closure then
-            entry = var.var
+         if (cl.class == 'closure') then
+            -- Collect all closures in a table.
+            defs[var.var] = cl
+            -- Recover the name of that entry point closure.
+            if cl == closure then
+               entry = var.var
+               assert(type(entry) == 'string')
+            end
          end
       end
    end
    assert(entry)
+   -- log_w("task_entry: ", entry, "\n")
    return defs, entry
 end
 
-function smc:compile_tasks()
+function smc:compile_tasks(module_closure)
 
    -- The C cursor is now at a point where we can start emitting
    -- functions implemented as goto labels followed by statements.
@@ -524,7 +456,25 @@ function smc:compile_tasks()
    -- interpreting a Scheme function 'start', that will call functions
    -- to set up the task network.
 
-   local function compile_task_new(task)
+   local function compile_task(task)
+      -- This gets the task closure, e.g. the result of evaluationing
+      -- '(task_program)' with definition:
+      --
+      -- (define (task_program)
+      --    (define (main a) (yield a) (main a))
+      --    main)
+      --
+      -- Here '(task_program)' evaluates to a closure.  What we're
+      -- interested in mostly is the environment of that closure: it
+      -- will contain all the local definitions of task_program that
+      -- we will be compiling to C.
+      --
+      -- The closure however is dereferenced.  We want "re-reference"
+      -- that to obtain the identifier 'main'.
+
+
+      -- The assumption made is the functions in the cl
+
       local closure = task.closure
       local task_nb = task.id
       assert(closure and task_nb)
@@ -533,9 +483,17 @@ function smc:compile_tasks()
       self:w("// task ",task_nb,"\n")
       self:w("// closure ",se.iolist(closure.body),"\n")
       self:w("// ", se.iolist(closure.body), "\n")
-
       local defs, entry = self:eval_to_defs(closure)
-      assert(entry)
+      for k,v in pairs(defs) do
+         log_w("def ",k,"\n")
+      end
+      -- It's not legal to call this from the state machine code, so
+      -- just remove it.
+      defs.start = nil
+      -- FIXME: It captures too much.  Some of these do not compile.
+      defs.test1 = nil
+
+      assert(entry and type(entry) == 'string')
       -- Picked up by C function entry code gen.
       task.entry = entry
 
@@ -550,8 +508,10 @@ function smc:compile_tasks()
          function()
             self.stack_size[task_nb + 1] = 0
             for fname,c in pairs(defs) do
+               local args = se.array_to_list(c.args)
+               log_w(fname,", args:",se.iolist(args),"\n")
                self:compile_fundef(
-                  fname, se.array_to_list(c.args), c.body, c.env)
+                  fname, args, c.body, c.env)
             end
          end)
    end
@@ -587,7 +547,7 @@ function smc:compile_tasks()
       assert(init_task and init_task.class == 'task')
       -- Compile all the tasks that were created during 'start'.
       for _,task in ipairs(self.registries.task) do
-         compile_task_new(task)
+         compile_task(task)
       end
       -- Save entry
       self.init_task = init_task
@@ -613,13 +573,12 @@ function smc:compile_tasks()
       return new('task')
    end
 
-   local start = self.funs.start
+   local start = scheme.ref('start',module_closure.env)
+   log_se(module_closure.env) ; log('\n')
    assert(start and start.class == 'closure')
-   local scm = scheme.new({self.funs, prim})
-   -- FIXME: start should take a single argument that can then be
-   -- passed on to the coroutine, because that is also the semantics
-   -- of the C function.  Somehow this doesn't work here...
-   scm:eval(start.body)
+   local scm = scheme.new({})
+   local env = scheme.extend(module_closure.env, prim)
+   scm:eval(start.body, env)
 
 end
 
@@ -980,12 +939,12 @@ function smc:collect_output(thunk)
    return c_code
 end
 
-function smc:compile_pass(expr)
+function smc:compile_module_closure_pass(closure)
    return
       self:collect_output(
          function()
             self:reset()
-            self:compile(expr)
+            self:compile_module_closure_inner(closure)
          end)
 end
 
@@ -997,9 +956,9 @@ function smc:cell_table()
    return tab
 end
 
-function smc:compile_2pass(expr)
+function smc:compile_module_closure_2pass(closure)
    -- First pass
-   local c_code_1 = self:compile_pass(expr)
+   local c_code_1 = self:compile_module_closure_pass(closure)
 
    -- Code output is not used. Might no longer be valid C.  But it is
    -- useful to dump this + stats for debugging.
@@ -1010,7 +969,7 @@ function smc:compile_2pass(expr)
    self.cells_last  = self.cells   ; self.cells = {}
    self.labels_last = self.labels  ; self.lables = {}
    -- Second pass
-   local c_code_2 = self:compile_pass(expr)
+   local c_code_2 = self:compile_module_closure_pass(closure)
 
    -- If iteration pattern is the same, the tables should be the same.
    -- We just check size here.
@@ -1026,12 +985,12 @@ end
 -- information gathered in the first pass to allocate variables in the
 -- state struct, or on the C stack, and to omit unused function
 -- definitions.
-function smc:compile_module(mod_expr, config)
+function smc:compile_module_closure(closure, config)
    assert(config)
    assert(config.module_name)
    self.module_name = config.module_name
 
-   local c_code = self:compile_2pass(mod_expr)
+   local c_code = self:compile_module_closure_2pass(closure)
 
    -- FIXME: Keep a single task struct with zero stack size, and fill
    -- in stack size in state struct.
@@ -1130,8 +1089,7 @@ function smc:compile_module_file(filename)
       log_se(el) ; log("\n")
    end
 
-   self:se_comment_i_n(expr)
-   self:compile_module(expr, { module_name = modname })
+   self:compile_module_closure(cl, { module_name = modname })
 end
 
 

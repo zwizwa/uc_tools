@@ -25,7 +25,18 @@ local function log_se(expr) log_w(se.iolist(expr)) end
 
 
 
-local function ref_var(var_name, env)
+
+local function ivar_iolist(var)
+   return {"<#ivar:",var.var,">"}
+end
+local function push(var, val, env)
+   assert(val)
+   return se.cons({var = var, val = val, class = 'ivar', iolist = ivar_iolist}, env)
+end
+
+local scheme = {}
+
+function scheme.ref_var(var_name, env)
    assert(type(var_name) == 'string')
    for v in se.elements(env) do
       if v.var == var_name then
@@ -40,22 +51,13 @@ local function ref_var(var_name, env)
    log('\n')
    error('undefined var ' .. var_name)
 end
-local function ref(var_name, env)
-   local var = ref_var(var_name, env)
+function scheme.ref(var_name, env)
+   local var = scheme.ref_var(var_name, env)
    assert(var and var.val)
    return var.val
 end
 
 
-local function ivar_iolist(var)
-   return {"<#ivar:",var.var,">"}
-end
-local function push(var, val, env)
-   assert(val)
-   return se.cons({var = var, val = val, class = 'ivar', iolist = ivar_iolist}, env)
-end
-
-local scheme = {}
 
 -- A special form _must_ reduce the current expression, and is allowed
 -- to update the lexical environment in which the next expression is
@@ -83,7 +85,7 @@ end
 
 form['set!'] = function(self, s)
    local _, name, exp = se.unpack(s.expr, { n = 3 })
-   local var = ref_var(name, s.env)
+   local var = scheme.ref_var(name, s.env)
    var.val = self:eval(exp, s.env)
    s.expr = '#<void>'
 end
@@ -202,7 +204,7 @@ function scheme:eval_step(s)
    -- references.
    if type(s.expr) == 'string' then
       -- Look up variable in environment.
-      s.expr = ref(s.expr, s.env)
+      s.expr = scheme.ref(s.expr, s.env)
    else
 
       -- Expressions
@@ -222,11 +224,15 @@ function scheme:eval_step(s)
    end
 end
 
-
-function scheme:define(tab)
+-- Extend environment with bindings from Lua table
+function scheme.extend(env, tab)
    for k,v in pairs(tab) do
-      self.mod_env = push(k,v,self.mod_env)
+      env = push(k,v,env)
    end
+   return env
+end
+function scheme:define(tab)
+   self.mod_env = scheme.extend(self.mod_env, tab)
 end
 
 local prim = {}
