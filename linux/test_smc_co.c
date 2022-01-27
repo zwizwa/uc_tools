@@ -12,24 +12,24 @@ void send(uint32_t val) {}
 #include "test1.sm.c"
 
 void run_test_co(void) {
+    LOG("test_co\n");
     struct test_co_state s = {};
     for (int i=0; i<10; i++) {
         T rv = test_co(&s, 0);
         LOG("%d -> %d\n", i, rv);
-        ASSERT(rv == i + 1);
     }
 }
 void run_test1(void) {
+    LOG("test1\n");
     struct test1_state s = {};
     for (int i=0; i<10; i++) {
         T rv = test1(&s, 0);
         LOG("%d -> %d\n", i, rv);
     }
 }
-
 int main(int argc, char **argv) {
     run_test1();
-    //run_test_co();
+    run_test_co();
     return 0;
 }
 
