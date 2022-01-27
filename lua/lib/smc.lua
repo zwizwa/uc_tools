@@ -431,19 +431,14 @@ function smc:eval_to_defs(closure)
    -- This environment contains the closures we will be compiling and
    -- the entry point that the closure evaluated to.
    for var in se.elements(closure.env) do
-      if type(var.val) == 'function' then
-         -- FIXME: Scheme interpreter stores primitives directly as
-         -- functions.  This should probably change.
-      else
-         local cl = var.val
-         if (cl.class == 'closure') then
-            -- Collect all closures in a table.
-            defs[var.var] = cl
-            -- Recover the name of that entry point closure.
-            if cl == closure then
-               entry = var.var
-               assert(type(entry) == 'string')
-            end
+      local cl = var.val
+      if (cl.class == 'closure') then
+         -- Collect all closures in a table.
+         defs[var.var] = cl
+         -- Recover the name of that entry point closure.
+         if cl == closure then
+            entry = var.var
+            assert(type(entry) == 'string')
          end
       end
    end
@@ -527,14 +522,16 @@ function smc:compile_tasks(module_closure)
             current_task = task_nb,
          },
          function()
+            -- One stack per task.  Size is known after compilation.
             self.stack_size[task_nb + 1] = 0
 
-            local nb_fun_defs = 0
-
+            -- Compile the entry point.  This will start filling up
+            -- fun_defs with functions that are referenced but not
+            -- compiled.
             compile_function(entry)
 
-            -- While the list keeps growing, re-iterate to make sure
-            -- all are compiled.
+            -- Keep compiling as the list grows until all are
+            -- compiled.
             local did_compile
             repeat
                did_compile = false
@@ -609,7 +606,7 @@ function smc:compile_tasks(module_closure)
    log_se(module_closure.env) ; log('\n')
    assert(start and start.class == 'closure')
    local scm = scheme.new({})
-   local env = scheme.extend(module_closure.env, prim)
+   local env = scheme.push_primitives(module_closure.env, prim)
    scm:eval(start.body, env)
 
 end

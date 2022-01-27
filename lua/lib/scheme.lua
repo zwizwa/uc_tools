@@ -132,14 +132,18 @@ function scheme:eval_app(s)
       assert(arg_expr)
       table.insert(arg_val, self:eval(arg_expr, s.env))
    end
+
+   -- All values are represented by tables from here on.
+   assert(type(fun) == 'table' and fun.class)
+
    -- log('app: ' .. type(fun) .. '\n')
-   if type(fun) == 'function' then
+   if fun.class == 'primitive' then
       -- Primitive
-      s.expr = fun(unpack(arg_val))
+      s.expr = fun.fun(unpack(arg_val))
       if s.expr == nil then s.expr = '#<void>' end
    else
       -- Closure
-      assert(type(fun) == 'table')
+      assert(type(fun) == 'table' and fun.class == 'closure')
       local new_env = fun.env
       assert(#fun.args == se.length(args_expr))
       for i = 1,#fun.args do
@@ -225,14 +229,15 @@ function scheme:eval_step(s)
 end
 
 -- Extend environment with bindings from Lua table
-function scheme.extend(env, tab)
+function scheme.push_primitives(env, tab)
    for k,v in pairs(tab) do
-      env = push(k,v,env)
+      local prim = { class = 'primitive', fun = v, name = k}
+      env = push(k,prim,env)
    end
    return env
 end
-function scheme:define(tab)
-   self.mod_env = scheme.extend(self.mod_env, tab)
+function scheme:define_primitives(tab)
+   self.mod_env = scheme.push_primitives(self.mod_env, tab)
 end
 
 local prim = {}
@@ -256,9 +261,9 @@ function scheme.new(tables)
    }
    setmetatable(obj, {__index = scheme})
    -- install module level bindings
-   -- obj:define(prim)  -- FIXME: no longer adding defaults!
+   -- obj:define_primitives(prim)  -- FIXME: no longer adding defaults!
    for _,tab in ipairs(tables or {}) do
-      obj:define(tab)
+      obj:define_primitives(tab)
    end
    return obj
 end
