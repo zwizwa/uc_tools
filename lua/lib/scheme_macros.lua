@@ -1,0 +1,76 @@
+-- Scheme macros are implemented as s-expression to s-expression converters.
+-- Used by e.g. scheme.lua but could be reused by other dialects.
+
+-- We assume let* and set! are primitives, which are essentially basic
+-- blocks with (SSA) variable declarations + assignment for creating
+-- loops.
+
+-- Reductions:
+--
+-- module-begin -> module
+-- begin        -> letrec
+-- letrec       -> let*, set!
+--
+-- We do not depend on '#<void>' here, instead we require that let*
+-- supports undefined bindings, e.g. (let* ((a)) ...), and empty
+-- statements (let* ())
+
+
+local se = require('lib.se')
+local macro = {}
+local l = se.list
+local r = se.reverse
+
+-- Map module-begin to begin in case top level forms are not special.
+macro['module-begin'] = function(expr)
+   local _, mod_body = se.unpack(expr, { n = 1, tail = true })
+   return {'begin',mod_body}
+end
+
+-- Map definitions in begin form to letrec.
+macro['begin'] = function(expr)
+   local _, exprs = se.unpack(expr, {n = 1, tail = true})
+   local bindings = se.empty
+   if se.is_empty(exprs) then
+      return l('let*',l())
+   end
+   do
+      local expr, rest = se.unpack(exprs, {n = 1, tail = true})
+      if type(expr) == 'table' and expr[1] == 'define' then
+         -- For now we only support (define (name ...) ...)
+         local _, spec, fun_body = se.unpack(expr, { n = 2, tail = true })
+         local name, args = se.unpack(spec, { n = 1, tail = true })
+         assert(type(name) == 'string')
+         -- log('define ' .. name .. '\n')
+         s.env = push(name, closure, s.env)
+         bindings = {l(name, {'lambda',{args,fun_body}}), bindings}
+      else
+         return {'letrec', {r(bindings), exprs}}
+      end
+   end
+   return {'letrec', {r(bindings), l('#<void>')}}
+end
+
+-- Implement letrec on top of let* and set!
+macro['letrec'] = function(expr)
+   local _, bindings, exprs = se.unpack(expr, {n = 2, tail = true})
+   if se.is_empty(bindings) then
+      -- Base case is needed to avoid letrec->begin->letrec loop.
+      return {'let*',{l(),exprs}}
+   end
+   local void_bindings = se.map(
+      function(binding)
+         local name, val = se.unpack(binding, {n = 2})
+         return l(name)
+      end,
+      bindings)
+   local set_variables = se.map(
+      function(binding)
+         local name, val = se.unpack(binding, {n = 2})
+         return l("set!", name, val)
+      end,
+      bindings)
+   return {'let*', {void_bindings, {{'begin', set_variables}, exprs}}}
+end
+
+return macro

@@ -117,8 +117,8 @@ end
 -- FIXME: Test
 function se.map_to_array(fun, lst)
    local arr = {}
-   for el in se.lements(lst) do
-      table.insert(arr, fn(el))
+   for el in se.elements(lst) do
+      table.insert(arr, fun(el))
    end
    return arr
 end
@@ -246,6 +246,20 @@ function se:read_multi()
    return se.array_to_list(exprs)
 end
 
+function se.string_to_stream(str)
+   assert(str and type(str) == 'string')
+   local n = 1
+   local obj = {}
+   function obj.read(self)
+      -- log_desc({n=n,str=str})
+      if n <= #str then
+         local rv = str:sub(n,n)
+         n = n + 1
+         return rv
+      end
+   end
+   return obj
+end
 
 function se.new(stream)
    assert(stream)

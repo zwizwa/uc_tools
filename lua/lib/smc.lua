@@ -495,12 +495,9 @@ function smc:eval_to_defs(closure)
    -- coroutine call that starts up the network.  We use the Scheme
    -- interpreter to evaluate it, but will catch the environment of
    -- the evaluation before it would normally be discarded.
-   local scm = scheme.new({})
-   local s = {env = closure.env, expr = closure.body}
-   scm:eval_loop(s)
 
-   -- log_w("env: ", se.iolist(s.env), "\n")
-   -- log_w("expr: ", se.iolist(s.expr), "\n")
+   log_w("env: ",  se.iolist(closure.env), "\n")
+   log_w("expr: ", se.iolist(closure.body), "\n")
    local defs = {}
    local entry
 

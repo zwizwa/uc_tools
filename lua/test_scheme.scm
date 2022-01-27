@@ -11,7 +11,11 @@
 
 ;; \(define (test_anf) (add 1 (add 2 3)))
 
-(x 1 2)
+(define lala (x 1 2))
+lala
+123
+asdf
+
 
 
 

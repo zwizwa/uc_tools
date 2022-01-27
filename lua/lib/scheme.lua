@@ -71,6 +71,13 @@ form['if'] = function(self, s)
    s.expr = ifte(self:eval(cond, s.env), iftrue, iffalse)
 end
 
+form['set!'] = function(self, s)
+   local _, name, exp = se.unpack(s.expr, { n = 2 })
+   local var = ref(name, s.env)
+   var.val = self:eval(exp, s.env)
+   s.expr = '#<void>'
+end
+
 form['begin'] = function(self, s)
    local statements = se.cdr(s.expr)
    if se.is_empty(statements) then
@@ -112,14 +119,14 @@ end
 
 
 -- Macros are forms that do not modify s.env
+-- These are kept in a separate file as they can probably be reused.
+local macros = require('lib.scheme_macros')
+for k,v in pairs(macros) do
+   form[k] = scheme.macro(v)
+end
 function scheme.macro(fun)
    return function(self, s) s.expr = fun(s.expr) end
 end
-form['module-begin'] = scheme.macro(function(expr)
-   local _, mod_body = se.unpack(expr, { n = 1, tail = true })
-   return {'begin',mod_body}
-end)
-
 
 
 function scheme:eval(expr, env)
