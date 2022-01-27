@@ -507,7 +507,7 @@ function smc:compile_tasks()
 
    local function compile_task(task_nb, closure)
       assert(is_closure(closure))
-      self:w("// load_task! ",task_nb,"\n")
+      self:w("// task ",task_nb,"\n")
       self:w("// ", se.iolist(closure.body), "\n")
 
       -- Conceptually, spawn! evaluates the closure in a new task
@@ -586,11 +586,14 @@ function smc:compile_tasks()
                   -- self:w("// fun ", n, "\n")
                   self:compile_fundef(n,a,b,s.env)
                end,
-               function(begin_expr)
-                  -- The tail with definitions stripped is compiled as
-                  -- entry point
-                  -- self:w("// entry: ", se.iolist(begin_expr), "\n")
-                  self:compile_fundef('entry',se.empty,begin_expr,s.env)
+               function(expr)
+                  -- The expression is expanded up to the point where
+                  -- this is a variable reference pointing at the
+                  -- 1-arg function that is to be the entry point.  We
+                  -- just need to jump into it.
+                  self:w("t",task_nb,"_entry:\n")
+                  self:w(self:tab(), "goto t", task_nb, "_", se.iolist(expr), ";\n")
+                  -- self:compile_fundef('entry',se.empty,begin_expr,s.env)
 
                   -- Mark it used so it doesn't get collected.
                   local label = self:mangle_label('entry')
@@ -627,12 +630,17 @@ function smc:compile_tasks()
    -- network.  This also is a demarcation between compile time and
    -- run time.
    prim['co'] = function(init_task, value)
-      -- We compile all the tasks, then compile a jump in the one that
-      -- is called here.
+      assert(type(value) == 'number')
+      assert(init_task and init_task.class == 'task')
+      -- Compile all the tasks that were created during 'start'.
       for _,task in ipairs(registries.task) do
          assert(task.closure)
          compile_task(task.id, task.closure)
       end
+      -- Compile the entry jump
+      self:w("init_entry:\n")
+      self:w(self:tab(), "_0 = ", value, ";\n")
+      self:w(self:tab(), "goto t", init_task.id, "_entry;\n")
    end
 
 

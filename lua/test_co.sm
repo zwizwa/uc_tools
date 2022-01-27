@@ -12,7 +12,7 @@
         ;; 'yield' performs coroutine call to C end.
         (yield (add x y))
         (main))))
-  (main) ;; entry point
+  main ;; entry point
   )
 
 ;; Inline + recursion error test.
@@ -32,7 +32,7 @@
   ;; (reca) ;; inline recursion error test
   ;; client will ignore the first "reply?
   ;; yeah coroutines are a bit raw...
-  (main 0))
+  main)
 
           
 ;(define (fun2 x)
@@ -63,6 +63,7 @@
   (let* ((t1 (make-task))
          (t2 (make-task))
          (c (make-channel)))
-    (spawn! t1 (lambda () (server c))) ;; needs to come first
-    (spawn! t2 (lambda () (client c)))
+    (load-task! t1 (lambda () (server c))) ;; needs to come first
+    (load-task! t2 (lambda () (client c)))
+    (co t1 0)
     ))
