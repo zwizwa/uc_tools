@@ -3,12 +3,14 @@
 ;; Test simpler co-routine abstraction.
 ;; Test application is a client and a server thread.
 
-(define (client chan)
+;; FIXME: this doesn't use channels.
+
+(define (client serv)
   (define (main ign)
     (for ((i (in-range 10)))
       ;; 'rpc' gets inlined.  the 2 calls produce 4 blocking points.
-      (let* ((x (co chan i))
-             (y (co chan (add 100 i))))
+      (let* ((x (co serv i))
+             (y (co serv (add 100 i))))
         ;; 'yield' performs coroutine call to C end.
         (yield (add x y))))
     (main ign))
@@ -22,11 +24,11 @@
 
 ;; FIXME: use if
 
-(define (server chan)
+(define (server clnt)
   (define (add1 x) (add x 1)) ;; will be inlined
   (define (main prev_rpl)
     ;; Note that this is backwards!
-    (let* ((req (co chan prev_rpl))
+    (let* ((req (co clnt prev_rpl))
            (rpl (add1 req)))
       (main rpl)))
   ;; (reca) ;; inline recursion error test
@@ -34,36 +36,13 @@
   ;; yeah coroutines are a bit raw...
   main)
 
-          
-;(define (fun2 x)
-;  (yield)
-;  (fun1))
 
-;; I'd like to use the following story to act as a design guide to
-;; give this the proper semantics:
-;;
-;; This scheme program is started.  It performs some initialization
-;; and then spawns a number of tasks that wait for events to happen.
-;; Before any events happen, the memory image is serialized to disk,
-;; the machine is turned off, then the machine is turned on again, the
-;; memory image is loaded again and the program is resumed.
-;;
-;; Now replace "memory image" with "generated C program", and replace
-;; the single machine with a host machine that runs the scheme program
-;; to generate the C program, and a target machine that runs the
-;; compiled C program as if it was resuming a memory image.  I.e. the
-;; generated C program can contain some static data structures that
-;; would be the result of executing the start function.
-;;
-;; This is quite close to the meaning of a non-staged Scheme program
-;; with the restriction that the start function can not be referenced
-;; by the code that implements the task network.
+;; See test1.sm for comments on semantics.
 
 (define (start)
   (let* ((t1 (make-task))
-         (t2 (make-task))
-         (c (make-channel)))
-    (load-task! t1 (server c))
-    (load-task! t2 (client c))
+         (t2 (make-task)))
+    (load-task! t1 (server t2))
+    (load-task! t2 (client t1))
     (co t1 0)
     ))

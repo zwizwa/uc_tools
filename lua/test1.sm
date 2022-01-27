@@ -1,5 +1,26 @@
 #lang s-expr "sm.rkt" ;; -*- scheme -*-
 
+;; Semantics
+
+;; Attempt is to stay as close to Scheme as possible, with some
+;; restrictions on valid code for the bits that get translated to C.
+
+;; SMC (Scheme to Machine Compiler or State Machine Compiler) executes
+;; the start routine at compile time.  Its purpose is to construct
+;; tasks and perform a coroutine tail call into the task network.
+;; That call is "frozen" and compiled to C, essentially compiling the
+;; contination at that point.
+
+;; The language subset inside the Scheme code that is compiled to C is
+;; reduced: all function calls are inlined, and tail calls are mapped
+;; to gotos.  All lambdas need to be combined with a "functional form"
+;; so they can be inlined.  Only downward closures are (will be)
+;; supported.
+
+;; The example creates two tasks that run the same code.  The tasks
+;; are instantiated with a reference to the other task so they can
+;; perform a coroutine call.
+
 ;; Add 1 to value before bouncing it to the other task, then yield it
 ;; to C caller.  FIXME: Represent the C caller as just another
 ;; coroutine.
@@ -10,16 +31,8 @@
       (main b)))
   main)
 
-;; The start routine is executed in phase 1, i.e. at compile time.
-;; Its purpose is to construct tasks and perform a coroutine call into
-;; the task network.  That call is "frozen" and compiled to C.  The
-;; language subset inside the Scheme code that is compiled is reduced:
-;; all function calls are inlined, and tail calls are translated to
-;; gotos.  All lambdas need to be combined with a "functional form".
-;; Only downward closures will be supported, and only in functional
-;; form style.
 
-(define (start)
+(define (start arg)
   ;; The lowest level communication primitive is a coroutine call.
   ;; Startup is a 3-step process:
   ;; 1. Create the task structures
@@ -28,13 +41,20 @@
     ;; 2. Associate tasks with entry points
     (load-task! t1 (test1 t2))
     (load-task! t2 (test1 t1))
-    ;; 3. Transfer control to a task.
+    ;; 3. Transfer control to a specific task.
     (co t1 0)))
 
-;; Note that the second argument to load-task! needs to be a thunk
-;; that evaluates to the entry point of the coroutine.  This extra
-;; wrapper is currently necessary to guide the partial evaluation.
-;; Without it the environment that contains the mutually-recursive
-;; function definitions would be discarded before the compiler
-;; executes.
+;; Implementation: the compiler is hidden inside the 'co' function.
+;; It takes the task object referred to by 't1' to recover the closure
+;; created by '(test1 t2)', which contains in its environment all the
+;; recursive definitions needed to compile specialized C code.
+;;
+;; Note that code in test1 body can be parameterized by values that
+;; are only valid at compile time, e.g. 'other' contains a task and
+;; can only be passed to 'co', which will compile into labels and goto
+;; based on information in that task struct.
+
+
+
+
 

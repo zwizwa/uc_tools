@@ -615,8 +615,12 @@ function smc:compile_tasks()
    end
 
    local start = self.funs.start
-   assert(start)
-   scheme.new({self.funs, prim}):eval(start.body)
+   assert(start and start.class == 'closure')
+   local scm = scheme.new({self.funs, prim})
+   -- FIXME: start should take a single argument that can then be
+   -- passed on to the coroutine, because that is also the semantics
+   -- of the C function.  Somehow this doesn't work here...
+   scm:eval(start.body)
 
 end
 
