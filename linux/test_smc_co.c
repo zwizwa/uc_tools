@@ -14,7 +14,7 @@ void send(uint32_t val) {}
 void run_test_co(void) {
     struct test_co_state s = {};
     for (int i=0; i<10; i++) {
-        T rv = test_co(&s);
+        T rv = test_co(&s, 0);
         LOG("%d -> %d\n", i, rv);
         ASSERT(rv == i + 1);
     }
@@ -22,7 +22,7 @@ void run_test_co(void) {
 void run_test1(void) {
     struct test1_state s = {};
     for (int i=0; i<10; i++) {
-        T rv = test1(&s);
+        T rv = test1(&s, 0);
         LOG("%d -> %d\n", i, rv);
     }
 }

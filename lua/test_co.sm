@@ -10,8 +10,8 @@
       (let* ((x (co chan i))
              (y (co chan (add 100 i))))
         ;; 'yield' performs coroutine call to C end.
-        (yield (add x y))
-        (main))))
+        (yield (add x y))))
+    (main))
   main ;; entry point
   )
 

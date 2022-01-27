@@ -349,12 +349,12 @@ local function for_begin(begin_expr, def, other)
    for expr, rest in se.elements(exprs) do
 
       -- Special-case this for now:
-      if se.is_empty(rest) and type(expr) == 'string' then
-         if other then
-            other(expr)
-         end
-         return
-      end
+      --if se.is_empty(rest) and type(expr) == 'string' then
+      --   if other then
+      --      other(expr)
+      --   end
+      --   return
+      --end
 
       -- FIXME: This only supports (define (name . args) ...)
       -- Maybe generalize to proper Scheme later?
@@ -382,14 +382,6 @@ local function for_begin(begin_expr, def, other)
    end
 end
 
--- FIXME: Bad hack... I can't think of a general way to do this
--- without annotation.  Basically, a task's thunk is evaluated until a
--- form is found that contains a bunch of definitions. Works for now.
-local function is_task_definition(begin_expr)
-   local nb = 0
-   local ok, rv = pcall(for_begin, begin_expr, function() nb = nb + 1 end)
-   return ok and nb > 0
-end
 
 local function collect_defs(self, tab, begin_expr, env)
    for_begin(
@@ -458,7 +450,7 @@ form['module-begin'] = function(self, expr)
    assert(modname)
    local s  = self.config.state_name
    if self.mod_prefix then modname = { self.mod_prefix, modname } end
-   local args = { { self:state_type(), " *", s } }
+   local args = { { self:state_type(), " *", s }, {"T ", self:arg(0)} }
    self:w("T ", modname, "(",comp.clist(args),") {\n");
 
    -- Allocate 'registers' usef for function/coroutine argument
@@ -468,7 +460,7 @@ form['module-begin'] = function(self, expr)
    -- actually used in function application is known.  in first pass
    -- it is not, and we bound it by max arguments of definitions.
    assert(self.args_size_app) -- defined during bulk compile
-   for i=0,self.args_size_app do
+   for i=1,self.args_size_app-1 do
       local a = self:arg(i)
       -- FIXME: It generates unused variables.  Added (void) as workaround.
       self:w(self:tab(), "T ",a , "; (void)", a, ";\n")
@@ -483,9 +475,13 @@ form['module-begin'] = function(self, expr)
    -- function so cannot generate this ahead of time.
    local nb_tasks = #self.stack_size
    for i=1,nb_tasks do
-      self:w(self:tab(), s, "->t",i-1,"=&&t",i-1,"_entry;\n");
+      local entry = self.registries.task[i].entry
+      assert(entry)
+      self:w(self:tab(), s, "->t",i-1,"=&&t",i-1,"_",entry,";\n");
    end
-   self:w(self:tab(), "goto init_entry;\n")
+   local init_task = self.init_task
+   assert(init_task)
+   self:w(self:tab(), "goto t",init_task.id,"_",init_task.entry,";\n")
 
    self:w(c_bulk)
 
@@ -524,116 +520,14 @@ function smc:compile_tasks()
    -- functions implemented as goto labels followed by statements.
 
    -- We don't do this directly from source code.  Instead we start
-   -- interpreting a Scheme function 'start', that will call 'spawn!'
-   -- to start tasks.
+   -- interpreting a Scheme function 'start', that will call functions
+   -- to set up the task network.
 
-   -- For concurrency without synchronization, the order of starting
-   -- the coroutines is important.  FIXME: This still isn't defined
-   -- well.
+   local function compile_task_new(task)
+      local closure = task.closure
+      local task_nb = task.id
+      assert(closure and task_nb)
 
-   local function compile_task(task_nb, closure)
-      assert(is_closure(closure))
-      self:w("// task ",task_nb,"\n")
-      self:w("// ", se.iolist(closure.body), "\n")
-
-      -- FIXME: Bootstrapping plain evaluation.
-      -- self:eval_to_defs(closure)
-
-
-      -- Conceptually, spawn! evaluates the closure in a new task
-      -- context.  This is implemented by generating the code for the
-      -- task at current C cursor.
-
-      -- But there is a complication: the expression might be wrapped
-      -- in a number of lambdas and apps.  In order to find the proper
-      -- point, we single-step an interpreter until we reach the
-      -- expression that contains the task definition.
-
-      local defs = {}
-      local s = {env = closure.env, expr = closure.body}
-      local scm = scheme.new({})
-      local function step() scm:eval_step(s) end
-      repeat
-         step(s)
-         self:w("// ", se.iolist(s.expr), "\n")
-      until (is_task_definition(s.expr))
-
-      collect_defs(self, defs, s.expr, s.env)
-
-      -- log_desc({defs = defs})
-
-      -- And compile.
-      -- The global lexical context consists of:
-      -- 1. Top level defines (can still be used as inline functions)
-      -- 2. Defines in the program's body (compiled as goto labels)
-      -- So we need to build it from scratch
-      --
-      -- Note that this is somewhat arbitrary to limit the program to
-      -- a single function that contains the recursive definitions.  I
-      -- currently do not see a way around that: we have to represent
-      -- things at some point!
-      local funs = {}
-      for k,v in pairs(self.funs) do funs[k]=v end
-      for k,v in pairs(defs)      do funs[k]=v end
-
-
-      -- Two compiler passes are necessary to resolve the following issues:
-      -- . Per task:
-      --   . Stack depth
-      --   . Which cells can go on C stack
-      -- . Globally:
-      --   . Max number of registers used in function/coroutine calls
-      --   . Gensym
-
-      -- FIXME: The hardest one to translate is the cell information.
-      -- This used to be global, but no longer is.  I do want to keep
-      -- id numbers global.
-
-
-      -- FIXME: Two passes are compiled here to collect global
-      -- information.  It's a bit hard to refactor this.  Going to
-      -- have to give it a try and make it more explicit.
-
-
-      -- Note that
-
-      -- FIXME: Put the two compiler passes here.  A lot of stats only
-      -- apply to a single task: state stack depth + state/local alloc.
-
-      -- FIXME: Remove 'module-begin' form so there is no recursion
-      -- possible?
-
-      self:parameterize({
-            funs = funs,
-            current_task = task_nb,
-         },
-         function()
-            self.stack_size[task_nb + 1] = 0
-            for_begin(
-               s.expr,
-               function(n,a,b)
-                  -- All definitions are compiled
-                  -- self:w("// fun ", n, "\n")
-                  self:compile_fundef(n,a,b,s.env)
-               end,
-               function(expr)
-                  -- The expression is expanded up to the point where
-                  -- this is a variable reference pointing at the
-                  -- 1-arg function that is to be the entry point.  We
-                  -- just need to jump into it.
-                  self:w("t",task_nb,"_entry:\n")
-                  self:w(self:tab(), "goto t", task_nb, "_", se.iolist(expr), ";\n")
-                  -- self:compile_fundef('entry',se.empty,begin_expr,s.env)
-
-                  -- Mark it used so it doesn't get collected.
-                  local label = self:mangle_label('entry')
-                  self.labels[label] = true
-               end)
-         end)
-
-   end
-
-   local function compile_task_new(task_nb, closure)
       assert(is_closure(closure))
       self:w("// task ",task_nb,"\n")
       self:w("// closure ",se.iolist(closure.body),"\n")
@@ -641,6 +535,9 @@ function smc:compile_tasks()
 
       local defs, entry = self:eval_to_defs(closure)
       assert(entry)
+      -- Picked up by C function entry code gen.
+      task.entry = entry
+
       local funs = {}
       for k,v in pairs(self.funs) do funs[k]=v end
       for k,v in pairs(defs)      do funs[k]=v end
@@ -655,20 +552,15 @@ function smc:compile_tasks()
                self:compile_fundef(
                   fname, se.array_to_list(c.args), c.body, c.env)
             end
-            -- FIXME: This hacky indirection is not necessary if the
-            -- function entry code jumps directly to the label.
-            self:w("t",task_nb,"_entry:\n")
-            self:w(self:tab(), "goto t", task_nb, "_", entry, ";\n")
          end)
    end
 
-
-   local registries = {
+   self.registries = {
       task = {},
       channel = {},
    }
    local function new(typ)
-      local registry = registries[typ]
+      local registry = self.registries[typ]
       assert(registry)
       local obj = {class = typ, id = #registry}
       table.insert(registry, obj)
@@ -693,14 +585,11 @@ function smc:compile_tasks()
       assert(type(value) == 'number')
       assert(init_task and init_task.class == 'task')
       -- Compile all the tasks that were created during 'start'.
-      for _,task in ipairs(registries.task) do
-         assert(task.closure)
-         compile_task_new(task.id, task.closure)
+      for _,task in ipairs(self.registries.task) do
+         compile_task_new(task)
       end
-      -- Compile the entry jump
-      self:w("init_entry:\n")
-      self:w(self:tab(), "_0 = ", value, ";\n")
-      self:w(self:tab(), "goto t", init_task.id, "_entry;\n")
+      -- Save entry
+      self.init_task = init_task
    end
 
 
