@@ -229,6 +229,11 @@ form['for'] = function(self, for_expr)
       end)
 end
 
+
+form['define'] = function(self, expr)
+   error("'define' form not supported in first order section")
+end
+
 local function se_comment(expr)
    return {"/*",se.iolist(expr),"*/"}
 end
@@ -492,6 +497,8 @@ function smc:compile_tasks(module_closure)
       defs.start = nil
       -- FIXME: It captures too much.  Some of these do not compile.
       defs.test1 = nil
+      defs.client = nil
+      defs.server = nil
 
       assert(entry and type(entry) == 'string')
       -- Picked up by C function entry code gen.

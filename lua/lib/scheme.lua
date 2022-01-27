@@ -90,7 +90,6 @@ form['set!'] = function(self, s)
    s.expr = '#<void>'
 end
 
-
 form['let*'] = function(self, s)
    local _, bindings, body = se.unpack(s.expr, { n = 2, tail = true })
    for binding in se.elements(bindings) do
