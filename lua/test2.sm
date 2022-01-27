@@ -17,6 +17,6 @@
 
   (let* ((t1 (make-task))
          (t2 (make-task)))
-    (load-task! t1 (lambda () (test1 t2)))
-    (load-task! t2 (lambda () (test1 t1)))
+    (load-task! t1 (test1 t2))
+    (load-task! t2 (test1 t1))
     (co t1 0)))

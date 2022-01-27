@@ -90,7 +90,6 @@ end
 
 
 form['let*'] = function(self, s)
-   log_se(s.expr) ; log("\n")
    local _, bindings, body = se.unpack(s.expr, { n = 2, tail = true })
    for binding in se.elements(bindings) do
       local var, vexpr = comp.unpack_binding(binding, '#<void>')

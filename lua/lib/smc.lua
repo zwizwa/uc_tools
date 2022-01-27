@@ -494,8 +494,8 @@ function smc:eval_to_defs(closure)
    -- interpreter to evaluate it, but will catch the environment of
    -- the evaluation before it would normally be discarded.
 
-   log_w("env: ",  se.iolist(closure.env), "\n")
-   log_w("expr: ", se.iolist(closure.body), "\n")
+   -- log_w("env: ",  se.iolist(closure.env), "\n")
+   -- log_w("expr: ", se.iolist(closure.body), "\n")
    local defs = {}
    local entry
 

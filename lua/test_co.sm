@@ -4,14 +4,14 @@
 ;; Test application is a client and a server thread.
 
 (define (client chan)
-  (define (main)
+  (define (main ign)
     (for ((i (in-range 10)))
       ;; 'rpc' gets inlined.  the 2 calls produce 4 blocking points.
       (let* ((x (co chan i))
              (y (co chan (add 100 i))))
         ;; 'yield' performs coroutine call to C end.
         (yield (add x y))))
-    (main))
+    (main ign))
   main ;; entry point
   )
 
@@ -63,7 +63,7 @@
   (let* ((t1 (make-task))
          (t2 (make-task))
          (c (make-channel)))
-    (load-task! t1 (lambda () (server c))) ;; needs to come first
-    (load-task! t2 (lambda () (client c)))
+    (load-task! t1 (server c))
+    (load-task! t2 (client c))
     (co t1 0)
     ))
