@@ -1,25 +1,13 @@
 #lang s-expr "sm.rkt" ;; -*- scheme -*-
 
-;; (import lib)
-
-;; Bounce a value 
-(define (test1 other)
-  (define (main a)
-    (let* ((b (co other (add 1 a))))
-      (yield b)
-      (main b)))
-  main)
+(define (program)
+  (define (f a)
+    (yield a)
+    (g (add 1 a)))
+  (define (g a)
+    (f a))
+  f)
 (define (start)
-  ;; The lowest level primitive is that of a task which supports 'co',
-  ;; a coroutine call.  The 'co' call transfers control to another
-  ;; task, passing a value.  The value shows up in the other task as
-  ;; the return value of a 'co' call.
-
-  ;; The first time control is transferred to a coroutine, the value
-  ;; passed is ignored.  FIXME.
-
-  (let* ((t1 (make-task))
-         (t2 (make-task)))
-    (load-task! t1 (test1 t2))
-    (load-task! t2 (test1 t1))
+  (let* ((t1 (make-task)))
+    (load-task! t1 (program))
     (co t1 0)))

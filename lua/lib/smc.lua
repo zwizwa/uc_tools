@@ -494,12 +494,12 @@ function smc:compile_tasks(module_closure)
       end
       -- It's not legal to call this from the state machine code, so
       -- just remove it.
-      defs.start = nil
+      --defs.start = nil
       -- FIXME: It captures too much.  Some of these do not compile.
-      defs.test1 = nil
-      defs.client = nil
-      defs.server = nil
-      defs.add = nil
+      --defs.test1 = nil
+      --defs.client = nil
+      --defs.server = nil
+      --defs.add = nil
 
       assert(entry and type(entry) == 'string')
       -- Picked up by C function entry code gen.
@@ -513,7 +513,7 @@ function smc:compile_tasks(module_closure)
          local fun = scheme.ref(fname, closure.env, true)
          log_w("fun_def ", fname, "\n")
          if fun and not fun_defs[fname] then
-            fun_defs[fname] = { compiled = false }
+            fun_defs[fname] = { compiled = false, closure = fun }
          end
          return fun
       end
@@ -529,10 +529,22 @@ function smc:compile_tasks(module_closure)
          function()
             self.stack_size[task_nb + 1] = 0
 
-            -- Compile the first function.
-            for fname,fclosure in pairs(defs) do
-               compile_function(fname)
-            end
+            local nb_fun_defs = 0
+
+            compile_function(entry)
+
+            -- While the list keeps growing, re-iterate to make sure
+            -- all are compiled.
+            local did_compile
+            repeat
+               did_compile = false
+               for fname, status in pairs(fun_defs) do
+                  if not status.compiled then
+                     compile_function(fname)
+                     did_compile = true
+                  end
+               end
+            until (not did_compile)
          end)
    end
 
