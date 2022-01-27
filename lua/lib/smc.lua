@@ -504,16 +504,28 @@ function smc:compile_tasks(module_closure)
       -- Picked up by C function entry code gen.
       task.entry = entry
 
-      local funs = {}
-      for k,v in pairs(self.funs) do funs[k]=v end
-      for k,v in pairs(defs)      do funs[k]=v end
+      -- Compiler uses this to look up function definitions.  This
+      -- returns nil if there is no definition.  Note that primitives
+      -- are not stored in the environment.
+      local fun_defs = {}
+      local function fun_def(_, fun_name)
+         local fun = scheme.ref(fun_name, closure.env, true)
+         log_w("fun_def ", fun_name, "\n")
+         if fun and not fun_defs[fun] then
+            fun_defs[fun] = { compiled = false }
+         end
+         return fun
+      end
 
       self:parameterize({
-            funs = funs,
+            fun_def = fun_def,
             current_task = task_nb,
          },
          function()
             self.stack_size[task_nb + 1] = 0
+
+            
+
             for fname,c in pairs(defs) do
                local args = se.array_to_list(c.args)
                log_w(fname,", args:",se.iolist(args),"\n")
@@ -588,6 +600,7 @@ function smc:compile_tasks(module_closure)
    scm:eval(start.body, env)
 
 end
+
 
 
 function smc:compile_fundef(fname, args, body_expr, env)
@@ -827,6 +840,7 @@ end
 -- To simplify representation, we also bind constants to variables.
 -- The C compiler can later optimize those.
 --
+
 function smc:apply(expr)
    assert(se.length(expr) > 0)
    assert(type(se.car(expr)) == 'string')
@@ -846,7 +860,7 @@ function smc:apply(expr)
 
    -- The expression is in A-Normal form.
    local fun_name = app_form[1]
-   local fun_def = self.funs[fun_name]
+   local fun_def = self:fun_def(fun_name)
 
    -- If there is no function definition under this name, we assume
    -- this is a C primitive.  Emit code.
@@ -1063,7 +1077,6 @@ function smc:reset()
    -- Lists
    self.cells = {}
    self.labels = {}
-   self.funs = {}
    self.free = {}
    -- Sizes
    self.stack_size = {}   -- one per task

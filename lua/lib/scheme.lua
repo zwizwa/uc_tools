@@ -36,7 +36,7 @@ end
 
 local scheme = {}
 
-function scheme.ref_var(var_name, env)
+function scheme.ref_var(var_name, env, allow_undefined)
    assert(type(var_name) == 'string')
    for v in se.elements(env) do
       if v.var == var_name then
@@ -49,12 +49,13 @@ function scheme.ref_var(var_name, env)
       log(v.var)
    end
    log('\n')
-   error('undefined var ' .. var_name)
+   if not allow_undefined then
+      error('undefined var ' .. var_name)
+   end
 end
-function scheme.ref(var_name, env)
-   local var = scheme.ref_var(var_name, env)
-   assert(var and var.val)
-   return var.val
+function scheme.ref(var_name, env, allow_undefined)
+   local var = scheme.ref_var(var_name, env, allow_undefined)
+   return var and var.val
 end
 
 
@@ -255,7 +256,7 @@ function scheme.new(tables)
    }
    setmetatable(obj, {__index = scheme})
    -- install module level bindings
-   obj:define(prim)
+   -- obj:define(prim)  -- FIXME: no longer adding defaults!
    for _,tab in ipairs(tables or {}) do
       obj:define(tab)
    end
