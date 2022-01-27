@@ -524,13 +524,9 @@ function smc:compile_tasks(module_closure)
          function()
             self.stack_size[task_nb + 1] = 0
 
-            
-
-            for fname,c in pairs(defs) do
-               local args = se.array_to_list(c.args)
-               log_w(fname,", args:",se.iolist(args),"\n")
-               self:compile_fundef(
-                  fname, args, c.body, c.env)
+            -- Compile the first function.
+            for fname,fclosure in pairs(defs) do
+               self:compile_fundef(fname, fclosure)
             end
          end)
    end
@@ -603,7 +599,12 @@ end
 
 
 
-function smc:compile_fundef(fname, args, body_expr, env)
+function smc:compile_fundef(fname, fclosure)
+
+   local args = se.array_to_list(fclosure.args)
+   local body_expr = fclosure.body
+   local env = fclosure.env
+
 
    -- self:w("/*compile_fundef, env:",se.iolist(env),"*/")
 
