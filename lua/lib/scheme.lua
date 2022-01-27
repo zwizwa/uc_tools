@@ -86,7 +86,7 @@ form['begin'] = function(self, s)
          local _, spec, fun_body = se.unpack(first, { n = 2, tail = true })
          local name, args = se.unpack(spec, { n = 1, tail = true })
          assert(type(name) == 'string')
-         log('define ' .. name .. '\n')
+         -- log('define ' .. name .. '\n')
          local closure = self:eval({'lambda',{args,fun_body}}, s.env)
          s.env = push(name, closure, s.env)
          s.expr = {'begin', rest}

@@ -492,21 +492,30 @@ form['module-begin'] = function(self, expr)
    self:w("}\n");
 end
 
--- Take the closure and produce a defs structure.
+-- Gather function definitions from closure's environment.
 function smc:eval_to_defs(closure)
    local s = {env = closure.env, expr = closure.body}
    local scm = scheme.new({})
-   scm:eval_loop(s)
-   log_w("env: ", se.iolist(s.env), "\n")
-   log_w("body: ", se.iolist(s.body), "\n")
-   local defs = {}
 
+   scm:eval_loop(s)
+
+   -- log_w("env: ", se.iolist(s.env), "\n")
+   -- log_w("expr: ", se.iolist(s.expr), "\n")
+   local defs = {}
+   local entry
+
+   -- We rely on 1. environment being complete (i.e. interpreter
+   -- should not pack the closure), and 2. the entry point closure is
+   -- associated to a name in the environment.  Both seem reasonable.
    for var in se.elements(s.env) do
-      if var.val.type == 'closure' then
+      if var.val == s.expr then
+         entry = var.var
+      end
+      if var.val.class == 'closure' then
          defs[var.var] = var.val
       end
    end
-   return defs
+   return defs, entry
 end
 
 function smc:compile_tasks()
@@ -540,6 +549,7 @@ function smc:compile_tasks()
       -- point, we single-step an interpreter until we reach the
       -- expression that contains the task definition.
 
+      local defs = {}
       local s = {env = closure.env, expr = closure.body}
       local scm = scheme.new({})
       local function step() scm:eval_step(s) end
@@ -547,10 +557,8 @@ function smc:compile_tasks()
          step(s)
          self:w("// ", se.iolist(s.expr), "\n")
       until (is_task_definition(s.expr))
-      local defs = {}
-      collect_defs(self, defs, s.expr, s.env)
 
-      -- local defs = self:eval_to_defs(closure)
+      collect_defs(self, defs, s.expr, s.env)
 
       -- log_desc({defs = defs})
 
@@ -625,6 +633,36 @@ function smc:compile_tasks()
 
    end
 
+   local function compile_task_new(task_nb, closure)
+      assert(is_closure(closure))
+      self:w("// task ",task_nb,"\n")
+      self:w("// closure ",se.iolist(closure.body),"\n")
+      self:w("// ", se.iolist(closure.body), "\n")
+
+      local defs, entry = self:eval_to_defs(closure)
+      assert(entry)
+      local funs = {}
+      for k,v in pairs(self.funs) do funs[k]=v end
+      for k,v in pairs(defs)      do funs[k]=v end
+
+      self:parameterize({
+            funs = funs,
+            current_task = task_nb,
+         },
+         function()
+            self.stack_size[task_nb + 1] = 0
+            for fname,c in pairs(defs) do
+               self:compile_fundef(
+                  fname, se.array_to_list(c.args), c.body, c.env)
+            end
+            -- FIXME: This hacky indirection is not necessary if the
+            -- function entry code jumps directly to the label.
+            self:w("t",task_nb,"_entry:\n")
+            self:w(self:tab(), "goto t", task_nb, "_", entry, ";\n")
+         end)
+   end
+
+
    local registries = {
       task = {},
       channel = {},
@@ -657,7 +695,7 @@ function smc:compile_tasks()
       -- Compile all the tasks that were created during 'start'.
       for _,task in ipairs(registries.task) do
          assert(task.closure)
-         compile_task(task.id, task.closure)
+         compile_task_new(task.id, task.closure)
       end
       -- Compile the entry jump
       self:w("init_entry:\n")
