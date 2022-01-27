@@ -1,4 +1,4 @@
--- Compiles a subset of Scheme to sm.h style state machines.
+-- Compiles a subset of Scheme to computed goto state machines.
 
 -- Some ideas:
 --
@@ -7,14 +7,14 @@
 --   2) Scheme functions map to goto labels inside the C function.
 --
 -- * Compiling continuations to individual C functions is too much
---   work.  Use computed goto just like sm.h does. Much easier to jump
---   straight into a control structure compared to separately
---   representing continuations.
+--   work.  Use computed goto instead: much easier to jump straight
+--   into a control structure compared to separately representing
+--   continuations.
 --
 -- * The main problem then becomes variable management, essentially
 --   implementing variable storage: local for temporary variables that
---   do not need to survive yield points, and C struct for values that
---   survive yield points.
+--   do not need to survive past yield points, and state struct for
+--   values that survive yield points.
 --
 -- * All non blocking primitives can just be C functions.
 --
@@ -25,21 +25,22 @@
 -- * Basic program form is scheme's let* / begin mapped to C99 blocks
 --   (compound statements)
 --
--- * Second pass can distinguish between saved and local variables,
---   which can be used to optimize the stack allocation.
+-- * Second pass can distinguish between variables that needs to be
+--   saved, and variables that can be implemented as C local
+--   variables.  This is the main added value of this compiler: to
+--   allow the C compiler to optimize those local variables.
 --
--- * Lifetime is implemented by letting variables go through this cycle:
---   unbound -> local -> lost -> saved
---   with the last 2 transitions not happening for all.
+-- * Variable lifetime is implemented by letting variables go through
+--   this cycle: unbound -> local -> lost -> saved.
 --
--- * Blocking subroutines are not (yet) implemented.  Any non-tail
---   function call is inlined.
+-- * Blocking subroutines are not implemented.  Any non-tail function
+--   call is inlined.
 --
 -- * The for(;;) C form is implemented explicitly, modeled after a
 --   stripped-down Racket for form.
 --
--- * Split string construction (Erlang style IOLists) and writing as
---   much as possible.
+-- * Lua string concatenation is avoided by resorting to Erlang style
+--   IOLists.
 --
 --
 
@@ -47,21 +48,15 @@
 --
 -- Originally, just to see if I can add a small special-purpose state
 -- machine compiler to an existing project without introducing "scary"
--- dependencies like Racket or Haskell, and as an incentive to build
--- something simple first.  It seems like that is possible, and this
--- project gradually turned into a sandbox to develop a schemisch Lua
--- programming style.  Looks like I'm going to be stuck with Lua for a
--- while it seems so might as well make me feel at home...
+-- dependencies like Racket or Haskell, and as an incentive to keep it
+-- simple.  It seems like that is possible, and this project gradually
+-- turned into a sandbox to develop a schemisch Lua programming style.
+-- Looks like I'm going to be stuck with Lua for a while it seems so
+-- might as well make me feel at home...
 --
--- After adding the CSP forms and the case statement generation, I do
--- think this is getting a bit too complex and hard to read.
--- Especially hard to refactor.  Conclusion: yes possible in Lua, but
--- there is a point where the stateful nature starts to get in the
--- way.  Also there is a limit to 2-pass compilation.  At some point
--- the tracking needed becomes too spread out.  I started
--- transliteration to Racket.  That also informs some cleanup here.
---
--- Refactored a bit and found groove again, sticking to Lua until done.
+-- A Racket version is planned, but currently the Lua approach
+-- actually works quite well so I'm sticking with it until semantics
+-- is stable.
 
 
 local se     = require('lib.se')
@@ -86,7 +81,6 @@ end
 -- Module
 local smc = {}
 local form = {}
-
 
 -- Note that variables and cells are separate.  A variable is a Lua
 -- string that refers to a cell.  Cells can be aliased, e.g. inside an
@@ -151,9 +145,6 @@ end
 -- Map a variable name to variable slot in the environment.
 function smc:ref(var_name, env)
    if not env then env = self.env end
-
-   -- log("ref, env:"); log_se(env); log("\n")
-
 
    -- search starts at last pushed variable.  this implements shadowing
    for v in se.elements(env) do
@@ -236,9 +227,6 @@ end
 
 local function se_comment(expr)
    return {"/*",se.iolist(expr),"*/"}
-end
-function smc:se_comment_i_n(expr)
-   return {self:tab(),se_comment(expr),"\n"}
 end
 
 form['if'] = function(self, if_expr)
@@ -361,7 +349,7 @@ end
 -- The module form compiles to a C function.  Functions with no
 -- arguments compile to goto lables inside such a function.
 
-function smc:compile_module_closure_inner(closure)
+function smc:compile_module_closure_inner(module_closure)
    local c = self.config
    assert(not self.var)
 
@@ -369,7 +357,7 @@ function smc:compile_module_closure_inner(closure)
    -- such as the number of tasks that is necessary to generate entry
    -- code.
    local c_bulk = self:collect_output(
-      function() self:compile_tasks(closure) end)
+      function() self:compile_tasks(module_closure) end)
 
    -- Emit main C function
    local modname = self.module_name
@@ -379,63 +367,53 @@ function smc:compile_module_closure_inner(closure)
    local args = { { self:state_type(), " *", s }, {"T ", self:arg(0)} }
    self:w("T ", modname, "(",comp.clist(args),") {\n");
 
-   -- Allocate 'registers' usef for function/coroutine argument
-   -- passing.
-   --
-   -- In the second compiler pass, the max number of arguments
-   -- actually used in function application is known.  in first pass
-   -- it is not, and we bound it by max arguments of definitions.
-   assert(self.args_size_app) -- defined during bulk compile
+   -- Allocate 'registers' used for function/coroutine argument
+   -- passing.  Size is defined during c_bulk compilation.
+   assert(self.args_size_app)
    for i=1,self.args_size_app-1 do
       local a = self:arg(i)
-      -- FIXME: It generates unused variables.  Added (void) as workaround.
-      self:w(self:tab(), "T ",a , "; (void)", a, ";\n")
+      self:w(self:tab(), "T ",a , ";\n")
    end
 
    -- Emit code to jump to the current resume point
    local resume = {c.state_name, "->next"}
    self:w(self:tab(), "if(", resume, ") goto *", resume, ";\n")
 
-   -- Emit bootstrap code, executed on first entry to the function.
+   -- Emit init code, executed on first entry to the function.
    -- Unfortunately we do not have access to the labels outside of the
-   -- function so cannot generate this ahead of time.
+   -- function so cannot generate this ahead of time.  The alternative
+   -- is to use static variables, but it seems best to keep state
+   -- explicit, such that reset can be performed externally by zeroing
+   -- the state.struct.
    local nb_tasks = #self.stack_size
    for i=1,nb_tasks do
       local entry = self.registries.task[i].entry
       assert(entry)
+      -- Each task has a ->t member that contains the address of the
+      -- resume label.  The entry points are collected during c_bulk
+      -- compilation.
       self:w(self:tab(), s, "->t",i-1,"=&&t",i-1,"_",entry,";\n");
    end
    local init_task = self.init_task
    assert(init_task)
    self:w(self:tab(), "goto t",init_task.id,"_",init_task.entry,";\n")
 
+   -- With preamble emitted, emit bulk C code.
    self:w(c_bulk)
 
    self:w("}\n");
 end
 
--- Gather function definitions from closure's environment.
-function smc:eval_to_defs(closure)
+
+-- Obtain the name of the closure from the closure's environment,
+-- assuming it will be there because it contains mutually recursive
+-- functions created by letrec.
+function smc:closure_name(closure)
    assert(closure and closure.class == 'closure')
-   -- log_w("task_env: ",  se.iolist(closure.env), "\n")
-   -- log_w("task_body: ", se.iolist(closure.body), "\n")
-   -- log_w("task_args: ", se.iolist(se.array_to_list(closure.args)), "\n")
-
-   -- The closure evaluates to the entry function of the first
-   -- coroutine call that starts up the network.  We use the Scheme
-   -- interpreter to evaluate it, but will catch the environment of
-   -- the evaluation before it would normally be discarded.
-   local defs = {}
    local entry
-
-   -- This environment contains the closures we will be compiling and
-   -- the entry point that the closure evaluated to.
    for var in se.elements(closure.env) do
       local cl = var.val
       if (cl.class == 'closure') then
-         -- Collect all closures in a table.
-         defs[var.var] = cl
-         -- Recover the name of that entry point closure.
          if cl == closure then
             entry = var.var
             assert(type(entry) == 'string')
@@ -443,31 +421,35 @@ function smc:eval_to_defs(closure)
       end
    end
    assert(entry)
-   -- log_w("task_entry: ", entry, "\n")
-   return defs, entry
+   return entry
 end
 
 function smc:compile_tasks(module_closure)
 
-   -- The C cursor is now at a point where we can start emitting
-   -- functions implemented as goto labels followed by statements.
+   -- Emit code for all functions implemented as goto labels followed
+   -- by statements.  This code will be inserted in the module's
+   -- function body, after the init preamble.
 
-   -- We don't do this directly from source code.  Instead we start
-   -- interpreting a Scheme function 'start', that will call functions
-   -- to set up the task network.
+   -- The compilation can be summarized as follows:
+   --
+   -- . Interpret the function 'start' in an environment that has
+   --   primitives for creating a task network.
+   --
+   -- . The last function called in 'start' will invoke the compiler
+   --   for each task's closure.
 
    local function compile_task(task)
-      -- This gets the task closure, e.g. the result of evaluationing
-      -- '(task_program)' with definition:
+      -- This gets the task closure, e.g. the result of evaluating
+      -- '(task_program)' with a definition like:
       --
       -- (define (task_program)
       --    (define (main a) (yield a) (main a))
       --    main)
       --
-      -- Here '(task_program)' evaluates to a closure.  What we're
-      -- interested in mostly is the environment of that closure: it
-      -- will contain all the local definitions of task_program that
-      -- we will be compiling to C.
+      -- Here '(task_program)' evaluates to a closure.  We're
+      -- interested in the environment of that closure: it will
+      -- contain the mutually recursive local definitions of
+      -- task_program that we will be compiling to C.
       --
       -- The closure however is dereferenced.  We want "re-reference"
       -- that to obtain the identifier 'main'.
@@ -483,9 +465,7 @@ function smc:compile_tasks(module_closure)
       self:w("// task ",task_nb,"\n")
       self:w("// closure ",se.iolist(closure.body),"\n")
       self:w("// ", se.iolist(closure.body), "\n")
-      local defs, entry = self:eval_to_defs(closure)
-      -- for k,v in pairs(defs) do log_w("def ",k,"\n") end
-
+      local entry = self:closure_name(closure)
       assert(entry and type(entry) == 'string')
       -- Picked up by C function entry code gen.
       task.entry = entry
@@ -572,19 +552,6 @@ function smc:compile_tasks(module_closure)
       self.init_task = init_task
    end
 
-
-   -- FIXME: Still not sure if I need two sync mechanisms or not...
-   -- The csp/channels and coroutines are completely separate
-   -- representations for now.  Mostly for practical reasons: I do not
-   -- understand how to build channels on top of coroutines yet, and
-   -- interface is different: instead of sending something to a
-   -- channel, something is sent to a coroutine directly.
-
-   -- Channels are currently just represented as identifiers. This is
-   -- how it is in csp.c as well.
-
-
-
    prim['make-channel'] = function(fun)
       return new('channel')
    end
@@ -593,7 +560,6 @@ function smc:compile_tasks(module_closure)
    end
 
    local start = scheme.ref('start',module_closure.env)
-   -- log_se(module_closure.env) ; log('\n')
    assert(start and start.class == 'closure')
    local scm = scheme.new({})
    local env = scheme.push_primitives(module_closure.env, prim)
