@@ -492,6 +492,23 @@ form['module-begin'] = function(self, expr)
    self:w("}\n");
 end
 
+-- Take the closure and produce a defs structure.
+function smc:eval_to_defs(closure)
+   local s = {env = closure.env, expr = closure.body}
+   local scm = scheme.new({})
+   scm:eval_loop(s)
+   log_w("env: ", se.iolist(s.env), "\n")
+   log_w("body: ", se.iolist(s.body), "\n")
+   local defs = {}
+
+   for var in se.elements(s.env) do
+      if var.val.type == 'closure' then
+         defs[var.var] = var.val
+      end
+   end
+   return defs
+end
+
 function smc:compile_tasks()
 
    -- The C cursor is now at a point where we can start emitting
@@ -510,6 +527,10 @@ function smc:compile_tasks()
       self:w("// task ",task_nb,"\n")
       self:w("// ", se.iolist(closure.body), "\n")
 
+      -- FIXME: Bootstrapping plain evaluation.
+      -- self:eval_to_defs(closure)
+
+
       -- Conceptually, spawn! evaluates the closure in a new task
       -- context.  This is implemented by generating the code for the
       -- task at current C cursor.
@@ -518,6 +539,7 @@ function smc:compile_tasks()
       -- in a number of lambdas and apps.  In order to find the proper
       -- point, we single-step an interpreter until we reach the
       -- expression that contains the task definition.
+
       local s = {env = closure.env, expr = closure.body}
       local scm = scheme.new({})
       local function step() scm:eval_step(s) end
@@ -528,7 +550,7 @@ function smc:compile_tasks()
       local defs = {}
       collect_defs(self, defs, s.expr, s.env)
 
-
+      -- local defs = self:eval_to_defs(closure)
 
       -- log_desc({defs = defs})
 
