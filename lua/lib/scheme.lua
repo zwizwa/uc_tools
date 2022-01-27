@@ -43,15 +43,16 @@ function scheme.ref_var(var_name, env, allow_undefined)
          return v
       end
    end
+   if allow_undefined then
+      return
+   end
    log('current bindings:\n')
    for v in se.elements(env) do
       log(' ')
       log(v.var)
    end
    log('\n')
-   if not allow_undefined then
-      error('undefined var ' .. var_name)
-   end
+   error('undefined var ' .. var_name)
 end
 function scheme.ref(var_name, env, allow_undefined)
    local var = scheme.ref_var(var_name, env, allow_undefined)

@@ -484,17 +484,7 @@ function smc:compile_tasks(module_closure)
       self:w("// closure ",se.iolist(closure.body),"\n")
       self:w("// ", se.iolist(closure.body), "\n")
       local defs, entry = self:eval_to_defs(closure)
-      for k,v in pairs(defs) do
-         log_w("def ",k,"\n")
-      end
-      -- It's not legal to call this from the state machine code, so
-      -- just remove it.
-      --defs.start = nil
-      -- FIXME: It captures too much.  Some of these do not compile.
-      --defs.test1 = nil
-      --defs.client = nil
-      --defs.server = nil
-      --defs.add = nil
+      -- for k,v in pairs(defs) do log_w("def ",k,"\n") end
 
       assert(entry and type(entry) == 'string')
       -- Picked up by C function entry code gen.
@@ -506,14 +496,14 @@ function smc:compile_tasks(module_closure)
       local fun_defs = {}
       local function fun_def(_, fname)
          local fun = scheme.ref(fname, closure.env, true)
-         log_w("fun_def ", fname, "\n")
+         -- log_w("fun_def ", fname, "\n")
          if fun and not fun_defs[fname] then
             fun_defs[fname] = { compiled = false, closure = fun }
          end
          return fun
       end
       local function compile_function(fname)
-         log_w("compile_function ",fname, "\n")
+         -- log_w("compile_function ",fname, "\n")
          self:compile_fundef(fname, fun_def(self, fname))
          fun_defs[fname].compiled = true
       end
@@ -603,7 +593,7 @@ function smc:compile_tasks(module_closure)
    end
 
    local start = scheme.ref('start',module_closure.env)
-   log_se(module_closure.env) ; log('\n')
+   -- log_se(module_closure.env) ; log('\n')
    assert(start and start.class == 'closure')
    local scm = scheme.new({})
    local env = scheme.push_primitives(module_closure.env, prim)
@@ -1120,9 +1110,7 @@ function smc:compile_module_file(filename)
    -- all the definitions in the environment.
    local scm = scheme.new()
    local cl = scm:eval({'begin',se.append(exprs,l(l('lambda',l())))})
-   for el in se.elements(cl.env) do
-      log_se(el) ; log("\n")
-   end
+   -- for el in se.elements(cl.env) do log_se(el) ; log("\n") end
 
    self:compile_module_closure(cl, { module_name = modname })
 end

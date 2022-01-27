@@ -1,5 +1,7 @@
 #lang s-expr "sm.rkt" ;; -*- scheme -*-
 
+;; (import lib)
+
 (define (program)
   (define (f a)
     (yield a)
