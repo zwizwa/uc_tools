@@ -505,82 +505,7 @@ function smc:compile_tasks()
    -- the coroutines is important.  FIXME: This still isn't defined
    -- well.
 
-   local function compile_co_call(task, arg_ct_value, tasks)
-
-      assert(task and task.class == 'task')
-      local closure = task.closure
-      local task_nb = task.id
-      assert(closure)
-      assert(is_closure(closure))
-      assert(closure.env)
-      self:w("init_entry:\n")
-      self:w(self:tab(),"goto t", task.id, "_entry;\n");
-
-      -- log_w("env:",se.iolist(closure.env),"\n")
-      -- log_w("body:",se.iolist(closure.body),"\n")
-
-      local s = {env = closure.env, expr = closure.body}
-      local scm = scheme.new({})
-
-      -- FIXME: It's probably possible to just start compiling and
-      -- change representation accordingly, but that seems like a very
-      -- big change and I'm tired, so first attempt is to stick
-      -- closely to what was there...
-
-      -- local entry = scm:eval_loop(s)
-      -- assert(is_closure(s.expr))
-
-      local function step() scm:eval_step(s) end
-      repeat
-         step(s)
-         log_w("expr: ", se.iolist(s.expr), "\n")
-         self:w("// ", se.iolist(s.expr), "\n")
-      until (is_task_definition(s.expr))
-      local defs = {}
-      collect_defs(self, defs, s.expr, s.env)
-
-
-      -- At this point we have a representation of the function that
-      -- is the entry point of the coroutine loop.
-      log_w("env:",se.iolist(closure.env),"\n")
-      log_w("body:",se.iolist(closure.body),"\n")
-
-      -- We pretty much just start compiling.
-
-      local defs = {}
-      collect_defs(self, defs, s.expr, s.env)
-
-      local funs = {}
-      for k,v in pairs(self.funs) do funs[k]=v end
-      for k,v in pairs(defs)      do funs[k]=v end
-
-      self:parameterize({
-            funs = funs,
-            current_task = task_nb,
-         },
-         function()
-            self.stack_size[task_nb + 1] = 0
-            for_begin(
-               s.expr,
-               function(n,a,b)
-                  -- All definitions are compiled
-                  -- self:w("// fun ", n, "\n")
-                  self:compile_fundef(n,a,b,s.env)
-               end,
-               function(begin_expr)
-                  -- -- The tail with definitions stripped is compiled as
-                  -- -- entry point
-                  -- -- self:w("// entry: ", se.iolist(begin_expr), "\n")
-                  -- self:compile_fundef('entry',se.empty,begin_expr,s.env)
-
-                  -- -- Mark it used so it doesn't get collected.
-                  -- local label = self:mangle_label('entry')
-                  -- self.labels[label] = true
-               end)
-         end)
-   end
-
-   local function load_task(task_nb, closure)
+   local function compile_task(task_nb, closure)
       assert(is_closure(closure))
       self:w("// load_task! ",task_nb,"\n")
       self:w("// ", se.iolist(closure.body), "\n")
@@ -701,9 +626,13 @@ function smc:compile_tasks()
    -- The 'start' function needs to end in a coroutine call into the
    -- network.  This also is a demarcation between compile time and
    -- run time.
-
-   prim['co'] = function(task, value)
-      compile_co_call(task, value, registries.task)
+   prim['co'] = function(init_task, value)
+      -- We compile all the tasks, then compile a jump in the one that
+      -- is called here.
+      for _,task in ipairs(registries.task) do
+         assert(task.closure)
+         compile_task(task.id, task.closure)
+      end
    end
 
 
