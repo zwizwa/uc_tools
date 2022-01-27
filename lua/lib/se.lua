@@ -154,6 +154,12 @@ end
 function se.is_empty(lst)
    return lst == empty
 end
+function se.append(a, b)
+   for el in se.elements(se.reverse(a)) do
+      b = {el, b}
+   end
+   return b
+end
 
 function se.iolist(expr)
    if expr ~= empty and type(expr) ~= 'table' then
@@ -272,6 +278,18 @@ function se.new(stream)
    setmetatable(obj, { __index = se })
    return obj
 end
+
+function se.read_file_multi(filename)
+   assert(filename and type(filename) == 'string')
+   local stream = io.open(filename,"r") or error("Can't open '" .. filename .. "'")
+   local parser = se.new(stream)
+   parser.log = function(self, str) io.stderr:write(str) end
+   local exprs = parser:read_multi()
+   stream:close()
+   return exprs
+end
+
+
 
 return se
 

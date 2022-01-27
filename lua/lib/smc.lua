@@ -235,7 +235,6 @@ function smc:se_comment_i_n(expr)
    return {self:tab(),se_comment(expr),"\n"}
 end
 
-
 form['if'] = function(self, if_expr)
    local _, condition, expr_true, expr_false = se.unpack(if_expr, { n = 4 })
 
@@ -1115,16 +1114,12 @@ end
 
 
 function smc:compile_module_file(filename)
-   local stream = io.open(filename,"r") or error("Can't open '" .. filename .. "'")
-   local parser = se.new(stream)
    local basename = string.gsub(filename, "(.*/)*(.*)", "%2")
    local modname = string.gsub(basename, "(.*).sm", "%1")
    assert(modname)
-   parser.log = function(self, str) io.stderr:write(str) end
-   local exprs = parser:read_multi()
+   local exprs = se.read_file_multi(filename)
    local expr = {'module-begin',exprs}
    self:se_comment_i_n(expr)
-   stream:close()
    self:compile_module(expr, { module_name = modname })
 end
 

@@ -30,7 +30,13 @@ end
 local void = l('let*',l())
 
 -- Map definitions in begin form to letrec.
-macro['begin'] = function(expr)
+-- FIXME: Generalize, e.g.
+-- define      -> {letrec,lambda}
+-- define-task -> {letrec-task,lambda}
+macro['begin'] = function(expr, defkinds)
+   --if not defkinds then
+   --   defkinds = {define = {letrec = 'letrec', lambda = 'lambda'}}
+   --end
    local _, exprs = se.unpack(expr, {n = 1, tail = true})
    local bindings = se.empty
    local function done()
@@ -53,6 +59,14 @@ macro['begin'] = function(expr)
          assert(type(name) == 'string')
          bindings = {l(name, {'lambda',{args,fun_body}}), bindings}
          exprs = rest
+      elseif type(expr) == 'table' and expr[1] == 'import' then
+         -- Splice import form
+         if not ext then ext = ".sm" end
+         local _, name = se.unpack(expr, { n = 2 })
+         assert(type(name) == 'string')
+         local filename = name .. ext
+         local import_exprs = se.read_file_multi(filename)
+         exprs = se.append(import_exprs, exprs)
       else
          return done()
       end
@@ -80,5 +94,7 @@ macro['letrec'] = function(expr)
       bindings)
    return {'let*', {void_bindings, {{'begin', set_variables}, exprs}}}
 end
+
+
 
 return macro
