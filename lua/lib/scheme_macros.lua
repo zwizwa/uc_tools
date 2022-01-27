@@ -66,7 +66,7 @@ macro['begin'] = function(expr, defkinds)
          assert(type(name) == 'string')
          local filename = name .. ext
          local import_exprs = se.read_file_multi(filename)
-         exprs = se.append(import_exprs, exprs)
+         exprs = se.append(import_exprs, rest)
       else
          return done()
       end
