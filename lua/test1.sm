@@ -1,0 +1,40 @@
+#lang s-expr "sm.rkt" ;; -*- scheme -*-
+
+;; Add 1 to value before bouncing it to the other task, then yield it
+;; to C caller.  FIXME: Represent the C caller as just another
+;; coroutine.
+(define (test1 other)
+  (define (main a)
+    (let* ((b (co other (add 1 a))))
+      (yield b)
+      (main b)))
+  main)
+
+;; The start routine is executed in phase 1, i.e. at compile time.
+;; Its purpose is to construct tasks and perform a coroutine call into
+;; the task network.  That call is "frozen" and compiled to C.  The
+;; language subset inside the Scheme code that is compiled is reduced:
+;; all function calls are inlined, and tail calls are translated to
+;; gotos.  All lambdas need to be combined with a "functional form".
+;; Only downward closures will be supported, and only in functional
+;; form style.
+
+(define (start)
+  ;; The lowest level communication primitive is a coroutine call.
+  ;; Startup is a 3-step process:
+  ;; 1. Create the task structures
+  (let* ((t1 (make-task))
+         (t2 (make-task)))
+    ;; 2. Associate tasks with entry points
+    (load-task! t1 (lambda () (test1 t2)))
+    (load-task! t2 (lambda () (test1 t1)))
+    ;; 3. Transfer control to a task.
+    (co t1 0)))
+
+;; Note that the second argument to load-task! needs to be a thunk
+;; that evaluates to the entry point of the coroutine.  This extra
+;; wrapper is currently necessary to guide the partial evaluation.
+;; Without it the environment that contains the mutually-recursive
+;; function definitions would be discarded before the compiler
+;; executes.
+

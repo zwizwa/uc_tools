@@ -490,9 +490,13 @@ end
 
 -- Gather function definitions from closure's environment.
 function smc:eval_to_defs(closure)
-   local s = {env = closure.env, expr = closure.body}
-   local scm = scheme.new({})
 
+   -- The closure evaluates to the entry function of the first
+   -- coroutine call that starts up the network.  We use the Scheme
+   -- interpreter to evaluate it, but will catch the environment of
+   -- the evaluation before it would normally be discarded.
+   local scm = scheme.new({})
+   local s = {env = closure.env, expr = closure.body}
    scm:eval_loop(s)
 
    -- log_w("env: ", se.iolist(s.env), "\n")
@@ -500,14 +504,15 @@ function smc:eval_to_defs(closure)
    local defs = {}
    local entry
 
-   -- We rely on 1. environment being complete (i.e. interpreter
-   -- should not pack the closure), and 2. the entry point closure is
-   -- associated to a name in the environment.  Both seem reasonable.
+   -- This environment contains the closures we will be compiling and
+   -- the entry point that the closure evaluated to.
    for var in se.elements(s.env) do
       if var.val == s.expr then
+         -- Recover the name of that entry point closure.
          entry = var.var
       end
       if var.val.class == 'closure' then
+         -- And collect all closures in a table.
          defs[var.var] = var.val
       end
    end
