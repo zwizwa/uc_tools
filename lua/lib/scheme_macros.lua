@@ -15,6 +15,10 @@
 -- supports undefined bindings, e.g. (let* ((a)) ...), and empty
 -- statements (let* ())
 
+-- Some macros have an additional config parameter.  This is useful to
+-- use the code here to implement language-specific macros with
+-- slightly modify the behavior.
+
 
 local se = require('lib.se')
 local macro = {}
@@ -27,24 +31,22 @@ macro['module-begin'] = function(expr)
    return {'begin',mod_body}
 end
 
-local void = l('let*',l())
+local function void(c)
+      return l(c.let or 'let*',l())
+end
 
 -- Map definitions in begin form to letrec.
--- FIXME: Generalize, e.g.
--- define      -> {letrec,lambda}
--- define-task -> {letrec-task,lambda}
-macro['begin'] = function(expr, defkinds)
-   --if not defkinds then
-   --   defkinds = {define = {letrec = 'letrec', lambda = 'lambda'}}
-   --end
+macro['begin'] = function(expr, config)
+   local c = config or {}
+   local function module_file(name) return name .. ".sm" end
    local _, exprs = se.unpack(expr, {n = 1, tail = true})
    local bindings = se.empty
    local function done()
       if se.is_empty(bindings) then
          -- 'begin' is common, so optimize lack of defs case
-         return {'let*',{l(), exprs}}
+         return {c.let or 'let*',{l(), exprs}}
       else
-         return {'letrec', {r(bindings), exprs}}
+         return {c.letrec or 'letrec', {r(bindings), exprs}}
       end
    end
    while true do
@@ -52,19 +54,18 @@ macro['begin'] = function(expr, defkinds)
          return done()
       end
       local expr, rest = se.unpack(exprs, {n = 1, tail = true})
-      if type(expr) == 'table' and expr[1] == 'define' then
+      if type(expr) == 'table' and expr[1] == (c.define or 'define') then
          -- For now we only support (define (name ...) ...)
          local _, spec, fun_body = se.unpack(expr, { n = 2, tail = true })
          local name, args = se.unpack(spec, { n = 1, tail = true })
          assert(type(name) == 'string')
-         bindings = {l(name, {'lambda',{args,fun_body}}), bindings}
+         bindings = {l(name, {c.lambda or 'lambda',{args,fun_body}}), bindings}
          exprs = rest
-      elseif type(expr) == 'table' and expr[1] == 'import' then
+      elseif type(expr) == 'table' and expr[1] == (c.import or 'import') then
          -- Splice import form
-         if not ext then ext = ".sm" end
          local _, name = se.unpack(expr, { n = 2 })
          assert(type(name) == 'string')
-         local filename = name .. ext
+         local filename = (c.module_file or module_file)(name)
          local import_exprs = se.read_file_multi(filename)
          exprs = se.append(import_exprs, rest)
       else
@@ -74,11 +75,12 @@ macro['begin'] = function(expr, defkinds)
 end
 
 -- Implement letrec on top of let* and set!
-macro['letrec'] = function(expr)
+macro['letrec'] = function(expr, config)
+   local c = config or {}
    local _, bindings, exprs = se.unpack(expr, {n = 2, tail = true})
    if se.is_empty(bindings) then
       -- Base case is needed to avoid letrec->begin->letrec loop.
-      return {'let*',{l(),exprs}}
+      return {c.let or 'let*',{l(),exprs}}
    end
    local void_bindings = se.map(
       function(binding)
@@ -89,10 +91,10 @@ macro['letrec'] = function(expr)
    local set_variables = se.map(
       function(binding)
          local name, val = se.unpack(binding, {n = 2})
-         return l("set!", name, val)
+         return l(c.set or "set!", name, val)
       end,
       bindings)
-   return {'let*', {void_bindings, {{'begin', set_variables}, exprs}}}
+   return {c.let or 'let*', {void_bindings, {{c.begin or 'begin', set_variables}, exprs}}}
 end
 
 

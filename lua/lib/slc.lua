@@ -19,13 +19,15 @@
 -- do tail calls.  Also, HOAS is not what I am looking for at this
 -- time, as macros are probably a better bet for exploratory work.
 
-local se   = require('lib.se')
-local comp = require('lib.comp')
+local se            = require('lib.se')
+local iolist        = require('lib.iolist')
+local comp          = require('lib.comp')
 local scheme_macros = require('lib.scheme_macros')
 
-local prompt = require('prompt')
-local function log(str) io.stderr:write(str) end
-function log_desc(obj) log(prompt.describe(obj) .. "\n") end
+-- Tools
+require('lib.log')
+local function log_w(...) iolist.write(log, {...}) end
+local function log_se(e)  log_w(se.iolist(e)) ; log('\n') end
 
 local function ifte(c,t,f)
    if c then return t else return f end
@@ -98,9 +100,6 @@ form['lambda'] = function(self, expr)
           "\n", self:tab())
 end
 
-form['begin'] = function(self, expr)
-   self:begin(expr,nil)
-end
 form['module-begin'] = function(self, expr)
    self:w(self:hoas({"return function(",self.config.hoas,")\n"}))
    if not self.config.hoas then
@@ -109,39 +108,41 @@ form['module-begin'] = function(self, expr)
       -- can be injected.
       self:w("local function add(a,b) return a + b end\n")
    end
-   self:w("mod = {}\n")
-   local function register(var)
-      self:w("mod.",var," = ",var,"\n")
-   end
-   self:begin(expr, register)
-   self:w("return mod\n")
+   -- module-set! will add to this dictionary
+   self:w("_mod_defs = {}\n")
+
+
+   -- Parameterize scheme_macros.begin to use 'module-letrec' instead
+   -- of 'letrec' to treat the toplevel definitions differently.
+   local top_expr = {'begin', se.cdr(expr)}
+   local begin_config = {letrec = 'module-letrec'}
+   local module_letrec_expr = scheme_macros.begin(top_expr, begin_config)
+   log("module-begin: ") ; log_se(module_letrec_expr)
+   self:compile(module_letrec_expr)
+
+   self:w("return _mod_defs\n")
    self:w(self:hoas("end\n"))
 end
-
-function slc:begin(expr, register)
-   local _, forms = se.unpack(expr, {n = 1, tail = true})
-   self:save_context(
-      {'var'},
-      function()
-         local var = self.var
-         for form, rest in se.elements(forms) do
-            -- Define is only valid inside begin.
-            if type(form) == 'table' and form[1] == 'define' then
-               local _, spec, fun_body = se.unpack(form, { n = 2, tail = true })
-               local name, args = se.unpack(spec, { n = 1, tail = true })
-               assert(type(name) == 'string')
-               -- log('define ' .. name .. '\n')
-               self.var = name
-               self:w("local ", self.var, "; ")
-               self:compile({'lambda',{args,fun_body}})
-               if register then register(self.var) end
-            else
-               self.var = ifte(se.is_empty(rest), var, nil)
-               self:compile(form)
+form['module-letrec'] = function(self, expr)
+   self:compile(scheme_macros.letrec(expr, {set = 'module-set!'}))
+end
+function compile_set(mod)
+   return
+      function(self, expr)
+         local set, var, vexpr = se.unpack(expr, {n = 3, tail = true})
+         assert(type(var) == 'string')
+         local li = self:let_insert({string = true, number = true})
+         vexpr = li:maybe_insert_var(vexpr)
+         if not li:compile_inserts(l(set, var, vexpr)) then
+            self:w(var, " = ", vexpr, "\n",self:tab())
+            if mod then
+               self:w("_mod_defs.",var," = ",vexpr,"\n",self:tab())
             end
          end
-      end)
+      end
 end
+form['set!']        = compile_set(false)
+form['module-set!'] = compile_set(true)
 
 
 function slc:indented(fun)
@@ -168,18 +169,6 @@ form['let*'] = function(self, expr)
    self:compile_letstar(bindings, forms)
 end
 
-form['set!'] = function(self, expr)
-   local _, var, vexpr = se.unpack(expr, {n = 3, tail = true})
-   assert(type(var) == 'string')
-   local li = self:let_insert({string = true, number = true})
-   vexpr = li:maybe_insert_var(vexpr)
-   if not li:compile_inserts({'set!', var, vexpr}) then
-      self:w(var, " = ", vexpr, "\n",self:tab())
-   end
-end
-
-
-
 function slc:compile_letstar(bindings, forms)
    self:block(
       function()
@@ -195,8 +184,21 @@ function slc:compile_letstar(bindings, forms)
                   self:compile(var_expr)
                end
          end)
-         self:compile({'begin', forms})
+         self:compile_begin(forms)
    end)
+end
+function slc:compile_begin(forms)
+   self:save_context(
+      {'var'},
+      function()
+         local var = self.var
+         for form, rest in se.elements(forms) do
+            self.var = ifte(se.is_empty(rest), var, nil)
+            -- log_desc({form = form})
+            -- log('begin: form: ') ; log_se(form) ; log('\n')
+            self:compile(form)
+         end
+      end)
 end
 
 form['if'] = function(self, expr)
@@ -236,6 +238,23 @@ form['if'] = function(self, expr)
       end
    end
 end
+
+-- Wrap some macros from scheme_macros.lua
+local function macro(m)
+   return function(self, expr)
+      local expanded = m(expr)
+      log_se(expanded) ; log('\n')
+      self:compile(expanded)
+   end
+end
+local function use_macros(names)
+   for _, name in ipairs(names) do
+      local m = scheme_macros[name]
+      assert(m)
+      form[name] = macro(m)
+   end
+end
+use_macros({'begin','letrec'})
 
 function slc:compile(expr)
    if type(expr) == 'table' then

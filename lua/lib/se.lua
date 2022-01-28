@@ -98,7 +98,9 @@ function se.elements(lst)
    return function()
       assert(l)
       if l ~= empty then
-         assert(type(l) == 'table')
+         if type(l) ~= 'table' then
+            error('bad list pair: ' .. type(l))
+         end
          local el, rest = unpack(l)
          l = rest
          -- It's very convenient to also return the tail of the list.
