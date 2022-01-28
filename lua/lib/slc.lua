@@ -14,10 +14,11 @@
 -- . As long as this doesn't handle infinite loops or very large data
 --   structures, the lack of tail call optimization is probably ok.
 
--- As for context: This is probably a distraction.  For slc.lua I'm
+-- As for context: This is probably a distraction.  For smc.lua I'm
 -- sticking with scheme.lua, a more direct Scheme interpreter that can
 -- do tail calls.  Also, HOAS is not what I am looking for at this
 -- time, as macros are probably a better bet for exploratory work.
+-- See alose scheme_macros.lua
 
 local se            = require('lib.se')
 local iolist        = require('lib.iolist')
@@ -101,6 +102,10 @@ form['lambda'] = function(self, expr)
 end
 
 form['module-begin'] = function(self, expr)
+
+   -- module-set! will add to this dictionary
+   self:w("local _mod_defs = {}\n")
+
    self:w(self:hoas({"return function(",self.config.hoas,")\n"}))
    if not self.config.hoas then
       -- FIXME: There is no support for infix atm so for testing we
@@ -108,8 +113,6 @@ form['module-begin'] = function(self, expr)
       -- can be injected.
       self:w("local function add(a,b) return a + b end\n")
    end
-   -- module-set! will add to this dictionary
-   self:w("_mod_defs = {}\n")
 
 
    -- Parameterize scheme_macros.begin to use 'module-letrec' instead
@@ -117,7 +120,7 @@ form['module-begin'] = function(self, expr)
    local top_expr = {'begin', se.cdr(expr)}
    local begin_config = {letrec = 'module-letrec'}
    local module_letrec_expr = scheme_macros.begin(top_expr, begin_config)
-   log("module-begin: ") ; log_se(module_letrec_expr)
+   -- log("module-begin: ") ; log_se(module_letrec_expr)
    self:compile(module_letrec_expr)
 
    self:w("return _mod_defs\n")
@@ -243,7 +246,7 @@ end
 local function macro(m)
    return function(self, expr)
       local expanded = m(expr)
-      log_se(expanded) ; log('\n')
+      -- log_se(expanded) ; log('\n')
       self:compile(expanded)
    end
 end

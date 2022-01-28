@@ -9,4 +9,5 @@ uc_tools, commits and pushes to github.
 To install:
 
 ./install.sh elfutils-0.1-1.rockspec 
+./install.sh lure-0.1-1.rockspec
 
