@@ -127,6 +127,7 @@ function comp:let_insert(config)
    return obj
 end
 function let_insert:maybe_insert_var(expr)
+   assert(expr)
    if self.config[type(expr)] then return expr end
    local var = self.comp:gensym()
    self.bindings_list = {l(var, expr), self.bindings_list}

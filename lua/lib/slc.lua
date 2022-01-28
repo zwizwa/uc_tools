@@ -54,12 +54,18 @@ function slc:hoas(iolist)
    return ifte(self.config.hoas, iolist, "")
 end
 
-function slc:is_bound(var)
+
+function slc:ref(var)
    for e in se.elements(self.env) do
-      if e == var then return true end
+      if e == var then return e end
    end
-   return false
+   return nil
 end
+function slc:is_bound(var)
+   return slf:reaf(var) and true
+end
+
+
 
 function slc:compile_function_body(body)
    self:parameterize(
@@ -161,6 +167,19 @@ form['let*'] = function(self, expr)
    local _, bindings, forms = se.unpack(expr, {n = 2, tail = true})
    self:compile_letstar(bindings, forms)
 end
+
+form['set!'] = function(self, expr)
+   local _, var, vexpr = se.unpack(expr, {n = 3, tail = true})
+   assert(type(var) == 'string')
+   local li = self:let_insert({string = true, number = true})
+   vexpr = li:maybe_insert_var(vexpr)
+   if not li:compile_inserts({'set!', var, vexpr}) then
+      self:w(var, " = ", vexpr, "\n",self:tab())
+   end
+end
+
+
+
 function slc:compile_letstar(bindings, forms)
    self:block(
       function()
@@ -168,7 +187,7 @@ function slc:compile_letstar(bindings, forms)
             {'var','env'},
             function()
                for form in se.elements(bindings) do
-                  local var, var_expr = se.unpack(form, {n = 2})
+                  local var, var_expr = comp.unpack_binding(form, 'nil')
                   assert(type(var) == 'string')
                   self.var = var
                   self.env = {var, self.env}
