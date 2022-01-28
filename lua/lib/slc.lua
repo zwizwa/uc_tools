@@ -21,6 +21,7 @@
 
 local se   = require('lib.se')
 local comp = require('lib.comp')
+local scheme_macros = require('lib.scheme_macros')
 
 local prompt = require('prompt')
 local function log(str) io.stderr:write(str) end
