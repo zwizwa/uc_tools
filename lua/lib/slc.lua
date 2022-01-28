@@ -168,6 +168,11 @@ end
 form['set!']        = compile_set(false)
 form['module-set!'] = compile_set(true)
 
+form['quote'] = function(self, expr)
+   local _, thing = se.unpack(expr, {n = 2})
+   -- FIXME: Quote properly.
+   self:w(maybe_assign(self.var),"'",thing,"'","\n",self:tab())
+end
 
 function slc:indented(fun)
    self:save_context({'indent'},
@@ -265,9 +270,9 @@ form['if'] = function(self, expr)
 end
 
 -- Wrap some macros from scheme_macros.lua
-local function macro(m)
+local function macro(m, config)
    return function(self, expr)
-      local expanded = m(expr)
+      local expanded = m(expr, config)
       -- log_se(expanded) ; log('\n')
       self:compile(expanded)
    end
@@ -280,6 +285,12 @@ local function use_macros(names)
    end
 end
 use_macros({'begin','letrec'})
+
+form['case'] = function(self, expr)
+   local config = { void = 'nil', gensym = function() return self:gensym() end }
+   local expr1 = scheme_macros.case(expr, config)
+   self:compile(expr1)
+end
 
 function slc:compile_trace(expr)
    log_se_n(expr, "compile_trace: ")
@@ -413,5 +424,8 @@ slc.infix = {
    ['>'] = '>',
    ['and'] = 'and',
 }
+
+
+
 
 return slc

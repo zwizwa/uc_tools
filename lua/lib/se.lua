@@ -61,6 +61,12 @@ function se:skip_space()
       self:pop()
    end
 end
+
+se.const = {
+   ['#f'] = 'false',
+   ['#t'] = 'true',
+}
+
 function se:read_atom()
    local chars = {}
    while true do
@@ -71,6 +77,8 @@ function se:read_atom()
             chars[1] = "" -- FIXME: no space supported after quote char
             return se.list('quote', table.concat(chars,""))
          end
+         local const = se.const[str]
+         if const then return const end
          local num = tonumber(str)
          return num or str
       end
@@ -138,6 +146,16 @@ function se.map_to_array(fun, lst)
 end
 function se.map(fun, lst)
    return se.array_to_list(se.map_to_array(fun,lst))
+end
+function se.foldr(on_pair, on_empty, lst)
+   local function foldr(lst)
+      if se.is_empty(lst) then
+         return on_empty
+      else
+         return on_pair(se.car(lst), foldr(se.cdr(lst)))
+      end
+   end
+   return foldr(lst)
 end
 
 function se.array(lst)

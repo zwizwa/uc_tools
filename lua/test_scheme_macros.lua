@@ -8,13 +8,17 @@ require('lib.log')
 local function log_w(...)   iolist.write(log, {...}) end
 local function log_se(expr) log_w(se.iolist(expr)) end
 
+local config = {
+   case = { gensym = function() return "r0" end }
+}
+
 local function macro_step(expr)
    assert(expr and not se.is_empty(expr))
    local form = se.car(expr)
    assert(form and type(form) == 'string')
    local macro = macros[form]
    assert(macro)
-   return macro(expr)
+   return macro(expr, config[form])
 end
 
 local prim = {
@@ -65,6 +69,7 @@ local function test()
    t("(letrec ((a 1) (b 2)))")
    t("(letrec ())")
    t("(begin (define (a x) (b x)) (define (b x) (a x)) a)")
+   t("(case 1 ((0) a) ((1) b))")
 end
 
 test()

@@ -104,6 +104,19 @@ macro['letrec'] = function(expr, config)
    return {c.let or 'let*', {void_bindings, {{c.begin or 'begin', set_variables}, exprs}}}
 end
 
-
+-- This needs a let-insertion to make sure there is only one
+-- evaluation.  Symbol generation will need to be provided by caller.
+macro['case'] = function(expr, config)
+   assert(config.gensym)
+   local sym = config.gensym()
+   local _, vexpr, clauses = se.unpack(expr, {n = 2, tail = true})
+   local function ifexpr(clause, els)
+      -- FIXME: This is a partial implementation for rvm
+      local match, exprs = se.unpack(clause, {n = 1, tail = true})
+      local val = se.unpack(match, {n = 1})
+      return l('if',l('eq?',sym,val),{'begin',exprs},els)
+   end
+   return se.foldr(ifexpr, config.void or '#<void>', clauses)
+end
 
 return macro
