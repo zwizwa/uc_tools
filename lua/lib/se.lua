@@ -106,6 +106,7 @@ function se.elements(lst)
    return function()
       if l ~= empty then
          if type(l) ~= 'table' then
+            log_desc(lst)
             if type(l) == 'string' then
                error('bad list pair: ' .. l)
             else

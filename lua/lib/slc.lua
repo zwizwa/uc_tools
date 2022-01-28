@@ -39,6 +39,23 @@ local function maybe_assign(var)
    return {var, " = "}
 end
 
+-- FIXME: Maybe best to just map everything to generated names and
+-- only preserve names at module boundary.
+local function mangle_name(name)
+   local subst = {
+      ["-"] = "_dash_",
+      ["!"] = "_bang_",
+      ["?"] = "_pred_",
+      [">"] = "_gt_",
+      ["/"] = "_div_",
+      ["="] = "_is_",
+   }
+   for from,to in pairs(subst) do
+      name = string.gsub(name,from,to)
+   end
+   return name
+end
+
 
 -- Shorthand for container type conversions
 local l = se.list
@@ -59,7 +76,8 @@ function slc:hoas(iolist)
 end
 
 
-function slc:ref(var)
+function slc:ref(scheme_var)
+   local var = mangle_name(scheme_var)
    for e in se.elements(self.env) do
       if e == var then return e end
    end
@@ -138,9 +156,11 @@ function compile_set(mod)
          local li = self:let_insert({string = true, number = true})
          vexpr = li:maybe_insert_var(vexpr)
          if not li:compile_inserts(l(set, var, vexpr)) then
-            self:w(var, " = ", vexpr, "\n",self:tab())
+            local mvar = mangle_name(var)
+            self:w(mvar, " = ", vexpr, "\n",self:tab())
             if mod then
-               self:w("_mod_defs.",var," = ",vexpr,"\n",self:tab())
+               -- Don't mangle the keys.
+               self:w("_mod_defs['",var,"'] = ",vexpr,"\n",self:tab())
             end
          end
       end
@@ -182,6 +202,7 @@ function slc:compile_letstar(bindings, forms)
                for form in se.elements(bindings) do
                   local var, var_expr = comp.unpack_binding(form, 'nil')
                   assert(type(var) == 'string')
+                  var = mangle_name(var)
                   self.var = var
                   self.env = {var, self.env}
                   self:w("local ",var,"; ")
@@ -209,7 +230,7 @@ form['if'] = function(self, expr)
    local _, condition, iftrue, iffalse = se.unpack(expr, {n = 4})
    local li = self:let_insert({string = true, number = true})
    condition = li:maybe_insert_var(condition)
-   if not li:compile_inserts({'if', condition, iftrue, iffalse}) then
+   if not li:compile_inserts(l('if', condition, iftrue, iffalse)) then
       if not self.config.hoas then
          local function ce(e)
             self:indented(function()
@@ -278,6 +299,7 @@ function slc:compile(expr)
          -- Application
          local li = self:let_insert({string = true, number = true})
          local anf_args = {}
+         form_name = li:maybe_insert_var(form_name)
          for arg in se.elements(form_args) do
             table.insert(anf_args, li:maybe_insert_var(arg))
          end
@@ -288,8 +310,9 @@ function slc:compile(expr)
             end
 
             if self.config.hoas then
-               local function lookup(var)
+               local function lookup(scheme_var)
                   assert(var and type(var) == 'string')
+                  local var = mangle_name(scheme_var)
                   -- Lexical scope, represented as Lua var.
                   if (self:is_bound(var)) then
                      return var
@@ -311,7 +334,7 @@ function slc:compile(expr)
                   assert (#anf_args == 2)
                   _w({anf_args[1], " ", infix, " ", anf_args[2]})
                else
-                  _w({form_name,"(",comp.clist(anf_args),")"})
+                  _w({mangle_name(form_name),"(",comp.clist(anf_args),")"})
                end
             end
          end
@@ -387,6 +410,8 @@ slc.infix = {
    ['-'] = '-',
    ['*'] = '*',
    ['<'] = '<',
+   ['>'] = '>',
+   ['and'] = 'and',
 }
 
 return slc

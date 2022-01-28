@@ -13,9 +13,14 @@ local a = se.list_to_array
 
 local function main()
    local c = slc.new({ log = log })
-   local mod = c:loadscheme('test_rvm.scm')
+   local filename = 'test_rvm.scm'
+   local str = c:compile_module_file(filename)
+   io.write(str)
+   local modf = loadstring(str)
+   assert(modf)
+   local mod = modf()
    -- Execute code, print result
-   log_desc({rv = mod.test_add(1,2)})
+   -- log_desc({rv = mod.test_add(1,2)})
 end
 
 main()
