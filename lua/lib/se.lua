@@ -8,12 +8,15 @@
 -- array and then iterate over the elements.  Use e.g. '#<nil>' to
 -- represent the empty list.
 
+-- require('lib.log')
+
 local empty = '#<nil>'
 
 local se = { empty = empty }
 
 function se:next()
    local char = self.stream:read(1)
+   -- if char then log(char) end
    if char == '\n' then
       self.nb_newlines = self.nb_newlines + 1
    end
@@ -64,6 +67,10 @@ function se:read_atom()
       local char = self:peek()
       if is_whitespace(char) or '(' == char or ')' == char or nil == char then
          local str = table.concat(chars,"")
+         if chars[1] == "'" then
+            chars[1] = "" -- FIXME: no space supported after quote char
+            return se.list('quote', table.concat(chars,""))
+         end
          local num = tonumber(str)
          return num or str
       end
@@ -94,12 +101,16 @@ function se.list(...)
    return se.array_to_list({...})
 end
 function se.elements(lst)
+   assert(lst)
    local l = lst
    return function()
-      assert(l)
       if l ~= empty then
          if type(l) ~= 'table' then
-            error('bad list pair: ' .. type(l))
+            if type(l) == 'string' then
+               error('bad list pair: ' .. l)
+            else
+               error('bad list pair: type=' .. type(l))
+            end
          end
          local el, rest = unpack(l)
          l = rest
@@ -249,10 +260,11 @@ end
 function se:read_multi()
    local exprs = {}
    while true do
-      local ok, err = pcall(function() return self:skip_space() end)
+      local function skip_space() self:skip_space() end
+      local ok, err = pcall(skip_space)
       if not ok then
-         assert(err and err.error == 'EOF')
-         break
+         if (err and err.error == 'EOF') then break end
+         error(err)
       end
       table.insert(exprs, self:read())
    end

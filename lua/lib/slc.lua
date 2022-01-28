@@ -27,8 +27,9 @@ local scheme_macros = require('lib.scheme_macros')
 
 -- Tools
 require('lib.log')
-local function log_w(...) iolist.write(log, {...}) end
-local function log_se(e)  log_w(se.iolist(e)) ; log('\n') end
+local function log_w(...)      iolist.write(log, {...}) end
+local function log_se(e)       log_w(se.iolist(e)) end
+local function log_se_n(e,tag) if(tag) then log(tag) end ; log_se(e) ; log('\n') end
 
 local function ifte(c,t,f)
    if c then return t else return f end
@@ -259,7 +260,13 @@ local function use_macros(names)
 end
 use_macros({'begin','letrec'})
 
+function slc:compile_trace(expr)
+   log_se_n(expr, "compile_trace: ")
+end
+
 function slc:compile(expr)
+   assert(expr)
+   self:compile_trace(expr)
    if type(expr) == 'table' then
       -- S-expression
       local form_name, form_args = se.unpack(expr, {n = 1, tail = true})
@@ -276,24 +283,36 @@ function slc:compile(expr)
          end
          if not li:compile_inserts({form_name, se.array_to_list(anf_args)}) then
 
-            local function _w(iol)
-               self:w(maybe_assign(self.var),iol,"\n",self:tab())
+            local function _w(...)
+               self:w(maybe_assign(self.var),{...},"\n",self:tab())
             end
 
             if self.config.hoas then
                local function lookup(var)
-                  -- Non-lexical variables need to be explicitly
-                  -- defined in the primitive dictionary.  Note 'var'
-                  -- is not a good name here.
-                  return ifte(type(var) == 'string' and self:is_bound(var),
-                              var,{self.config.hoas,".prim.",var})
+                  assert(var and type(var) == 'string')
+                  -- Lexical scope, represented as Lua var.
+                  if (self:is_bound(var)) then
+                     return var
+                  end
+                  -- In HOAS mode everything needs to be explicitly
+                  -- defined in the prim table.
+                  return {self.config.hoas,".prim.",var}
                end
                form_name = lookup(form_name)
                for i=1,#anf_args do anf_args[i] = lookup(anf_args[i]) end
-
                _w({self.config.hoas,":app(",form_name,", ",comp.clist(anf_args),")"})
             else
-               _w({form_name,"(",comp.clist(anf_args),")"})
+               -- In Lua mode we just assume variables are there and
+               -- will only handle infix opereators specially.
+               log_w('form_name: ',form_name,'\n')
+               local infix = self.infix[form_name]
+               if infix then
+                  log_w('infix: ',infix,'\n')
+                  assert (#anf_args == 2)
+                  _w({anf_args[1], " ", infix, " ", anf_args[2]})
+               else
+                  _w({form_name,"(",comp.clist(anf_args),")"})
+               end
             end
          end
       end
@@ -362,5 +381,12 @@ function slc.new(config)
    return obj
 end
 
+
+slc.infix = {
+   ['+'] = '+',
+   ['-'] = '-',
+   ['*'] = '*',
+   ['<'] = '<',
+}
 
 return slc

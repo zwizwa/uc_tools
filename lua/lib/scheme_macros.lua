@@ -56,10 +56,17 @@ macro['begin'] = function(expr, config)
       local expr, rest = se.unpack(exprs, {n = 1, tail = true})
       if type(expr) == 'table' and expr[1] == (c.define or 'define') then
          -- For now we only support (define (name ...) ...)
-         local _, spec, fun_body = se.unpack(expr, { n = 2, tail = true })
-         local name, args = se.unpack(spec, { n = 1, tail = true })
-         assert(type(name) == 'string')
-         bindings = {l(name, {c.lambda or 'lambda',{args,fun_body}}), bindings}
+         local _define, spec, def_rest = se.unpack(expr, { n = 2, tail = true })
+         if type(spec) == 'string' then
+            -- (define name thing)
+            local thing = se.unpack(def_rest, {n = 1})
+            bindings = {l(spec, thing), bindings}
+         else
+            -- (define (name arg ...) ...)
+            local name, args = se.unpack(spec, { n = 1, tail = true })
+            assert(type(name) == 'string')
+            bindings = {l(name, {c.lambda or 'lambda',{args,def_rest}}), bindings}
+         end
          exprs = rest
       elseif type(expr) == 'table' and expr[1] == (c.import or 'import') then
          -- Splice import form

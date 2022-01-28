@@ -1,8 +1,14 @@
-(cond-expand
-  (gambit
-   ;;(define-cond-expand-feature debug)
-   (declare (standard-bindings) (block) (not safe)))
-  (else))
+;; This file is modified from:
+;; https://github.com/udem-dlteam/ribbit
+;; https://github.com/udem-dlteam/ribbit/blob/main/src/host/scm/rvm.scm
+;; BSD 3-Clause License
+
+;; The idea is to modify this such that it can be compiled by uc_tools
+;; slc.lua and possibly further minified.
+
+;; Changes to make it work for now.  To revisit later.
+;; - uc_tools/lua/lib/se.lua doesn't support strings: replaced with quoted atoms
+;; - removed cond-expand debug and gambit clauses
 
 (define pair-type      0)
 (define procedure-type 1)
@@ -148,53 +154,8 @@
 
       main-proc)))
 
-(cond-expand
-  (debug
-
-   (define (trace-instruction name opnd stack)
-     (display "--- ")
-     (display name)
-     (display " ")
-     (if opnd
-         (begin
-           (write (convert opnd))
-           (display " ")))
-     (write (show-stack stack))
-     (newline))
-
-   (define (convert obj)
-     (cond ((eqv? obj _false)
-            #f)
-           ((eqv? obj _true)
-            #t)
-           ((eqv? obj _nil)
-            (list))
-           ((not (_rib? obj))
-            obj)
-           ((eqv? (_field2 obj) pair-type)
-            (cons (convert (_field0 obj)) (convert (_field1 obj))))
-           ((eqv? (_field2 obj) procedure-type)
-            '<procedure>)
-           ((eqv? (_field2 obj) symbol-type)
-            (string->symbol (convert (_field1 obj))))
-           ((eqv? (_field2 obj) string-type)
-            (list->string (map integer->char (convert (_field0 obj)))))
-           ((eqv? (_field2 obj) vector-type)
-            (list->vector (convert (_field0 obj))))
-           (else
-            '<unknown>)))
-
-   (define (show-stack stack)
-     (if (_pair? stack)
-         (cons (convert (_car stack))
-               (show-stack (_cdr stack)))
-         (if (eqv? 0 stack)
-             (list)
-             (list 'stack: (show-stack (_field0 stack))
-                   'pc: (convert (_field2 stack)))))))
-  (else
-   (define (trace-instruction name opnd stack)
-     0)))
+(define (trace-instruction name opnd stack)
+  0)
 
 (define (run pc stack)
 
@@ -214,7 +175,7 @@
     (case instr
 
       ((0) ;; jump/call
-       (trace-instruction (if (eqv? 0 next) "jump" "call") opnd stack)
+       (trace-instruction (if (eqv? 0 next) 'jump 'call) opnd stack)
        (let* ((proc (get-var opnd))
               (code (_field0 proc)))
          (if (_rib? code)
@@ -249,23 +210,23 @@
                     stack)))))
 
       ((1) ;; set
-       (trace-instruction "set" opnd stack)
+       (trace-instruction 'set opnd stack)
        (set-var opnd (_car stack))
        (run next
             (_cdr stack)))
 
       ((2) ;; get
-       (trace-instruction "get" opnd stack)
+       (trace-instruction 'get opnd stack)
        (run next
             (_cons (get-var opnd) stack)))
 
       ((3) ;; const
-       (trace-instruction "const" opnd stack)
+       (trace-instruction 'const opnd stack)
        (run next
             (_cons opnd stack)))
 
       ((4) ;; if
-       (trace-instruction "if" #f stack)
+       (trace-instruction 'if #f stack)
        (run (if (eqv? (_car stack) _false) next opnd)
             (_cdr stack))))))
 
