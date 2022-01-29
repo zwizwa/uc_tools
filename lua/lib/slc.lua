@@ -25,6 +25,8 @@ local iolist        = require('lib.iolist')
 local comp          = require('lib.comp')
 local scheme_macros = require('lib.scheme_macros')
 
+local slc_runtime   = require('lib.slc_runtime')
+
 -- Tools
 require('lib.log')
 local function log_w(...)      iolist.write(log, {...}) end
@@ -101,9 +103,10 @@ end
 
 form['lambda'] = function(self, expr)
    local _, args, body = se.unpack(expr, {n = 2, tail = true})
+   local mangled_args = se.map(mangle_name, args)
    self:w(maybe_assign(self.var),
           self:hoas({self.config.hoas,":lambda(",se.length(args),", "}),
-          "function(", comp.clist(a(args)), ")\n")
+          "function(", comp.clist(a(mangled_args)), ")\n")
    self:save_context(
       {'var','env'},
       function()
@@ -295,7 +298,7 @@ end
 form['let'] = macro(scheme_macros.let, { named_let_trampoline = 'named-let-trampoline' })
 
 function slc:compile_trace(expr)
-   log_se_n(expr, "compile_trace: ")
+   -- log_se_n(expr, "compile_trace: ")
 end
 
 function slc:compile(expr)
@@ -316,7 +319,12 @@ function slc:compile(expr)
          for arg in se.elements(form_args) do
             local anf_arg = li:maybe_insert_var(arg)
             -- This needs to be idempotent for generated names.
-            anf_arg = mangle_name(anf_arg)
+            -- FIXME:
+            if anf_arg == "input" then
+               anf_arg = "rt.input"
+            else
+               anf_arg = mangle_name(anf_arg)
+            end
             table.insert(anf_args, anf_arg)
          end
          if not li:compile_inserts({form_name, se.array_to_list(anf_args)}) then
@@ -343,15 +351,21 @@ function slc:compile(expr)
             else
                -- In Lua mode we just assume variables are there and
                -- will only handle infix opereators specially.
-               log_w('form_name: ',form_name,'\n')
+               -- log_w('form_name: ',form_name,'\n')
                local infix = self.infix[form_name]
                if infix then
-                  log_w('infix: ',infix,'\n')
+                  -- log_w('infix: ',infix,'\n')
                   assert (#anf_args == 2)
                   _w({anf_args[1], " ", infix, " ", anf_args[2]})
                else
-                  local fname = self:is_bound(form_name)
-                  --ifte(
+                  local fname = mangle_name(form_name)
+                  -- FIXME: is_bound() seems to only only work for
+                  -- local varibles.  So for now just look in the
+                  -- library.
+                  if slc_runtime[form_name] then
+                     fname = {"(rt['", form_name, "'])"}
+                  end
+                  --ifte(self:is_bound(form_name)
                   --        mangle_name(form_name),
                   --        {"rt['",form_name,"']"})
                   _w({fname,"(",comp.clist(anf_args),")"})

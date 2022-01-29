@@ -74,6 +74,7 @@ local function test()
    t("(begin (define (a x) (b x)) (define (b x) (a x)) a)")
    t("(case 1 ((0) a) ((1) b))")
    t("(let loop ((n 0) (a 2)) (if (n > 3) a (loop (+ n 1) (* a a))))")
+   t("(begin (define (decode-loop stack) (define (sym n) 123) 456))")
 end
 
 test()

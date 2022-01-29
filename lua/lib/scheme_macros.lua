@@ -138,7 +138,7 @@ macro['let'] = function(expr, config)
          return trampoline_expr
       end
    else
-      log('FIXME: let implementation incomplete, using let*\n')
+      -- log('FIXME: let implementation incomplete, using let*\n')
       return {'let*', {maybe_bindings, rest}}
    end
 end
