@@ -96,6 +96,10 @@ function slc:compile_function_body(body)
    -- compiling a do end block.
    -- FIXME: It would be useful to be able to do macro expansion here
    -- to get rid of nested begin forms.
+   --
+   -- FIXME: This gives weird errors in case that the single
+   -- expression is a define, which is (check!) illegal.
+   --
    while type(body) == 'table' and se.car(body) == 'begin' and se.length(body) == 2 do
       body = se.cadr(body)
    end
@@ -159,25 +163,6 @@ end
 form['module-letrec'] = function(self, expr)
    self:compile(scheme_macros.letrec(expr, {set = 'module-set!'}))
 end
--- function compile_set_anf(mod)
---    return
---       function(self, expr)
---          local set, var, vexpr = se.unpack(expr, {n = 3, tail = true})
---          assert(type(var) == 'string')
---          local li = self:let_insert({string = true, number = true, boolean = true})
---          vexpr = li:maybe_insert_var(vexpr)
---          if not li:compile_inserts(l(set, var, vexpr)) then
---             local mvar = mangle_name(var)
---             if mod then
---                -- Don't mangle the keys.
---                self:w(mvar, " = ", vexpr, "; ",
---                       "_mod_defs['",var,"'] = ",mvar,";\n", self:tab())
---             else
---                self:w(mvar, " = ", vexpr, "\n",self:tab())
---             end
---          end
---       end
--- end
 
 -- Note that let insertion is not necessary since the whole point is
 -- to bind/overwrite a specific variable.
@@ -226,7 +211,7 @@ function slc:block(fun)
 end
 
 
-form['let*'] = function(self, expr)
+form['block'] = function(self, expr)
    local _, bindings, forms = se.unpack(expr, {n = 2, tail = true})
    self:compile_letstar(bindings, forms)
 end
@@ -234,6 +219,10 @@ end
 form['define'] = function(self, expr)
    error("'define' only works inside 'begin'")
 end
+
+-- Note that the form has been renamed to 'block'.  This is because
+-- 'let*' will need to support the 'begin' form that supports local
+-- definitions.
 
 function slc:compile_letstar(bindings, forms)
    self:block(
@@ -323,17 +312,22 @@ local function use_macros(names)
       form[name] = macro(m)
    end
 end
-use_macros({'begin','letrec'})
+use_macros({'begin','letrec','let*'})
 
 form['case'] = function(self, expr)
-   local config = { void = 'nil', gensym = function() return self:gensym() end }
+   local config = { void = 'nil', state = self }
    local expr1 = scheme_macros.case(expr, config)
    self:compile(expr1)
 end
-form['let'] = macro(scheme_macros.let, { named_let_trampoline = 'named-let-trampoline' })
+
+form['let'] = function(self, expr)
+   local config = { state = self, named_let_trampoline = 'named-let-trampoline' }
+   local expr1 = scheme_macros.let(expr, config)
+   self:compile(expr1)
+end
 
 function slc:compile_trace(expr)
-   -- log_se_n(expr, "compile_trace: ")
+   log_se_n(expr, "compile_trace: ")
 end
 
 function slc:compile(expr)

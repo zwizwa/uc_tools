@@ -1,19 +1,23 @@
 -- Scheme macros are implemented as s-expression to s-expression converters.
 -- Used by e.g. scheme.lua but could be reused by other dialects.
 
--- We assume let*, set!, lambda are primitives, which are essentially
+-- We assume block, set!, lambda are primitives, which are essentially
 -- basic blocks with (SSA) variable declarations + assignment for
--- creating loops.
+-- creating loops.  The block form has the same meaning as let*, but
+-- does not support local definitions.
 
 -- Reductions:
 --
 -- module-begin -> module
 -- begin        -> letrec
--- letrec       -> let*, set!
+-- letrec       -> block, set!, begin
+-- let          -> lambda, block
+-- let*         -> block, begin
+
 --
--- We do not depend on '#<void>' here, instead we require that let*
--- supports undefined bindings, e.g. (let* ((a)) ...), and empty
--- statements (let* ())
+-- We do not depend on '#<void>' here, instead we require that block
+-- supports undefined bindings, e.g. (block ((a)) ...), and empty
+-- statements (block ())
 
 -- Some macros have an additional config parameter.  This is useful to
 -- use the code here to implement language-specific macros with
@@ -44,7 +48,7 @@ macro['begin'] = function(expr, config)
    local function done()
       if se.is_empty(bindings) then
          -- 'begin' is common, so optimize lack of defs case
-         return {c.let or 'let*',{l(), exprs}}
+         return {c.let or 'block',{l(), exprs}}
       else
          return {c.letrec or 'letrec', {r(bindings), exprs}}
       end
@@ -81,13 +85,13 @@ macro['begin'] = function(expr, config)
    end
 end
 
--- Implement letrec on top of let* and set!
+-- Implement letrec on top of block and set!
 macro['letrec'] = function(expr, config)
    local c = config or {}
    local _, bindings, exprs = se.unpack(expr, {n = 2, tail = true})
    if se.is_empty(bindings) then
       -- Base case is needed to avoid letrec->begin->letrec loop.
-      return {c.let or 'let*',{l(),exprs}}
+      return {c.let or 'block',{l(),exprs}}
    end
    local void_bindings = se.map(
       function(binding)
@@ -101,14 +105,14 @@ macro['letrec'] = function(expr, config)
          return l(c.set or "set!", name, val)
       end,
       bindings)
-   return {c.let or 'let*', {void_bindings, {{c.begin or 'begin', set_variables}, exprs}}}
+   return {c.let or 'block', {void_bindings, {{c.begin or 'begin', set_variables}, exprs}}}
 end
 
 -- This needs a let-insertion to make sure there is only one
 -- evaluation.  Symbol generation will need to be provided by caller.
 macro['case'] = function(expr, config)
-   assert(config.gensym)
-   local sym = config.gensym()
+   assert(config.state)
+   local sym = config.state:gensym()
    local _, vexpr, clauses = se.unpack(expr, {n = 2, tail = true})
    local function ifexpr(clause, els)
       -- FIXME: This is a partial implementation for rvm
@@ -116,7 +120,7 @@ macro['case'] = function(expr, config)
       local val = se.unpack(match, {n = 1})
       return l('if',l('eq?',sym,val),{'begin',exprs},els)
    end
-   return l('let*',l(l(sym, vexpr)),
+   return l('block',l(l(sym, vexpr)),
             se.foldr(ifexpr, config.void or '#<void>', clauses))
 end
 
@@ -125,13 +129,19 @@ end
 -- When generating lambdas it makes sense to bind them to names.  This
 -- makes Lua backtraces and generated source code easier to read.
 
+macro['let*'] = function(expr, config)
+   local c = config or {}
+   _, bindings, rest = se.unpack(expr, {n = 2, tail = true})
+   return l('block',bindings,{'begin',rest})
+end
+
 macro['let'] = function(expr, config)
    local c = config or {}
+   assert(c.state and c.state.gensym)
 
-   local tag_name = c.tag_name or
-      function(src_name, macro_tag)
-         -- FIXME: This is not hygienic.
-         return src_name .. macro_tag
+   local tag_name =
+      function(src_name)
+         return c.state:gensym(src_name .. "_")
       end
 
    _, maybe_bindings, rest = se.unpack(expr, {n = 2, tail = true})
@@ -143,23 +153,20 @@ macro['let'] = function(expr, config)
          local init_expr = se.map(se.cadr, var_init_expr)
          assert(loop_vars)
          assert(init_expr)
-         local loop_name_iter = tag_name(loop_name,"_ITER")
+         local loop_name_iter = tag_name(loop_name .. "_iter")
          local trampoline_expr =
             l(c.named_let_trampoline,{c.make_state or 'vector',init_expr},
               l('lambda',l(loop_name),
-                l('let*',l(l(loop_name_iter,
+                l('block',l(l(loop_name_iter,
                              l('lambda',loop_vars,{'begin',loop_body}))),
                   loop_name_iter)))
          return trampoline_expr
       end
    else
-      -- log('FIXME: let implementation incomplete, using let*\n')
-      -- FIXME: the 'begin' is necessary to support inner definitions.
-      -- return l('let*', maybe_bindings, {'begin', rest})
       local vars  = se.map(se.car,  maybe_bindings)
       local exprs = se.map(se.cadr, maybe_bindings)
-      local let_name = "LET"
-      return l('let*',l(l(let_name, l('lambda',vars,{'begin',rest}))),
+      local let_name = tag_name("let")
+      return l('block',l(l(let_name, l('lambda',vars,{'begin',rest}))),
                {let_name, exprs})
    end
 end

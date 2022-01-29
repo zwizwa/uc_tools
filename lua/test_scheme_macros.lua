@@ -23,7 +23,7 @@ local function macro_step(expr)
 end
 
 local prim = {
-   ['let*']   = true,
+   ['block']  = true,
    ['lambda'] = true,
    ['if']     = true,
    ['set!']   = true,
