@@ -9,9 +9,9 @@
 -- Reductions:
 --
 -- module-begin -> module
--- begin        -> letrec
+-- begin        -> letrec, block
 -- letrec       -> block, set!, begin
--- let          -> lambda, block
+-- let          -> lambda, block, begin
 -- let*         -> block, begin
 
 --

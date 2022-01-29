@@ -114,12 +114,13 @@ function se.elements(lst)
    return function()
       if l ~= empty then
          if type(l) ~= 'table' then
-            log_desc(lst)
-            if type(l) == 'string' then
-               error('bad list pair: ' .. l)
-            else
-               error('bad list pair: type=' .. type(l))
-            end
+            log_desc({bad_list = lst})
+            --if type(l) == 'string' then
+            --   error('bad list pair: ' .. l)
+            --else
+            --   error('bad list pair: type=' .. type(l))
+            --end
+            l = {'BAD_LIST',empty}
          end
          local el, rest = unpack(l)
          l = rest

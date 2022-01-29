@@ -49,7 +49,7 @@ local expander = {
       local car, cdr = unpack(expr)
       local m = s.macro[car]
       if m ~= nil then
-         return m(s, expr), true
+         return m(s, expr), 'again'
       else
          return expr
       end
@@ -57,8 +57,7 @@ local expander = {
 }
 
 local function trace(tag, expr)
-   log('\n')
-   log_se_n(expr, tag .. ": ")
+   log('\n') ; log_se_n(expr, tag .. ": ")
 end
 
 
@@ -71,8 +70,9 @@ local function expand_step(s, expr)
 end
 
 local function expand(s, expr)
-   local again = true
+   local again = 'again'
    while again do
+      assert(again == 'again')
       expr, again = expand_step(s, expr)
    end
    return expr
@@ -86,10 +86,11 @@ local form = {
       local function tx_binding(binding)
          local var, expr = comp.unpack_binding(binding, void)
          trace('BINDING',var)
-         return l(var, s:eval(expr))
+         local cexpr = s:compile(expr)
+         return l(var, cexpr)
       end
       local function tx_form(seqform)
-         return s:eval(seqform)
+         return s:compile(seqform)
       end
       return {'block',
               {se.map(tx_binding, bindings),
@@ -98,12 +99,19 @@ local form = {
    ['set!'] = function(s, expr)
       local _, var, vexpr = se.unpack(expr, {n = 3})
       return s:anf(
-         function(e) return l('set!', var, se.car(e)) end,
-         l(vexpr))
+         l(vexpr),
+         function(e) return l('set!', var, se.car(e)) end)
+   end,
+   ['if'] = function(s, expr)
+      local _, econd, etrue, efalse = se.unpack(expr, {n = 4})
+      return s:anf(
+         l(econd),
+         function(e) return l('if', var, se.car(e), s:compile(etrue), s:compile(efalse)) end)
+
    end,
    ['lambda'] = function(s, expr)
       local _, vars, body = se.unpack(expr, {n = 2, tail = true})
-      return l('lambda', vars, s:eval({'begin',body}))
+      return l('lambda', vars, s:compile({'begin',body}))
    end
 }
 
@@ -112,13 +120,13 @@ local function prim_val(expr)
    return type(expr) ~= 'table'
 end
 
-local function anf(s, fn, exprs)
+local function anf(s, exprs, fn)
    local normalform = {}
    local bindings = {}
    for e in se.elements(exprs) do
       if not prim_val(e) then
          local sym = s:gensym()
-         ins(bindings, l(sym, s:eval(e)))
+         ins(bindings, l(sym, s:compile(e)))
          ins(normalform, sym)
       else
          ins(normalform, e)
@@ -135,28 +143,28 @@ end
 
 local function apply(s, expr)
    trace("APPLY", expr)
-   return anf(s, function(e) return e end, expr)
+   return anf(s, expr, function(e) return e end)
 end
 
-local evaluator = {
+local compiler = {
    ['string'] = s_id,
    ['number'] = s_id,
    ['pair'] = function(s, expr)
       local car, cdr = unpack(expr)
       local f = s.form[car]
       if f ~= nil then
-         return f(s, expr), true
+         return f(s, expr)
       else
          return apply(s, expr)
       end
    end
 }
-local function eval(s, expr)
+local function compile(s, expr)
    expr = expand(s, expr)
-   trace("EVAL",expr)
+   trace("COMPILE",expr)
    local typ = expr_type(expr)
-   local f = evaluator[typ]
-   if f == nil then error('eval: bad type ' .. typ) end
+   local f = compiler[typ]
+   if f == nil then error('compile: bad type ' .. typ) end
    return f(s, expr)
 end
 local function gensym(s, prefix)
@@ -169,7 +177,7 @@ local class = {
    expand = expand,
    macro = macro,
    form = form,
-   eval = eval,
+   compile = compile,
    gensym = gensym,
    anf = anf,
 }

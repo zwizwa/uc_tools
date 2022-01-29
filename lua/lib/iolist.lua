@@ -10,8 +10,10 @@ local function write(w,iol)
       for _,sub in ipairs(iol) do
          write(w,sub)
       end
-   else
-      w(iol)
+   -- Lua streams do not support writing booleans.
+   elseif iol == true  then w('true')
+   elseif iol == false then w('false')
+   else w(iol)
    end
 end
 local function to_string(iol)
