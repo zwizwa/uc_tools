@@ -97,7 +97,9 @@ local form = {
    end,
    ['set!'] = function(s, expr)
       local _, var, vexpr = se.unpack(expr, {n = 3})
-      return l('set!', var, s:eval(vexpr))
+      return s:anf(
+         function(e) return l('set!', var, se.car(e)) end,
+         l(vexpr))
    end,
    ['lambda'] = function(s, expr)
       local _, vars, body = se.unpack(expr, {n = 2, tail = true})
@@ -110,11 +112,10 @@ local function prim_val(expr)
    return type(expr) ~= 'table'
 end
 
-local function apply(s, expr)
-   trace("APPLY",expr)
+local function anf(s, fn, exprs)
    local normalform = {}
    local bindings = {}
-   for e in se.elements(expr) do
+   for e in se.elements(exprs) do
       if not prim_val(e) then
          local sym = s:gensym()
          ins(bindings, l(sym, s:eval(e)))
@@ -124,11 +125,17 @@ local function apply(s, expr)
       end
    end
    if #bindings == 0 then
-      return expr
+      return fn(exprs)
    else
-      return l('block',a2l(bindings),a2l(normalform))
+      return l('block',
+               a2l(bindings),
+               fn(a2l(normalform)))
    end
-   return expr
+end
+
+local function apply(s, expr)
+   trace("APPLY", expr)
+   return anf(s, function(e) return e end, expr)
 end
 
 local evaluator = {
@@ -164,6 +171,7 @@ local class = {
    form = form,
    eval = eval,
    gensym = gensym,
+   anf = anf,
 }
 
 local function new()
