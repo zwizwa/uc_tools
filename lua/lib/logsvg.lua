@@ -220,11 +220,20 @@ function logsvg.read_log_parse(filename, config)
    if bin_to_string then nxt = log_parse.next_ts_raw end
    assert(nxt)
 
+   -- In addition, allow user to override the iterator altogether.
+   local sequence
+   if config.sequence then
+      sequence = config.sequence(filename, config)
+   else
+      sequence = config.sequence or
+         log_parse.messages(
+            {file = filename,
+             wind = {0},
+             next = nxt })
+   end
+
    -- FIXME: Let the C code do the scanning.
-   for n, logline, is_bin in log_parse.messages(
-      {file = filename,
-       wind = {0},
-       next = nxt }) do
+   for n, logline, is_bin in sequence do
 
       -- User can plug in binary log message parser
       if is_bin and bin_to_string then
