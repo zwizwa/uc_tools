@@ -2,13 +2,18 @@
 --
 -- MACRO-EXPAND
 -- A-NORMAL FORM
+-- VARIABLE RENAMING
 -- OUTPUT CLEANUP
 --
 -- Macro expansion and ANF seem to go hand-in hand.
 
 local se = require('lib.se')
 local comp = require('lib.comp')
+
+local ins = table.insert
+local a2l = se.array_to_list
 local l = se.list
+
 
 
 -- Bind macros to state object for gensym.
@@ -52,12 +57,13 @@ local expander = {
 }
 
 local function trace(tag, expr)
-   log_se_n(expr, tag)
+   log('\n')
+   log_se_n(expr, tag .. ": ")
 end
 
 
 local function expand_step(s, expr)
-   trace("STEP:",expr)
+   trace("STEP",expr)
    local typ = expr_type(expr)
    local f = expander[typ]
    if f == nil then error('expand: bad type ' .. typ) end
@@ -79,19 +85,49 @@ local form = {
       local _, bindings, forms = se.unpack(expr, {n = 2, tail = true})
       local function tx_binding(binding)
          local var, expr = comp.unpack_binding(binding, void)
+         trace('BINDING',var)
          return l(var, s:eval(expr))
       end
-      local function tx_form(b)
-         return b
+      local function tx_form(seqform)
+         return s:eval(seqform)
       end
-      return {'begin',
+      return {'block',
               {se.map(tx_binding, bindings),
-               se.map(tx_form, form)}}
+               se.map(tx_form, forms)}}
+   end,
+   ['set!'] = function(s, expr)
+      local _, var, vexpr = se.unpack(expr, {n = 3})
+      return l('set!', var, s:eval(vexpr))
+   end,
+   ['lambda'] = function(s, expr)
+      local _, vars, body = se.unpack(expr, {n = 2, tail = true})
+      return l('lambda', vars, s:eval({'begin',body}))
    end
 }
 
+local function prim_val(expr)
+   -- FIXME: Define this better
+   return type(expr) ~= 'table'
+end
+
 local function apply(s, expr)
-   -- FIXME: ANF conversion
+   trace("APPLY",expr)
+   local normalform = {}
+   local bindings = {}
+   for e in se.elements(expr) do
+      if not prim_val(e) then
+         local sym = s:gensym()
+         ins(bindings, l(sym, s:eval(e)))
+         ins(normalform, sym)
+      else
+         ins(normalform, e)
+      end
+   end
+   if #bindings == 0 then
+      return expr
+   else
+      return l('block',a2l(bindings),a2l(normalform))
+   end
    return expr
 end
 
@@ -109,12 +145,16 @@ local evaluator = {
    end
 }
 local function eval(s, expr)
-   trace("EVAL:",expr)
    expr = expand(s, expr)
+   trace("EVAL",expr)
    local typ = expr_type(expr)
    local f = evaluator[typ]
    if f == nil then error('eval: bad type ' .. typ) end
    return f(s, expr)
+end
+local function gensym(s, prefix)
+   s.count = s.count + 1
+   return (prefix or "r") .. s.count
 end
 
 local class = {
@@ -123,10 +163,11 @@ local class = {
    macro = macro,
    form = form,
    eval = eval,
+   gensym = gensym,
 }
 
 local function new()
-   local obj = { }
+   local obj = { count = 0 }
    setmetatable(obj, { __index = class })
    return obj
 end

@@ -124,10 +124,19 @@ macro['case'] = function(expr, config)
             se.foldr(ifexpr, config.void or '#<void>', clauses))
 end
 
--- Named let trampoline
 
+-- Let:
+--
+-- 1. Named let trampoline
+--
 -- When generating lambdas it makes sense to bind them to names.  This
 -- makes Lua backtraces and generated source code easier to read.
+--
+-- 2. Non-sequential binding
+--
+-- Most languages have sequential let*-style binding forms.  To
+-- implement the let "bulk binding", it seems simplest just to use a
+-- lambda.
 
 macro['let*'] = function(expr, config)
    local c = config or {}
@@ -144,23 +153,29 @@ macro['let'] = function(expr, config)
          return c.state:gensym(src_name .. "_")
       end
 
+   -- FIXME: Instead of using a trampoline, map it to a loop struct
+   -- directly.
    _, maybe_bindings, rest = se.unpack(expr, {n = 2, tail = true})
    if type(maybe_bindings) == 'string' then
+      local loop_name = maybe_bindings
+      local var_init_expr, loop_body = se.unpack(rest, {n = 1, tail = true})
+      local loop_vars = se.map(se.car,  var_init_expr)
+      local init_expr = se.map(se.cadr, var_init_expr)
+      assert(loop_vars)
+      assert(init_expr)
       if c.named_let_trampoline then
-         local loop_name = maybe_bindings
-         local var_init_expr, loop_body = se.unpack(rest, {n = 1, tail = true})
-         local loop_vars = se.map(se.car,  var_init_expr)
-         local init_expr = se.map(se.cadr, var_init_expr)
-         assert(loop_vars)
-         assert(init_expr)
          local loop_name_iter = tag_name(loop_name .. "_tick")
          local trampoline_expr =
             l(c.named_let_trampoline,{c.make_state or 'vector',init_expr},
               l('lambda',l(loop_name),
                 l('block',l(l(loop_name_iter,
-                             l('lambda',loop_vars,{'begin',loop_body}))),
+                              l('lambda',loop_vars,{'begin',loop_body}))),
                   loop_name_iter)))
          return trampoline_expr
+      else
+         return l('begin',
+                  l('define',{loop_name, loop_vars}, {'begin',loop_body}),
+                  {loop_name, init_expr})
       end
    else
       local vars  = se.map(se.car,  maybe_bindings)

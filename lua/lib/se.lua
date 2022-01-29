@@ -140,7 +140,8 @@ end
 function se.map_to_array(fun, lst)
    local arr = {}
    for el in se.elements(lst) do
-      table.insert(arr, fun(el))
+      local single_val = fun(el)
+      table.insert(arr, single_val)
    end
    return arr
 end
