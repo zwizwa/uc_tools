@@ -121,8 +121,19 @@ macro['case'] = function(expr, config)
 end
 
 -- Named let trampoline
+
+-- When generating lambdas it makes sense to bind them to names.  This
+-- makes Lua backtraces and generated source code easier to read.
+
 macro['let'] = function(expr, config)
    local c = config or {}
+
+   local tag_name = c.tag_name or
+      function(src_name, macro_tag)
+         -- FIXME: This is not hygienic.
+         return src_name .. macro_tag
+      end
+
    _, maybe_bindings, rest = se.unpack(expr, {n = 2, tail = true})
    if type(maybe_bindings) == 'string' then
       if c.named_let_trampoline then
@@ -132,10 +143,13 @@ macro['let'] = function(expr, config)
          local init_expr = se.map(se.cadr, var_init_expr)
          assert(loop_vars)
          assert(init_expr)
+         local loop_name_iter = tag_name(loop_name,"_ITER")
          local trampoline_expr =
             l(c.named_let_trampoline,{c.make_state or 'vector',init_expr},
               l('lambda',l(loop_name),
-                l('lambda',loop_vars,{'begin',loop_body})))
+                l('let*',l(l(loop_name_iter,
+                             l('lambda',loop_vars,{'begin',loop_body}))),
+                  loop_name_iter)))
          return trampoline_expr
       end
    else
@@ -144,7 +158,9 @@ macro['let'] = function(expr, config)
       -- return l('let*', maybe_bindings, {'begin', rest})
       local vars  = se.map(se.car,  maybe_bindings)
       local exprs = se.map(se.cadr, maybe_bindings)
-      return {l('lambda',vars,{'begin',rest}),exprs}
+      local let_name = "LET"
+      return l('let*',l(l(let_name, l('lambda',vars,{'begin',rest}))),
+               {let_name, exprs})
    end
 end
 

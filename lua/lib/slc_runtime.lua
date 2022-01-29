@@ -7,7 +7,7 @@ rt['named-let-trampoline'] = function(state, body)
    -- The named let symbol is bound to a wrapper so it behaves just
    -- like an ordinary function.
    local done
-   local once = body(
+   local loop_tick = body(
       function(...)
          state = {...}
          done = false
@@ -16,7 +16,7 @@ rt['named-let-trampoline'] = function(state, body)
    -- The trampoline
    while true do
       done = true
-      local rvs = {once(unpack(state))}
+      local rvs = {loop_tick(unpack(state))}
       if done then return unpack(rvs) end
    end
 end

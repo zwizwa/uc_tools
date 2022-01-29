@@ -91,8 +91,14 @@ function slc:is_bound(var)
 end
 
 
-
 function slc:compile_function_body(body)
+   -- Strip off unnecessary (begin ...) for single expr.  This avoids
+   -- compiling a do end block.
+   -- FIXME: It would be useful to be able to do macro expansion here
+   -- to get rid of nested begin forms.
+   while type(body) == 'table' and se.car(body) == 'begin' and se.length(body) == 2 do
+      body = se.cadr(body)
+   end
    self:parameterize(
       {var = self:gensym()},
       function()
@@ -153,22 +159,42 @@ end
 form['module-letrec'] = function(self, expr)
    self:compile(scheme_macros.letrec(expr, {set = 'module-set!'}))
 end
-function compile_set(mod)
+-- function compile_set_anf(mod)
+--    return
+--       function(self, expr)
+--          local set, var, vexpr = se.unpack(expr, {n = 3, tail = true})
+--          assert(type(var) == 'string')
+--          local li = self:let_insert({string = true, number = true, boolean = true})
+--          vexpr = li:maybe_insert_var(vexpr)
+--          if not li:compile_inserts(l(set, var, vexpr)) then
+--             local mvar = mangle_name(var)
+--             if mod then
+--                -- Don't mangle the keys.
+--                self:w(mvar, " = ", vexpr, "; ",
+--                       "_mod_defs['",var,"'] = ",mvar,";\n", self:tab())
+--             else
+--                self:w(mvar, " = ", vexpr, "\n",self:tab())
+--             end
+--          end
+--       end
+-- end
+
+-- Note that let insertion is not necessary since the whole point is
+-- to bind/overwrite a specific variable.
+function compile_set(module_set)
    return
       function(self, expr)
-         local set, var, vexpr = se.unpack(expr, {n = 3, tail = true})
+         local _, var, vexpr = se.unpack(expr, {n = 3, tail = true})
          assert(type(var) == 'string')
-         local li = self:let_insert({string = true, number = true, boolean = true})
-         vexpr = li:maybe_insert_var(vexpr)
-         if not li:compile_inserts(l(set, var, vexpr)) then
-            local mvar = mangle_name(var)
-            if mod then
-               -- Don't mangle the keys.
-               self:w(mvar, " = ", vexpr, "; ",
-                      "_mod_defs['",var,"'] = ",mvar,";\n", self:tab())
-            else
-               self:w(mvar, " = ", vexpr, "\n",self:tab())
-            end
+         local mvar = mangle_name(var)
+         self:parameterize(
+            { var = mvar },
+            function()
+               self:compile(vexpr)
+            end)
+         if module_set then
+            -- Don't mangle the keys.
+            self:w("_mod_defs['",var,"'] = ",mvar,";\n", self:tab())
          end
       end
 end
