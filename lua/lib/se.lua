@@ -310,6 +310,19 @@ function se.string_to_stream(str)
    return obj
 end
 
+function se.expr_type(e)
+   local typ = type(e)
+   if typ == 'table' then
+      if e[1] ~= nil and e[2] ~= nil then
+         return 'pair'
+      else
+         log_desc(e)
+         error('bad table')
+      end
+   end
+   return typ
+end
+
 function se.new(stream)
    assert(stream)
    local obj = { stream = stream, nb_newlines = 0 }

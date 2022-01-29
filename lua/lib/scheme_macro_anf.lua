@@ -19,26 +19,13 @@ local l = se.list
 -- Bind macros to state object for gensym.
 local macro = {} ; do
    for name, m in pairs(require('lib.scheme_macros')) do
-      log("MACRO: " .. name .. "\n")
+      -- log("MACRO: " .. name .. "\n")
       macro[name] = function(s, expr)
          return m(expr, { state = s })
       end
    end
 end
 
--- Define types
-local function expr_type(e)
-   local typ = type(e)
-   if typ == 'table' then
-      if e[1] ~= nil and e[2] ~= nil then
-         return 'pair'
-      else
-         log_desc(e)
-         error('bad table')
-      end
-   end
-   return typ
-end
 
 local function s_id(s, thing) return thing end
 
@@ -57,13 +44,13 @@ local expander = {
 }
 
 local function trace(tag, expr)
-   log('\n') ; log_se_n(expr, tag .. ": ")
+   -- log('\n') ; log_se_n(expr, tag .. ": ")
 end
 
 
 local function expand_step(s, expr)
    trace("STEP",expr)
-   local typ = expr_type(expr)
+   local typ = se.expr_type(expr)
    local f = expander[typ]
    if f == nil then error('expand: bad type ' .. typ) end
    return f(s, expr)
@@ -162,7 +149,7 @@ local compiler = {
 local function compile(s, expr)
    expr = expand(s, expr)
    trace("COMPILE",expr)
-   local typ = expr_type(expr)
+   local typ = se.expr_type(expr)
    local f = compiler[typ]
    if f == nil then error('compile: bad type ' .. typ) end
    return f(s, expr)
