@@ -60,6 +60,7 @@
 (define (get-byte)
   (let ((x (char->integer (string-ref input pos))))
     (set! pos (+ pos 1))
+    ;; (desc x)
     x))
 
 (define (decode)
@@ -80,6 +81,7 @@
   (define (build-symtbl)
 
     (define (add-symbol chars symtbl)
+      ;; (desc symtbl)
       (_cons (_string->uninterned-symbol (_list->string chars))
              symtbl))
 
@@ -94,7 +96,6 @@
                     (if (= x 59) ;; #\; terminates symbol list
                         (add-symbol chars symtbl)
                         (loop3 (_cons x chars))))))))))
-
   (let ((symtbl (build-symtbl)))
 
     (define (decode-loop stack)
@@ -157,9 +158,12 @@
       main-proc)))
 
 (define (trace-instruction name opnd stack)
+  (desc (vector name opnd stack))
   0)
 
-(define (run pc stack)
+(define (run1 pc stack)
+
+  (let run ((pc pc) (stack stack))
 
   (define (get-cont stack)
     (let loop ((stack stack))
@@ -171,9 +175,12 @@
   (define (set-var opnd val)
     (_field0-set! (if (_rib? opnd) opnd (_list-tail stack opnd)) val))
 
+  (desc (_field0 pc))
+
   (let ((instr (_field0 pc))
         (opnd (_field1 pc))
         (next (_field2 pc)))
+
     (case instr
 
       ((0) ;; jump/call
@@ -231,6 +238,7 @@
        (trace-instruction 'if #f stack)
        (run (if (eqv? (_car stack) _false) next opnd)
             (_cdr stack))))))
+)
 
 (define (prim0 f)
   (lambda (stack)
@@ -291,6 +299,8 @@
                    (write-char (integer->char x))
                    x))))
 
+
 (let ((x (decode)))
-  (run (_field2 (_field0 x)) ;; instruction stream of main procedure
-       (_rib 0 0 (_rib 5 0 0)))) ;; primordial continuation = halt
+  ;; (desc x)
+  (run1 (_field2 (_field0 x)) ;; instruction stream of main procedure
+        (_rib 0 0 (_rib 5 0 0)))) ;; primordial continuation = halt

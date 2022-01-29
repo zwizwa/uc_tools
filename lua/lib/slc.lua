@@ -45,9 +45,10 @@ end
 -- only preserve names at module boundary.
 local function mangle_name(name)
    local subst = {
-      ["-"] = "_dash_",
-      ["!"] = "_bang_",
-      ["?"] = "_pred_",
+      ["next"] = "nxt",
+      ["-"] = "_", -- "_dash_",
+      ["!"] = "m", -- "_bang_",
+      ["?"] = "p", -- "_pred_",
       [">"] = "_gt_",
       ["/"] = "_div_",
       ["="] = "_is_",
@@ -110,7 +111,7 @@ form['lambda'] = function(self, expr)
    self:save_context(
       {'var','env'},
       function()
-         for var in se.elements(args) do
+         for var in se.elements(mangled_args) do
             self.env = {var, self.env}
          end
          self:indented(
@@ -202,6 +203,10 @@ form['let*'] = function(self, expr)
    self:compile_letstar(bindings, forms)
 end
 
+form['define'] = function(self, expr)
+   error("'define' only works inside 'begin'")
+end
+
 function slc:compile_letstar(bindings, forms)
    self:block(
       function()
@@ -218,6 +223,8 @@ function slc:compile_letstar(bindings, forms)
                   self:compile(var_expr)
                end
          end)
+         -- FIXME: (let* <bindings> ...) does not support local
+         -- definitions.
          self:compile_begin(forms)
    end)
 end
@@ -368,7 +375,7 @@ function slc:compile(expr)
                   --ifte(self:is_bound(form_name)
                   --        mangle_name(form_name),
                   --        {"rt['",form_name,"']"})
-                  _w({fname,"(",comp.clist(anf_args),")"})
+                  _w({fname,"(",comp.clist(anf_args),");"})
                end
             end
          end
@@ -379,7 +386,8 @@ function slc:compile(expr)
       if self.var then
          if type(expr) == 'string' then
             -- Variable reference
-            self:w(maybe_assign(self.var),expr,"\n",self:tab())
+            local mvar = mangle_name(expr)
+            self:w(maybe_assign(self.var),mvar,"\n",self:tab())
          elseif type(expr) == 'number' then
             -- Constant
             self:w(maybe_assign(self.var),expr,"\n",self:tab())

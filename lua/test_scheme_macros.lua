@@ -43,6 +43,10 @@ local function expand(stepped)
          return
       end
       local form = se.car(stepped)
+      if type(form) ~= 'string' then
+         log_w("no form\n");
+         return
+      end
       if prim[form] then
          -- log_w("prim = ", form, "\n")
          return
@@ -75,6 +79,9 @@ local function test()
    t("(case 1 ((0) a) ((1) b))")
    t("(let loop ((n 0) (a 2)) (if (n > 3) a (loop (+ n 1) (* a a))))")
    t("(begin (define (decode-loop stack) (define (sym n) 123) 456))")
+   -- t("(let ((x 123)) (define (y a) a) x)")
+   t("(let ((a a1) (b b1)) 123)")
+   t("(case x ((0) a b) ((1) d e))")
 end
 
 test()

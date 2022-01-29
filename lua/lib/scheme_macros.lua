@@ -116,7 +116,8 @@ macro['case'] = function(expr, config)
       local val = se.unpack(match, {n = 1})
       return l('if',l('eq?',sym,val),{'begin',exprs},els)
    end
-   return se.foldr(ifexpr, config.void or '#<void>', clauses)
+   return l('let*',l(l(sym, vexpr)),
+            se.foldr(ifexpr, config.void or '#<void>', clauses))
 end
 
 -- Named let trampoline
@@ -139,7 +140,11 @@ macro['let'] = function(expr, config)
       end
    else
       -- log('FIXME: let implementation incomplete, using let*\n')
-      return {'let*', {maybe_bindings, rest}}
+      -- FIXME: the 'begin' is necessary to support inner definitions.
+      -- return l('let*', maybe_bindings, {'begin', rest})
+      local vars  = se.map(se.car,  maybe_bindings)
+      local exprs = se.map(se.cadr, maybe_bindings)
+      return {l('lambda',vars,{'begin',rest}),exprs}
    end
 end
 
