@@ -162,10 +162,12 @@ function compile_set(mod)
          vexpr = li:maybe_insert_var(vexpr)
          if not li:compile_inserts(l(set, var, vexpr)) then
             local mvar = mangle_name(var)
-            self:w(mvar, " = ", vexpr, "\n",self:tab())
             if mod then
                -- Don't mangle the keys.
-               self:w("_mod_defs['",var,"'] = ",vexpr,"\n",self:tab())
+               self:w(mvar, " = ", vexpr, "; ",
+                      "_mod_defs['",var,"'] = ",mvar,";\n", self:tab())
+            else
+               self:w(mvar, " = ", vexpr, "\n",self:tab())
             end
          end
       end
@@ -311,7 +313,10 @@ end
 function slc:compile(expr)
    assert(expr)
    self:compile_trace(expr)
-   if type(expr) == 'table' then
+   if (expr == 'nil') then
+      -- Don't emit assignment
+      self:w("\n",self:tab())
+   elseif type(expr) == 'table' then
       -- S-expression
       local form_name, form_args = se.unpack(expr, {n = 1, tail = true})
       assert(form_name and type(form_name == 'string'))
