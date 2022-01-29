@@ -153,7 +153,7 @@ macro['let'] = function(expr, config)
          local init_expr = se.map(se.cadr, var_init_expr)
          assert(loop_vars)
          assert(init_expr)
-         local loop_name_iter = tag_name(loop_name .. "_iter")
+         local loop_name_iter = tag_name(loop_name .. "_tick")
          local trampoline_expr =
             l(c.named_let_trampoline,{c.make_state or 'vector',init_expr},
               l('lambda',l(loop_name),

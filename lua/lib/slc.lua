@@ -47,7 +47,7 @@ local function mangle_name(name)
    local subst = {
       ["next"] = "nxt",
       ["-"] = "_", -- "_dash_",
-      ["!"] = "m", -- "_bang_",
+      ["!"] = "",  -- "_bang_",
       ["?"] = "p", -- "_pred_",
       [">"] = "_gt_",
       ["/"] = "_div_",
@@ -300,7 +300,13 @@ end
 -- Wrap some macros from scheme_macros.lua
 local function macro(m, config)
    return function(self, expr)
-      local expanded = m(expr, config)
+      local new_config = {}
+      for k,v in pairs(config or {}) do
+         new_config[k] = v
+      end
+      -- Many macros need state:gensym() so just pass it by default.
+      new_config.state = self
+      local expanded = m(expr, new_config)
       -- log_se(expanded) ; log('\n')
       self:compile(expanded)
    end
@@ -312,19 +318,10 @@ local function use_macros(names)
       form[name] = macro(m)
    end
 end
+
 use_macros({'begin','letrec','let*'})
-
-form['case'] = function(self, expr)
-   local config = { void = 'nil', state = self }
-   local expr1 = scheme_macros.case(expr, config)
-   self:compile(expr1)
-end
-
-form['let'] = function(self, expr)
-   local config = { state = self, named_let_trampoline = 'named-let-trampoline' }
-   local expr1 = scheme_macros.let(expr, config)
-   self:compile(expr1)
-end
+form['case'] = macro(scheme_macros.case, { void = 'nil' })
+form['let']  = macro(scheme_macros.let, { named_let_trampoline = 'named-let-trampoline' })
 
 function slc:compile_trace(expr)
    log_se_n(expr, "compile_trace: ")
