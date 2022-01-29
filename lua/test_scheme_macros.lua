@@ -9,7 +9,8 @@ local function log_w(...)   iolist.write(log, {...}) end
 local function log_se(expr) log_w(se.iolist(expr)) end
 
 local config = {
-   case = { gensym = function() return "r0" end }
+   case = { gensym = function() return "r0" end },
+   let  = { named_let_trampoline = 'named-let-trampoline' },
 }
 
 local function macro_step(expr)
@@ -26,6 +27,8 @@ local prim = {
    ['lambda'] = true,
    ['if']     = true,
    ['set!']   = true,
+   -- For implementing trampoline
+   ['named-let-trampoline'] = true,
 }
 
 local function expand(stepped)
@@ -70,6 +73,7 @@ local function test()
    t("(letrec ())")
    t("(begin (define (a x) (b x)) (define (b x) (a x)) a)")
    t("(case 1 ((0) a) ((1) b))")
+   t("(let loop ((n 0) (a 2)) (if (n > 3) a (loop (+ n 1) (* a a))))")
 end
 
 test()

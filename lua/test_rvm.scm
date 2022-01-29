@@ -10,6 +10,7 @@
 ;; - uc_tools/lua/lib/se.lua doesn't support strings: replaced with quoted atoms
 ;; - removed cond-expand debug and gambit clauses
 ;; - changed '#(...) to (vector ...)
+;; - wrapped infix primitives
 
 (define pair-type      0)
 (define procedure-type 1)
@@ -275,9 +276,9 @@
           (prim2 (lambda (x y) (_field2-set! x y) y)) ;; 11
           (prim2 (lambda (x y) (boolean (eqv? x y)))) ;; 12
           (prim2 (lambda (x y) (boolean (< x y)))) ;; 13
-          (prim2 +) ;; 14
-          (prim2 -) ;; 15
-          (prim2 *) ;; 16
+          (prim2 (lambda (x y) (+ x y))) ;; 14
+          (prim2 (lambda (x y) (- x y))) ;; 15
+          (prim2 (lambda (x y) (* x y))) ;; 16
           (prim2 quotient) ;; 17
 
           (prim0 (lambda () ;; 18

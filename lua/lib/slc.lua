@@ -84,7 +84,7 @@ function slc:ref(scheme_var)
    return nil
 end
 function slc:is_bound(var)
-   return slf:reaf(var) and true
+   return self:ref(var) and true
 end
 
 
@@ -125,13 +125,14 @@ form['module-begin'] = function(self, expr)
    -- module-set! will add to this dictionary
    self:w("local _mod_defs = {}\n")
 
-   self:w(self:hoas({"return function(",self.config.hoas,")\n"}))
    if not self.config.hoas then
       -- FIXME: There is no support for infix atm so for testing we
       -- insert this primitive.  Not necessary in HOAS mode where it
       -- can be injected.
-      self:w("local function add(a,b) return a + b end\n")
+      self:w("local rt = require('lib.slc_runtime')\n")
    end
+
+   self:w(self:hoas({"return function(",self.config.hoas,")\n"}))
 
 
    -- Parameterize scheme_macros.begin to use 'module-letrec' instead
@@ -153,7 +154,7 @@ function compile_set(mod)
       function(self, expr)
          local set, var, vexpr = se.unpack(expr, {n = 3, tail = true})
          assert(type(var) == 'string')
-         local li = self:let_insert({string = true, number = true})
+         local li = self:let_insert({string = true, number = true, boolean = true})
          vexpr = li:maybe_insert_var(vexpr)
          if not li:compile_inserts(l(set, var, vexpr)) then
             local mvar = mangle_name(var)
@@ -291,6 +292,7 @@ form['case'] = function(self, expr)
    local expr1 = scheme_macros.case(expr, config)
    self:compile(expr1)
 end
+form['let'] = macro(scheme_macros.let, { named_let_trampoline = 'named-let-trampoline' })
 
 function slc:compile_trace(expr)
    log_se_n(expr, "compile_trace: ")
@@ -312,7 +314,10 @@ function slc:compile(expr)
          local anf_args = {}
          form_name = li:maybe_insert_var(form_name)
          for arg in se.elements(form_args) do
-            table.insert(anf_args, li:maybe_insert_var(arg))
+            local anf_arg = li:maybe_insert_var(arg)
+            -- This needs to be idempotent for generated names.
+            anf_arg = mangle_name(anf_arg)
+            table.insert(anf_args, anf_arg)
          end
          if not li:compile_inserts({form_name, se.array_to_list(anf_args)}) then
 
@@ -345,7 +350,11 @@ function slc:compile(expr)
                   assert (#anf_args == 2)
                   _w({anf_args[1], " ", infix, " ", anf_args[2]})
                else
-                  _w({mangle_name(form_name),"(",comp.clist(anf_args),")"})
+                  local fname = self:is_bound(form_name)
+                  --ifte(
+                  --        mangle_name(form_name),
+                  --        {"rt['",form_name,"']"})
+                  _w({fname,"(",comp.clist(anf_args),")"})
                end
             end
          end
@@ -373,6 +382,16 @@ function slc:to_string(expr)
          self.write = function(_, str) table.insert(buf, str) end
          self:compile(expr)
       end)
+   -- FIXME: Where is the boolean coming from?
+   for i=1,#buf do
+      if type(buf[i]) == 'boolean' then
+         if buf[i] then
+            buf[i] = 'true'
+         else
+            buf[i] = 'false'
+         end
+      end
+   end
    return table.concat(buf,"")
 end
 function slc:eval(expr)

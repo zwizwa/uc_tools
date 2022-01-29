@@ -119,19 +119,29 @@ macro['case'] = function(expr, config)
    return se.foldr(ifexpr, config.void or '#<void>', clauses)
 end
 
--- Named let is special: we can turn this into an actual loop for
--- implementations that do not support proper tail calls.
-local function named_let(expr, config)
-   _, name, loop_vars, body = se.unpack(expr, {n = 3, tail = true})
-end
-
+-- Named let trampoline
 macro['let'] = function(expr, config)
-   _, bindings, exprs = se.unpack(expr, {n = 2, tail = true})
-   if type(bindings) == 'string' then
-      return named_let(expr, config)
-   elseif type(bindings) == 'table' then
-      error('FIXME: let')
+   local c = config or {}
+   _, maybe_bindings, rest = se.unpack(expr, {n = 2, tail = true})
+   if type(maybe_bindings) == 'string' then
+      if c.named_let_trampoline then
+         local loop_name = maybe_bindings
+         local var_init_expr, loop_body = se.unpack(rest, {n = 1, tail = true})
+         local loop_vars = se.map(se.car,  var_init_expr)
+         local init_expr = se.map(se.cadr, var_init_expr)
+         assert(loop_vars)
+         assert(init_expr)
+         local trampoline_expr =
+            l(c.named_let_trampoline,{c.make_state or 'vector',init_expr},
+              l('lambda',l(loop_name),
+                l('lambda',loop_vars,{'begin',loop_body})))
+         return trampoline_expr
+      end
+   else
+      log('FIXME: let implementation incomplete, using let*\n')
+      return {'let*', {maybe_bindings, rest}}
    end
 end
+
 
 return macro

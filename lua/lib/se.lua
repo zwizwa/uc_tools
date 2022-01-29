@@ -180,6 +180,9 @@ function se.cdr(pair)
    assert(type(pair) == 'table')
    return pair[2]
 end
+function se.cadr(ppair)
+   return se.car(se.cdr(ppair))
+end
 function se.cons(car, cdr)
    return {car, cdr}
 end
