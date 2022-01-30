@@ -23,3 +23,4 @@ local function test_expr(str, a, b)
 end
 
 test_expr("(add 1 2)")
+test_expr("(sub 10 3)")

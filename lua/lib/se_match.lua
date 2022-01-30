@@ -21,6 +21,7 @@ local se = require('lib.se')
 require('lib.log_se')
 local car = se.car
 local cdr = se.cdr
+local l = se.list
 
 local class = {}
 
@@ -37,8 +38,8 @@ end
 local function match_pattern(top_expr, top_pat)
    local m = {}
    local function mp(expr, pat)
-      trace("ME", expr)
-      trace("MP", pat)
+      -- trace("ME", expr)
+      -- trace("MP", pat)
       local texpr = type(expr)
       local tpat  = type(pat)
       local var = unquote_var(pat)
@@ -46,7 +47,7 @@ local function match_pattern(top_expr, top_pat)
          -- Binding a variable
          -- Check for duplicates
          assert(m[var] == nil)
-         trace("BIND",var)
+         -- trace("BIND",var)
          m[var] = expr
          return true
       else
@@ -58,7 +59,8 @@ local function match_pattern(top_expr, top_pat)
             -- Types match
             if texpr ~= 'table' then
                -- Primitive value
-               return texpr == tpat
+               -- trace("EQ",l(texpr,tpat))
+               return expr == pat
             else
                -- Pair matching
                return
@@ -69,7 +71,7 @@ local function match_pattern(top_expr, top_pat)
       end
    end
    if mp(top_expr, top_pat) then
-      log_desc({m = m})
+      -- log_desc({m = m})
       return m
    else
       return nil
@@ -79,10 +81,11 @@ end
 function class:match(expr, pats)
    for _,clause in ipairs(pats) do
       local spat, handle = unpack(clause)
+      -- trace("SPAT",spat)
       local pat = self.memo[spat]
-      if not path then
+      if not pat then
          pat = se.read_string(spat)
-         trace("PAT",pat)
+         -- trace("PAT",pat)
          self.memo[spat] = pat
       end
       local m = match_pattern(expr, pat)
