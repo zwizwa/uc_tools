@@ -71,18 +71,28 @@ local function test2()
    test_expr(do_match)
 end
 
+local function trace(tag, thing)
+   log_desc({trace = {tag, thing}})
+end
+local ins = table.insert
+
+
 local function test3()
    -- Sugared matching using a "string DSL"
-   local config = {env = {l = se.list}, ctx_var = '_'}
+   local mtch = match.smatcher(
+      { env = {l = se.list},
+        ctx = '_' }
+   )
    local function do_match(expr)
-      return match.smatch(
+      return mtch(
          expr,
          {
             {"l('add',l('sub',_.a,_.b),_.c)", "{a = _.a}"},
             {"l('add',_.a,_.b)",              "{a = _.a}"},
-         },
-         config)
+         })
    end
+   -- FIXME: Perform the matching directly over the strings so
+   -- building intermediate data structure is not necessary.
    test_expr(do_match)
 end
 

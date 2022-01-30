@@ -2,6 +2,7 @@
 local match = {}
 
 local ins = table.insert
+local string_dsl = require('lib.string_dsl')
 
 -- Convert constructor (table -> data) into pattern matcher object.
 function match.compile(pat_fun)
@@ -21,7 +22,7 @@ function match.compile(pat_fun)
 end
 
 local function trace(tag, thing)
-   log_desc({trace = {tag, thing}})
+   -- log_desc({trace = {tag, thing}})
 end
 
 -- Apply pattern matcher object to data structure, returning match
@@ -98,40 +99,27 @@ function match.match(expr, clauses)
 end
 
 -- Sugared "string DSL"
-function match.smatch(expr, string_clauses, state)
+-- See test_hoas_match.lua for an example
+local memo_compile = string_dsl.memo_compile
+local function smatch(expr, string_clauses, state)
    local s = state or {}
    local ctx_var = s.ctx_var or '_'
    local clauses = {}
-   local function expand(fragment)
-      trace("EXPAND", fragment)
-      local lcode =
-            table.concat(
-               {"return function(",ctx_var,") return (",fragment,") end"})
-      trace("LCODE", lcode)
-      local f = loadstring(lcode)
-      if s.env then setfenv(f, s.env) end
-      assert(f)
-      return f()
-   end
    for _,clause in ipairs(string_clauses) do
       local spat, shandle = unpack(clause)
-      local fpat    = expand(spat)
-      local fhandle = expand(shandle)
+      local fpat    = memo_compile(spat, s)
+      local fhandle = memo_compile(shandle, s)
       ins(clauses, {fpat, fhandle})
    end
    return match.match(expr, clauses)
 end
-
--- Partially applied smatch that keepts track of memo table.  I don't
--- really want to do this globally, but this allows it to be done on a
--- per project basis.
-function match.smatcher(state)
-   return function(ex, cl)
-      return match.smatch(ex, cl, state)
+function match.smatcher(config)
+   local obj = { memo = {} }
+   for k,v in pairs(config) do obj[k] = v end
+   return function(expr, string_clauses)
+      return smatch(expr, string_clauses, obj)
    end
 end
-
-
 
 -- (1) The reason this library exists is to match nested
 -- s-expressions.  Comparing by generic keys is currently not needed.
