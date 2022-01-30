@@ -6,6 +6,7 @@
 -- OUTPUT CLEANUP
 --
 -- Macro expansion and ANF seem to go hand-in hand.
+-- Variable renaming is useful for later block-flattening.
 
 local se = require('lib.se')
 local comp = require('lib.comp')
@@ -74,7 +75,8 @@ local form = {
          local var, expr = comp.unpack_binding(binding, void)
          trace('BINDING',var)
          local cexpr = s:compile(expr)
-         return l(var, cexpr)
+         local rvar = s:rename(var)
+         return l(rvar, cexpr)
       end
       local function tx_form(seqform)
          return s:compile(seqform)
@@ -87,7 +89,7 @@ local form = {
       local _, var, vexpr = se.unpack(expr, {n = 3})
       return s:anf(
          l(vexpr),
-         function(e) return l('set!', var, se.car(e)) end)
+         function(e) return l('set!', s:rename(var), se.car(e)) end)
    end,
    ['if'] = function(s, expr)
       local _, econd, etrue, efalse = se.unpack(expr, {n = 4})
@@ -98,29 +100,31 @@ local form = {
    end,
    ['lambda'] = function(s, expr)
       local _, vars, body = se.unpack(expr, {n = 2, tail = true})
-      return l('lambda', vars, s:compile({'begin',body}))
+      local rvars = se.map(function(v) return s:rename(v) end, vars)
+      return l('lambda', rvars, s:compile({'begin',body}))
    end
 }
 
-local function prim_val(expr)
-   -- FIXME: Define this better
-   return type(expr) ~= 'table'
-end
 
 local function anf(s, exprs, fn)
    local normalform = {}
    local bindings = {}
    for e in se.elements(exprs) do
-      if not prim_val(e) then
+      -- FIXME: This should compile before checking if it's primitive.
+      if type(e) == 'string' then
+         ins(normalform, s:rename(e))
+      elseif type(e) == 'table' then
+         -- Composite
          local sym = s:gensym()
          ins(bindings, l(sym, s:compile(e)))
          ins(normalform, sym)
       else
+         -- Other values
          ins(normalform, e)
       end
    end
    if #bindings == 0 then
-      return fn(exprs)
+      return fn(a2l(normalform))
    else
       return l('block',
                a2l(bindings),
@@ -154,10 +158,25 @@ local function compile(s, expr)
    if f == nil then error('compile: bad type ' .. typ) end
    return f(s, expr)
 end
+
 local function gensym(s, prefix)
+   -- Gensyms should never clash with source variables.  We can't
+   -- guarantee that atm.  FIXME.
    s.count = s.count + 1
-   return (prefix or "r") .. s.count
+   local sym = (prefix or "r") .. s.count
+   s.gensyms[sym] = true
+   return sym
 end
+
+local function rename(s, var)
+   assert(type(var) == 'string')
+   if s.gensyms[var] then return var end
+   local sym = s:gensym()
+   s.renamed[sym] = var
+   return sym
+end
+
+
 
 local class = {
    expand_step = expand_step,
@@ -166,11 +185,12 @@ local class = {
    form = form,
    compile = compile,
    gensym = gensym,
+   rename = rename,
    anf = anf,
 }
 
 local function new()
-   local obj = { count = 0 }
+   local obj = { count = 0, renamed = {}, gensyms = {} }
    setmetatable(obj, { __index = class })
    return obj
 end

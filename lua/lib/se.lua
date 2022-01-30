@@ -147,6 +147,7 @@ function se.map_to_array(fun, lst)
    return arr
 end
 function se.map(fun, lst)
+   assert(lst)
    return se.array_to_list(se.map_to_array(fun,lst))
 end
 function se.foldr(on_pair, on_empty, lst)
