@@ -1,27 +1,32 @@
 -- Constructor inversion matcher.
 local match = {}
 
-function match.compile(pat_fun, nb)
-   local args = {}      -- tracks argument order
-   local bindings = {}  -- used for is_var()
-   for i=1,nb do
-      -- The table object's identity is used to refer to a variable.
-      -- The content of the table is just for debugging.
-      local arg = {i}
-      args[i] = arg
-      bindings[arg] = true
-   end
-   local pat = pat_fun(unpack(args))
-   return { args = args, bindings = bindings, pat = pat}
+-- Convert constructor (table -> data) into pattern matcher object.
+function match.compile(pat_fun)
+   local vars  = {} -- set of variables
+   local probe = {} -- empty object, metatable used to capture refereneces
+   setmetatable(
+      probe,
+      {__index = function(_, var_name)
+          -- Create var object.  Object identity will be used to
+          -- distinguish between data and variables in a pattern.
+          local var = { var = var_name }
+          vars[var] = true
+          return var
+      end})
+   local pat = pat_fun(probe)
+   return { vars = vars, pat = pat }
 end
 
 local function trace(tag, thing)
    -- log_desc({trace = {tag, thing}})
 end
 
-function match.eval(top_expr, pattern_obj, bindings)
-   local top_pat  = pattern_obj.pat
-   local bindings = pattern_obj.bindings
+-- Apply pattern matcher object to data structure, returning match
+-- table or nil.
+function match.apply(pattern_obj, top_expr)
+   local top_pat = pattern_obj.pat
+   local vars    = pattern_obj.vars
 
    local m = {}
    local function mp(expr, pat)
@@ -29,12 +34,14 @@ function match.eval(top_expr, pattern_obj, bindings)
       trace("MP", pat)
       local texpr = type(expr)
       local tpat  = type(pat)
-      if bindings[pat] then
+      local var   = vars[pat]
+      if var then
          -- Binding a variable
          -- Check for duplicates
-         trace("BIND",{pat,m})
-         assert(m[var] == nil)
-         m[pat] = expr
+         local var_name = pat.var
+         trace("BIND",{var_name,m})
+         assert(m[var_name] == nil)
+         m[var_name] = expr
          return true
       else
          -- Perform literal match
@@ -76,18 +83,6 @@ function match.eval(top_expr, pattern_obj, bindings)
       return nil
    end
 end
-
-function match.apply(pattern_obj, match_result, handler)
-   assert(match_result)
-   local args = {}
-   for i=1,#pattern_obj.args do
-      local var = pattern_obj.args[i]
-      args[i] = match_result[var]
-      assert(args[i])
-   end
-   return handler(unpack(args))
-end
-
 
 
 return match
