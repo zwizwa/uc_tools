@@ -8,9 +8,19 @@ require('lib.log')
 local function log_w(...)   iolist.write(log, {...}) end
 local function log_se(expr) log_w(se.iolist(expr)) end
 
+function gensym(s)
+   s.n = s.n + 1
+   return "r" .. s.n
+end
+local state = { n = 0, gensym = gensym }
+local function cfg(c)
+   c.state = state
+   return c
+end
+
 local config = {
-   case = { gensym = function() return "r0" end },
-   let  = { named_let_trampoline = 'named-let-trampoline' },
+   case = cfg({}),
+   let  = cfg({ named_let_trampoline = 'named-let-trampoline' }),
 }
 
 local function macro_step(expr)
@@ -60,9 +70,7 @@ end
 
 local function t(str, nb)
    if not nb then nb = 10 end
-   local stream = se.string_to_stream(str)
-   local parse = se.new(stream)
-   local expr = parse:read(str)
+   local expr = se.read_string(str)
    log_se(expr) ; log("\n")
    return expand(expr)
 end

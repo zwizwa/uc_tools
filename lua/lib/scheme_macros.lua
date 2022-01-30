@@ -108,10 +108,16 @@ macro['letrec'] = function(expr, config)
    return {c.let or 'block', {void_bindings, {{c.begin or 'begin', set_variables}, exprs}}}
 end
 
+local function need_gensym(config, name)
+   if not (config and config.state and config.state.gensym) then
+      error((name or 'macro') .. " needs gensym")
+   end
+end
+
 -- This needs a let-insertion to make sure there is only one
 -- evaluation.  Symbol generation will need to be provided by caller.
 macro['case'] = function(expr, config)
-   assert(config.state)
+   need_gensym(config,'case')
    local sym = config.state:gensym()
    local _, vexpr, clauses = se.unpack(expr, {n = 2, tail = true})
    local function ifexpr(clause, els)
@@ -144,9 +150,8 @@ macro['let*'] = function(expr, config)
    return l('block',bindings,{'begin',rest})
 end
 
-macro['let'] = function(expr, config)
-   local c = config or {}
-   assert(c.state and c.state.gensym)
+macro['let'] = function(expr, c)
+   need_gensym(c,'let')
 
    local tag_name =
       function(src_name)
@@ -184,6 +189,19 @@ macro['let'] = function(expr, config)
       return l('block',l(l(let_name, l('lambda',vars,{'begin',rest}))),
                {let_name, exprs})
    end
+end
+
+macro['or'] = function(expr, c)
+   need_gensym(c,'or')
+   _, a, b = se.unpack(expr, {n = 3})
+   local sym = c.state:gensym()
+   return l('block',l(l(sym, a)),l('if',sym,sym,b))
+end
+macro['and'] = function(expr, c)
+   need_gensym(c,'and')
+   _, a, b = se.unpack(expr, {n = 3})
+   local sym = c.state:gensym()
+   return l('block',l(l(sym, a)),l('if',l(c['not'] or 'not', sym), sym, b))
 end
 
 

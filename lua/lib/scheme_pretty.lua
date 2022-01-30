@@ -83,7 +83,17 @@ local pprint_form = {
             end
       end)
       s:w(s:tab(),")\n")
-   end
+   end,
+   ['if'] = function(s, expr)
+      local _, var, etrue, efalse = se.unpack(expr, {n=4})
+      s:w(s:tab(),"(if ",var,"\n")
+      s:indented(
+         function()
+            s:pprint(etrue)
+            s:pprint(efalse)
+         end)
+      s:w(s:tab(),")\n")
+   end,
 }
 local function pp_app(s, expr)
    s:w(s:tab(),se.iolist(expr),"\n")

@@ -95,7 +95,7 @@ local form = {
       local _, econd, etrue, efalse = se.unpack(expr, {n = 4})
       return s:anf(
          l(econd),
-         function(e) return l('if', var, se.car(e), s:compile(etrue), s:compile(efalse)) end)
+         function(e) return l('if', se.car(e), s:compile(etrue), s:compile(efalse)) end)
 
    end,
    ['lambda'] = function(s, expr)
@@ -168,6 +168,8 @@ local function gensym(s, prefix)
    return sym
 end
 
+-- FIXME: Incorrect!
+-- This needs to track lexical scope.
 local function rename(s, var)
    assert(type(var) == 'string')
    if s.gensyms[var] then return var end

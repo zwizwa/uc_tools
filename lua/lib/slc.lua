@@ -319,7 +319,7 @@ local function use_macros(names)
    end
 end
 
-use_macros({'begin','letrec','let*'})
+use_macros({'begin','letrec','let*','and','or'})
 form['case'] = macro(scheme_macros.case, { void = 'nil' })
 form['let']  = macro(scheme_macros.let, { named_let_trampoline = 'named-let-trampoline' })
 

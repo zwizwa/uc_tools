@@ -1,20 +1,42 @@
 -- Block flattener.
 --
--- Note that this needs variable renaming (really?)
+-- Note that this needs variable renaming because otherwise a variable
+-- from a deeper block can potentially shadow one in a higher up
+-- block.
 --
 -- (block
---   (a (block () d e f))
+--   (a (block ((b c) (d e)) f g h))
 --   ...)
 --
 -- (block
---   (_ d)
---   (_ e)
---   (a f)
+--   (b c)
+--   (d e)
+--   (_ f)
+--   (_ g)
+--   (a h)
 --   ...)
 --
--- FIXME: Don't do this one without a test suite.  Also, might be
--- simpler in CPS.  I made it work before in smc.lua using s.var as
--- "current hole".
+-- Maybe it's simpler to just do on s-expressions.  Indeed: first
+-- flatten the inner blocks, then for each block bound to a variable,
+-- perform the transformation above.
+
+
+-- In addition this should do
+-- (block ((a (if (block b c) (block d e)))))
+--
+-- (block
+--   ((a)
+--   (_ (if (block ((_ b)
+--                 (_ (set! a c)))
+--          (block ((_ d)
+--                 (_ (set! a e)))
+--      ))
+-- )
+--
+-- It's crazy to try these without a pattern matcher.
+--
+-- Also, maybe better to split decl and set!
+
 
 local se = require('lib.se')
 local iolist = require('lib.iolist')
@@ -32,47 +54,57 @@ local cdr = se.cdr
 
 local function s_id(s, thing) return thing end
 
--- Extend blocks to use '_' bindings for statments, placing variable
--- declarations and statements on the same footing, which is the case
--- for all target languages.
-
-function flatten(s, block_expr)
+function flatten_block(s, block_expr)
    local _, bindings, stmts = se.unpack(block_expr, {n=2, tail=true})
-   for binding in se.elements(bindings) do
+   local seq = {} -- Easier to to the accumulation using side-effects.
+
+   -- Transform current expression to "all bindings" form.
+   local ign_bindings = se.map(
+      function(stmt) return l('_', stmt) end,
+      stmts)
+   local all_bindings = se.append(bindings, ign_bindings)
+
+   for binding in se.elements(all_bindings) do
       if se.length(binding) == 1 then
-         ins(s.seq, l(car(binding), '#<void>'))
+         ins(seq, l(car(binding), '#<void>'))
       else
          local var, vexpr = se.unpack(binding, {n=2})
-         ins(s.seq, l(var, s:compile(vexpr)))
+         -- Let the compiler flatten any sub blocks.
+         local cexpr = s:compile(vexpr)
+         if se.is_expr(cexpr, 'block') then
+            -- Everything that bubbles up does not have a sequence
+            -- part: all statements are converted to '_' bindings.
+            local _, bindings = se.unpack(cexpr, {n=2})
+            for binding, rest in se.elements(bindings) do
+               if not se.is_empty(rest) then
+                  ins(seq, binding)
+               else
+                  -- Last one is special.  It can not already have a
+                  -- binding associated.
+                  assert('_' == car(binding))
+                  ins(seq, l(var, cadr(binding)))
+               end
+            end
+         else
+            ins(seq, l(var, cexpr))
+         end
       end
    end
-   for stmt, rest in se.elements(stmts) do
-      if (type(stmt) == 'table') and stmt[1] == 'block' then
-         flatten(s, stmt)
-      else
-         local v = ifte(is_empty(stat), s.var, '_')
-         ins(s.seq, l(v, s:compile(stmt)))
-      end
-   end
-   -- This doesn't return anything.  Everything is in s.seq
+   return l('block',a2l(seq))
+
 end
 
 local compile_form = {
-   ['block'] = function(s, expr)
-      local _, bindings, stmts = se.unpack(expr, {n=2, tail=true})
-      local seq = {}
-      s:parameterize(
-         { seq = seq },
-         function()
-            s:flatten(expr)
-         end)
-      return l('block',a2l(seq))
-   end,
+   ['block'] = flatten_block,
    -- Forms that are not in this table are treated same as pp_app
    ['lambda'] = function(s, expr)
       local _, vars, body = se.unpack(expr, {n=2, tail=true})
       return {'lambda',{vars,se.map(function(e) return s:compile(e) end, body)}}
-   end
+   end,
+   ['if'] = function(s, expr)
+      local _, var, etrue, efalse = se.unpack(expr, {n=4})
+      return l('if',var,s:compile(etrue),s:compile(efalse))
+   end,
 }
 local function default(s, expr)
    return expr
@@ -84,9 +116,9 @@ local compiler = {
    ['boolean'] = s_id,
    ['pair'] = function(s, expr)
       local car, cdr = unpack(expr)
-      local pp = s.compile_form[car]
-      if pp ~= nil then
-         return pp(s, expr)
+      local comp = s.compile_form[car]
+      if comp ~= nil then
+         return comp(s, expr)
       else
          return default(s, expr)
       end

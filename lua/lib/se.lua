@@ -72,11 +72,18 @@ function se:read_atom()
    while true do
       local char = self:peek()
       if is_whitespace(char) or '(' == char or ')' == char or nil == char then
-         local str = table.concat(chars,"")
+         local function as_string()
+            return table.concat(chars,"")
+         end
          if chars[1] == "'" then
             chars[1] = "" -- FIXME: no space supported after quote char
-            return se.list('quote', table.concat(chars,""))
+            return se.list('quote', as_string())
          end
+         if chars[1] == "," then
+            chars[1] = "" -- FIXME: no space supported after quote char
+            return se.list('unquote', as_string())
+         end
+         local str = as_string()
          local const = se.const[str]
          if const then return const end
          local num = tonumber(str)
@@ -340,6 +347,20 @@ function se.read_file_multi(filename)
    stream:close()
    return exprs
 end
+
+function se.read_string(str)
+   local stream = se.string_to_stream(str)
+   local parse = se.new(stream)
+   local expr = parse:read(str)
+   return expr
+end
+
+function se.is_expr(expr, tag)
+   if type(expr) ~= 'table' then return false end
+   if not tag then return true end
+   return expr[1] == tag
+end
+
 
 
 
