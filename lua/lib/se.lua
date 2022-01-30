@@ -62,13 +62,14 @@ local function is_charset(str)
    local set = charset(str)
    return function(c) return set[c] or false end
 end
-
-
 -- local whitespace = {[' '] = true, ['\n'] = true, ['\r'] = true, ['\t'] = true}
-local whitespace = charset(' \n\r\t')
-local function is_whitespace(str)
-   return whitespace[str] or false
-end
+-- local whitespace = charset(' \n\r\t')
+-- local function is_whitespace(str)
+--    return whitespace[str] or false
+-- end
+local is_whitespace  = is_charset(' \n\r\t')
+local is_end_of_atom = is_charset(' \n\r\t' .. '()')
+
 function se:skip_space()
    while true do
       local char = self:peek()
@@ -86,7 +87,7 @@ function se:read_atom()
    local chars = {}
    while true do
       local char = self:peek()
-      if is_whitespace(char) or '(' == char or ')' == char or nil == char then
+      if is_end_of_atom(char) or nil == char then
          local function as_string()
             return table.concat(chars,"")
          end
