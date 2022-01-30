@@ -50,7 +50,22 @@ function se:pop()
    return char
 end
 
-local whitespace = {[' '] = true, ['\n'] = true, ['\r'] = true, ['\t'] = true}
+local function charset(str)
+   local set = {}
+   for i=1,#str do
+      local c = str:sub(i,i)
+      set[c] = true
+   end
+   return set
+end
+local function is_charset(str)
+   local set = charset(str)
+   return function(c) return set[c] or false end
+end
+
+
+-- local whitespace = {[' '] = true, ['\n'] = true, ['\r'] = true, ['\t'] = true}
+local whitespace = charset(' \n\r\t')
 local function is_whitespace(str)
    return whitespace[str] or false
 end
