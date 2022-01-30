@@ -100,18 +100,24 @@ end
 
 -- Sugared "string DSL"
 -- See test_hoas_match.lua for an example
-local memo_compile = string_dsl.memo_compile
+local memo_eval = string_dsl.memo_eval
+local lambda    = string_dsl.lambda
+local function plambda(str,ctx)
+   return match.compile(lambda(str,ctx)) end
+
 local function smatch(expr, string_clauses, state)
    local s = state or {}
    local ctx_var = s.ctx_var or '_'
-   local clauses = {}
    for _,clause in ipairs(string_clauses) do
       local spat, shandle = unpack(clause)
-      local fpat    = memo_compile(spat, s)
-      local fhandle = memo_compile(shandle, s)
-      ins(clauses, {fpat, fhandle})
+      local cpat = memo_eval(plambda, spat, s)
+      local m = match.apply(cpat, expr)
+      if m then
+         local fhandle = memo_eval(lambda, shandle, s)
+         return fhandle(m)
+      end
    end
-   return match.match(expr, clauses)
+   return false
 end
 function match.smatcher(config)
    local obj = { memo = {} }
