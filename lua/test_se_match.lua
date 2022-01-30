@@ -6,6 +6,7 @@ require('lib.log_se')
 local matcher = se_match.new()
 local function match(e,p) return matcher:match(e,p) end
 
+-- Patterns are implicitly quasiquoted.
 local function test_interp(expr)
    local pats = {
       {"(add ,a ,b)", function(m) return m.a + m.b end},

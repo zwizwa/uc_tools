@@ -1,5 +1,7 @@
 #!/usr/bin/lua
 
+-- See test_se_match.lua as well
+
 local prompt = require('prompt')
 local function log(str) io.stderr:write(str) end
 local function log_desc(thing) log(prompt.describe(thing)) end
@@ -59,6 +61,8 @@ end
 
 
 test_match()
+
+
 
 
 

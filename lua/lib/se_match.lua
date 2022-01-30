@@ -32,6 +32,7 @@ end
 local function unquote_var(pat)
    if not se.is_expr(pat, 'unquote') then return nil end
    local _, var = se.unpack(pat, {n = 2})
+   assert(type(var) == 'string')
    return var
 end
 
