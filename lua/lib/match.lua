@@ -1,6 +1,8 @@
 -- Constructor inversion matcher.
 local match = {}
 
+local ins = table.insert
+
 -- Convert constructor (table -> data) into pattern matcher object.
 function match.compile(pat_fun)
    local vars  = {} -- set of variables
@@ -19,7 +21,7 @@ function match.compile(pat_fun)
 end
 
 local function trace(tag, thing)
-   -- log_desc({trace = {tag, thing}})
+   log_desc({trace = {tag, thing}})
 end
 
 -- Apply pattern matcher object to data structure, returning match
@@ -56,8 +58,7 @@ function match.apply(pattern_obj, top_expr)
                trace("PRIM",{texpr,tpat})
                return expr == pat
             else
-               -- Substructure matching.  Here we assume all tables
-               -- are arrays (through ipairs iterator and # operator).
+               -- Substructure matching uses ipairs (1).
                if #expr ~= #pat then
                   -- Need to be same size
                   trace("NARG",{texpr,tpat})
@@ -80,9 +81,61 @@ function match.apply(pattern_obj, top_expr)
       -- log_desc({m = m})
       return m
    else
-      return nil
+      return false
    end
 end
 
+-- This is not as efficient as we can't re-use compiled patterns this
+-- way.  We can't memoize either as Lua will create fresh closures.
+function match.match(expr, clauses)
+   for _,clause in ipairs(clauses) do
+      local pat, handle = unpack(clause)
+      local cpat = match.compile(pat)
+      local m = match.apply(cpat, expr)
+      if m then return m end
+   end
+   return false
+end
+
+-- Sugared "string DSL"
+function match.smatch(expr, string_clauses, state)
+   local s = state or {}
+   local ctx_var = s.ctx_var or '_'
+   local clauses = {}
+   local function expand(fragment)
+      trace("EXPAND", fragment)
+      local lcode =
+            table.concat(
+               {"return function(",ctx_var,") return (",fragment,") end"})
+      trace("LCODE", lcode)
+      local f = loadstring(lcode)
+      if s.env then setfenv(f, s.env) end
+      assert(f)
+      return f()
+   end
+   for _,clause in ipairs(string_clauses) do
+      local spat, shandle = unpack(clause)
+      local fpat    = expand(spat)
+      local fhandle = expand(shandle)
+      ins(clauses, {fpat, fhandle})
+   end
+   return match.match(expr, clauses)
+end
+
+-- Partially applied smatch that keepts track of memo table.  I don't
+-- really want to do this globally, but this allows it to be done on a
+-- per project basis.
+function match.smatcher(state)
+   return function(ex, cl)
+      return match.smatch(ex, cl, state)
+   end
+end
+
+
+
+-- (1) The reason this library exists is to match nested
+-- s-expressions.  Comparing by generic keys is currently not needed.
+-- Probably we do want subset matching in that case (e.g. ignore keys
+-- in the input pattern that are not in the matcher pattern).
 
 return match

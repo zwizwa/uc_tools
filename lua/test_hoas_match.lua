@@ -4,19 +4,91 @@ require('lib.log')
 
 local match = require('lib.match')
 
--- 1. Represent the pattern as a constructor parameterized by a table.
-local pattern_syntax =
-   function(m)
-      return {'add', {'sub', m.a, m.b}, m.c}
+local function test0()
+   -- 1. Represent the pattern as a constructor parameterized by a table.
+   local pattern_syntax =
+      function(m)
+         return {'add', {'sub', m.a, m.b}, m.c}
+      end
+
+   -- 2. Compile the constructor into a data structure that can be used
+   --    for matching.
+   local pattern_obj = match.compile(pattern_syntax)
+   log_desc({pattern_obj = pattern_obj})
+
+   -- 3. Perform the match.
+   local expr = {'add',{'sub',300,200},100}
+   local match_result = match.apply(pattern_obj, expr)
+   log_desc({expr = expr, match_result = match_result})
+end
+
+
+-- Usage examples.  These use the se.lua library, which is array-based
+-- so works with the current array index matching.
+local se = require('lib.se')
+local l = se.list
+
+local function test1()
+   local function pat(_)
+      return l('add',l('sub',_.a,_.b),_.c)
    end
+   local env = {a = 1, b = 2, c = 3}
+   -- use constructor to construct
+   local expr = pat(env)
+   -- use constroctor to create destructor
+   local cpat = match.compile(pat)
+   -- apply destructor to get original env == match
+   local match = match.apply(cpat, expr)
+   log_desc(match)
+end
 
--- 2. Compile the constructor into a data structure that can be used
---    for matching.
-local pattern_obj = match.compile(pattern_syntax)
-log_desc({pattern_obj = pattern_obj})
+local function test_match(do_match)
+   return function (expr)
+      log("TEST:")
+      log_desc({expr, do_match(expr)})
+   end
+end
+local function test_expr(do_match)
+   local _ = test_match(do_match)
+   _('a')
+   _(l('add',100,200))
+   _(l('add',l('sub',100,200),300))
+end
 
--- 3. Perform the match.
-local expr = {'add',{'sub',300,200},100}
-local match_result = match.apply(pattern_obj, expr)
-log_desc({expr = expr, match_result = match_result})
+local function test2()
+   -- Non-sugared matching.
+   -- Lua's lack of macros makes this is a little awkward.
+   local function do_match(expr)
+      return match.match(
+         expr,
+         {
+            {function(_) return l('add',l('sub',_.a,_.b),_.c) end,
+               function(m) return {a = m.a} end},
+            {function(_) return l('add',_.a,_.b) end,
+                  function(m) return {a = m.a} end},
+         })
+   end
+   test_expr(do_match)
+end
+
+local function test3()
+   -- Sugared matching using a "string DSL"
+   local config = {env = {l = se.list}, ctx_var = '_'}
+   local function do_match(expr)
+      return match.smatch(
+         expr,
+         {
+            {"l('add',l('sub',_.a,_.b),_.c)", "{a = _.a}"},
+            {"l('add',_.a,_.b)",              "{a = _.a}"},
+         },
+         config)
+   end
+   test_expr(do_match)
+end
+
+-- test0()
+-- test1()
+-- test2()
+test3()
+
 
