@@ -2,11 +2,7 @@
 -- Keep it simple at first: no improper lists, no strings.
 
 -- Pairs are Lua's 2-element arrays
--- The empty list is Lua's nil
-
--- FIXME: That is a mistake! It makes it impossible to put nil in an
--- array and then iterate over the elements.  Use e.g. '#<nil>' to
--- represent the empty list.
+-- The empty list is represented by '#<nil>'
 
 -- require('lib.log')
 
@@ -62,11 +58,6 @@ local function is_charset(str)
    local set = charset(str)
    return function(c) return set[c] or false end
 end
--- local whitespace = {[' '] = true, ['\n'] = true, ['\r'] = true, ['\t'] = true}
--- local whitespace = charset(' \n\r\t')
--- local function is_whitespace(str)
---    return whitespace[str] or false
--- end
 local is_whitespace  = is_charset(' \n\r\t')
 local is_end_of_atom = is_charset(' \n\r\t' .. "()'`,")
 
@@ -88,18 +79,7 @@ function se:read_atom()
    while true do
       local char = self:peek()
       if is_end_of_atom(char) or nil == char then
-         local function as_string()
-            return table.concat(chars,"")
-         end
-         if chars[1] == "'" then
-            chars[1] = "" -- FIXME: no space supported after quote char
-            return se.list('quote', as_string())
-         end
-         if chars[1] == "," then
-            chars[1] = "" -- FIXME: no space supported after quote char
-            return se.list('unquote', as_string())
-         end
-         local str = as_string()
+         local str = table.concat(chars,"")
          local const = se.const[str]
          if const then return const end
          local num = tonumber(str)
@@ -138,12 +118,11 @@ function se.elements(lst)
       if l ~= empty then
          if type(l) ~= 'table' then
             log_desc({bad_list = lst})
-            --if type(l) == 'string' then
-            --   error('bad list pair: ' .. l)
-            --else
-            --   error('bad list pair: type=' .. type(l))
-            --end
-            l = {'BAD_LIST',empty}
+            if type(l) == 'string' then
+               error('bad list pair: ' .. l)
+            else
+               error('bad list pair: type=' .. type(l))
+            end
          end
          local el, rest = unpack(l)
          l = rest
@@ -295,18 +274,22 @@ function se:read_list()
       table.insert(objs, obj)
    end
 end
+
+se.ticks = {
+   ["'"] = 'quote',
+   [","] = 'unquote',
+   ["`"] = 'quasiquote',
+}
+
 function se:read()
    local function tagged(tag)
       self:pop()
       return se.list(tag, self:read())
    end
    local c = self:skip_space()
-   if "'" == c then
-      return tagged('quote')
-   elseif "," == c then
-      return tagged('unquote')
-   elseif "`" == c then
-      return tagged('quasiquote')
+   local tick = self.ticks[c]
+   if (tick) then
+      return tagged(tick)
    elseif '(' == c then
       self:pop()
       return self:read_list()
