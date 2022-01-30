@@ -3,6 +3,7 @@
 require('lib.log')
 
 local match = require('lib.match')
+local smatch = require('lib.smatch')
 
 local function test0()
    -- 1. Represent the pattern as a constructor parameterized by a table.
@@ -85,7 +86,7 @@ local function test3()
    -- here.  Additional symbols can be passed in via env, e.g. the
    -- list constructor l.
 
-   local mtch = match.smatcher(
+   local mtch = smatch.smatcher(
       { env = {l = se.list},
         var = '_' }
    )
