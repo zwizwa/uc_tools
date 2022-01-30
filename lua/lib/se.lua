@@ -68,7 +68,7 @@ end
 --    return whitespace[str] or false
 -- end
 local is_whitespace  = is_charset(' \n\r\t')
-local is_end_of_atom = is_charset(' \n\r\t' .. '()')
+local is_end_of_atom = is_charset(' \n\r\t' .. "()'`,")
 
 function se:skip_space()
    while true do
@@ -296,7 +296,18 @@ function se:read_list()
    end
 end
 function se:read()
-   if '(' == self:skip_space() then
+   local function tagged(tag)
+      self:pop()
+      return se.list(tag, self:read())
+   end
+   local c = self:skip_space()
+   if "'" == c then
+      return tagged('quote')
+   elseif "," == c then
+      return tagged('unquote')
+   elseif "`" == c then
+      return tagged('quasiquote')
+   elseif '(' == c then
       self:pop()
       return self:read_list()
    else

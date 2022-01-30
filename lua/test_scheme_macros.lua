@@ -39,6 +39,9 @@ local prim = {
    ['set!']   = true,
    -- For implementing trampoline
    ['named-let-trampoline'] = true,
+   ['quote']  = true,
+   ['unquote']  = true,
+   ['quasiquote']  = true,
 }
 
 local function expand(stepped)
@@ -76,6 +79,11 @@ local function t(str, nb)
 end
 
 local function test()
+   -- reader test
+   t("'(a b c)")
+   t(",(a b c)")
+   t("`(a b c)")
+
    t("(module-begin 1 2)")
    t("(letrec ((a 1) (b 2)) a)")
    t("(begin)")
@@ -90,6 +98,7 @@ local function test()
    -- t("(let ((x 123)) (define (y a) a) x)")
    t("(let ((a a1) (b b1)) 123)")
    t("(case x ((0) a b) ((1) d e))")
+
 end
 
 test()
