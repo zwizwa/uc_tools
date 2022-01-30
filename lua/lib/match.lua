@@ -102,18 +102,19 @@ end
 -- See test_hoas_match.lua for an example
 local memo_eval = string_dsl.memo_eval
 local lambda    = string_dsl.lambda
-local function plambda(str,ctx)
-   return match.compile(lambda(str,ctx)) end
+local function plambda(s,str)
+   return match.compile(lambda(s,str))
+end
 
-local function smatch(expr, string_clauses, state)
-   local s = state or {}
+local function smatch(expr, string_clauses, s)
+   assert(s)
    local ctx_var = s.ctx_var or '_'
    for _,clause in ipairs(string_clauses) do
       local spat, shandle = unpack(clause)
-      local cpat = memo_eval(plambda, spat, s)
+      local cpat = memo_eval(s, plambda, spat)
       local m = match.apply(cpat, expr)
       if m then
-         local fhandle = memo_eval(lambda, shandle, s)
+         local fhandle = memo_eval(s, lambda, shandle)
          return fhandle(m)
       end
    end

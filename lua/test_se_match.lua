@@ -25,3 +25,13 @@ end
 
 test_expr("(add 1 2)")
 test_expr("(sub 10 3)")
+
+
+-- FIXME: To use the other matcher, maybe convert
+-- "(add ,a ,b)" to "l('add',_.a,_.b)" or "{'add',{'_.a',{'_.b','#<empty>'}}}"
+-- Let's do that right here.
+function to_string_dsl_lambda(str)
+   local expr = se.read_string(str)
+   return expr -- FIXME
+end
+

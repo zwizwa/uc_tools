@@ -8,7 +8,7 @@ end
 local lib = {}
 
 -- Alternative lambda syntax.
-function lib.lambda(fragment, s)
+function lib.lambda(s, fragment)
    assert(s and s.var and type(s.var) == 'string')
    trace("EXPAND", fragment)
    local lcode =
@@ -23,7 +23,7 @@ function lib.lambda(fragment, s)
    return fun
 end
 
-function lib.memo_eval(compile, str, s)
+function lib.memo_eval(s, compile, str)
    local memo = s.memo
    if memo then
       -- Strings are interned.
@@ -33,7 +33,7 @@ function lib.memo_eval(compile, str, s)
          return val
       end
    end
-   local val = compile(str, s)
+   local val = compile(s, str)
    if memo then
       memo[str] = val
    end
