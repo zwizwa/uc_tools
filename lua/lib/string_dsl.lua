@@ -2,19 +2,18 @@
 -- Make up for lack of macros using interned strings and reflection.
 require ('lib.log')
 local function trace(tag, expr)
-   log(tag) ; log(": ") ; log_desc(expr)
+   -- log(tag) ; log(": ") ; log_desc(expr)
 end
 
 local lib = {}
 
 -- Alternative lambda syntax.
-function lib.lambda(fragment, state)
-   local s = state or {}
-   local ctx_var = s.var or '_'
+function lib.lambda(fragment, s)
+   assert(s and s.var and type(s.var) == 'string')
    trace("EXPAND", fragment)
    local lcode =
       table.concat(
-         {"return function(",ctx_var,") return (",fragment,") end"},
+         {"return function(",s.var,") return (",fragment,") end"},
          "")
    trace("LCODE", lcode)
    local f = loadstring(lcode)

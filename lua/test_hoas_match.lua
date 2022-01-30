@@ -79,20 +79,24 @@ local ins = table.insert
 
 local function test3()
    -- Sugared matching using a "string DSL"
+
+   -- The syntax inside the strings is a Lua function body
+   -- parameterized by a single object, which we configure to be '_'
+   -- here.  Additional symbols can be passed in via env, e.g. the
+   -- list constructor l.
+
    local mtch = match.smatcher(
       { env = {l = se.list},
-        ctx = '_' }
+        var = '_' }
    )
    local function do_match(expr)
       return mtch(
          expr,
          {
             {"l('add',l('sub',_.a,_.b),_.c)", "{a = _.a}"},
-            {"l('add',_.a,_.b)",              "{a = _.a}"},
+            {"l('add',_.a,_.b)",              "{b = _.b}"},
          })
    end
-   -- FIXME: Perform the matching directly over the strings so
-   -- building intermediate data structure is not necessary.
    test_expr(do_match)
 end
 
