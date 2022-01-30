@@ -371,7 +371,23 @@ function se.is_expr(expr, tag)
    return expr[1] == tag
 end
 
-
+-- Note: expr does not have the quasiquote.
+function se.qq_eval(env, expr)
+   if type(expr) ~= table then
+      return expr
+   end
+   if se.is_expr(expr, 'unquote') then
+      local _, var = se.unpack(expr, {n=2})
+      local val = env[var]
+      assert(val)
+      return val
+   end
+   return se.map(
+      function(expr1)
+         return se.qq_eval(env, expr1)
+      end,
+      expr)
+end
 
 
 return se
