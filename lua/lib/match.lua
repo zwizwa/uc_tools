@@ -1,7 +1,7 @@
 -- Constructor inversion matcher.
 local match = {}
 
-function match.compile_pattern(pat_fun, nb)
+function match.compile(pat_fun, nb)
    local args = {}      -- tracks argument order
    local bindings = {}  -- used for is_var()
    for i=1,nb do
@@ -16,12 +16,12 @@ function match.compile_pattern(pat_fun, nb)
 end
 
 local function trace(tag, thing)
-   log_desc({trace = {tag, thing}})
+   -- log_desc({trace = {tag, thing}})
 end
 
-function match.match_pattern(top_expr, pat_bundle, bindings)
-   local top_pat  = pat_bundle.pat
-   local bindings = pat_bundle.bindings
+function match.eval(top_expr, pattern_obj, bindings)
+   local top_pat  = pattern_obj.pat
+   local bindings = pattern_obj.bindings
 
    local m = {}
    local function mp(expr, pat)
@@ -77,11 +77,11 @@ function match.match_pattern(top_expr, pat_bundle, bindings)
    end
 end
 
-function match.apply_match(pat_bundle, match_result, handler)
+function match.apply(pattern_obj, match_result, handler)
    assert(match_result)
    local args = {}
-   for i=1,#pat_bundle.args do
-      local var = pat_bundle.args[i]
+   for i=1,#pattern_obj.args do
+      local var = pattern_obj.args[i]
       args[i] = match_result[var]
       assert(args[i])
    end
