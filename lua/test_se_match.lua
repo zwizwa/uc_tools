@@ -1,20 +1,17 @@
 
-local se = require('lib.se')
-local se_match = require('lib.se_match')
-require('lib.log_se')
+-- Test S-Expression matching on top of generic "inverted constructor"
+-- matching.  This inverts the quasiquote constructor and uses the se
+-- parser to convert from string to Lua data structure + memoization
+-- of string->pattern_obj
 
-local matcher = se_match.new()
-local function match(e,p) return matcher:match(e,p) end
+local se = require('lib.se')
+require('lib.log_se')
 
 -- Patterns are implicitly quasiquoted.
 local pats = {
    {"(add ,a ,b)", function(m) return m.a + m.b end},
    {"(sub ,a ,b)", function(m) return m.a - m.b end},
 }
-local function test_interp_old(expr)
-   return match(expr,pats)
-end
-
 local function test_matcher(match)
    local strs = {
       "(add 1 2)",
@@ -31,14 +28,7 @@ local function test_matcher(match)
    end
 end
 
-test_matcher(test_interp_old)
-
--- FIXME: To use the other matcher, maybe convert
--- "(add ,a ,b)" to "l('add',_.a,_.b)" or "{'add',{'_.a',{'_.b','#<empty>'}}}"
--- Let's do that right here.
--- Actually it just needs a quasiquoting "renderer":
--- The important part is the compilation to match pattern data structure, not lua function.
--- For quasiquoting that would then not need to go through the evaluator.
+-- Teset the qq renderer separately.
 function test_qq_eval(env, str)
    local expr = se.read_string(str)
    local expr1 = se.qq_eval(env, expr)
@@ -55,4 +45,4 @@ function test_interp_new(expr)
    return mtch(expr, pats)
 end
 
-test_matcher(test_interp_new) -- FIXME: doesn't work yet
+test_matcher(test_interp_new)
