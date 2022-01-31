@@ -38,11 +38,12 @@ end
 --test_qq_eval({a = 1, b = 2}, ",a" )  -- FIXME: Something not right here but above works
 --test_qq_eval({a = 1, b = 2}, "(add ,a ,b)" )
 
-local smatch = require('lib.smatch')
-local mtch = smatch.se_matcher({})
+local se_match = require('lib.se_match')
+local mtch = se_match.new()
 
 function test_interp_new(expr)
    return mtch(expr, pats)
 end
 
 test_matcher(test_interp_new)
+

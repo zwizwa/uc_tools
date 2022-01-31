@@ -1,8 +1,11 @@
--- I'd like to isolate these passes:
+-- Preprocessor that performs the following:
 --
 -- MACRO-EXPAND
 -- A-NORMAL FORM
--- VARIABLE RENAMING
+-- VARIABLE RENAMING (FIXME)
+-- SIMPLIFY BLOCK (TODO)
+-- SINGLE LAMBDA EXPR (TODO)
+--
 -- OUTPUT CLEANUP
 --
 -- Macro expansion and ANF seem to go hand-in hand.

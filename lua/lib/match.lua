@@ -90,7 +90,7 @@ function match.match(expr, clauses)
       local pat, handle = unpack(clause)
       local cpat = match.compile(pat)
       local m = match.apply(cpat, expr)
-      if m then return m end
+      if m then return handle(m) end
    end
    return false
 end
