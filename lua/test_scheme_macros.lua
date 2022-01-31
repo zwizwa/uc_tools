@@ -83,6 +83,8 @@ local function test()
    t("'(a b c)")
    t(",(a b c)")
    t("`(a b c)")
+   t("'(a . (b c))")
+   t("`(a . ,b)")
 
    t("(module-begin 1 2)")
    t("(letrec ((a 1) (b 2)) a)")

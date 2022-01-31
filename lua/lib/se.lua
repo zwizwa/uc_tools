@@ -59,7 +59,7 @@ local function is_charset(str)
    return function(c) return set[c] or false end
 end
 local is_whitespace  = is_charset(' \n\r\t')
-local is_end_of_atom = is_charset(' \n\r\t' .. "()'`,")
+local is_end_of_atom = is_charset(' \n\r\t' .. "()'`,.")
 
 function se:skip_space()
    while true do
@@ -263,7 +263,13 @@ end
 function se:read_list()
    local objs = {}
    while true do
-      if ')' == self:skip_space() then
+      local c = self:skip_space()
+      if '.' == c then
+         self:pop()
+         local tail_obj = self:read()
+         assert(')' == self:skip_space())
+         return self.append(self.array_to_list(objs), tail_obj)
+      elseif ')' == c then
          self:pop()
          -- For processing it is much more convenient to represent
          -- this as a list of pairs instead of an array.
