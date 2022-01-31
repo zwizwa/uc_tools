@@ -37,6 +37,7 @@ end
 --test_qq_eval({a = 1, b = 2}, "(unquote a)" )
 --test_qq_eval({a = 1, b = 2}, ",a" )  -- FIXME: Something not right here but above works
 --test_qq_eval({a = 1, b = 2}, "(add ,a ,b)" )
+test_qq_eval({a = 1, b = 2}, "(,a . ,b)")
 
 local se_match = require('lib.se_match')
 local mtch = se_match.new()

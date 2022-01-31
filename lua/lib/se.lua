@@ -388,11 +388,12 @@ function se.qq_eval(env, expr)
       assert(val)
       return val
    end
-   return se.map(
-      function(expr1)
-         return se.qq_eval(env, expr1)
-      end,
-      expr)
+   local function sub(expr1)
+      return se.qq_eval(env, expr1)
+   end
+   -- return se.map(sub, expr)
+   -- This needs to operate on pairs to allow unquoted tails.
+   return {sub(expr[1]), sub(expr[2])}
 end
 
 

@@ -15,8 +15,8 @@ function class.compile(s, expr)
    return s.match(
       expr,
       {
-         {"(lambda ,args ,body)",
-          function(m) return l('_lambda',args,body) end},
+         {"(block ,bindings . ,body)",
+          function(m) return {'_block',{m.bindings,m.body}} end},
          {"(unquote other)",
           function(m) return m.other end}
       }
