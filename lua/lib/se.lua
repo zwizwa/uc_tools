@@ -373,7 +373,7 @@ end
 
 -- Note: expr does not have the quasiquote.
 function se.qq_eval(env, expr)
-   if type(expr) ~= table then
+   if type(expr) ~= 'table' then
       return expr
    end
    if se.is_expr(expr, 'unquote') then
