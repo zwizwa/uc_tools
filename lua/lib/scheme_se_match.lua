@@ -4,24 +4,41 @@
 -- The idea is that the traversal pattern IS the data structure.
 -- The s-expressions are just the medium in which this is embedded.
 -- So what we do here is define an iteration pattern for the base language.
--- But first, dotted syntax is necessary.
+
+-- FIXME: Memoize construction also?
+
 local se = require('lib.se')
 local se_match = require('lib.se_match')
 local l = se.list
 
 local class = {}
 
-function class.compile(s, expr)
+function compile(s,expr)
    return s.match(
       expr,
       {
          {"(block ,bindings . ,body)",
-          function(m) return {'_block',{m.bindings,m.body}} end},
+          function(m)
+             return
+                {'block',
+                 {m.bindings,
+                  s:compile(m.body)}}
+          end},
+         {"(lambda ,bindings . ,body)",
+          function(m)
+             return
+                {'lambda',
+                 {m.bindings,
+                  s:compile(m.body)}}
+          end},
          {"(unquote other)",
-          function(m) return m.other end}
+          function(m)
+             return m.other
+          end}
       }
    )
 end
+class.compile = compile
 
 local function new()
    local obj = { match = se_match.new() }

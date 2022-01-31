@@ -8,6 +8,12 @@ end
 local lib = {}
 
 -- Alternative lambda syntax.
+-- Since 5.2 loadstring is deprecated and setfenv is removed,
+-- but load allows adding in the environment.  This should
+-- be escaped.
+-- if _VERSION == "Lua 5.1" then
+-- end
+
 function lib.lambda(s, fragment)
    assert(s and s.var and type(s.var) == 'string')
    trace("EXPAND", fragment)
