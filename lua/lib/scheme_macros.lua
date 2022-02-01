@@ -24,7 +24,8 @@
 -- slightly modify the behavior.
 
 
-local se = require('lib.se')
+local se    = require('lib.se')
+local match = require('lib.match') 
 local macro = {}
 local l = se.list
 local r = se.reverse
@@ -144,11 +145,29 @@ end
 -- implement the let "bulk binding", it seems simplest just to use a
 -- lambda.
 
-macro['let*'] = function(expr, config)
-   local c = config or {}
-   _, bindings, rest = se.unpack(expr, {n = 2, tail = true})
-   return l('block',bindings,{'begin',rest})
+-- macro['let*'] = function(expr, config)
+--    local c = config or {}
+--    _, bindings, rest = se.unpack(expr, {n = 2, tail = true})
+--    return l('block',bindings,{'begin',rest})
+-- end
+
+
+local function rewriter(from_str, to_str)
+   -- Unpack strings to s-expressions
+   local from_se   = se.read_string(from_str)
+   local to_se     = se.read_string(to_str)
+   -- Map quasiquoting pattern to constructor
+   local from_cons = function(probe) return se.qq_eval(probe, from_se) end
+   local to_cons   = function(probe) return se.qq_eval(probe, to_se) end
+   -- Compile pattern constructor
+   local from_cpat = match.compile(from_cons)
+   local form      = se.unpack(from_se, {n = 1, tail = true})
+   macro[form] = function(expr)
+         return to_cons(match.apply(from_cpat, expr))
+   end
 end
+
+rewriter("(let* ,bindings . ,rest)", "(block ,bindings (begin . ,rest))")
 
 macro['let'] = function(expr, c)
    need_gensym(c,'let')

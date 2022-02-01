@@ -100,6 +100,7 @@ local function test()
    -- t("(let ((x 123)) (define (y a) a) x)")
    t("(let ((a a1) (b b1)) 123)")
    t("(case x ((0) a b) ((1) d e))")
+   t("(let* ((a 1) (b 2)) a b)")
 
 end
 
