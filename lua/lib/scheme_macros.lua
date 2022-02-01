@@ -23,6 +23,7 @@
 -- use the code here to implement language-specific macros with
 -- slightly modify the behavior.
 
+require('lib.log')
 
 local se    = require('lib.se')
 local match = require('lib.match') 
@@ -154,20 +155,22 @@ end
 
 local function rewriter(from_str, to_str)
    -- Unpack strings to s-expressions
-   local from_se   = se.read_string(from_str)
+   local from_se   = se.read_string(from_str) ; -- log_desc({from_se = from_se})
    local to_se     = se.read_string(to_str)
    -- Map quasiquoting pattern to constructor
-   local from_cons = function(probe) return se.qq_eval(probe, from_se) end
+   local from_cons = function(probe) return se.qq_eval(probe, from_se) end ; -- log_desc({test_from_cons = from_cons({5,6})})
    local to_cons   = function(probe) return se.qq_eval(probe, to_se) end
    -- Compile pattern constructor
-   local from_cpat = match.compile(from_cons)
+   local from_cpat = match.compile(from_cons) ; -- log_desc({from_cpat = from_cpat})
+
    local form      = se.unpack(from_se, {n = 1, tail = true})
    macro[form] = function(expr)
          return to_cons(match.apply(from_cpat, expr))
    end
 end
 
-rewriter("(let* ,bindings . ,rest)", "(block ,bindings (begin . ,rest))")
+-- rewriter("(let* ,bindings . ,rest)", "(block ,bindings (begin . ,rest))")
+rewriter("(let* ,1 . ,2)", "(block ,1 (begin . ,2))")
 
 macro['let'] = function(expr, c)
    need_gensym(c,'let')
@@ -223,5 +226,6 @@ macro['and'] = function(expr, c)
    return l('block',l(l(sym, a)),l('if',l(c['not'] or 'not', sym), sym, b))
 end
 
+-- rewrite_gensym("(tmp)", "(or ,a ,b)", "(block ((,tmp ,a)) (if ,tmp ,tmp ,b))")
 
 return macro
