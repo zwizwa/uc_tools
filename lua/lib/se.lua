@@ -385,7 +385,9 @@ function se.qq_eval(env, expr)
    if se.is_expr(expr, 'unquote') then
       local _, var = se.unpack(expr, {n=2})
       local val = env[var]
-      assert(val)
+      if not val then
+         error("qq_eval undefined variable '" .. var .. "'")
+      end
       return val
    end
    local function sub(expr1)

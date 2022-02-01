@@ -19,8 +19,7 @@ local function cfg(c)
 end
 
 local config = {
-   case = cfg({}),
-   let  = cfg({ named_let_trampoline = 'named-let-trampoline' }),
+   ['let']  = cfg({ named_let_trampoline = 'named-let-trampoline' }),
 }
 
 local function macro_step(expr)
@@ -29,7 +28,9 @@ local function macro_step(expr)
    assert(form and type(form) == 'string')
    local macro = macros[form]
    assert(macro)
-   return macro(expr, config[form])
+   local cfg = config[form] or cfg({})
+   assert(cfg)
+   return macro(expr, cfg)
 end
 
 local prim = {
@@ -101,6 +102,8 @@ local function test()
    t("(let ((a a1) (b b1)) 123)")
    t("(case x ((0) a b) ((1) d e))")
    t("(let* ((a 1) (b 2)) a b)")
+   t("(or a b)")
+   t("(and a b)")
 
 end
 

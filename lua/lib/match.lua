@@ -1,8 +1,10 @@
+local set   = require('lib.set')
+
 -- Constructor inversion matcher.
 local match = {}
 
 -- Convert constructor (table -> data) into pattern matcher object.
-function match.compile(pat_fun)
+function match.compile(pat_fun, opt_env)
    local vars  = {} -- set of variables
    local probe = {} -- empty object, metatable used to capture refereneces
    setmetatable(

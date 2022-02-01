@@ -24,7 +24,6 @@
 -- slightly modify the behavior.
 
 require('lib.log')
-
 local se    = require('lib.se')
 local match = require('lib.match') 
 local macro = {}
@@ -146,31 +145,6 @@ end
 -- implement the let "bulk binding", it seems simplest just to use a
 -- lambda.
 
--- macro['let*'] = function(expr, config)
---    local c = config or {}
---    _, bindings, rest = se.unpack(expr, {n = 2, tail = true})
---    return l('block',bindings,{'begin',rest})
--- end
-
-
-local function rewriter(from_str, to_str)
-   -- Unpack strings to s-expressions
-   local from_se   = se.read_string(from_str) ; -- log_desc({from_se = from_se})
-   local to_se     = se.read_string(to_str)
-   -- Map quasiquoting pattern to constructor
-   local from_cons = function(probe) return se.qq_eval(probe, from_se) end ; -- log_desc({test_from_cons = from_cons({5,6})})
-   local to_cons   = function(probe) return se.qq_eval(probe, to_se) end
-   -- Compile pattern constructor
-   local from_cpat = match.compile(from_cons) ; -- log_desc({from_cpat = from_cpat})
-
-   local form      = se.unpack(from_se, {n = 1, tail = true})
-   macro[form] = function(expr)
-         return to_cons(match.apply(from_cpat, expr))
-   end
-end
-
--- rewriter("(let* ,bindings . ,rest)", "(block ,bindings (begin . ,rest))")
-rewriter("(let* ,1 . ,2)", "(block ,1 (begin . ,2))")
 
 macro['let'] = function(expr, c)
    need_gensym(c,'let')
@@ -213,19 +187,50 @@ macro['let'] = function(expr, c)
    end
 end
 
-macro['or'] = function(expr, c)
-   need_gensym(c,'or')
-   _, a, b = se.unpack(expr, {n = 3})
-   local sym = c.state:gensym()
-   return l('block',l(l(sym, a)),l('if',sym,sym,b))
-end
-macro['and'] = function(expr, c)
-   need_gensym(c,'and')
-   _, a, b = se.unpack(expr, {n = 3})
-   local sym = c.state:gensym()
-   return l('block',l(l(sym, a)),l('if',l(c['not'] or 'not', sym), sym, b))
+
+
+-- Use match.lua to implement a small matcher DSL.
+-- LHS (des)  is a literal pattern with variable names or numbers unquoted.
+-- RHS (cons) has the same form, but in addition supports free variables that map to gensyms.
+
+-- Free variables in rewriter clauses represent generated symbols.
+local function gensym_free_vars(s, env)
+   local free = {}
+   local function index(_,k)
+      local v
+      v = env[k]         ; if v then return v end
+      v = rawget(free,k) ; if v then return v end
+      v = s:gensym()     ; free[k] = v ; return v
+   end
+   setmetatable(free, {__index = index})
+   return free
 end
 
--- rewrite_gensym("(tmp)", "(or ,a ,b)", "(block ((,tmp ,a)) (if ,tmp ,tmp ,b))")
+-- FIXME: second argument could also just be a function.
+
+local function defmacro(from_str, to_str)
+   -- Unpack strings to s-expressions
+   local from_se   = se.read_string(from_str) ; -- log_desc({from_se = from_se})
+   local to_se     = se.read_string(to_str)
+   -- Map quasiquoting pattern to constructor
+   local from_cons = function(probe) return se.qq_eval(probe, from_se) end ; -- log_desc({test_from_cons = from_cons({5,6})})
+   local to_cons   = function(probe) return se.qq_eval(probe, to_se) end
+   -- Compile pattern constructors.
+   local from_cpat = match.compile(from_cons) ; -- log_desc({from_cpat = from_cpat})
+   local form      = se.unpack(from_se, {n = 1, tail = true})
+   macro[form] = function(expr, config)
+      need_gensym(config)
+      local m = match.apply(from_cpat, expr)
+      local mf = gensym_free_vars(config.state, m)
+      return to_cons(mf)
+   end
+end
+
+-- FIXME: Put these in a separate file maybe?
+
+defmacro("(let* ,1 . ,2)", "(block ,1 (begin . ,2))")
+defmacro("(or   ,1   ,2)", "(block ((,tmp ,1)) (if ,tmp ,tmp ,2))")
+defmacro("(and  ,1   ,2)", "(block ((,tmp ,1)) (if (not ,tmp) ,tmp ,2))")
+
 
 return macro
