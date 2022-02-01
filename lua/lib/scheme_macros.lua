@@ -192,8 +192,9 @@ end
 -- Use match.lua to implement a small matcher DSL.
 -- LHS (des)  is a literal pattern with variable names or numbers unquoted.
 -- RHS (cons) has the same form, but in addition supports free variables that map to gensyms.
-
+--
 -- Free variables in rewriter clauses represent generated symbols.
+--
 local function gensym_free_vars(s, env)
    local free = {}
    local function index(_,k)
@@ -205,20 +206,11 @@ local function gensym_free_vars(s, env)
    setmetatable(free, {__index = index})
    return free
 end
-
--- FIXME: second argument could also just be a function.
-
-local function defmacro(from_str, to_str)
-   -- Unpack strings to s-expressions
-   local from_se   = se.read_string(from_str) ; -- log_desc({from_se = from_se})
-   local to_se     = se.read_string(to_str)
-   -- Map quasiquoting pattern to constructor
-   local from_cons = function(probe) return se.qq_eval(probe, from_se) end ; -- log_desc({test_from_cons = from_cons({5,6})})
-   local to_cons   = function(probe) return se.qq_eval(probe, to_se) end
-   -- Compile pattern constructors.
-   local from_cpat = match.compile(from_cons) ; -- log_desc({from_cpat = from_cpat})
-   local form      = se.unpack(from_se, {n = 1, tail = true})
-   macro[form] = function(expr, config)
+local function defmacro(from, to)
+   local from_cons, form_name = se.constructor(from)
+   local to_cons              = se.constructor(to)
+   local from_cpat            = match.compile(from_cons) ; -- log_desc({from_cpat = from_cpat})
+   macro[form_name] = function(expr, config)
       need_gensym(config)
       local m = match.apply(from_cpat, expr)
       local mf = gensym_free_vars(config.state, m)
