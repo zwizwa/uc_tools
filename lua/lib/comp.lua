@@ -7,10 +7,14 @@ local l = se.list
 
 -- Make writing output syntax as convenient as possible.
 -- Erlang style strings + multiple arguments.
+
+-- FIXME: in terms of iolist
 function comp:w(...)
    for _,el in ipairs({...}) do
       if type(el) == 'table' then
          self:w(unpack(el))
+      elseif el == true  then self:write('true')
+      elseif el == false then self:write('false')
       else
          self:write(el)
       end
@@ -35,6 +39,11 @@ function comp:tab()
    end
    return strs
 end
+
+function comp:indented(s, fn)
+   s:parameterize({ indent = s.indent + 1 }, fn)
+end
+
 
 function comp.clist(in_lst)
    local lst = {}
