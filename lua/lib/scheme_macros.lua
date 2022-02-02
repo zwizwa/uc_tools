@@ -195,7 +195,9 @@ end
 --
 -- Free variables in rewriter clauses represent generated symbols.
 --
-local function gensym_free_vars(s, env)
+local function gensym_free_vars(config, env)
+   need_gensym(config)
+   local s = config.state
    local free = {}
    local function index(_,k)
       local v
@@ -219,12 +221,11 @@ local function mcase(...)
       ins(handle, to_cons)
    end
    return function(expr, config)
-      need_gensym(config)
       local expr1 = se.cdr(expr)
       for i=1,#cpat do
          local m = match.apply(cpat[i], expr1)
          if m then
-            local mf = gensym_free_vars(config.state, m)
+            local mf = gensym_free_vars(config, m)
             return (handle[i])(mf)
          end
       end

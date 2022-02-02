@@ -1,3 +1,4 @@
+-- Shared language front-end
 -- Preprocessor that performs the following:
 --
 -- MACRO-EXPAND
@@ -6,7 +7,11 @@
 -- SIMPLIFY BLOCK (TODO)
 -- SINGLE LAMBDA EXPR (TODO)
 --
--- OUTPUT CLEANUP
+-- Separate later passes:
+--
+-- BLOCK FLATTENING
+--
+-- OUTPUT CLEANUP / LANG PPRINT
 --
 -- Macro expansion and ANF seem to go hand-in hand.
 -- Variable renaming is useful for later block-flattening.
