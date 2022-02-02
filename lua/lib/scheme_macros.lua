@@ -206,16 +206,29 @@ local function gensym_free_vars(s, env)
    setmetatable(free, {__index = index})
    return free
 end
-local function defmacro(form_name, clause)
-   local from, to = unpack(clause)
-   local from_cons = se.constructor(from)
-   local to_cons   = se.constructor(to)
-   local from_cpat = match.compile(from_cons) ; -- log_desc({from_cpat = from_cpat})
+local ins = table.insert
+local function defmacro(form_name, ...)
+   local cpat   = {}
+   local handle = {}
+   for _, clause in ipairs({...}) do
+      local from, to = unpack(clause)
+      local from_cons = se.constructor(from)
+      local to_cons   = se.constructor(to)
+      local from_cpat = match.compile(from_cons) ; -- log_desc({from_cpat = from_cpat})
+      ins(cpat, from_cpat)
+      ins(handle, to_cons)
+   end
    macro[form_name] = function(expr, config)
       need_gensym(config)
-      local m = match.apply(from_cpat, se.cdr(expr))
-      local mf = gensym_free_vars(config.state, m)
-      return to_cons(mf)
+      local expr1 = se.cdr(expr)
+      for i=1,#cpat do
+         local m = match.apply(cpat[i], expr1)
+         if m then
+            local mf = gensym_free_vars(config.state, m)
+            return (handle[i])(mf)
+         end
+      end
+      error("macro '" .. form_name .. "' match error")
    end
 end
 
