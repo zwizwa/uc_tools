@@ -404,7 +404,7 @@ end
 -- They can be represented as strings, functions or s-expressions.
 -- Only for matching pattern as function the name can not be recovered
 -- so won't work for defmacro.
-function se.constructor(thing, form_name)
+function se.constructor(thing)
    local expr
    local cons
    local t = type(thing)
@@ -416,12 +416,12 @@ function se.constructor(thing, form_name)
       else
          expr = thing
       end
-      cons = function(probe) return se.qq_eval(probe, expr) end
+      cons = function(probe)
+         local e = se.qq_eval(probe, expr)
+         return e
+      end
    end
-   if expr then
-      form_name = se.unpack(expr, {n = 1, tail = true})
-   end
-   return cons, (form_name or "<anonymous>")
+   return cons
 end
 
 return se

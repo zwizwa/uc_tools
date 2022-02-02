@@ -206,13 +206,14 @@ local function gensym_free_vars(s, env)
    setmetatable(free, {__index = index})
    return free
 end
-local function defmacro(from, to)
-   local from_cons, form_name = se.constructor(from)
-   local to_cons              = se.constructor(to)
-   local from_cpat            = match.compile(from_cons) ; -- log_desc({from_cpat = from_cpat})
+local function defmacro(form_name, clause)
+   local from, to = unpack(clause)
+   local from_cons = se.constructor(from)
+   local to_cons   = se.constructor(to)
+   local from_cpat = match.compile(from_cons) ; -- log_desc({from_cpat = from_cpat})
    macro[form_name] = function(expr, config)
       need_gensym(config)
-      local m = match.apply(from_cpat, expr)
+      local m = match.apply(from_cpat, se.cdr(expr))
       local mf = gensym_free_vars(config.state, m)
       return to_cons(mf)
    end
@@ -220,9 +221,9 @@ end
 
 -- FIXME: Put these in a separate file maybe?
 
-defmacro("(let* ,1 . ,2)", "(block ,1 (begin . ,2))")
-defmacro("(or   ,1   ,2)", "(block ((,tmp ,1)) (if ,tmp ,tmp ,2))")
-defmacro("(and  ,1   ,2)", "(block ((,tmp ,1)) (if (not ,tmp) ,tmp ,2))")
+defmacro("let*", {"(,1 . ,2)", "(block ,1 (begin . ,2))"})
+defmacro("or",   {"(,1   ,2)", "(block ((,tmp ,1)) (if ,tmp ,tmp ,2))"})
+defmacro("and",  {"(,1   ,2)", "(block ((,tmp ,1)) (if (not ,tmp) ,tmp ,2))"})
 
 
 return macro
