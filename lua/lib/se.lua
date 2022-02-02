@@ -10,14 +10,17 @@ local empty = '#<nil>'
 
 local se = { empty = empty }
 
+-- Represent EOF as a thing, not nil.
+local EOF = { "<EOF>" }
+
 function se:next()
    local char = self.stream:read(1)
-   -- if char then log(char) end
+   if not char then
+      return EOF
+   end
+   -- log(char)
    if char == '\n' then
       self.nb_newlines = self.nb_newlines + 1
-   end
-   if not char then
-      error({error="EOF"})
    end
    -- self:log("next: " .. char .. "(" .. char:byte(1) .. ")\n")
    return char
@@ -31,6 +34,7 @@ function se:peek()
    if self.head then return self.head end
    while true do
       self.head = self:next()
+      if self.head == EOF then return EOF end
       -- On the first line, '#' is also a comment character.
       -- This is there for #! and Racket #lang forms.
       if self.head == '#' and self.nb_newlines < 1 then
@@ -78,7 +82,7 @@ function se:read_atom()
    local chars = {}
    while true do
       local char = self:peek()
-      if is_end_of_atom(char) or nil == char then
+      if is_end_of_atom(char) or EOF == char then
          local str = table.concat(chars,"")
          local const = se.const[str]
          if const then return const end
@@ -308,12 +312,8 @@ end
 function se:read_multi()
    local exprs = {}
    while true do
-      local function skip_space() self:skip_space() end
-      local ok, err = pcall(skip_space)
-      if not ok then
-         if (err and err.error == 'EOF') then break end
-         error(err)
-      end
+      local char = self:skip_space()
+      if char == EOF then break end
       table.insert(exprs, self:read())
    end
    return se.array_to_list(exprs)

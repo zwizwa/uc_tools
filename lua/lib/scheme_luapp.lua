@@ -91,11 +91,11 @@ function class.comp(s,expr)
          {"(set! ,var ,val)", function(m)
              s:w(m.var, " = ", m.val)
          end},
-         {"(unquote other)", function(m)
-             if type(m.other) == 'number' then
-                s:w(m.other)
-             elseif type(m.other) == 'string' then
-                s:w(m.other)
+         {",atom", function(m)
+             if type(m.atom) == 'number' then
+                s:w(m.atom)
+             elseif type(m.atom) == 'string' then
+                s:w(m.atom)
              else
                 log_se_n(expr,"BAD: ")
                 error("syntax error")
