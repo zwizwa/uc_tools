@@ -22,7 +22,9 @@ local function do_se_match(s, expr, string_clauses)
       local m = match.apply(cpat, expr)
       if m then return fhandle(m) end
    end
-   return false
+   -- FIXME: Make this configurable?
+   error('pattern mismatch')
+   -- return false
 end
 
 function se_match.new(config)

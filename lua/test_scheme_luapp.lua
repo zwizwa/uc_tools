@@ -17,8 +17,16 @@ end
 
 test([[
 (block (
-   (a 123)
-   (_ (set! a 456))))
+  (fun1
+    (lambda (x)
+      (block ((_ x)))))
+  (fun2
+    (lambda ()
+      (block (
+        (f (lambda (x) (block ((_ x)))))
+        (a 123)
+        (_ (set! a 456))))))
+))
 ]])
 
 

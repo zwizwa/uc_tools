@@ -40,8 +40,8 @@ function comp:tab()
    return strs
 end
 
-function comp:indented(s, fn)
-   s:parameterize({ indent = s.indent + 1 }, fn)
+function comp:indented(fn)
+   self:parameterize({ indent = self.indent + 1 }, fn)
 end
 
 
