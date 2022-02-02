@@ -25,7 +25,7 @@
 
 require('lib.log')
 local se    = require('lib.se')
-local match = require('lib.match') 
+local match = require('lib.match')
 local macro = {}
 local l = se.list
 local r = se.reverse
@@ -207,7 +207,7 @@ local function gensym_free_vars(s, env)
    return free
 end
 local ins = table.insert
-local function defmacro(form_name, ...)
+local function mcase(...)
    local cpat   = {}
    local handle = {}
    for _, clause in ipairs({...}) do
@@ -218,7 +218,7 @@ local function defmacro(form_name, ...)
       ins(cpat, from_cpat)
       ins(handle, to_cons)
    end
-   macro[form_name] = function(expr, config)
+   return function(expr, config)
       need_gensym(config)
       local expr1 = se.cdr(expr)
       for i=1,#cpat do
@@ -234,9 +234,9 @@ end
 
 -- FIXME: Put these in a separate file maybe?
 
-defmacro("let*", {"(,1 . ,2)", "(block ,1 (begin . ,2))"})
-defmacro("or",   {"(,1   ,2)", "(block ((,tmp ,1)) (if ,tmp ,tmp ,2))"})
-defmacro("and",  {"(,1   ,2)", "(block ((,tmp ,1)) (if (not ,tmp) ,tmp ,2))"})
+macro["let*"] = mcase({"(,1 . ,2)", "(block ,1 (begin . ,2))"})
+macro["or"]   = mcase({"(,1   ,2)", "(block ((,tmp ,1)) (if ,tmp ,tmp ,2))"})
+macro["and"]  = mcase({"(,1   ,2)", "(block ((,tmp ,1)) (if (not ,tmp) ,tmp ,2))"})
 
 
 return macro
