@@ -27,6 +27,10 @@ struct log_file_ud {
     lua_State *L;
 };
 
+#ifndef LOG_PARSE_BUFFER_SIZE
+#define LOG_PARSE_BUFFER_SIZE (4 * 1024)
+#endif
+
 /* Parser iterator wrapper. */
 struct log_parse_ud {
 
@@ -48,6 +52,9 @@ struct log_parse_ud {
     uint32_t nb_rv;
     struct log_file_ud *ud_file;
 
+    /* Storage for buffered input from filedes. */
+    uint8_t buf[LOG_PARSE_BUFFER_SIZE];
+    uintptr_t buf_len;
 };
 
 #endif

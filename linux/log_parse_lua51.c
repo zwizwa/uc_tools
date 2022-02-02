@@ -276,12 +276,26 @@ static void log_parse_parameterize(
 static int to_thing_mv(lua_State *L, struct log_parse_cbs *cb) {
     struct log_parse_ud *ud = L_log_parse(L, -2);
     const uint8_t *data = (const uint8_t *)lua_tostring(L, -1);
-    ASSERT(data);
-    size_t len = lua_strlen(L, -1);
+    size_t len;
+    if (data) {
+        /* Input is a string. */
+        len = lua_strlen(L, -1);
+    }
+    else {
+        // FIXME: Needs testing
+        /* Input is a number representing a file descriptor.  We
+           perform a blocking read. */
+        intptr_t fd = luaL_checkint(L, -1);
+        int rv = read(fd, ud->buf, sizeof(ud->buf));
+        ASSERT(rv > 0);
+        len = rv;
+        data = ud->buf;
+    }
     log_parse_parameterize(L, ud, cb, LOG_PARSE_STATUS_CONTINUE);
     log_parse_write(&ud->s, data, len);
     return ud->nb_rv;
 }
+
 
 /* Callback bundles per output type. */
 // FIXME: .line is the same as .ts_line here.
@@ -324,7 +338,7 @@ void bind_parse(struct log_parse_ud *ud_parse, struct log_file_ud *ud_file) {
 }
 
 
-/* Continue parsing at offset. */
+/* Continue parsing at offset for mmapped file */
 void parse_continue_at_offset(
     struct log_parse_ud *ud_parse, struct log_file_ud *ud_file)
 {
@@ -334,17 +348,60 @@ void parse_continue_at_offset(
     ud_parse->offset = ud_parse->s.in - (const uint8_t*)ud_file->file.buf;
 }
 
-/* Yield to parser to provide a single output element of specified type.
-   Lua arguments are alwyays the same (parse,file). */
+/* Similar, but for filedes which we'll buffer here. */
+void parse_continue_buffered_at_offset(
+    struct log_parse_ud *ud_parse, int fd)
+{
+    for(;;) {
+        if (ud_parse->offset == ud_parse->buf_len) {
+            int rv = read(fd, ud_parse->buf, sizeof(ud_parse->buf));
+            if (rv == 0) {
+                /* EOF.  There will be nothing pushed to the Lua stack
+                   which tells the wrapper iterator to stop. */
+                return;
+            }
+            ASSERT(rv > 0);
+            ud_parse->buf_len = rv;
+            ud_parse->offset = 0;
+            //LOG("read %d bytes\n", rv);
+        }
+        ud_parse->s.in       = ud_parse->buf     + ud_parse->offset;
+        ud_parse->s.in_len   = ud_parse->buf_len - ud_parse->offset;
+        log_parse_status_t s = log_parse_continue(&ud_parse->s);
+        ud_parse->offset     = ud_parse->s.in - (const uint8_t*)ud_parse->buf;
+        // LOG("s=%d, offset=%d\n", s, ud_parse->offset);
+        if (s == LOG_PARSE_STATUS_YIELD) {
+            /* It found something and pushed it to the Lua stack
+               Return to Lua. */
+            return;
+        }
+        else {
+            /* It ran off the end, get some more. */
+        }
+    }
+}
+
+
+/* Yield to parser to provide a single output element of specified
+   type.  Lua arguments are always the same (parse,file), where file
+   can be an mmap file or a filedes. */
 static struct log_parse_ud *log_parse_next_cb(
     lua_State *L, struct log_parse_cbs *cb)
 {
-    struct log_file_ud *ud_file   = L_log_file(L, -1);
     struct log_parse_ud *ud_parse = L_log_parse(L, -2);
-    // FIXME: check that offset is actually inside the file
-    bind_parse(ud_parse, ud_file);
-    log_parse_parameterize(L, ud_parse, cb, LOG_PARSE_STATUS_YIELD);
-    parse_continue_at_offset(ud_parse, ud_file);
+
+    if (lua_isnumber(L, -1)) {
+        int fd = luaL_checkint(L, -1);
+        log_parse_parameterize(L, ud_parse, cb, LOG_PARSE_STATUS_YIELD);
+        parse_continue_buffered_at_offset(ud_parse, fd);
+    }
+    else {
+        struct log_file_ud *ud_file = L_log_file(L, -1);
+        bind_parse(ud_parse, ud_file);
+        // FIXME: check that offset is actually inside the file
+        log_parse_parameterize(L, ud_parse, cb, LOG_PARSE_STATUS_YIELD);
+        parse_continue_at_offset(ud_parse, ud_file);
+    }
     return ud_parse;
 }
 

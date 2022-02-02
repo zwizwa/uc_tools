@@ -48,7 +48,13 @@ function log_parse.messages(config)
    local nxt = config.next
    -- FIXME: C code only supports a single byte prefix atm.
    local wind_prefix = config and config.wind and config.wind[1]
-   local file = C.new_log_file(filename)
+   local file
+   if filename == '-' then
+      file = 0 -- iterator supports file descriptor numbers
+   else
+      file = C.new_log_file(filename)
+   end
+   log_desc({filename = filename, file = file})
    local parse = C.new_log_parse()
    if wind_prefix then
       local offset = C.wind_prefix(parse, file, wind_prefix)
