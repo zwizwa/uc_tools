@@ -1,15 +1,18 @@
 -- Shared language front-end
 -- Preprocessor that performs the following:
 --
--- MACRO-EXPAND
+-- MACRO EXPAND
+-- BETA REDUCTION
 -- A-NORMAL FORM
--- VARIABLE RENAMING (FIXME)
--- SIMPLIFY BLOCK (TODO)
--- SINGLE LAMBDA EXPR (TODO)
+-- VARIABLE RENAMING
 --
 -- Separate later passes:
 --
 -- BLOCK FLATTENING
+--
+-- SIMPLIFY BLOCK (TODO)
+-- SINGLE LAMBDA EXPR (TODO)
+-- RETURN / BLOCK RESULT (TODO)
 --
 -- OUTPUT CLEANUP / LANG PPRINT
 --
@@ -32,12 +35,16 @@ local class = {
    parameterize = comp.parameterize,
 }
 
+local void = {
+   class = "void"
+}
+
 -- Bind macros to state object for gensym.
 class.macro = {} ; do
    for name, m in pairs(require('lure.scheme_macros')) do
       -- log("MACRO: " .. name .. "\n")
       class.macro[name] = function(s, expr)
-         return m(expr, { state = s, void = '#<void>' })
+         return m(expr, { state = s, void = void })
       end
    end
 end
@@ -49,6 +56,7 @@ class.expander = {
    ['string'] = s_id,
    ['number'] = s_id,
    ['var']    = s_id,
+   ['void']   = s_id,
    ['pair']   = function(s, expr)
       local car, cdr = unpack(expr)
       local m = s.macro[car]
@@ -113,9 +121,7 @@ class.form = {
       local _, src_names, body = se.unpack(expr, {n = 2, tail = true})
       local vars = se.map(
          function(src_name)
-            local var = s:var_def(src_name)
-            assert(var and var.renamed)
-            return var
+            return s:var_def(src_name)
          end,
          src_names)
       return l('lambda', vars,
@@ -193,12 +199,33 @@ function class.anf(s, exprs, fn)
 end
 
 local function apply(s, expr)
-   trace("APPLY", expr)
-   return s:anf(expr, function(e) return e end)
+   local fun, args = unpack(expr)
+   -- Expand to expose lambda expressions.
+   fun = s:expand(fun)
+   -- Perform beta reduction before obscuring these applications into
+   -- ANF.  We could use a separate 'let' special form, but doing it
+   -- here catches more cases.
+   if se.expr_type(fun) == 'pair' and se.car(fun) == 'lambda' then
+      trace("BETA", expr)
+      local _, fargs, fbody = se.unpack(fun, {n=2,tail=true})
+      local bindings = se.zip(
+         function(farg, arg)
+            return l(s:var_def(farg), s:compile(arg))
+         end,
+         fargs, args)
+      local vars = se.map(se.car, bindings)
+      local cexp = s:compile_extend({'begin',fbody}, vars)
+      return l('block',bindings,cexp)
+   else
+      -- Ordinary application.
+      trace("APPLY", expr)
+      return s:anf(expr, function(e) return e end)
+   end
 end
 
 class.compiler = {
    ['number'] = s_id,
+   ['void']   = s_id,
    ['string'] = function(s, str)
       local var = s:var_ref(str)
       assert(var and var.class == 'var')
@@ -206,6 +233,8 @@ class.compiler = {
    end,
    ['pair'] = function(s, expr)
       local car, cdr = unpack(expr)
+      assert(car)
+      assert(cdr)
       local f = s.form[car]
       if f ~= nil then
          return f(s, expr)
@@ -234,13 +263,15 @@ end
 -- Renames definitions and references.
 function var_iolist(var)
    assert(var.var)
-   assert(var.renamed)
-   return {"#<var:",var.var,":",var.renamed,">"}
+   assert(var.unique)
+   local orig = {":",var.var}
+   if var.var == "tmp" then orig = "" end
+   return {var.unique,orig}
 end
 function class.var_def(s, name)
    assert(type(name) == 'string')
    local sym = s:gensym()
-   return { var = name, renamed = sym, class = 'var', iolist = var_iolist }
+   return { var = name, unique = sym, class = 'var', iolist = var_iolist }
 end
 
 

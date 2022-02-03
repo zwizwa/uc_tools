@@ -143,7 +143,6 @@ function se.reverse(lst)
    return l
 end
 
--- FIXME: Test
 function se.map_to_array(fun, lst)
    local arr = {}
    for el in se.elements(lst) do
@@ -156,6 +155,25 @@ function se.map(fun, lst)
    assert(lst)
    return se.array_to_list(se.map_to_array(fun,lst))
 end
+
+-- FIXME: generalize
+function se.zip_to_array(fun, lst_a, lst_b)
+   local arr = {}
+   for el in se.elements(lst_a) do
+      local single_val = fun(el, se.car(lst_b))
+      lst_b = se.cdr(lst_b)
+      table.insert(arr, single_val)
+   end
+   return arr
+end
+function se.zip(fun, lst_a, lst_b)
+   assert(lst_a)
+   assert(lst_b)
+   return se.array_to_list(se.zip_to_array(fun,lst_a,lst_b))
+end
+
+
+
 function se.foldr(on_pair, on_empty, lst)
    local function foldr(lst)
       if se.is_empty(lst) then

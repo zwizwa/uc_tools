@@ -1,2 +1,2 @@
-;; (define (id x) x)
-(lambda (x) x)
+(define (id x) x)
+;; (lambda (x) x)

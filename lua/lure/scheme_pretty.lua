@@ -48,13 +48,13 @@ local pprint_form = {
                function()
                   for binding in se.elements(bindings) do
                      if se.length(binding) == 1 then
-                        s:w(s:tab(),"(",car(binding),")\n")
+                        s:w(s:tab(),"(",se.iolist(binding),")\n")
                      else
                         local var, vexpr = se.unpack(binding, {n=2})
                         if type(vexpr) ~= 'table' then
-                           s:w(s:tab(),se.iolist(binding),"\n")
+                           s:w(s:tab(), se.iolist(binding),"\n")
                         else
-                           s:w(s:tab(),"(",var,"\n")
+                           s:w(s:tab(),"(",se.iolist(var),"\n")
                            s:indented(
                               function() s:pprint(vexpr) end)
                            s:w(s:tab(),")\n")
@@ -104,6 +104,7 @@ end
 
 local pprinter = {
    ['string']  = pp_prim,
+   ['void']    = pp_prim,
    ['number']  = pp_prim,
    ['boolean'] = pp_prim,
    ['var']     = pp_prim,
