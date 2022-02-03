@@ -103,7 +103,7 @@ class.form = {
       local function tx_form(seqform)
          return l('_', s:compile(seqform))
       end
-      return l('block',se.map(tx_form, forms))
+      return {'block',se.map(tx_form, forms)}
    end,
    ['set!'] = function(s, expr)
       local _, var, vexpr = se.unpack(expr, {n = 3})
@@ -189,12 +189,8 @@ function class.anf(s, exprs, fn)
    if #bindings == 0 then
       return fn(a2l(normalform))
    else
-      local form =
-         l('block',
-           a2l(bindings),
-           fn(a2l(normalform)))
-      -- 'let' is not primitive, so expand it here.
-      return s:expand(form)
+      ins(bindings, l('_',fn(a2l(normalform))))
+      return {'block', a2l(bindings)}
    end
 end
 
@@ -215,7 +211,7 @@ local function apply(s, expr)
          fargs, args)
       local vars = se.map(se.car, bindings)
       local cexp = s:compile_extend({'begin',fbody}, vars)
-      return l('block',bindings,cexp)
+      return {'block',se.append(bindings, l(l('_', cexp)))}
    else
       -- Ordinary application.
       trace("APPLY", expr)
@@ -254,7 +250,8 @@ end
 
 function class.gensym(s, prefix)
    -- Gensyms should never clash with source variables.  We can't
-   -- guarantee that atm.  FIXME.
+   -- guarantee that atm.  FIXME: should this just be a var?  Let
+   -- macros insert variables, not symbols?
    s.count = s.count + 1
    local sym = (prefix or "r") .. s.count
    return sym

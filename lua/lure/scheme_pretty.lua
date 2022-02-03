@@ -35,53 +35,33 @@ end
 
 local pprint_form = {
    ['block'] = function(s, expr)
-      local _, bindings, rest = se.unpack(expr, {n=2, tail=true})
-      local nb = se.length(bindings)
-      if nb > 0 then
-         s:w(s:tab(),"(block (\n")
-      else
-         s:w(s:tab(),"(block ()\n")
-      end
+      local _, bindings = se.unpack(expr, {n=1, tail=true})
+      s:w("\n",s:tab(),"(block")
       s:indented(
          function()
-            s:indented(
-               function()
-                  for binding in se.elements(bindings) do
-                     if se.length(binding) == 1 then
-                        s:w(s:tab(),"(",se.iolist(binding),")\n")
-                     else
-                        local var, vexpr = se.unpack(binding, {n=2})
-                        if type(vexpr) ~= 'table' then
-                           s:w(s:tab(), se.iolist(binding),"\n")
-                        else
-                           s:w(s:tab(),"(",se.iolist(var),"\n")
-                           s:indented(
-                              function() s:pprint(vexpr) end)
-                           s:w(s:tab(),")\n")
-                        end
-                     end
-                  end
+            for binding in se.elements(bindings) do
+               s:w("\n",s:tab())
+               local var, vexpr = se.unpack(binding, {n=2})
+               s:w("(", se.iolist(var), " ")
+               s:indented(
+                  function()
+                     s:pprint(vexpr)
                end)
-            if nb > 0 then
-               s:w(s:tab(),")\n")
             end
-            for e in se.elements(rest) do
-               s:pprint(e)
-            end
-         end)
-      s:w(s:tab(),")\n")
+      end)
+      s:w(")")
    end,
    -- Forms that are not in this table are treated same as pp_app
    ['lambda'] = function(s, expr)
       local _, vars, body = se.unpack(expr, {n=2, tail=true})
-      s:w(s:tab(),"(lambda ", se.iolist(vars),"\n")
+      s:w("\n",s:tab(),"(lambda ", se.iolist(vars)," ")
       s:indented(
          function()
+            s:w(s:tab())
             for e in se.elements(body) do
                s:pprint(e)
             end
       end)
-      s:w(s:tab(),")\n")
    end,
    ['if'] = function(s, expr)
       local _, var, etrue, efalse = se.unpack(expr, {n=4})
@@ -95,11 +75,11 @@ local pprint_form = {
    end,
 }
 local function pp_app(s, expr)
-   s:w(s:tab(),se.iolist(expr),"\n")
+   s:w(se.iolist(expr))
 end
 
 local function pp_prim(s, thing)
-   s:w(s:tab(),se.iolist(thing))
+   s:w(se.iolist(thing))
 end
 
 local pprinter = {
@@ -133,10 +113,14 @@ local function pprint_to_stream(s,stream,expr)
    end
    comp.parameterize(
       s, { w = w },
-      function() s:pprint(expr) end)
+      function()
+         s:pprint(expr)
+         s:w("\n")
+      end)
 end
 
 local class = {
+   compile,
    pprint_to_stream = pprint_to_stream,
    pprint = pprint,
    pprint_form = pprint_form,
@@ -145,7 +129,10 @@ local class = {
    parameterize = comp.parameterize,
 }
 local function new()
-   local obj = { count = 0, indent = 0 }
+   local obj = {
+      count = 0,
+      indent = -1 -- 'block' will indent
+   }
    setmetatable(obj, { __index = class })
    return obj
 end

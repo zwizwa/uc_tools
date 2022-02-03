@@ -178,7 +178,7 @@ function comp.multipass(maybe_config, passes, ir)
       -- Load the module, or use provided module
       local mod = pass
       if type(pass) == 'string' then
-         log("PASS: " .. pass .. "\n")
+         -- log("PASS: " .. pass .. "\n")
          mod = require(pass)
       else
          pass = mod.name or "<anonymous-pass>"
