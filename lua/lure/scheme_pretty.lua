@@ -33,6 +33,7 @@ local function tab(s)
    return iol
 end
 
+-- Forms that are not in this table are treated the same as pp_app
 local pprint_form = {
    ['block'] = function(s, expr)
       local _, bindings = se.unpack(expr, {n=1, tail=true})
@@ -46,12 +47,12 @@ local pprint_form = {
                s:indented(
                   function()
                      s:pprint(vexpr)
-               end)
+                  end)
+               s:w(")")
             end
       end)
       s:w(")")
    end,
-   -- Forms that are not in this table are treated same as pp_app
    ['lambda'] = function(s, expr)
       local _, vars, body = se.unpack(expr, {n=2, tail=true})
       s:w("\n",s:tab(),"(lambda ", se.iolist(vars)," ")
@@ -65,13 +66,13 @@ local pprint_form = {
    end,
    ['if'] = function(s, expr)
       local _, var, etrue, efalse = se.unpack(expr, {n=4})
-      s:w(s:tab(),"(if ",var,"\n")
+      s:w("(if ",var," ")
       s:indented(
          function()
             s:pprint(etrue)
+            s:w(" ")
             s:pprint(efalse)
          end)
-      s:w(s:tab(),")\n")
    end,
 }
 local function pp_app(s, expr)

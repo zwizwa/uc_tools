@@ -159,7 +159,7 @@ local function is_prim(expr)
       else return false end
    end
    -- anything else
-   return false
+   return true
 end
 
 
@@ -178,7 +178,9 @@ function class.anf(s, exprs, fn)
       elseif is_prim(e) then
          ins(normalform, e)
       else
-         assert(type(e) == 'table')
+         if type(e) ~= 'table' then
+            error("bad type '" .. type(e) .. "'")
+         end
          -- Composite.  Bind it to a variable.  The name here is just
          -- for debugging.
          local var = s:var_def("tmp")

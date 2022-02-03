@@ -33,9 +33,7 @@
 --      ))
 -- )
 --
--- It's crazy to try these without a pattern matcher.
---
--- Also, maybe better to split decl and set!
+-- Maybe better to split decl and set!
 
 
 local se = require('lure.se')
