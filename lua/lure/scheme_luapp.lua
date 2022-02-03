@@ -1,20 +1,19 @@
 -- Lua code pretty-printer from lambda, block, if, set!
 -- Based on se_match
 
-local se       = require('lure.se')
-local se_match = require('lure.se_match')
-local iolist   = require('lure.iolist')
-local comp     = require('lure.comp')
+local se        = require('lure.se')
+local se_match  = require('lure.se_match')
+local iolist    = require('lure.iolist')
+local lure_comp = require('lure.comp')
 local l = se.list
 local ins = table.insert
 
 local class = {}
 
 -- Cherry-pick some methods (micro-mixin?)
-class.parameterize = comp.parameterize
-class.indented     = comp.indented
-class.tab          = comp.tab
-class.w            = comp.w   -- requires self.write
+class.parameterize = lure_comp.parameterize
+class.indented     = lure_comp.indented
+class.tab          = lure_comp.tab
 
 
 -- Convention for newline/tab:
@@ -75,17 +74,29 @@ function class.w_body(s, expr)
       end}})
 end
 
+function class.w(s, ...)
+   local out = s.out
+   assert(out)
+   ins(out, {...})
+end
+
 -- Top level entry point
 function class.compile(s,expr)
-   -- Toplevel block can be removed.  We assume the toplevel
-   -- expression is a block representing a Lua module.
-   s.indent = -1 -- Undo indent in w_bindings
-   s.match(
-      expr,
-      {{"(block ,bindings)", function(m)
-           s:w_bindings(m.bindings)
-      end}})
-   s:w("\n")
+   local out = {}
+   s:parameterize(
+      {out = out},
+      function()
+         -- Toplevel block can be removed.  We assume the toplevel
+         -- expression is a block representing a Lua module.
+         s.indent = -1 -- Undo indent in w_bindings
+         s.match(
+            expr,
+            {{"(block ,bindings)", function(m)
+                 s:w_bindings(m.bindings)
+         end}})
+         s:w("\n")
+      end)
+   return out
 end
 
 function class.i_comp(s, expr)
@@ -149,10 +160,9 @@ function class.comp(s,expr)
    )
 end
 
-local function new(config)
-   assert(config and config.write)
+local function new()
    -- FIXME: Make sure match raises error on mismatch.
-   local obj = { match = se_match.new(), indent = 0, write = config.write }
+   local obj = { match = se_match.new(), indent = 0 }
    setmetatable(obj, { __index = class })
    return obj
 end

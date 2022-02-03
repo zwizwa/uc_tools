@@ -12,7 +12,7 @@ local function test(str)
    log_se_n(expr)
    local c = scheme_luapp.new()
    c.write = function(_, str) io.stderr:write(str) end
-   c:compile(expr)
+   log_w(c:compile(expr))
 end
 
 local function run(w)

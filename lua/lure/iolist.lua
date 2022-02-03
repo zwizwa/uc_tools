@@ -13,9 +13,14 @@ local function write(w,iol)
    -- Lua streams do not support writing booleans.
    elseif iol == true  then w('true')
    elseif iol == false then w('false')
-   else w(iol)
+   else
+      if not (typ == 'string' or typ == 'number') then
+         error('iolist.write: type=' .. typ)
+      end
+      w(iol)
    end
 end
+
 local function to_string(iol)
    local out = {}
    write(function(atom) table.insert(out, atom) end, iol)
@@ -27,7 +32,9 @@ end
 local function io_writer(stream)
    return function(...)
       write(
-         function(str) stream:write(str) end,
+         function(str)
+            stream:write(str)
+         end,
          {...})
    end
 end
