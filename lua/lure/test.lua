@@ -19,7 +19,7 @@ local ins = table.insert
 local meta = require('lure.meta')
 local mod = {}
 local test = {}
-for name in pairs(meta.modules) do
+for _,name in ipairs(meta.modules) do
    if name ~= 'test' then
       mod[name] = require('lure.' .. name)
    else
@@ -46,11 +46,11 @@ end
 
 -- .rockspec file generation
 -- FIXME: Later maybe track the luarocks revision "-1" ?
-local function wrap_rockspec(version, revision, modules_tab)
+local function wrap_rockspec(version, revision, modules_arr)
 
 local modules = {}
-for k in pairs(modules_tab) do
-   ins(modules, {"    ['lure.",k,"'] = '",k,".lua',","\n"})
+for _,name in ipairs(modules_arr) do
+   ins(modules, {"    ['lure.",name,"'] = '",name,".lua',","\n"})
 end
 
 return {

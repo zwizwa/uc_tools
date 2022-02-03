@@ -167,5 +167,39 @@ function comp.unpack_binding(binding, void)
    return var_name, expr
 end
 
+-- Create a new compiler by concatenating multiple passes.  Each pass
+-- takes input ir to output ir + and shares a global configuration
+-- table.
+
+-- Uncurried
+function comp.multipass(config, passes, ir)
+   for _,pass in ipairs(passes) do
+      -- Load the module, or use provided module
+      local mod = pass
+      if type(pass) == 'string' then
+         log("PASS: " .. pass .. "\n")
+         mod = require(pass)
+      end
+      -- Instantiate the compiler, passing it shared config.
+      local c = mod.new(config)
+      -- Run the compiler
+      ir = c:compile(ir)
+   end
+   return ir
+end
+
+-- Curried, wrapping multple passes as a single compiler object that
+-- can be used as a pass.  ( Wannabe Monad. )
+function comp.make_multipass(passes)
+   return {
+      new = function(config)
+         return {
+            compile = function(_, ir)
+               return comp.multipass(config, passes, ir)
+            end
+         }
+      end
+   }
+end
 
 return comp

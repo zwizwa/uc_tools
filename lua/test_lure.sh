@@ -1,10 +1,8 @@
 #!/bin/sh
 cd $(dirname $0)
 
-if [ ! -z "$1" ]; then
-    exec lua -e "require('lure.$1').run()"
-fi
-
+# Perform some file generation
+# 1. Assets
 # It doesn't seem possible to install
 # arbitrary assets, so bundle them up in a lua module.
 
@@ -19,15 +17,23 @@ done
 echo "}"
 ) >lure/asset_scm.lua
 
-# Generate the lure/meta.lua file
+# 2. Generate the lure/meta.lua file
 META=lure/meta.lua
 echo "return { modules = {" >$META
 find lure -name '*.lua' | sort | while read line; do
       bn=$(basename $line .lua)
-      echo "  $bn = true," >>$META
+      echo "  '$bn'," >>$META
 done
 echo "}}">>$META
 
+
+
+# If requested run only a single test without redirecting output.
+if [ ! -z "$1" ]; then
+    exec lua -e "require('lure.$1').run()"
+fi
+
+# Proceed with rest, redirecting output, only printing tail on failure.
 LOG=$(readlink -f ./test_lure.log)
 lua -e "require ('lure.test').run()" >$LOG 2>&1
 ERR=$?
@@ -39,6 +45,7 @@ if [ "$ERR" != 0 ]; then
 fi
 echo "test OK"
 
+# All the rest should succeed
 set -e
 
 # Generate the rockspec
@@ -52,7 +59,7 @@ echo "require('lure.test').gen_rockspec('$VER')" | lua | unix2dos > $ROCKSPEC
  git diff $(basename $ROCKSPEC))
 
 # If we get this far, update the git repo.
-# (cd ~/git/lure-lua ; ./update.sh)
+(cd ~/git/lure-lua ; ./update.sh)
 
 
 

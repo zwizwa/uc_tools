@@ -14,7 +14,7 @@ local class = {}
 class.parameterize = comp.parameterize
 class.indented     = comp.indented
 class.tab          = comp.tab
-class.w            = comp.w
+class.w            = comp.w   -- requires self.write
 
 
 -- Convention for newline/tab:
@@ -149,9 +149,10 @@ function class.comp(s,expr)
    )
 end
 
-local function new()
+local function new(config)
+   assert(config and config.write)
    -- FIXME: Make sure match raises error on mismatch.
-   local obj = { match = se_match.new(), indent = 0 }
+   local obj = { match = se_match.new(), indent = 0, write = config.write }
    setmetatable(obj, { __index = class })
    return obj
 end
