@@ -1,28 +1,11 @@
--- FIXME: This changed again..  Update comments.
-
--- The 'lambda' special form is now the only binder.  Reductions are
--- solved in subsequent passes.  'block' is not allowed in expansion here.
-
 -- Scheme macros are implemented as s-expression to s-expression converters.
 -- Used by e.g. scheme.lua but could be reused by other dialects.
 
--- We assume block, set!, lambda are primitives, which are essentially
--- basic blocks with (SSA) variable declarations + assignment for
--- creating loops.  The block form has the same meaning as let*, but
--- does not support local definitions.
-
--- Reductions:
---
--- module-begin -> module
--- begin        -> letrec, block
--- letrec       -> block, set!, begin
--- let          -> lambda, block, begin
--- let*         -> block, begin
-
---
--- We do not depend on '#<void>' here, instead we require that block
--- supports undefined bindings, e.g. (block ((a)) ...), and empty
--- statements (block ())
+-- The 'lambda' special form is now the only binder.  Reductions are
+-- solved in subsequent passes.  'block' is not allowed in expansion
+-- here as it is a mixed sequence/binding form that is more useful as
+-- an intermediate form.  For frontend it is simplest to keep binding
+-- and sequencing separate.
 
 -- Some macros have an additional config parameter.  This is useful to
 -- use the code here to implement language-specific macros with
@@ -40,13 +23,6 @@ macro['module-begin'] = function(expr)
    local _, mod_body = se.unpack(expr, { n = 1, tail = true })
    return {'begin',mod_body}
 end
-
-local function void(c)
-   return l(c.let or 'let*',l())
-end
-
-
-
 
 -- Map definitions in begin form to letrec.
 macro['begin'] = function(expr, config)
@@ -107,7 +83,7 @@ macro['letrec'] = function(expr, c)
    local void_bindings = se.map(
       function(binding)
          local name, val = se.unpack(binding, {n = 2})
-         return l(name, c.void)
+         return l(name, c.void or l('sequence'))
       end,
       bindings)
    local set_variables = se.map(
@@ -138,7 +114,7 @@ macro['case'] = function(expr, config)
       return l('if',l('eq?',sym,val),{'begin',exprs},els)
    end
    return l('let',l(l(sym, vexpr)),
-            se.foldr(ifexpr, config.void or '#<void>', clauses))
+            se.foldr(ifexpr, config.void or l('sequence'), clauses))
 end
 
 
@@ -190,6 +166,9 @@ macro['let'] = function(expr, c)
    _, maybe_bindings, rest = se.unpack(expr, {n = 2, tail = true})
    if type(maybe_bindings) == 'string' then
       return {'named-let',{maybe_bindings, rest}}
+   elseif se.length(maybe_bindings) == 0 then
+      -- Don't make it worse...
+      return {'begin', rest}
    else
       local vars  = se.map(se.car,  maybe_bindings)
       local exprs = se.map(se.cadr, maybe_bindings)

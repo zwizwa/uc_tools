@@ -338,14 +338,22 @@ function se.string_to_stream(str)
    return obj
 end
 
+-- We assume the following: Cons pair's are "naked".  This allows
+-- usinging Lua's {,} constructor.  To distiguish these from other
+-- objects represented as tables, we require those to have .class
+-- variable defined.
 function se.expr_type(e)
    local typ = type(e)
    if typ == 'table' then
       if e[1] ~= nil and e[2] ~= nil then
          return 'pair'
       else
-         log_desc(e)
-         error('bad table')
+         if e.class then
+            return e.class
+         else
+            log_desc(e)
+            error('bad table')
+         end
       end
    end
    return typ

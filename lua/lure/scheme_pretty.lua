@@ -14,7 +14,6 @@ local cdr = se.cdr
 
 -- Define types
 
-local function s_id(s, thing) return thing end
 
 
 local function trace(tag, expr)
@@ -99,11 +98,16 @@ local function pp_app(s, expr)
    s:w(s:tab(),se.iolist(expr),"\n")
 end
 
+local function pp_prim(s, thing)
+   s:w(s:tab(),se.iolist(thing))
+end
+
 local pprinter = {
-   ['string'] = s_id,
-   ['number'] = s_id,
-   ['boolean'] = s_id,
-   ['pair'] = function(s, expr)
+   ['string']  = pp_prim,
+   ['number']  = pp_prim,
+   ['boolean'] = pp_prim,
+   ['var']     = pp_prim,
+   ['pair']    = function(s, expr)
       local car, cdr = unpack(expr)
       local pp = s.pprint_form[car]
       if pp ~= nil then
@@ -116,7 +120,7 @@ local pprinter = {
 local function pprint(s, expr)
    local typ = se.expr_type(expr)
    local f = pprinter[typ]
-   if f == nil then error('expand: bad type ' .. typ) end
+   if f == nil then error('pprint: bad type ' .. typ) end
    return f(s, expr)
 end
 

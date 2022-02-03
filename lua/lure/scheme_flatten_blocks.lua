@@ -111,6 +111,7 @@ local function default(s, expr)
 end
 
 local compiler = {
+   ['var'] = s_id,
    ['string'] = s_id,
    ['number'] = s_id,
    ['boolean'] = s_id,
