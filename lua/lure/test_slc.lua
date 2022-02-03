@@ -2,6 +2,7 @@
 package.path = package.path .. ";./?.lua"
 
 local rt = require('lure.slc_runtime')
+local asset = require('lure.asset_scm')
 
 require('lure.log')
 
@@ -69,16 +70,23 @@ local function test1()
    compiler:compile(expr)
 end
 
+local function loadscheme(config, filename)
+   assert(config.asset)
+   local comp = slc.new(config)
+   local mod = comp:loadscheme(filename)
+   return mod
+end
+
 local function test2()
    log("-- test2: compile to concrete lua\n")
-   local mod = slc.new({ log = log }):loadscheme('test_slc.scm')
+   local mod = loadscheme({ asset = asset }, 'test_slc.scm')
    -- Execute code, print result
    log_desc({rv = mod.test_add(1,2)})
 end
 
 local function test3()
    log("-- test3: compile to lua hoas\n")
-   local mod = slc.new({ log = log, hoas = "_s" }):loadscheme('test_slc_hoas.scm')
+   local mod = loadscheme({ log = log, hoas = "_s", asset = asset }, 'test_slc_hoas.scm')
    -- Insert eval semantics.
    local eval = {prim = {}}
    function eval:lambda(nb_args, fun)
@@ -97,7 +105,7 @@ end
 local function test4()
    log("-- test4: debugging\n")
    local filename = 'test_slc_debug.scm'
-   local c = slc.new({ log = log })
+   local c = slc.new({ log = log, asset = asset })
    local str = c:compile_module_file(filename)
    io.write(str)
 end

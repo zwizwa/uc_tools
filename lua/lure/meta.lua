@@ -30,4 +30,5 @@ return { modules = {
   test_scheme_pass = true,
   test_se_match = true,
   test_slc = true,
+  test_smc = true,
 }}

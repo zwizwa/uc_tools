@@ -323,7 +323,11 @@ function se.string_to_stream(str)
    assert(str and type(str) == 'string')
    local n = 1
    local obj = {}
-   function obj.read(self)
+   function obj.close(self)
+   end
+   function obj.read(self, nb_bytes)
+      -- simple wrapper, only supports character read
+      assert(nb_bytes == 1)
       -- log_desc({n=n,str=str})
       if n <= #str then
          local rv = str:sub(n,n)
@@ -354,14 +358,23 @@ function se.new(stream)
    return obj
 end
 
-function se.read_file_multi(filename)
-   assert(filename and type(filename) == 'string')
-   local stream = io.open(filename,"r") or error("Can't open '" .. filename .. "'")
+function se.read_stream_multi_and_close(stream)
    local parser = se.new(stream)
    parser.log = function(self, str) io.stderr:write(str) end
    local exprs = parser:read_multi()
    stream:close()
    return exprs
+end
+
+function se.read_file_multi(filename)
+   assert(filename and type(filename) == 'string')
+   local stream = io.open(filename,"r") or error("Can't open '" .. filename .. "'")
+   return se.read_stream_multi_and_close(stream)
+end
+
+function se.read_string_multi(str)
+   local stream = se.string_to_stream(str)
+   return se.read_stream_multi_and_close(stream)
 end
 
 function se.read_string(str)

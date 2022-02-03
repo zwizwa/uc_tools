@@ -1,6 +1,6 @@
 #!/usr/bin/env lua
 package.path = package.path .. ";./?.lua"
-local scheme = require('lib.scheme')
+local scheme = require('lure.scheme')
 local function eval(file)
    assert(file)
    local interp = scheme.new()

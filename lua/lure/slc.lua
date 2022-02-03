@@ -443,13 +443,21 @@ function slc:eval(expr)
    return loadstring(lua_code)
 end
 
+-- It seems best to abstract all filesystem acces.
+-- Test system uses lua asset wrappers, so support that here.
+function slc:read_multi(filename)
+   if self.config.asset then
+      local str = self.config.asset[filename]
+      assert(str)
+      return se.read_string_multi(str)
+   else
+      return se.read_file_multi(filename)
+   end
+end
+
 function slc:compile_module_file(filename)
-   local stream = io.open(filename,"r")
-   local parser = se.new(stream)
-   parser.log = self.config.log
-   local exprs = parser:read_multi()
+   local exprs = self:read_multi(filename)
    local expr = {'module-begin',exprs}
-   stream:close()
    return self:to_string(expr)
 end
 

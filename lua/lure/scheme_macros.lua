@@ -78,7 +78,9 @@ macro['begin'] = function(expr, config)
          local _, name = se.unpack(expr, { n = 2 })
          assert(type(name) == 'string')
          local filename = (c.module_file or module_file)(name)
-         local import_exprs = se.read_file_multi(filename)
+         local read_multi = c.import_read_multi
+         assert(read_multi)
+         local import_exprs = read_multi(filename)
          exprs = se.append(import_exprs, rest)
       else
          return done()

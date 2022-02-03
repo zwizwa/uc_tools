@@ -113,8 +113,15 @@ end
 -- Macros are forms that do not modify s.env
 -- These are kept in a separate file as they can probably be reused.
 local macros = require('lure.scheme_macros')
+scheme.gensym = comp.gensym
 function scheme.macro(fun)
-   return function(self, s) s.expr = fun(s.expr) end
+   return function(self, s)
+      local config = {
+         state = self,  -- for gensymn
+         import_read_multi = self.import_read_multi  -- for 'lib' form
+      }
+      s.expr = fun(s.expr, config)
+   end
 end
 for k,v in pairs(macros) do
    form[k] = scheme.macro(v)
@@ -263,6 +270,8 @@ function scheme.new(tables)
       env = se.empty,
       -- toplevel / module environment
       mod_env = se.empty,
+      -- for gensym
+      nb_sym = 0,
    }
    setmetatable(obj, {__index = scheme})
    -- install module level bindings
