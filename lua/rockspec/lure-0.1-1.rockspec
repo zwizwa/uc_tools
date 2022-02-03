@@ -1,4 +1,3 @@
--- FIXME: I do not understand how to limit install to a single lua file.
 
 package = "lure"
 version = "0.1-1"
@@ -13,11 +12,7 @@ description = {
   homepage   = "https://github.com/zwizwa/lure-lua",
   license    = "MIT/X11",
   maintainer = "Tom Schouten",
-  detailed   = [[
-  Lua wrappers for writing Scheme interpreters and compilers.
-  
-  Experimental.
-  ]],
+  detailed   = "Lua wrappers for writing Scheme interpreters and compilers.\n",
 }
 
 dependencies = {
@@ -26,8 +21,8 @@ dependencies = {
 
 build = {
   type = "builtin",
-
   modules = {
+    ['lure.test_smc'] = 'test_smc.lua',
     ['lure.iolist'] = 'iolist.lua',
     ['lure.test_slc'] = 'test_slc.lua',
     ['lure.slc'] = 'slc.lua',
