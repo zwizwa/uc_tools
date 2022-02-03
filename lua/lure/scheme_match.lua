@@ -3,8 +3,8 @@
 -- The s-expressions are just the medium in which this is embedded.
 -- So what we do here is define an iteration pattern for the base language.
 -- But first, dotted syntax is necessary.
-local se = require('lib.se')
-local match = require('lib.match')
+local se = require('lure.se')
+local match = require('lure.match')
 local l = se.list
 
 local class = {}

@@ -24,10 +24,18 @@ end
 local function stream_writer(write_string)
    return function(...) write(write_string,{...}) end
 end
+local function io_writer(stream)
+   return function(...)
+      write(
+         function(str) stream:write(str) end,
+         {...})
+   end
+end
 
 local iolist = {
    write = write,
    stream_writer = stream_writer,
+   io_writer = io_writer,
    to_string = to_string,
 }
 return iolist

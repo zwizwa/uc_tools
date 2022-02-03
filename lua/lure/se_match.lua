@@ -2,9 +2,9 @@
 -- See test_se_match.lua for an example
 
 local se_match = {}
-local string_dsl = require('lib.string_dsl')
-local match      = require('lib.match')
-local se         = require('lib.se')
+local string_dsl = require('lure.string_dsl')
+local match      = require('lure.match')
+local se         = require('lure.se')
 
 local memo_eval = string_dsl.memo_eval
 

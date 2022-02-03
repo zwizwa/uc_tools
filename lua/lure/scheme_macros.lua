@@ -23,9 +23,9 @@
 -- use the code here to implement language-specific macros with
 -- slightly modify the behavior.
 
-require('lib.log')
-local se    = require('lib.se')
-local match = require('lib.match')
+require('lure.log')
+local se    = require('lure.se')
+local match = require('lure.match')
 local macro = {}
 local l = se.list
 local r = se.reverse

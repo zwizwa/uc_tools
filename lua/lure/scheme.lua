@@ -17,11 +17,11 @@ local function log(str)
    io.stderr:write(str)
 end
 
-local se = require('lib.se')
-local iolist = require('lib.iolist')
-local comp = require('lib.comp')
+local se = require('lure.se')
+local iolist = require('lure.iolist')
+local comp = require('lure.comp')
 
-require('lib.log')
+require('lure.log')
 local function log_w(...)   iolist.write(log, {...}) end
 local function log_se(expr) log_w(se.iolist(expr)) end
 
@@ -112,7 +112,7 @@ end
 
 -- Macros are forms that do not modify s.env
 -- These are kept in a separate file as they can probably be reused.
-local macros = require('lib.scheme_macros')
+local macros = require('lure.scheme_macros')
 function scheme.macro(fun)
    return function(self, s) s.expr = fun(s.expr) end
 end

@@ -16,8 +16,8 @@
 -- Macro expansion and ANF seem to go hand-in hand.
 -- Variable renaming is useful for later block-flattening.
 
-local se = require('lib.se')
-local comp = require('lib.comp')
+local se = require('lure.se')
+local comp = require('lure.comp')
 
 local ins = table.insert
 local a2l = se.array_to_list
@@ -27,7 +27,7 @@ local l = se.list
 
 -- Bind macros to state object for gensym.
 local macro = {} ; do
-   for name, m in pairs(require('lib.scheme_macros')) do
+   for name, m in pairs(require('lure.scheme_macros')) do
       -- log("MACRO: " .. name .. "\n")
       macro[name] = function(s, expr)
          return m(expr, { state = s })

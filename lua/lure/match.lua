@@ -1,4 +1,4 @@
-local set   = require('lib.set')
+local set   = require('lure.set')
 
 -- Constructor inversion matcher.
 local match = {}

@@ -20,15 +20,15 @@
 -- time, as macros are probably a better bet for exploratory work.
 -- See alose scheme_macros.lua
 
-local se            = require('lib.se')
-local iolist        = require('lib.iolist')
-local comp          = require('lib.comp')
-local scheme_macros = require('lib.scheme_macros')
+local se            = require('lure.se')
+local iolist        = require('lure.iolist')
+local comp          = require('lure.comp')
+local scheme_macros = require('lure.scheme_macros')
 
-local slc_runtime   = require('lib.slc_runtime')
+local slc_runtime   = require('lure.slc_runtime')
 
 -- Tools
-require('lib.log')
+require('lure.log')
 local function log_w(...)      iolist.write(log, {...}) end
 local function log_se(e)       log_w(se.iolist(e)) end
 local function log_se_n(e,tag) if(tag) then log(tag) end ; log_se(e) ; log('\n') end
@@ -143,7 +143,7 @@ form['module-begin'] = function(self, expr)
       -- FIXME: There is no support for infix atm so for testing we
       -- insert this primitive.  Not necessary in HOAS mode where it
       -- can be injected.
-      self:w("local rt = require('lib.slc_runtime')\n")
+      self:w("local rt = require('lure.slc_runtime')\n")
    end
 
    self:w(self:hoas({"return function(",self.config.hoas,")\n"}))

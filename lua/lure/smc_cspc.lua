@@ -5,7 +5,7 @@
 -- Variables that are marked as lost AND are later referenced, can not
 -- be implemented as C local variables.
 
-local se = require('lib.se')
+local se = require('lure.se')
 local l = se.list
 
 local form = {}

@@ -1,4 +1,4 @@
-require('lib.log')
+require('lure.log')
 
 local rt = {}
 

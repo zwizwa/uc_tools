@@ -1,10 +1,11 @@
--- Macro stepper to test lib.scheme_macros
+-- Macro stepper to test lure.scheme_macros
 
-local iolist   = require('lib.iolist')
-local macros   = require('lib.scheme_macros')
-local se       = require('lib.se')
+local iolist   = require('lure.iolist')
+local macros   = require('lure.scheme_macros')
+local se       = require('lure.se')
 local l = se.list
-require('lib.log')
+
+require('lure.log')
 local function log_w(...)   iolist.write(log, {...}) end
 local function log_se(expr) log_w(se.iolist(expr)) end
 
@@ -107,5 +108,7 @@ local function test()
 
 end
 
-test()
+return {
+   run = test
+}
 

@@ -2,7 +2,7 @@
 -- This is factored out from smc.lua to be re-used for different compilers.
 local comp = {}
 
-local se = require('lib.se')
+local se = require('lure.se')
 local l = se.list
 
 -- Make writing output syntax as convenient as possible.

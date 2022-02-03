@@ -2,9 +2,9 @@
 -- Test for scheme_luapp Lua code printer.
 package.path = package.path .. ";./?.lua"
 
-local se            = require('lib.se')
-local scheme_luapp  = require('lib.scheme_luapp')
-require('lib.log_se')
+local se            = require('lure.se')
+local scheme_luapp  = require('lure.scheme_luapp')
+require('lure.log_se')
 local ins = table.insert
 
 local function test(str)
@@ -15,6 +15,7 @@ local function test(str)
    c:compile(expr)
 end
 
+local function run(w)
 test([[
 (block (
   (fun1
@@ -26,10 +27,13 @@ test([[
   (fun2
     (lambda ()
       (block (
-        (f (lambda (x) (block ((_ (set! rv x))))))
+        (f (lambda (x) (block ((_ (return x))))))
         (a 123)
         (_ (set! a 456))))))
 ))
 ]])
+end
+
+return { run = run }
 
 

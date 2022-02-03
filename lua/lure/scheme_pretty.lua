@@ -1,8 +1,8 @@
 -- Pretty printer for special forms.
 
-local se = require('lib.se')
-local iolist = require('lib.iolist')
-local comp = require('lib.comp')
+local se = require('lure.se')
+local iolist = require('lure.iolist')
+local comp = require('lure.comp')
 
 local ins = table.insert
 local a2l = se.array_to_list

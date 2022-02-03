@@ -4,7 +4,7 @@
 -- Pairs are Lua's 2-element arrays
 -- The empty list is represented by '#<nil>'
 
--- require('lib.log')
+-- require('lure.log')
 
 local empty = '#<nil>'
 

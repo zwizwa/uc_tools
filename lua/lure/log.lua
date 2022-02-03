@@ -1,5 +1,5 @@
 local prompt = require('prompt')
-local se     = require('lib.se')
+local se     = require('lure.se')
 local mod = {}
 function log(str)
    io.stderr:write(str)

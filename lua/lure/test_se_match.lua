@@ -4,8 +4,8 @@
 -- parser to convert from string to Lua data structure + memoization
 -- of string->pattern_obj
 
-local se = require('lib.se')
-require('lib.log_se')
+local se = require('lure.se')
+require('lure.log_se')
 
 -- Patterns are implicitly quasiquoted.
 local pats = {
@@ -34,17 +34,25 @@ function test_qq_eval(env, str)
    local expr1 = se.qq_eval(env, expr)
    log_desc({qq_eval = expr1, expr = expr})
 end
---test_qq_eval({a = 1, b = 2}, "(unquote a)" )
---test_qq_eval({a = 1, b = 2}, ",a" )  -- FIXME: Something not right here but above works
---test_qq_eval({a = 1, b = 2}, "(add ,a ,b)" )
-test_qq_eval({a = 1, b = 2}, "(,a . ,b)")
 
-local se_match = require('lib.se_match')
+local se_match = require('lure.se_match')
 local mtch = se_match.new()
 
 function test_interp_new(expr)
    return mtch(expr, pats)
 end
 
-test_matcher(test_interp_new)
 
+
+local function run(w)
+   --test_qq_eval({a = 1, b = 2}, "(unquote a)" )
+   --test_qq_eval({a = 1, b = 2}, ",a" )  -- FIXME: Something not right here but above works
+   --test_qq_eval({a = 1, b = 2}, "(add ,a ,b)" )
+   test_qq_eval({a = 1, b = 2}, "(,a . ,b)")
+
+
+   test_matcher(test_interp_new)
+
+end
+
+return { run = run }

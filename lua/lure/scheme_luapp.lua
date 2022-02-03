@@ -1,10 +1,10 @@
 -- Lua code pretty-printer from lambda, block, if, set!
 -- Based on se_match
 
-local se       = require('lib.se')
-local se_match = require('lib.se_match')
-local iolist   = require('lib.iolist')
-local comp     = require('lib.comp')
+local se       = require('lure.se')
+local se_match = require('lure.se_match')
+local iolist   = require('lure.iolist')
+local comp     = require('lure.comp')
 local l = se.list
 local ins = table.insert
 
@@ -62,6 +62,7 @@ function class.w_bindings(s, bindings)
          end
    end)
 end
+
 function class.w_body(s, expr)
    s.match(
       expr,
@@ -96,13 +97,15 @@ function class.comp(s,expr)
    s.match(
       expr,
       {
-         -- FIXME: All these need expression result assignment.  Solve
-         -- that in a preprocessing step, e.g:
-         -- (block (
+         -- FIXME: All these need expression result assignment and
+         -- explicit return.  Solve that in a preprocessing step, e.g:
+
+         -- (lambda () (block (
          --   (a #<nil>)
          --   (_ (if cond
          --        (set! a 1)
          --        (set! a 2)))
+         --   (return a)
          --   ))
 
          -- Reduced block form where all statements have been included
@@ -128,6 +131,9 @@ function class.comp(s,expr)
          end},
          {"(set! ,var ,val)", function(m)
              s:w(m.var, " = ", m.val)
+         end},
+         {"(return ,val)", function(m)
+             s:w("return ", m.val)
          end},
          {",atom", function(m)
              if type(m.atom) == 'number' then

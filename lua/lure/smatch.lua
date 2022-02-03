@@ -5,8 +5,8 @@
 -- se_match.
 
 local smatch = {}
-local string_dsl = require('lib.string_dsl')
-local match      = require('lib.match')
+local string_dsl = require('lure.string_dsl')
+local match      = require('lure.match')
 
 local memo_eval = string_dsl.memo_eval
 local lambda    = string_dsl.lambda

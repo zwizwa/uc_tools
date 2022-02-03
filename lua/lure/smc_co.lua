@@ -25,12 +25,12 @@
 -- Should the coroutine reference be a first class value?  That's
 -- probably simplest.
 
-local se = require('lib.se')
+local se = require('lure.se')
 local l = se.list
 
 local form = {}
 
-require('lib.log')
+require('lure.log')
 
 -- The scheduler() function takes a concurrency object (task, channel)
 -- and maps it to a task id that can be translated directly to a jump

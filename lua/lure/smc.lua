@@ -59,14 +59,14 @@
 -- is stable.
 
 
-local se     = require('lib.se')
-local scheme = require('lib.scheme')
-local comp   = require('lib.comp')
-local iolist = require('lib.iolist')
+local se     = require('lure.se')
+local scheme = require('lure.scheme')
+local comp   = require('lure.comp')
+local iolist = require('lure.iolist')
 
 
 -- Tools
-require('lib.log')
+require('lure.log')
 local function log_w(...) iolist.write(log, {...}) end
 
 local l = se.list

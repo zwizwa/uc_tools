@@ -1,11 +1,11 @@
 -- Tools for string DSLs
 -- Make up for lack of macros using interned strings and reflection.
-require ('lib.log')
+require ('lure.log')
 local function trace(tag, expr)
    -- log(tag) ; log(": ") ; log_desc(expr)
 end
 
-local lib = {}
+local mod = {}
 
 -- Alternative lambda syntax.
 -- Since 5.2 loadstring is deprecated and setfenv is removed,
@@ -14,7 +14,7 @@ local lib = {}
 -- if _VERSION == "Lua 5.1" then
 -- end
 
-function lib.lambda(s, fragment)
+function mod.lambda(s, fragment)
    assert(s and s.var and type(s.var) == 'string')
    trace("EXPAND", fragment)
    local lcode =
@@ -29,7 +29,7 @@ function lib.lambda(s, fragment)
    return fun
 end
 
-function lib.memo_eval(s, compile, str)
+function mod.memo_eval(s, compile, str)
    local memo = s.memo
    if memo then
       -- Strings are interned.
@@ -46,4 +46,4 @@ function lib.memo_eval(s, compile, str)
    return val
 end
 
-return lib
+return mod

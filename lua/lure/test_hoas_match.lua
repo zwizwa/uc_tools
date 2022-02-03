@@ -1,9 +1,9 @@
 -- Apparently is possible to turn a constructor into a destructor.
 
-require('lib.log')
+require('lure.log')
 
-local match = require('lib.match')
-local smatch = require('lib.smatch')
+local match = require('lure.match')
+local smatch = require('lure.smatch')
 
 local function test0()
    -- 1. Represent the pattern as a constructor parameterized by a table.
@@ -26,7 +26,7 @@ end
 
 -- Usage examples.  These use the se.lua library, which is array-based
 -- so works with the current array index matching.
-local se = require('lib.se')
+local se = require('lure.se')
 local l = se.list
 
 local function test1()
@@ -101,9 +101,13 @@ local function test3()
    test_expr(do_match)
 end
 
+local function run(w)
 -- test0()
 -- test1()
 test2()
 -- test3()
+end
+
+return { run = run }
 
 
