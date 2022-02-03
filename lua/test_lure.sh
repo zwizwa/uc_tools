@@ -59,7 +59,7 @@ echo "require('lure.test').gen_rockspec('$VER')" | lua | unix2dos > $ROCKSPEC
  git diff $(basename $ROCKSPEC))
 
 # If we get this far, update the git repo.
-(cd ~/git/lure-lua ; ./update.sh)
+# (cd ~/git/lure-lua ; ./update.sh)
 
 
 

@@ -16,6 +16,7 @@ end
 local state = { n = 0, gensym = gensym }
 local function cfg(c)
    c.state = state
+   c.void = '#<void>'
    return c
 end
 
@@ -28,17 +29,19 @@ local function macro_step(expr)
    local form = se.car(expr)
    assert(form and type(form) == 'string')
    local macro = macros[form]
-   assert(macro)
+   if not macro then
+      error("form '" .. form .. "' not defined")
+   end
    local cfg = config[form] or cfg({})
    assert(cfg)
    return macro(expr, cfg)
 end
 
 local prim = {
-   ['block']  = true,
-   ['lambda'] = true,
-   ['if']     = true,
-   ['set!']   = true,
+   ['sequence'] = true,
+   ['lambda']   = true,
+   ['if']       = true,
+   ['set!']     = true,
    -- For implementing trampoline
    ['named-let-trampoline'] = true,
    ['quote']  = true,
@@ -54,12 +57,12 @@ local function expand(stepped)
          return
       end
       if type(stepped) ~= 'table' then
-         log_w("no expr\n");
+         -- log_w("no expr\n");
          return
       end
       local form = se.car(stepped)
       if type(form) ~= 'string' then
-         log_w("no form\n");
+         -- log_w("no form\n");
          return
       end
       if prim[form] then

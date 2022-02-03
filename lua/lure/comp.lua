@@ -172,18 +172,24 @@ end
 -- table.
 
 -- Uncurried
-function comp.multipass(config, passes, ir)
+function comp.multipass(maybe_config, passes, ir)
+   local config = maybe_config or {}
    for _,pass in ipairs(passes) do
       -- Load the module, or use provided module
       local mod = pass
       if type(pass) == 'string' then
          log("PASS: " .. pass .. "\n")
          mod = require(pass)
+      else
+         pass = mod.name or "<anonymous-pass>"
       end
       -- Instantiate the compiler, passing it shared config.
       local c = mod.new(config)
       -- Run the compiler
       ir = c:compile(ir)
+      if config.trace then
+         config.trace(ir, pass)
+      end
    end
    return ir
 end

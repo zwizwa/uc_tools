@@ -1,5 +1,5 @@
 #!/usr/bin/env lua
--- Test for scheme_luapp Lua code printer.
+-- Test for scheme_luapp Lua code printer pass.
 package.path = package.path .. ";./?.lua"
 
 local se            = require('lure.se')
