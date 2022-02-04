@@ -5,6 +5,7 @@ local se        = require('lure.se')
 local se_match  = require('lure.se_match')
 local iolist    = require('lure.iolist')
 local lure_comp = require('lure.comp')
+local scheme_frontend = require('lure.scheme_frontend')
 local l = se.list
 local ins = table.insert
 
@@ -21,10 +22,16 @@ class.tab          = lure_comp.tab
 -- Expressions are always compiled in binding position, are already at
 -- indented position and should not print newline.
 
+local function iol_atom(var)
+   -- Still support old style naked symbols
+   if type(var) == 'string' then return var end
+   if (var.class == 'var') then return var.unique end
+   return se.iolist(var)
+end
 local function commalist(lst)
    local iol = {}
    for el, last in se.elements(lst) do
-      ins(iol, el)
+      ins(iol, iol_atom(el))
       if not se.is_empty(last) then
          ins(iol, ", ")
       end
@@ -32,34 +39,36 @@ local function commalist(lst)
    return iol
 end
 
+
 function class.w_bindings(s, bindings)
-   s:indented(
-      function()
-         for binding in se.elements(bindings) do
-            s:w(s:tab())
-            s.match(
-               binding,
-               {
-                  -- Statements
-                  {"(_ ,expr)", function(b)
-                      s:i_comp(b.expr)
-                  end},
-                  -- Special case the function definitions
-                  {"(,var (lambda ,args ,expr))", function(b)
-                      s:w("local function ",b.var,"(", commalist(b.args),")","\n")
-                      s:w_body(b.expr)
-                      s:w(s:tab(),"end")
-                  end},
-                  -- Other variable definitions
-                  {"(,var ,expr)", function(b)
-                      s:w("local ", b.var, " = ")
-                      s:i_comp(b.expr)
-                      -- FIXME: print orig var name in comment
-                  end},
-            })
-            s:w("\n")
-         end
-   end)
+   for binding in se.elements(bindings) do
+      s:w(s:tab())
+      s.match(
+         binding,
+         {
+            -- Statements
+            {"(_ ,expr)", function(b)
+                s:i_comp(b.expr)
+            end},
+            -- Special case the function definitions
+            {"(,var (lambda ,args ,expr))", function(b)
+                s:w("local function ", iol_atom(b.var), "(", commalist(b.args),")","\n")
+                s:w_body(b.expr)
+                s:w(s:tab(),"end")
+            end},
+            -- Other variable definitions
+            {"(,var ,expr)", function(b)
+                s:w("local ", iol_atom(b.var), " = ")
+                s:i_comp(b.expr)
+                -- FIXME: print orig var name in comment
+            end},
+      })
+      s:w("\n")
+   end
+end
+
+function class.w_indented_bindings(s, bindings)
+   s:indented(function() s:w_bindings(bindings) end)
 end
 
 function class.w_body(s, expr)
@@ -67,7 +76,7 @@ function class.w_body(s, expr)
       expr,
       -- The do .. end block can be omitted in a function body.
       {{"(block . ,bindings)", function(m)
-           s:w_bindings(m.bindings)
+           s:w_indented_bindings(m.bindings)
        end},
        {",body", function(m)
            s:i_comp(m.body)
@@ -96,7 +105,7 @@ function class.compile(s,expr)
          end}})
          s:w("\n")
       end)
-   return out
+   return { class = "iolist", iolist = out }
 end
 
 function class.i_comp(s, expr)
@@ -134,23 +143,36 @@ function class.comp(s,expr)
              s:w(s:tab(),"end")
          end},
          {"(if ,cond ,etrue, efalse)", function(m)
-             s:w("if ", m.cond, " then\n")
-             s:w_body(m.etrue)
-             s:w(s:tab(), "else\n")
-             s:w_body(m.efalse)
-             s:w(s:tab(), "end")
+             s:w("if ", iol_atom(m.cond), " then\n")
+             s:indented(
+                function()
+                   s:w_body(m.etrue)
+                   s:w(s:tab(), "else\n")
+                   s:w_body(m.efalse)
+                   s:w(s:tab(), "end")
+                end,
+                -1)
          end},
-         {"(set! ,var ,val)", function(m)
-             s:w(m.var, " = ", m.val)
+         {"(set! ,var ,expr)", function(m)
+             s:w(iol_atom(m.var), " = ")
+             s:i_comp(m.expr)
          end},
-         {"(return ,val)", function(m)
-             s:w("return ", m.val)
+         {"(return ,expr)", function(m)
+             s:w("return ")
+             s:i_comp(m.expr)
+         end},
+         {"(,fun . ,args)", function(m)
+             s:w(iol_atom(m.fun),"(",commalist(m.args),")")
          end},
          {",atom", function(m)
-             if type(m.atom) == 'number' then
+             if se.expr_type(m.atom) == 'var' then
+                s:w(iol_atom(m.atom))
+             elseif type(m.atom) == 'number' then
                 s:w(m.atom)
              elseif type(m.atom) == 'string' then
                 s:w(m.atom)
+             elseif m.atom == scheme_frontend.void then
+                s:w('nil')
              else
                 log_se_n(expr,"BAD: ")
                 error("syntax error")

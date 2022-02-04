@@ -228,7 +228,11 @@ function se.iolist(expr)
       return expr
    elseif type(expr) == 'table' and expr.class then
       if expr.iolist then
-         return expr.iolist(expr)
+         if type(expr.iolist) == 'function' then
+            return expr.iolist(expr)
+         else
+            return expr.iolist
+         end
       else
          return {'#<',expr.class,'>'}
       end

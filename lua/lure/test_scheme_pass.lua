@@ -19,7 +19,12 @@ local a = se.list_to_array
 
 local function trace(ir, pass)
    log_w("\n",pass, ":\n")
-   pprint:pprint_to_stream(io.stderr,ir)
+   assert(type(ir) == 'table')
+   if ir.class then
+      log_w(se.iolist(ir))
+   else
+      pprint:pprint_to_stream(io.stderr,ir)
+   end
    -- log_se(ir)
 end
 local config = {
@@ -29,6 +34,7 @@ local multipass = comp.make_multipass({
       'lure.scheme_frontend',
       'lure.scheme_flatten_blocks',
       'lure.scheme_blockval',
+      'lure.scheme_luapp',
 })
 
 local function main()

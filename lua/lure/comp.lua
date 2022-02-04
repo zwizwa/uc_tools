@@ -40,8 +40,9 @@ function comp:tab()
    return strs
 end
 
-function comp:indented(fn)
-   self:parameterize({ indent = self.indent + 1 }, fn)
+function comp:indented(fn, maybe_offset)
+   local offset = maybe_offset or 1
+   self:parameterize({ indent = self.indent + offset }, fn)
 end
 
 
