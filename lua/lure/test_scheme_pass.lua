@@ -27,8 +27,9 @@ local function trace(ir, pass)
    end
    -- log_se(ir)
 end
+
 local config = {
-   trace = trace
+   trace = trace,
 }
 local multipass = comp.make_multipass({
       'lure.scheme_frontend',

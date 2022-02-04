@@ -28,6 +28,9 @@ local ins = table.insert
 local a2l = se.array_to_list
 local l = se.list
 
+local function trace(tag, expr)
+   log('\n') ; log_se_n(expr, tag .. ": ")
+end
 
 local class = {
    parameterize = comp.parameterize,
@@ -39,15 +42,31 @@ local void = {
 class.void = void
 
 -- Bind macros to state object for gensym.
+local scheme_macros = require('lure.scheme_macros')
 class.macro = {} ; do
-   for name, m in pairs(require('lure.scheme_macros')) do
+   for name, m in pairs(scheme_macros) do
       -- log("MACRO: " .. name .. "\n")
       class.macro[name] = function(s, expr)
-         return m(expr, { state = s, void = void })
+         return m(expr, { state = s, void = void, })
       end
    end
 end
 
+-- Delegate after checking that the callback is there.
+class.macro['module-begin'] = function(s, expr)
+   return scheme_macros.begin(
+      expr,
+      {
+         on_bindings = function(bindings)
+            s:on_bindings(bindings)
+         end
+      })
+end
+
+-- The 'begin' macro will call this when it inserts a set macro.
+function class.on_bindings(s, expr)
+   trace("BINDINGS",expr)
+end
 
 local function s_id(s, thing) return thing end
 
@@ -66,10 +85,6 @@ class.expander = {
       end
    end
 }
-
-local function trace(tag, expr)
-   -- log('\n') ; log_se_n(expr, tag .. ": ")
-end
 
 function class.expand_step(s, expr)
    trace("STEP",expr)

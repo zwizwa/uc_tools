@@ -20,12 +20,6 @@ local r = se.reverse
 
 local void = l('begin')
 
--- Map module-begin to begin in case top level forms are not special.
-macro['module-begin'] = function(expr)
-   local _, mod_body = se.unpack(expr, { n = 1, tail = true })
-   return {'begin',mod_body}
-end
-
 -- Map definitions in begin form to letrec.
 macro['begin'] = function(expr, config)
    local c = config or {}
@@ -36,9 +30,13 @@ macro['begin'] = function(expr, config)
       if se.is_empty(bindings) then
          -- 'begin' needs a primitive base case that is just
          -- sequencing.
-         return {c.let or 'primitive-begin',exprs}
+         return {c.primitive_begin or 'primitive-begin',exprs}
       else
-         return {c.letrec or 'letrec', {r(bindings), exprs}}
+         local r_bindings = r(bindings)
+         if c.on_bindings then
+            c.on_bindings(r_bindings)
+         end
+         return {c.letrec or 'letrec', {r_bindings, exprs}}
       end
    end
    while true do
@@ -75,6 +73,7 @@ macro['begin'] = function(expr, config)
    end
 end
 
+
 -- Implement letrec on top of let and set!
 macro['letrec'] = function(expr, c)
    assert(c and c.void)
@@ -97,6 +96,7 @@ macro['letrec'] = function(expr, c)
       bindings)
    return {c.let or 'let', {void_bindings, {{c.begin or 'begin', set_variables}, exprs}}}
 end
+
 
 local function need_gensym(config, name)
    if not (config and config.state and config.state.gensym) then
