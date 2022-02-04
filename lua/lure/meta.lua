@@ -6,6 +6,7 @@ return { modules = {
   'log_se',
   'match',
   'meta',
+  'scheme_blockval',
   'scheme_flatten_blocks',
   'scheme_frontend',
   'scheme',

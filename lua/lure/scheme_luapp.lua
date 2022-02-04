@@ -66,10 +66,10 @@ function class.w_body(s, expr)
    s.match(
       expr,
       -- The do .. end block can be omitted in a function body.
-      {{"(block ,bindings)", function(m)
+      {{"(block . ,bindings)", function(m)
            s:w_bindings(m.bindings)
        end},
-       {"(unquote body)", function(m)
+       {",body", function(m)
            s:i_comp(m.body)
       end}})
 end
@@ -91,7 +91,7 @@ function class.compile(s,expr)
          s.indent = -1 -- Undo indent in w_bindings
          s.match(
             expr,
-            {{"(block ,bindings)", function(m)
+            {{"(block . ,bindings)", function(m)
                  s:w_bindings(m.bindings)
          end}})
          s:w("\n")
@@ -121,7 +121,7 @@ function class.comp(s,expr)
 
          -- Reduced block form where all statements have been included
          -- as bindings to '_' to indicate ignored value.
-         {"(block ,bindings)", function(m)
+         {"(block . ,bindings)", function(m)
              s:w(s:tab(),"do\n")
              s:w_bindings(m.bindings)
              s:w(s:tab(),"end\n")

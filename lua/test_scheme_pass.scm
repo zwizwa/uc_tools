@@ -1,7 +1,10 @@
 ;; (define (id x) x)
 ;; (lambda (x) x)
 
-(let* ((a 1)
-       (b 2)
-       (c 3))
-  (add a b c))
+(lambda (q)
+  (let* ((a 1)
+         (b (if q 123 456))
+         (c 3))
+    (if a
+        a
+        (add a (add b c)))))

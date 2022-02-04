@@ -66,7 +66,7 @@ local pprint_form = {
    end,
    ['if'] = function(s, expr)
       local _, var, etrue, efalse = se.unpack(expr, {n=4})
-      s:w("(if ",var," ")
+      s:w("(if ", se.iolist(var)," ")
       s:indented(
          function()
             s:pprint(etrue)

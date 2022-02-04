@@ -297,6 +297,8 @@ form['if'] = function(self, expr)
    end
 end
 
+local void = { class = 'void' }
+
 -- Wrap some macros from scheme_macros.lua
 local function macro(m, config)
    return function(self, expr)
@@ -306,6 +308,7 @@ local function macro(m, config)
       end
       -- Many macros need state:gensym() so just pass it by default.
       new_config.state = self
+      new_config.void = void
       local expanded = m(expr, new_config)
       -- log_se(expanded) ; log('\n')
       self:compile(expanded)

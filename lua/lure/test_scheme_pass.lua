@@ -8,10 +8,6 @@ local comp   = require('lure.comp')
 local pretty = require('lure.scheme_pretty')
 require('lure.log_se')
 
-
-local scheme_flatten_blocks = require('lure.scheme_flatten_blocks')
-local scheme_match          = require('lure.scheme_match')
-
 local asset = require('lure.asset_scm')
 
 
@@ -32,6 +28,7 @@ local config = {
 local multipass = comp.make_multipass({
       'lure.scheme_frontend',
       'lure.scheme_flatten_blocks',
+      'lure.scheme_blockval',
 })
 
 local function main()

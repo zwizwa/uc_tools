@@ -38,6 +38,7 @@ local class = {
 local void = {
    class = "void"
 }
+class.void = void
 
 -- Bind macros to state object for gensym.
 class.macro = {} ; do
@@ -98,7 +99,7 @@ local prim_out_forms = {'block','set!','if','lambda'}
 
 class.form = {
    -- This is like 'begin', but without support for local definitons.
-   ['sequence'] = function(s, expr)
+   ['primitive-begin'] = function(s, expr)
       local _, forms = se.unpack(expr, {n = 1, tail = true})
       local function tx_form(seqform)
          return l('_', s:compile(seqform))
@@ -183,7 +184,7 @@ function class.anf(s, exprs, fn)
          end
          -- Composite.  Bind it to a variable.  The name here is just
          -- for debugging.
-         local var = s:var_def("tmp")
+         local var = s:var_def()
          ins(bindings, l(var, s:compile(e)))
          ins(normalform, var)
       end
@@ -261,16 +262,21 @@ end
 
 -- Renames definitions and references.
 function var_iolist(var)
-   assert(var.var)
    assert(var.unique)
    local orig = {":",var.var}
-   if var.var == "tmp" then orig = "" end
+   if nil == var.var then orig = "" end
    return {var.unique,orig}
 end
+
+function class.make_var(unique, name)
+   assert(unique)
+   return { var = name, unique = unique, class = 'var', iolist = var_iolist }
+end
+
 function class.var_def(s, name)
-   assert(type(name) == 'string')
+   -- Name is allowed to be nil
    local sym = s:gensym()
-   return { var = name, unique = sym, class = 'var', iolist = var_iolist }
+   return s.make_var(sym, name)
 end
 
 

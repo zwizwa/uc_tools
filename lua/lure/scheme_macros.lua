@@ -18,6 +18,8 @@ local macro = {}
 local l = se.list
 local r = se.reverse
 
+local void = l('begin')
+
 -- Map module-begin to begin in case top level forms are not special.
 macro['module-begin'] = function(expr)
    local _, mod_body = se.unpack(expr, { n = 1, tail = true })
@@ -32,8 +34,9 @@ macro['begin'] = function(expr, config)
    local bindings = se.empty
    local function done()
       if se.is_empty(bindings) then
-         -- 'begin' is common, so optimize lack of defs case
-         return {c.let or 'sequence',exprs}
+         -- 'begin' needs a primitive base case that is just
+         -- sequencing.
+         return {c.let or 'primitive-begin',exprs}
       else
          return {c.letrec or 'letrec', {r(bindings), exprs}}
       end
@@ -78,12 +81,12 @@ macro['letrec'] = function(expr, c)
    local _, bindings, exprs = se.unpack(expr, {n = 2, tail = true})
    if se.is_empty(bindings) then
       -- Base case is needed to avoid letrec->begin->letrec loop.
-      return {c.let or 'sequence',exprs}
+      return {c.let or 'begin',exprs}
    end
    local void_bindings = se.map(
       function(binding)
          local name, val = se.unpack(binding, {n = 2})
-         return l(name, c.void or l('sequence'))
+         return l(name, c.void or void)
       end,
       bindings)
    local set_variables = se.map(
@@ -114,7 +117,7 @@ macro['case'] = function(expr, config)
       return l('if',l('eq?',sym,val),{'begin',exprs},els)
    end
    return l('let',l(l(sym, vexpr)),
-            se.foldr(ifexpr, config.void or l('sequence'), clauses))
+            se.foldr(ifexpr, config.void or void, clauses))
 end
 
 
