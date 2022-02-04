@@ -22,10 +22,27 @@ class.tab          = lure_comp.tab
 -- Expressions are always compiled in binding position, are already at
 -- indented position and should not print newline.
 
+local function mangle(name)
+   if not name then return "" end
+   local subst = {
+      ["next"] = "nxt",
+      ["-"] = "_", -- "_dash_",
+      ["!"] = "",  -- "_bang_",
+      ["?"] = "p", -- "_pred_",
+      [">"] = "_gt_",
+      ["/"] = "_div_",
+      ["="] = "_is_",
+   }
+   for from,to in pairs(subst) do
+      name = string.gsub(name,from,to)
+   end
+   return {"_",name}
+end
+
 local function iol_atom(var)
-   -- Still support old style naked symbols
-   if type(var) == 'string' then return var end
-   if (var.class == 'var') then return var.unique end
+   if type(var) == 'table' and var.class == 'var' then
+      return {var.unique,mangle(var.var)}
+   end
    return se.iolist(var)
 end
 local function commalist(lst)
@@ -52,9 +69,12 @@ function class.w_bindings(s, bindings)
             end},
             -- Special case the function definitions
             {"(,var (lambda ,args ,expr))", function(b)
-                s:w("local function ", iol_atom(b.var), "(", commalist(b.args),")","\n")
-                s:w_body(b.expr)
-                s:w(s:tab(),"end")
+                s:indented(
+                   function()
+                      s:w("local function ", iol_atom(b.var), "(", commalist(b.args),")","\n")
+                      s:w_body(b.expr)
+                      s:w(s:tab(),"end")
+                   end)
             end},
             -- Other variable definitions
             {"(,var ,expr)", function(b)
@@ -139,8 +159,12 @@ function class.comp(s,expr)
          -- Second form is generic.
          {"(lambda ,vars ,expr)", function(m)
              s:w("function(",commalist(m.vars),")\n")
-             s:w_body(m.expr)
-             s:w(s:tab(),"end")
+             s:indented(
+                function()
+                   s:w_body(m.expr)
+                   s:w(s:tab(),"end")
+                end,
+                -2)
          end},
          {"(if ,cond ,etrue, efalse)", function(m)
              s:w("if ", iol_atom(m.cond), " then\n")

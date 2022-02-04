@@ -38,8 +38,8 @@ local multipass = comp.make_multipass({
 })
 
 local function main()
-   -- local input = 'test_rvm.scm'
-   local input = 'test_scheme_pass.scm'
+   local input = 'test_rvm.scm'
+   -- local input = 'test_scheme_pass.scm'
 
    local str = asset[input]
    assert(str)

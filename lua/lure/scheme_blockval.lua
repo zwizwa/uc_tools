@@ -65,21 +65,24 @@ function class.comp_bindings(s,bindings)
             local var, expr = se.unpack(binding, {n=2})
             local last = se.is_empty(rest)
             trace("BIND",l(last, cont_var or "void", var, expr))
+            local cexpr
             if last then
                assert(var == '_')
                if cont_var then
                   if pass_continuation(expr) then
                      s.var = cont_var
+                     cexpr = s:compile(expr)
                   else
                      if cont_var.unique == 'return' then
-                        expr = l('return',expr)
+                        cexpr = l('return',s:compile(expr))
                      else
-                        expr = l('set!',cont_var,expr)
+                        cexpr = l('set!',cont_var,s:compile(expr))
                      end
                   end
                else
                   -- Don't change anything if the return value is
                   -- ignored.
+                  cexpr = s:compile(expr)
                end
             else
                if pass_continuation(expr) and var ~= '_' then
@@ -93,8 +96,8 @@ function class.comp_bindings(s,bindings)
                   -- without storing value.
                   s.var = nil
                end
+               cexpr = s:compile(expr)
             end
-            local cexpr = s:compile(expr)
             ins(bs, l(var, cexpr))
          end
       end)
