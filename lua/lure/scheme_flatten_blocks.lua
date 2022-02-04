@@ -50,8 +50,6 @@ local cdr = se.cdr
 
 -- Define types
 
-local function s_id(s, thing) return thing end
-
 function flatten_block(s, block_expr)
    local _, bindings = se.unpack(block_expr, {n=1, tail=true})
    local seq = {} -- Easier to to the accumulation using side-effects.
@@ -103,11 +101,6 @@ local function default(s, expr)
 end
 
 local compiler = {
-   ['var'] = s_id,
-   ['void'] = s_id,
-   ['string'] = s_id,
-   ['number'] = s_id,
-   ['boolean'] = s_id,
    ['pair'] = function(s, expr)
       local car, cdr = unpack(expr)
       local comp = s.compile_form[car]
@@ -121,8 +114,12 @@ local compiler = {
 local function compile(s, expr)
    local typ = se.expr_type(expr)
    local f = compiler[typ]
-   if f == nil then error('compile: bad type ' .. typ) end
-   return f(s, expr)
+   if f then
+      return f(s, expr)
+   else
+      -- No change
+      return expr
+   end
 end
 
 local class = {

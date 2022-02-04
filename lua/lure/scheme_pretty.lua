@@ -85,10 +85,8 @@ end
 
 local pprinter = {
    ['string']  = pp_prim,
-   ['void']    = pp_prim,
    ['number']  = pp_prim,
    ['boolean'] = pp_prim,
-   ['var']     = pp_prim,
    ['pair']    = function(s, expr)
       local car, cdr = unpack(expr)
       local pp = s.pprint_form[car]
@@ -101,9 +99,14 @@ local pprinter = {
 }
 local function pprint(s, expr)
    local typ = se.expr_type(expr)
+   assert(typ)
    local f = pprinter[typ]
-   if f == nil then error('pprint: bad type ' .. typ) end
-   return f(s, expr)
+   if f then
+      return f(s, expr)
+   else
+      -- Assume everything else can be printed by se.iolist
+      pp_prim(s, expr)
+   end
 end
 
 local function pprint_to_stream(s,stream,expr)

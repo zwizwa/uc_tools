@@ -39,11 +39,25 @@ local function mangle(name)
    return {"_",name}
 end
 
-local function iol_atom(var)
-   if type(var) == 'table' and var.class == 'var' then
-      return {var.unique,mangle(var.var)}
+local function iol_atom(a)
+   if type(a) == 'table' and a.class == 'var' then
+      return {a.unique,mangle(a.var)}
+   elseif type(a) == 'number' then
+      return a
+   elseif type(a) == 'string' then
+      return a
+   elseif a == scheme_frontend.void then
+      return 'nil'
+   elseif type(a) == 'table' and a.class == 'quote' and type(a.expr) == 'string' then
+      return {"'",a.expr,"'"}
+   -- FIXME: This is likely not correct for all
+   elseif type(a) == 'table' and var.class then
+      return se.iolist(a)
+   else
+      log_desc({bad_atom = var})
+      log_se_n(a,"BAD_ATOM: ")
+      error("syntax error")
    end
-   return se.iolist(var)
 end
 local function commalist(lst)
    local iol = {}
@@ -132,6 +146,10 @@ function class.i_comp(s, expr)
    s:indented(function() s:comp(expr) end)
 end
 
+function class.w_atom(s, a)
+   s:w(iol_atom(a))
+end
+
 -- Recursive expression compiler.
 function class.comp(s,expr)
    s.match(
@@ -174,18 +192,7 @@ function class.comp(s,expr)
              s:w(iol_atom(m.fun),"(",commalist(m.args),")")
          end},
          {",atom", function(m)
-             if se.expr_type(m.atom) == 'var' then
-                s:w(iol_atom(m.atom))
-             elseif type(m.atom) == 'number' then
-                s:w(m.atom)
-             elseif type(m.atom) == 'string' then
-                s:w(m.atom)
-             elseif m.atom == scheme_frontend.void then
-                s:w('nil')
-             else
-                log_se_n(expr,"BAD: ")
-                error("syntax error")
-             end
+             s:w_atom(m.atom)
          end}
       }
    )

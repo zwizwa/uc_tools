@@ -52,21 +52,29 @@ class.macro = {} ; do
    end
 end
 
--- Delegate after checking that the callback is there.
-class.macro['module-begin'] = function(s, expr)
-   return scheme_macros.begin(
-      expr,
-      {
-         on_bindings = function(bindings)
-            s:on_bindings(bindings)
-         end
-      })
+-- Create new macro as parameterized macro from scheme_macros
+local function config_macro(new_name, old_name, config)
+   local m = scheme_macros[old_name] ;  assert(m)
+   class.macro[new_name] = function(s, expr)
+      local c = { state = s, void = void }
+      for k,v in pairs(config) do c[k]=v end
+      return m(expr, c)
+   end
 end
 
--- The 'begin' macro will call this when it inserts a set macro.
-function class.on_bindings(s, expr)
-   trace("BINDINGS",expr)
+-- Behavior is same, just trickle down to call module-set! instead of
+-- set! for module definitions.
+config_macro('module-begin',  'begin',  { letrec = 'module-letrec' })
+config_macro('module-letrec', 'letrec', { set    = 'module-set!'   })
+
+class.macro['module-set!'] = function(s, expr)
+   local _, name, expr = se.unpack(expr, {n=3})
+   return l('begin',
+            l('set!',name,expr),
+            l('module-register!',l('quote',name), name)
+            )
 end
+
 
 local function s_id(s, thing) return thing end
 
@@ -110,6 +118,10 @@ local void = '#<void>'
 -- compilers return a primitive form, which is one of
 local prim_out_forms = {'block','set!','if','lambda'}
 
+local function quote_to_iolist(q)
+   return {"'", se.iolist(q.expr)}
+end
+
 class.form = {
    -- This is like 'begin', but without support for local definitons.
    ['primitive-begin'] = function(s, expr)
@@ -142,7 +154,11 @@ class.form = {
                s:compile_extend(
                   {'begin',body},
                   vars))
-   end
+   end,
+   ['quote'] = function(s, expr)
+      local _, datum = se.unpack(expr, {n = 2})
+      return { class = 'quote', expr = datum, iolist = quote_to_iolist }
+   end,
 }
 
 -- Compile in extended environment
@@ -176,12 +192,16 @@ local function is_prim(expr)
    return true
 end
 
+-- FIXME: This should at least expand to expose quotation.
 
 -- Convention is that fn returns a primitive output form.
 function class.anf(s, exprs, fn)
    local normalform = {}
    local bindings = {}
-   for e in se.elements(exprs) do
+   for e1 in se.elements(exprs) do
+      e = s:expand(e1)
+      trace("ANF", e)
+
       -- FIXME: This should compile before checking if it's primitive.
       if type(e) == 'string' then
          -- Source variable
@@ -191,6 +211,8 @@ function class.anf(s, exprs, fn)
          ins(normalform, e)
       elseif is_prim(e) then
          ins(normalform, e)
+      elseif se.is_expr(e, 'quote') then
+         ins(normalform, s:compile(e))
       else
          if type(e) ~= 'table' then
             error("bad type '" .. type(e) .. "'")

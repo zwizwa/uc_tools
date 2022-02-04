@@ -33,9 +33,6 @@ macro['begin'] = function(expr, config)
          return {c.primitive_begin or 'primitive-begin',exprs}
       else
          local r_bindings = r(bindings)
-         if c.on_bindings then
-            c.on_bindings(r_bindings)
-         end
          return {c.letrec or 'letrec', {r_bindings, exprs}}
       end
    end

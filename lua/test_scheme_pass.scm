@@ -1,5 +1,6 @@
 ;; (define (id x) x)
 ;; (lambda (x) x)
+(define (fun0 x) x)
 
 (define (fun1 1)
   (let* ((a 1)
@@ -10,3 +11,4 @@
     (if a
         a
         (add a (f b c)))))
+
