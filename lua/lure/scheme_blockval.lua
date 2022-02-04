@@ -33,7 +33,7 @@ class.tab          = lure_comp.tab
 
 
 local function trace(tag, expr)
-   log('\n') ; log_se_n(expr, tag .. ": ")
+   -- log('\n') ; log_se_n(expr, tag .. ": ")
 end
 
 function class.compile(s,expr)
@@ -44,7 +44,13 @@ function ifte(a,b,c)
    if a then return b else return c end
 end
 
--- FIXME: I have a feeling this could be simpler...
+
+-- The "continuation" (the place to store the block return value) is
+-- passed down nested 'if' and 'block' expressions.  All other
+-- expressions are either function calls, which respect the regular
+-- binding setup, or 'set!' which doesn't produce a result.  No
+-- control flow is changed.
+
 function class.comp_bindings(s,bindings)
    local bs = {}
    local function pass_continuation(expr)
@@ -72,15 +78,20 @@ function class.comp_bindings(s,bindings)
                      end
                   end
                else
-                  -- Don't change anything
+                  -- Don't change anything if the return value is
+                  -- ignored.
                end
             else
-               if pass_continuation(expr) then
+               if pass_continuation(expr) and var ~= '_' then
+                  -- Split the binding up in a declaration and a
+                  -- continuation passed downwards.
                   s.var = var
                   ins(bs, l(var, scheme_frontend.void))
                   var = '_'
                else
-                  -- Bind primitive value.
+                  -- Bind primitive value, or execute block or if
+                  -- without storing value.
+                  s.var = nil
                end
             end
             local cexpr = s:compile(expr)

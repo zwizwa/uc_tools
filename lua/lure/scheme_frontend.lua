@@ -10,14 +10,12 @@
 --
 -- BLOCK FLATTENING
 --
--- SIMPLIFY BLOCK (TODO)
--- SINGLE LAMBDA EXPR (TODO)
--- RETURN / BLOCK RESULT (TODO)
+-- RETURN / BLOCK RESULT
 --
 -- OUTPUT CLEANUP / LANG PPRINT
 --
--- Macro expansion and ANF seem to go hand-in hand.
--- Variable renaming is useful for later block-flattening.
+-- Beta reduction performed before ANF.
+-- Variable renaming enables later block-flattening.
 
 -- FIXME: This is still written in old se.unpack() style, and might
 -- benefit from using the pattern matcher.  However, it works, so not
@@ -70,7 +68,7 @@ class.expander = {
 }
 
 local function trace(tag, expr)
-   log('\n') ; log_se_n(expr, tag .. ": ")
+   -- log('\n') ; log_se_n(expr, tag .. ": ")
 end
 
 function class.expand_step(s, expr)

@@ -18,7 +18,7 @@ local l = se.list
 local a = se.list_to_array
 
 local function trace(ir, pass)
-   log_w(pass, ":\n")
+   log_w("\n",pass, ":\n")
    pprint:pprint_to_stream(io.stderr,ir)
    -- log_se(ir)
 end
