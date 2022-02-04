@@ -51,6 +51,12 @@ end
 -- binding setup, or 'set!' which doesn't produce a result.  No
 -- control flow is changed.
 
+-- Note: trampoline conversion could be done here: at each 'return'
+-- point, the expression could be wrapped, returned to the trampoline
+-- to then resume operation.  This requires primitives to be
+-- distinguished from composite functions.  Basically it would only be
+-- necessary for those functions that eventually end up in a loop.
+
 function class.comp_bindings(s,bindings)
    local bs = {}
    local function pass_continuation(expr)

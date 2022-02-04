@@ -137,26 +137,11 @@ function class.comp(s,expr)
    s.match(
       expr,
       {
-         -- FIXME: All these need expression result assignment and
-         -- explicit return.  Solve that in a preprocessing step, e.g:
-
-         -- (lambda () (block (
-         --   (a #<nil>)
-         --   (_ (if cond
-         --        (set! a 1)
-         --        (set! a 2)))
-         --   (return a)
-         --   ))
-
-         -- Reduced block form where all statements have been included
-         -- as bindings to '_' to indicate ignored value.
          {"(block . ,bindings)", function(m)
              s:w(s:tab(),"do\n")
              s:w_bindings(m.bindings)
              s:w(s:tab(),"end\n")
          end},
-         -- Reduced lambda form with single body expression..
-         -- Second form is generic.
          {"(lambda ,vars ,expr)", function(m)
              s:w("function(",commalist(m.vars),")\n")
              s:indented(
@@ -164,7 +149,7 @@ function class.comp(s,expr)
                    s:w_body(m.expr)
                    s:w(s:tab(),"end")
                 end,
-                -2)
+                0)
          end},
          {"(if ,cond ,etrue, efalse)", function(m)
              s:w("if ", iol_atom(m.cond), " then\n")

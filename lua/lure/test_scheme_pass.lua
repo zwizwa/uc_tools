@@ -38,8 +38,8 @@ local multipass = comp.make_multipass({
 })
 
 local function main()
-   local input = 'test_rvm.scm'
-   -- local input = 'test_scheme_pass.scm'
+   -- local input = 'test_rvm.scm'
+   local input = 'test_scheme_pass.scm'
 
    local str = asset[input]
    assert(str)
@@ -49,31 +49,6 @@ local function main()
 
    local c = multipass.new(config)
    local expr1 = c:compile(expr)
-
-
-   -- -- Config slc to use asset table
-   -- local c = slc.new({ log = log, asset = asset })
-   -- -- HACK: It exposes its reader, which uses the asset table.  This
-   -- -- just gives us the s-expressions.  Better: make the reader itself
-   -- -- configurable to use an asset table.
-
-   -- -- log_se_n(expr, "INPUT: ")
-   -- local expander = scheme_frontend.new()
-   -- --log_desc({expander = expander})
-   -- -- local expr1 = expander:expand(expr)
-   -- local expr1 = expander:compile(expr)
-   -- -- log_se_n(expr1, "COMPILED: ")
-   -- local pprint = scheme_pretty.new()
-   -- -- pprint:pprint_to_stream(io.stderr,expr1)
-
-   -- local flattener = scheme_flatten_blocks.new()
-   -- local expr2 = flattener:compile(expr1)
-   -- -- pprint:pprint_to_stream(io.stderr,expr2)
-   
-   -- local test_match = scheme_match.new()
-   -- local expr3 = test_match:compile(expr2)
-   -- pprint:pprint_to_stream(io.stderr,expr3)
-   
 
 end
 
