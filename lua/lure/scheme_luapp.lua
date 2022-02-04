@@ -22,8 +22,23 @@ class.tab          = lure_comp.tab
 -- Expressions are always compiled in binding position, are already at
 -- indented position and should not print newline.
 
-local function mangle(name)
-   if not name then return "" end
+local infix = {
+   ['add'] = '+'
+}
+
+local function free_var(name)
+   if not lua_name then
+      error("undefined variable '" .. name .. "'")
+   end
+   return lua_name
+end
+
+local function mangle(var)
+   assert(var and var.unique)
+   local name = var.var
+   if not name then return var.unique end
+   if var.free then return free_var(name) end
+
    local subst = {
       ["next"] = "nxt",
       ["-"] = "_", -- "_dash_",
@@ -36,12 +51,12 @@ local function mangle(name)
    for from,to in pairs(subst) do
       name = string.gsub(name,from,to)
    end
-   return {"_",name}
+   return {var.unique,"_",name}
 end
 
 local function iol_atom(a)
    if type(a) == 'table' and a.class == 'var' then
-      return {a.unique,mangle(a.var)}
+      return mangle(a)
    elseif type(a) == 'number' then
       return a
    elseif type(a) == 'string' then
@@ -51,7 +66,7 @@ local function iol_atom(a)
    elseif type(a) == 'table' and a.class == 'quote' and type(a.expr) == 'string' then
       return {"'",a.expr,"'"}
    -- FIXME: This is likely not correct for all
-   elseif type(a) == 'table' and var.class then
+   elseif type(a) == 'table' and a.class then
       return se.iolist(a)
    else
       log_desc({bad_atom = var})
@@ -59,6 +74,16 @@ local function iol_atom(a)
       error("syntax error")
    end
 end
+
+local special_function = {}
+special_function['module-register!'] = function(s, args)
+   s.match(
+      args,
+      {{"(,name ,ref)", function(m)
+           s:w("mod[",iol_atom(m.name),"] = ",iol_atom(m.ref))
+        end}})
+end
+
 local function commalist(lst)
    local iol = {}
    for el, last in se.elements(lst) do
@@ -139,7 +164,10 @@ function class.compile(s,expr)
          end}})
          s:w("\n")
       end)
-   return { class = "iolist", iolist = out }
+   local mod =
+      {"local mod = {}\n", out,
+       "return mod\n"}
+   return { class = "iolist", iolist = mod }
 end
 
 function class.i_comp(s, expr)
@@ -189,7 +217,19 @@ function class.comp(s,expr)
              s:i_comp(m.expr)
          end},
          {"(,fun . ,args)", function(m)
-             s:w(iol_atom(m.fun),"(",commalist(m.args),")")
+             local w_f = m.fun.var and special_function[m.fun.var]
+             -- FIXME: Also do infix this way
+             if w_f then
+                w_f(s, m.args)
+             else
+                local op = m.fun.var and infix[m.fun.var]
+                if op then
+                   local a, b = se.unpack(m.args, {n=2})
+                   s:w(iol_atom(a)," ",op," ",iol_atom(b))
+                else
+                   s:w(iol_atom(m.fun),"(",commalist(m.args),")")
+                end
+             end
          end},
          {",atom", function(m)
              s:w_atom(m.atom)

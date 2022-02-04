@@ -5,10 +5,12 @@ package.path = package.path .. ";./?.lua"
 local slc    = require('lure.slc')
 local se     = require('lure.se')
 local comp   = require('lure.comp')
+local iolist = require('lure.iolist')
 local pretty = require('lure.scheme_pretty')
 require('lure.log_se')
 
 local asset = require('lure.asset_scm')
+local string_dsl = require('lure.string_dsl')
 
 
 local pprint = pretty.new()
@@ -28,8 +30,13 @@ local function trace(ir, pass)
    -- log_se(ir)
 end
 
+local global = {
+   ['module-register'] = {}
+}
+
 local config = {
    trace = trace,
+   global = global,
 }
 local multipass = comp.make_multipass({
       'lure.scheme_frontend',
@@ -49,8 +56,13 @@ local function main()
    local expr = {'module-begin',exprs}
 
    local c = multipass.new(config)
-   local expr1 = c:compile(expr)
+   local lua_iol = c:compile(expr)
 
+   -- The result is an iolist containing the lua expression.
+   local lua_str = iolist.to_string(lua_iol.iolist)
+   local lua_mod = string_dsl.lua_eval(lua_str)
+   assert(lua_mod)
+   log_desc(lua_mod)
 end
 
 return { run = main }

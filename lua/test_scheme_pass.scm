@@ -2,11 +2,11 @@
 ;; (lambda (x) x)
 (define (fun0 x) x)
 
-(define (fun1 1)
+(define (fun1 q)
   (let* ((a 1)
          (b (if q 123 456))
          (c 3)
-         (f (lambda (x y) (add x u)))
+         (f (lambda (x y) (add x y)))
          )
     (if a
         a

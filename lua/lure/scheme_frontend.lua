@@ -127,7 +127,7 @@ class.form = {
    ['primitive-begin'] = function(s, expr)
       local _, forms = se.unpack(expr, {n = 1, tail = true})
       local function tx_form(seqform)
-         return l('_', s:compile(seqform))
+         return l('_', s:comp(seqform))
       end
       return {'block',se.map(tx_form, forms)}
    end,
@@ -141,7 +141,7 @@ class.form = {
       local _, econd, etrue, efalse = se.unpack(expr, {n = 4})
       return s:anf(
          l(econd),
-         function(e) return l('if', se.car(e), s:compile(etrue), s:compile(efalse)) end)
+         function(e) return l('if', se.car(e), s:comp(etrue), s:comp(efalse)) end)
    end,
    ['lambda'] = function(s, expr)
       local _, src_names, body = se.unpack(expr, {n = 2, tail = true})
@@ -151,7 +151,7 @@ class.form = {
          end,
          src_names)
       return l('lambda', vars,
-               s:compile_extend(
+               s:comp_extend(
                   {'begin',body},
                   vars))
    end,
@@ -162,7 +162,7 @@ class.form = {
 }
 
 -- Compile in extended environment
-function class.compile_extend(s, expr, vars)
+function class.comp_extend(s, expr, vars)
    local new_env = s.env
    for var in se.elements(vars) do
       new_env = {var, new_env}
@@ -171,7 +171,7 @@ function class.compile_extend(s, expr, vars)
       {env = new_env},
       function()
          -- log_se_n(expr, "COMPILE_EXTEND:")
-         return s:compile(expr)
+         return s:comp(expr)
       end)
 end
 
@@ -212,7 +212,7 @@ function class.anf(s, exprs, fn)
       elseif is_prim(e) then
          ins(normalform, e)
       elseif se.is_expr(e, 'quote') then
-         ins(normalform, s:compile(e))
+         ins(normalform, s:comp(e))
       else
          if type(e) ~= 'table' then
             error("bad type '" .. type(e) .. "'")
@@ -220,7 +220,7 @@ function class.anf(s, exprs, fn)
          -- Composite.  Bind it to a variable.  The name here is just
          -- for debugging.
          local var = s:var_def()
-         ins(bindings, l(var, s:compile(e)))
+         ins(bindings, l(var, s:comp(e)))
          ins(normalform, var)
       end
    end
@@ -244,11 +244,11 @@ local function apply(s, expr)
       local _, fargs, fbody = se.unpack(fun, {n=2,tail=true})
       local bindings = se.zip(
          function(farg, arg)
-            return l(s:var_def(farg), s:compile(arg))
+            return l(s:var_def(farg), s:comp(arg))
          end,
          fargs, args)
       local vars = se.map(se.car, bindings)
-      local cexp = s:compile_extend({'begin',fbody}, vars)
+      local cexp = s:comp_extend({'begin',fbody}, vars)
       return {'block',se.append(bindings, l(l('_', cexp)))}
    else
       -- Ordinary application.
@@ -277,13 +277,19 @@ class.compiler = {
       end
    end
 }
-function class.compile(s, expr)
-   expr = s:expand(expr)
+function class.comp(s, expr0)
+   local expr = s:expand(expr0)
    trace("COMPILE",expr)
    local typ = se.expr_type(expr)
    local f = s.compiler[typ]
    if f == nil then error('compile: bad type ' .. typ) end
    return f(s, expr)
+end
+
+-- Entry point
+function class.compile(s, expr)
+   s:init()
+   return s:comp(expr)
 end
 
 function class.gensym(s, prefix)
@@ -309,7 +315,8 @@ function class.make_var(unique, name)
 end
 
 function class.var_def(s, name)
-   -- Name is allowed to be nil
+   -- Name is allowed to be nil for temporary variables.  They only
+   -- have their uinique name.
    local sym = s:gensym()
    return s.make_var(sym, name)
 end
@@ -329,19 +336,26 @@ function class.var_ref(s, var)
    end
    -- References to non-lexical variables are stored in a separate
    -- table.  We create those on demand, and have to re-use.
-   local v = s.globals[name]
+   local v = s.free_variables[name]
    if not v then
       v = s:var_def(name)
-      s.globals[name] = v
+      v.free = true
+      s.free_variables[name] = v
    end
    return v
 end
 
-
+-- Initialize state before running compiler.
+function class.init(s)
+   s.count = 0
+   s.free_variables = {}
+   s.env = {}
+end
 
 function class.new()
-   local obj = { count = 0, globals = {}, env = {} }
+   local obj = {}
    setmetatable(obj, { __index = class })
+   obj:init()
    return obj
 end
 
