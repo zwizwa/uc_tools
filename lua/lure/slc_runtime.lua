@@ -1,4 +1,6 @@
-require('lure.log')
+require('lure.log_se')
+local se = require('lure.se')
+local match = require('lure.match')
 
 local rt = {}
 
@@ -60,8 +62,27 @@ end
 rt['write-char'] = function(c)
    return io.stdout:write(c)
 end
-rt['@'] = function(tab, key)
+rt['table-ref'] = function(tab, key)
    return tab[key]
+end
+rt['table-set!'] = function(tab, key, val)
+   tab[key] = val
+end
+rt['compile-qq-pattern'] = function(pat)
+   local cns = se.constructor(pat)
+   return match.compile(cns)
+end
+rt['cons'] = function(car, cdr)
+   return {car, cdr}
+end
+rt['list'] = function(...)
+   return se.array_to_list({...})
+end
+rt['match-qq-patterns'] = function(...)
+   return se.array_to_list({...})
+end
+rt['log-se'] = function(se)
+   log_se(se)
 end
 
 

@@ -157,7 +157,7 @@ class.form = {
    end,
    ['quote'] = function(s, expr)
       local _, datum = se.unpack(expr, {n = 2})
-      return { class = 'quote', expr = datum, iolist = quote_to_iolist }
+      return { class = 'expr', expr = datum, iolist = quote_to_iolist }
    end,
 }
 
@@ -291,12 +291,22 @@ function class.compile(s, expr)
    s:init()
    local body = s:comp(expr)
    local bs = l(l('_', body))
-   for top_name, top_expr in pairs(s.module_variables) do
-      local b = l(top_name, s:comp(top_expr))
-      bs = {b, bs}
-   end
+   -- Compile the module bindings in a loop, since new module bindings
+   -- might be introduced during compilation.
+   local done
+   repeat
+      done = true
+      log("compiling bindings\n")
+      local mbs = s.module_bindings
+      s.module_bindings = {}
+      for src_name, binding in pairs(mbs) do
+         local top_var, top_expr = se.unpack(binding, {n = 2})
+         local b = l(top_var, s:comp(top_expr))
+         bs = {b, bs}
+         done = false
+      end
+   until (done)
    return {'block', bs}
-
 end
 
 -- All variables are renamed, so gensyms will never clash with anything.
@@ -311,7 +321,10 @@ end
 -- These should all be independent, so we don't care about order.
 function class.module_define(s, sym, expr)
    -- Just register now.  Compile after compiling body.
-   s.module_variables[symb] = expr
+   assert(type(sym) == 'string')
+   local var = s:var_def(sym)
+   s.module_bindings[sym] = l(var,expr)
+   return var
 end
 
 -- Renames definitions and references.
@@ -347,12 +360,25 @@ function class.var_ref(s, var)
          return v
       end
    end
-   -- References to non-lexical variables are stored in a separate
-   -- table.  We create those on demand, and have to re-use.
+
+   -- Module level variables are handled separately.
+   local binding = s.module_bindings[name]
+   if binding then return binding[1] end
+
+   -- Free variables are explicitly associated to a base dictionary
+   -- dereference.  We need to keep track of them so they always map
+   -- to the same var.
    local v = s.free_variables[name]
    if not v then
-      v = s:var_def(name)
-      v.free = true
+      local sym = s:gensym()
+      if name == s.base_ref then
+         -- This is the only free variable left.
+         v = s:var_def(name)
+         v.free = true
+      else
+         -- All the rest is bound through base-ref
+         v = s:module_define(sym, l(s.base_ref,l('quote',name)))
+      end
       s.free_variables[name] = v
    end
    return v
@@ -363,7 +389,8 @@ function class.init(s)
    s.count = 0
    s.free_variables = {}
    s.env = {}
-   s.module_variables = {}
+   s.module_bindings = {}
+   s.base_ref = 'base-ref'
 end
 
 function class.new()

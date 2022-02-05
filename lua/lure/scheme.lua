@@ -20,6 +20,7 @@ end
 local se = require('lure.se')
 local iolist = require('lure.iolist')
 local comp = require('lure.comp')
+local l = se.list
 
 require('lure.log')
 local function log_w(...)   iolist.write(log, {...}) end
@@ -107,6 +108,11 @@ form['block'] = function(self, s)
       val = self:eval(expr, s.env)
    end
    s.expr = val
+end
+
+form['primitive-begin'] = function(self, s)
+   local _, body = se.unpack(s.expr, { n = 1, tail = true })
+   s.expr = {'block',{l(), body}}
 end
 
 

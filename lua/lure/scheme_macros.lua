@@ -28,9 +28,15 @@ macro['begin'] = function(expr, config)
    local bindings = se.empty
    local function done()
       if se.is_empty(bindings) then
-         -- 'begin' needs a primitive base case that is just
-         -- sequencing.
-         return {c.primitive_begin or 'primitive-begin',exprs}
+         if se.length(exprs) == 1 then
+            -- Optimize the single expression case.  Otherwise this
+            -- tends to produce a lot of nested begin expressions.
+            return exprs[1]
+         else
+            -- 'begin' needs a primitive base case that is just
+            -- sequencing.
+            return {c.primitive_begin or 'primitive-begin',exprs}
+         end
       else
          local r_bindings = r(bindings)
          return {c.letrec or 'letrec', {r_bindings, exprs}}
@@ -73,7 +79,7 @@ end
 
 -- Implement letrec on top of let and set!
 macro['letrec'] = function(expr, c)
-   assert(c and c.void)
+   c = c or {}
    local _, bindings, exprs = se.unpack(expr, {n = 2, tail = true})
    if se.is_empty(bindings) then
       -- Base case is needed to avoid letrec->begin->letrec loop.
@@ -215,7 +221,7 @@ macro['match-qq'] = function(expr, c)
       local patvar = c.state:gensym()
       local mod_binding =
          l(patvar,
-           l(c.compile_pattern or 'compile-pattern',
+           l(c.compile_qq_pattern or 'compile-qq-pattern',
              l('quote', pattern)))
       mod_bs = {mod_binding, mod_bs}
       local handler  = l('lambda',l(m),{'let',{bindings,handle}})
@@ -223,7 +229,7 @@ macro['match-qq'] = function(expr, c)
    end
    local compiled_clauses = se.map(compile, clauses)
    return l('module-let', mod_bs,
-            l(c.match_patterns or 'match-patterns', match_expr,
+            l(c.match_qq_patterns or 'match-qq-patterns', match_expr,
               {'list',compiled_clauses}))
 end
 

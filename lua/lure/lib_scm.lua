@@ -1,5 +1,5 @@
-return require('lure') -- -*- scheme -*-
-.slc2(
+return require("lure") -- ; -*- scheme -*-
+["slc2"](
 [[
 ;; The 'lure' module is the index into the language dialects
 ;; implemented using Lure.  This file is implemented in slc2, the
@@ -15,6 +15,10 @@ return require('lure') -- -*- scheme -*-
 ;; instead of Lua.
   
 (define (f x) (+ x x))
+(define (match-add e)
+  (match-qq e ((add ,a ,b) (+ a b))))
+(define (test)
+  (log-se (match-add '(add 1 2))))
 
 ;; Additional
 ]],{verbose=true})

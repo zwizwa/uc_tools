@@ -11,6 +11,7 @@
 
 local se     = require('lure.se')
 local slc2   = require('lure.slc2')
+local l = se.list
 
 local function trace(ir, pass, config)
    local s = io.stderr

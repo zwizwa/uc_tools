@@ -26,8 +26,9 @@ class.tab          = lure_comp.tab
 
 local lib = require('lure.slc_runtime')
 
+-- FIXME: Library references should insert a module binding.
 local function free_var(name)
-   if not lib[name] then
+   if not (lib[name]) then
       error("undefined variable '" .. name .. "'")
    end
    return {"lib['",name,"']"}
@@ -54,20 +55,33 @@ local function mangle(var)
    return {var.unique,"_",name}
 end
 
-local function iol_atom(a)
+-- FIXME: Go over tree once to collect the reverse mappings:
+--  (r22:r21 (r34:base-ref 'cons))
+-- FIXME: Create a library with generic iterators.
+-- FIXME: Actually it's simpler: compile the quotation into cons in the frontend.
+function class.iol_cons(s,a,d)
+   return {"lib['cons'](",a,",",d,")"}
+end
+
+function class.iol_atom(s, a)
    if type(a) == 'table' and a.class == 'var' then
       return mangle(a)
    elseif type(a) == 'number' then
       return a
    elseif type(a) == 'string' then
-      return a
+      return {"'",a,"'"} -- FIXME
    elseif a == scheme_frontend.void then
       return 'nil'
-   elseif type(a) == 'table' and a.class == 'quote' and type(a.expr) == 'string' then
-      return {"'",a.expr,"'"}
-   -- FIXME: This is likely not correct for all
-   elseif type(a) == 'table' and a.class then
-      return se.iolist(a)
+   elseif type(a) == 'table' then
+      -- All tables are abstract types wrapped in the style of se.lua
+      local et = se.expr_type(a)
+      if et == 'expr' then
+         return s:iol_atom(a.expr)
+      elseif et == 'pair' then
+         return s:iol_cons(s:iol_atom(a[1]), s:iol_atom(a[2]))
+      else
+         error('bad expr_type = ' .. et)
+      end
    else
       log_desc({bad_atom = var})
       log_se_n(a,"BAD_ATOM: ")
@@ -75,10 +89,10 @@ local function iol_atom(a)
    end
 end
 
-local function commalist(lst)
+function class.commalist(s,lst)
    local iol = {}
    for el, last in se.elements(lst) do
-      ins(iol, iol_atom(el))
+      ins(iol, s:iol_atom(el))
       if not se.is_empty(last) then
          ins(iol, ", ")
       end
@@ -93,21 +107,28 @@ form['module-register!'] = function(s, args)
    s.match(
       args,
       {{"(,name ,ref)", function(m)
-           s:w("mod[",iol_atom(m.name),"] = ",iol_atom(m.ref))
+           s:w("mod[",s:iol_atom(m.name),"] = ",s:iol_atom(m.ref))
         end}})
 end
 form['table-set!'] = function(s, args)
    s.match(
       args,
       {{"(,tab ,key, ,val)", function(m)
-           s:w(iol_atom(m.tab), "[", iol_atom(m.key),"] = ",iol_atom(m.val))
+           s:w(s:iol_atom(m.tab), "[", s:iol_atom(m.key),"] = ",s:iol_atom(m.val))
         end}})
 end
 form['table-ref'] = function(s, args)
    s.match(
       args,
       {{"(,tab ,key)", function(m)
-           s:w(iol_atom(m.tab), "[", iol_atom(m.key),"]")
+           s:w(s:iol_atom(m.tab), "[", s:iol_atom(m.key),"]")
+        end}})
+end
+form['base-ref'] = function(s, args)
+   s.match(
+      args,
+      {{"(,key)", function(m)
+           s:w("lib[", s:iol_atom(m.key),"]")
         end}})
 end
 
@@ -122,7 +143,7 @@ local infix = {
 for scm,op in pairs(infix) do
    form[scm] = function(s, args)
       local a, b = se.unpack(args, {n=2})
-      s:w(iol_atom(a)," ",op," ",iol_atom(b))
+      s:w(s:iol_atom(a)," ",op," ",s:iol_atom(b))
    end
 end
 
@@ -143,14 +164,14 @@ function class.w_bindings(s, bindings)
             {"(,var (lambda ,args ,expr))", function(b)
                 s:indented(
                    function()
-                      s:w("local function ", iol_atom(b.var), "(", commalist(b.args),")","\n")
+                      s:w("local function ", s:iol_atom(b.var), "(", s:commalist(b.args),")","\n")
                       s:w_body(b.expr)
                       s:w(s:tab(),"end")
                    end)
             end},
             -- Other variable definitions
             {"(,var ,expr)", function(b)
-                s:w("local ", iol_atom(b.var), " = ")
+                s:w("local ", s:iol_atom(b.var), " = ")
                 s:i_comp(b.expr)
                 -- FIXME: print orig var name in comment
             end},
@@ -210,7 +231,7 @@ function class.i_comp(s, expr)
 end
 
 function class.w_atom(s, a)
-   s:w(iol_atom(a))
+   s:w(s:iol_atom(a))
 end
 
 -- Recursive expression compiler.
@@ -224,7 +245,7 @@ function class.comp(s,expr)
              s:w(s:tab(),"end\n")
          end},
          {"(lambda ,vars ,expr)", function(m)
-             s:w("function(",commalist(m.vars),")\n")
+             s:w("function(",s:commalist(m.vars),")\n")
              s:indented(
                 function()
                    s:w_body(m.expr)
@@ -233,7 +254,7 @@ function class.comp(s,expr)
                 0)
          end},
          {"(if ,cond ,etrue, efalse)", function(m)
-             s:w("if ", iol_atom(m.cond), " then\n")
+             s:w("if ", s:iol_atom(m.cond), " then\n")
              s:indented(
                 function()
                    s:w_body(m.etrue)
@@ -244,7 +265,7 @@ function class.comp(s,expr)
                 -1)
          end},
          {"(set! ,var ,expr)", function(m)
-             s:w(iol_atom(m.var), " = ")
+             s:w(s:iol_atom(m.var), " = ")
              s:i_comp(m.expr)
          end},
          {"(return ,expr)", function(m)
@@ -256,7 +277,7 @@ function class.comp(s,expr)
              if w_f then
                 w_f(s, m.args)
              else
-                s:w(iol_atom(m.fun),"(",commalist(m.args),")")
+                s:w(s:iol_atom(m.fun),"(",s:commalist(m.args),")")
              end
          end},
          {",atom", function(m)
