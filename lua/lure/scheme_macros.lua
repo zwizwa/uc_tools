@@ -134,12 +134,11 @@ end
 -- FIXME: Instead of using a trampoline, map it to a loop construct?
 macro['named-let'] = function(expr, c)
    need_gensym(c)
+   local _, loop_name, var_init_expr, loop_body = se.unpack(expr, {n = 3, tail = true})
    local tag_name =
       function(src_name)
          return c.state:gensym(src_name .. "_")
       end
-   local loop_name = maybe_bindings
-   local var_init_expr, loop_body = se.unpack(rest, {n = 1, tail = true})
    local loop_vars = se.map(se.car,  var_init_expr)
    local init_expr = se.map(se.cadr, var_init_expr)
    assert(loop_vars)
@@ -163,7 +162,7 @@ end
 -- Frontend uses lambda as only binding form, and will reduce after
 -- renaming.
 macro['let'] = function(expr, c)
-   _, maybe_bindings, rest = se.unpack(expr, {n = 2, tail = true})
+   local _, maybe_bindings, rest = se.unpack(expr, {n = 2, tail = true})
    if type(maybe_bindings) == 'string' then
       return {'named-let',{maybe_bindings, rest}}
    elseif se.length(maybe_bindings) == 0 then
@@ -177,7 +176,7 @@ macro['let'] = function(expr, c)
    end
 end
 macro['let*'] = function(expr, c)
-   _, bindings, rest = se.unpack(expr, {n = 2, tail = true})
+   local _, bindings, rest = se.unpack(expr, {n = 2, tail = true})
    if se.length(bindings) == 1 then
       return {'let',{bindings,rest}}
    else
@@ -186,6 +185,43 @@ macro['let*'] = function(expr, c)
    end
 end
 
+local function qq_pattern_iolist(obj)
+   return se.iolist(l('qq_pattern', obj.expr))
+end
+
+-- (let ((v (table-ref m (quote v)))))
+macro['match'] = function(expr, c)
+   need_gensym(c)
+   local _, to_match, clauses = se.unpack(expr, {n = 2, tail = true})
+   local function compile(clause)
+      local pattern, handle = se.unpack(clause, {n = 1, tail = true})
+      local cpat = match.compile(se.constructor(pattern))
+      local var_list = se.empty
+      for var in pairs(cpat.vars) do
+         var_list = {var.var, var_list}
+      end
+      local m = c.state:gensym()  -- table containing matches
+      local function make_binding(var_name)
+         return l(var_name, l('table-ref', m, l('quote', var_name)))
+      end
+      local bindings = se.map(make_binding, var_list)
+      -- Trick is now how to represent the compiled pattern.  It's
+      -- possible to do this in IR, but not for scheme_luapp, so we
+      -- represent it in s-expression form, tagged with a type so
+      -- scheme_luapp can interpret it if necessary.
+      -- local cpat_lit = l('quote', {class = 'cpat', expr = cpat})
+      local cpat_lit = {class = 'qq_pattern', expr = pattern, iolist = qq_pattern_iolist}
+      local handler  = l('lambda',l(m),{'let',{bindings,handle}})
+      return l('cons',cpat_lit,handler)
+   end
+   local compiled_clauses = se.map(compile, clauses)
+   return l(c.match_patterns or 'match-patterns', to_match, {'list',compiled_clauses})
+end
+
+
+
+
+-- FIXME: Rewrite this in terms of the above.
 
 -- Use match.lua to implement a small matcher DSL.
 -- LHS (des)  is a literal pattern with variable names or numbers unquoted.

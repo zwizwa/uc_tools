@@ -29,16 +29,14 @@ local function macro_step(expr)
    local form = se.car(expr)
    assert(form and type(form) == 'string')
    local macro = macros[form]
-   if not macro then
-      error("form '" .. form .. "' not defined")
-   end
+   if not macro then return nil end
    local cfg = config[form] or cfg({})
    assert(cfg)
    return macro(expr, cfg)
 end
 
 local prim = {
-   ['sequence'] = true,
+   ['primitive-begin'] = true,
    ['lambda']   = true,
    ['if']       = true,
    ['set!']     = true,
@@ -70,6 +68,10 @@ local function expand(stepped)
          return
       end
       stepped = macro_step(stepped)
+      if not stepped then
+         -- log_w("form '", form, "' not defined\n")
+         return
+      end
       log(" -> ") ; log_se(stepped) ; log("\n")
       i = i + 1
    end
@@ -91,7 +93,7 @@ local function test()
    t("'(a . (b c))")
    t("`(a . ,b)")
 
-   t("(module-begin 1 2)")
+   -- t("(module-begin 1 2)")
    t("(letrec ((a 1) (b 2)) a)")
    t("(begin)")
    t("(begin 123)")
@@ -108,6 +110,7 @@ local function test()
    t("(let* ((a 1) (b 2)) a b)")
    t("(or a b)")
    t("(and a b)")
+   t("(match expr ((add ,a ,b) (+ a b)))")
 
 end
 
