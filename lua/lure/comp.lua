@@ -197,16 +197,15 @@ end
 
 -- Curried, wrapping multple passes as a single compiler object that
 -- can be used as a pass.  ( Wannabe Monad. )
-function comp.make_multipass(passes)
-   return {
-      new = function(config)
-         return {
-            compile = function(_, ir)
-               return comp.multipass(config, passes, ir)
-            end
-         }
-      end
-   }
+function comp.make_multipass_new(passes)
+   return function(config)
+      return {
+         compile = function(_, ir)
+            return comp.multipass(config, passes, ir)
+         end
+      }
+   end
 end
+
 
 return comp

@@ -29,7 +29,7 @@ local a2l = se.array_to_list
 local l = se.list
 
 local function trace(tag, expr)
-   log('\n') ; log_se_n(expr, tag .. ": ")
+   -- log('\n') ; log_se_n(expr, tag .. ": ")
 end
 
 local class = {

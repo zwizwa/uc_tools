@@ -5,6 +5,7 @@
 -- approach and am using s-expression syntax instead.
 
 require ('lure.log')
+
 local function trace(tag, expr)
    -- log(tag) ; log(": ") ; log_desc(expr)
 end

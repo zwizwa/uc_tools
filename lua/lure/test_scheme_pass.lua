@@ -1,17 +1,17 @@
 #!/usr/bin/env lua
+
 -- slc variant that can cmpile test_rvm.scm
 package.path = package.path .. ";./?.lua"
 
-local slc    = require('lure.slc')
+-- Compilers to test
+local slc2   = require('lure.slc2')
+
+-- Test code
 local se     = require('lure.se')
-local comp   = require('lure.comp')
-local iolist = require('lure.iolist')
 local pretty = require('lure.scheme_pretty')
 require('lure.log_se')
 
 local asset = require('lure.asset_scm')
-local string_dsl = require('lure.string_dsl')
-
 
 local pprint = pretty.new()
 
@@ -30,20 +30,9 @@ local function trace(ir, pass)
    -- log_se(ir)
 end
 
-local global = {
-   ['module-register'] = {}
-}
-
 local config = {
    trace = trace,
-   global = global,
 }
-local multipass = comp.make_multipass({
-      'lure.scheme_frontend',
-      'lure.scheme_flatten_blocks',
-      'lure.scheme_blockval',
-      'lure.scheme_luapp',
-})
 
 local function main()
    -- local input = 'test_rvm.scm'
@@ -55,13 +44,12 @@ local function main()
    assert(exprs)
    local expr = {'module-begin',exprs}
 
-   local c = multipass.new(config)
+   -- All compilers expect a module-begin form.
+   local c = slc2.new(config)
    local lua_iol = c:compile(expr)
 
    -- The result is an iolist containing the lua expression.
-   local lua_str = iolist.to_string(lua_iol.iolist)
-   local lua_mod = string_dsl.lua_eval(lua_str)
-   assert(lua_mod)
+   local lua_mod = slc2.eval(lua_iol)
    log_desc(lua_mod)
 end
 
