@@ -29,7 +29,7 @@ mod.new =
 -- evaluates it to a lua module.
 mod.eval = function(lua_iol)
    local lua_str = iolist.to_string(lua_iol.iolist)
-   io.stderr:write(lua_str)
+   -- io.stderr:write(lua_str)
    local lua_mod = string_dsl.lua_eval(lua_str)
    assert(lua_mod)
    return lua_mod

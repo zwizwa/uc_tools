@@ -6,8 +6,10 @@ local se_match  = require('lure.se_match')
 local iolist    = require('lure.iolist')
 local lure_comp = require('lure.comp')
 local scheme_frontend = require('lure.scheme_frontend')
+local scheme_pretty   = require('lure.scheme_pretty')
 local l = se.list
 local ins = table.insert
+local pprint = scheme_pretty.new()
 
 local class = {}
 
@@ -150,6 +152,7 @@ end
 
 -- Top level entry point
 function class.compile(s,expr)
+   -- pprint:pprint_to_stream(io.stderr,expr)
    local out = {}
    s:parameterize(
       {out = out},

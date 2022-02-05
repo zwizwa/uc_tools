@@ -189,7 +189,7 @@ function comp.multipass(maybe_config, passes, ir)
       -- Run the compiler
       ir = c:compile(ir)
       if config.trace then
-         config.trace(ir, pass)
+         config.trace(ir, pass, config)
       end
    end
    return ir
