@@ -13,7 +13,10 @@ function gensym(s)
    s.n = s.n + 1
    return "r" .. s.n
 end
-local state = { n = 0, gensym = gensym }
+function module_define(s, var, expr)
+end
+
+local state = { n = 0, gensym = gensym, module_define = module_define }
 local function cfg(c)
    c.state = state
    c.void = '#<void>'
@@ -110,7 +113,7 @@ local function test()
    t("(let* ((a 1) (b 2)) a b)")
    t("(or a b)")
    t("(and a b)")
-   t("(match expr ((add ,a ,b) (+ a b)))")
+   t("(match-qq expr ((add ,a ,b) (+ a b)))")
 
 end
 

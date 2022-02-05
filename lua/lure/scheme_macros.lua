@@ -189,10 +189,15 @@ local function qq_pattern_iolist(obj)
    return se.iolist(l('qq_pattern', obj.expr))
 end
 
+-- FIXME: Fix configurable macros by using syntax scope + lexical
+-- scope during expansion.
+
 -- (let ((v (table-ref m (quote v)))))
-macro['match'] = function(expr, c)
+macro['match-qq'] = function(expr, c)
    need_gensym(c)
-   local _, to_match, clauses = se.unpack(expr, {n = 2, tail = true})
+   local _, match_expr, clauses = se.unpack(expr, {n = 2, tail = true})
+   local mod_bs = se.empty
+
    local function compile(clause)
       local pattern, handle = se.unpack(clause, {n = 1, tail = true})
       local cpat = match.compile(se.constructor(pattern))
@@ -205,31 +210,35 @@ macro['match'] = function(expr, c)
          return l(var_name, l('table-ref', m, l('quote', var_name)))
       end
       local bindings = se.map(make_binding, var_list)
-      -- Trick is now how to represent the compiled pattern.  It's
-      -- possible to do this in IR, but not for scheme_luapp, so we
-      -- represent it in s-expression form, tagged with a type so
-      -- scheme_luapp can interpret it if necessary.
-      -- local cpat_lit = l('quote', {class = 'cpat', expr = cpat})
-      local cpat_lit = {class = 'qq_pattern', expr = pattern, iolist = qq_pattern_iolist}
+      -- The cpat is not printable, so we have to rebuild it at
+      -- runtime.  Use module-level variables for this.
+      local patvar = c.state:gensym()
+      local mod_binding =
+         l(patvar,
+           l(c.compile_pattern or 'compile-pattern',
+             l('quote', pattern)))
+      mod_bs = {mod_binding, mod_bs}
       local handler  = l('lambda',l(m),{'let',{bindings,handle}})
-      return l('cons',cpat_lit,handler)
+      return l('cons',patvar,handler)
    end
    local compiled_clauses = se.map(compile, clauses)
-   return l(c.match_patterns or 'match-patterns', to_match, {'list',compiled_clauses})
+   return l('module-let', mod_bs,
+            l(c.match_patterns or 'match-patterns', match_expr,
+              {'list',compiled_clauses}))
 end
 
 
 -- Insert a module-level binding.  Expressions are evaluated in module scope.
 -- This is useful for implementing memoization.
 macro['module-let'] = function(expr, c)
-   assert(c and c.state and c.module_define)
+   assert(c and c.state and c.state.module_define)
    local _, bindings, body = se.unpack(expr, {n = 2, tail = true})
    for binding in se.elements(bindings) do
       local v, e = se.unpack(binding, {n = 2})
       assert(type(v) == 'string')
       c.state:module_define(v, e)
    end
-   return c.void or void
+   return {'begin', body}
 end
 
 
