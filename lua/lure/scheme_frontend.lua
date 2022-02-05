@@ -289,16 +289,29 @@ end
 -- Entry point
 function class.compile(s, expr)
    s:init()
-   return s:comp(expr)
+   local body = s:comp(expr)
+   local bs = l(l('_', body))
+   for top_name, top_expr in pairs(s.module_variables) do
+      local b = l(top_name, s:comp(top_expr))
+      bs = {b, bs}
+   end
+   return {'block', bs}
+
 end
 
-function class.gensym(s, prefix)
-   -- Gensyms should never clash with source variables.  We can't
-   -- guarantee that atm.  FIXME: should this just be a var?  Let
-   -- macros insert variables, not symbols?
+-- All variables are renamed, so gensyms will never clash with anything.
+function class.gensym(s)
    s.count = s.count + 1
-   local sym = (prefix or "r") .. s.count
+   local prefix = "r"
+   local sym = prefix .. s.count
    return sym
+end
+
+-- Insert module-level definition before evaluation of body code.
+-- These should all be independent, so we don't care about order.
+function class.module_define(s, sym, expr)
+   -- Just register now.  Compile after compiling body.
+   s.module_variables[symb] = expr
 end
 
 -- Renames definitions and references.
@@ -350,6 +363,7 @@ function class.init(s)
    s.count = 0
    s.free_variables = {}
    s.env = {}
+   s.module_variables = {}
 end
 
 function class.new()

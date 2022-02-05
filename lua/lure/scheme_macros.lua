@@ -219,6 +219,18 @@ macro['match'] = function(expr, c)
 end
 
 
+-- Insert a module-level binding.  Expressions are evaluated in module scope.
+-- This is useful for implementing memoization.
+macro['module-let'] = function(expr, c)
+   assert(c and c.state and c.module_define)
+   local _, bindings, body = se.unpack(expr, {n = 2, tail = true})
+   for binding in se.elements(bindings) do
+      local v, e = se.unpack(binding, {n = 2})
+      assert(type(v) == 'string')
+      c.state:module_define(v, e)
+   end
+   return c.void or void
+end
 
 
 -- FIXME: Rewrite this in terms of the above.
