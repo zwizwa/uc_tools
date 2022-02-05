@@ -124,18 +124,6 @@ local function quote_to_iolist(q)
    return {"'", se.iolist(q.expr)}
 end
 
-local function expand_to_cons(expr)
-   if se.is_pair(expr) then
-      local ce = l('cons',
-                   expand_to_cons(expr[1]),
-                   expand_to_cons(expr[2]))
-      log_se_n(ce,"CONS")
-      return ce
-   else
-      return l('quote',expr)
-   end
-end
-
 class.form = {
    -- This is like 'begin', but without support for local definitons.
    ['primitive-begin'] = function(s, expr)
@@ -171,13 +159,7 @@ class.form = {
    end,
    ['quote'] = function(s, expr)
       local _, datum = se.unpack(expr, {n = 2})
-      if 'pair' == se.expr_type(datum) then
-         -- It seems best to map this to constructor functions.
-         return s:comp(expand_to_cons(datum))
-         -- return l('quote', 'LIST')
-      else
-         return { class = 'expr', expr = datum, iolist = quote_to_iolist }
-      end
+      return { class = 'expr', expr = datum, iolist = quote_to_iolist }
    end,
 }
 
@@ -218,7 +200,8 @@ end
 function class.anf(s, exprs, fn)
    local normalform = {}
    local bindings = {}
-   for e in se.elements(exprs) do
+   for e1 in se.elements(exprs) do
+      local e = s:expand(e1) -- exposes 'quote'
       trace("ANF", e)
 
       -- FIXME: This should compile before checking if it's primitive.
@@ -230,9 +213,8 @@ function class.anf(s, exprs, fn)
          ins(normalform, e)
       elseif is_prim(e) then
          ins(normalform, e)
-      --elseif se.is_expr(e, 'quote') then
-      --   log_se_n(e,"ANFQUOTE")
-      --   ins(normalform, s:comp(e))
+      elseif se.is_expr(e, 'quote') then
+         ins(normalform, s:comp(e))
       else
          if type(e) ~= 'table' then
             error("bad type '" .. type(e) .. "'")

@@ -4,6 +4,14 @@ local match = require('lure.match')
 
 local rt = {}
 
+function rt.new(mod)
+   local lib = {}
+   lib['module-register!'] = function(k,v) mod[k] = v end
+   lib['new'] = function() error "new suppressed" end
+   setmetatable(lib, {__index = rt})
+   return lib
+end
+
 -- See test_slc.lua
 -- FIXME: Only works in tail position!
 rt['named-let-trampoline'] = function(state, body)
