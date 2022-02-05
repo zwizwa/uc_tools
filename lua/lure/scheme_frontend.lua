@@ -24,6 +24,8 @@
 local se = require('lure.se')
 local comp = require('lure.comp')
 
+require('lure.log_se')
+
 local ins = table.insert
 local a2l = se.array_to_list
 local l = se.list
@@ -122,6 +124,18 @@ local function quote_to_iolist(q)
    return {"'", se.iolist(q.expr)}
 end
 
+local function expand_to_cons(expr)
+   if se.is_pair(expr) then
+      local ce = l('cons',
+                   expand_to_cons(expr[1]),
+                   expand_to_cons(expr[2]))
+      log_se_n(ce,"CONS")
+      return ce
+   else
+      return l('quote',expr)
+   end
+end
+
 class.form = {
    -- This is like 'begin', but without support for local definitons.
    ['primitive-begin'] = function(s, expr)
@@ -157,7 +171,13 @@ class.form = {
    end,
    ['quote'] = function(s, expr)
       local _, datum = se.unpack(expr, {n = 2})
-      return { class = 'expr', expr = datum, iolist = quote_to_iolist }
+      if 'pair' == se.expr_type(datum) then
+         -- It seems best to map this to constructor functions.
+         return s:comp(expand_to_cons(datum))
+         -- return l('quote', 'LIST')
+      else
+         return { class = 'expr', expr = datum, iolist = quote_to_iolist }
+      end
    end,
 }
 
@@ -198,8 +218,7 @@ end
 function class.anf(s, exprs, fn)
    local normalform = {}
    local bindings = {}
-   for e1 in se.elements(exprs) do
-      e = s:expand(e1)
+   for e in se.elements(exprs) do
       trace("ANF", e)
 
       -- FIXME: This should compile before checking if it's primitive.
@@ -211,8 +230,9 @@ function class.anf(s, exprs, fn)
          ins(normalform, e)
       elseif is_prim(e) then
          ins(normalform, e)
-      elseif se.is_expr(e, 'quote') then
-         ins(normalform, s:comp(e))
+      --elseif se.is_expr(e, 'quote') then
+      --   log_se_n(e,"ANFQUOTE")
+      --   ins(normalform, s:comp(e))
       else
          if type(e) ~= 'table' then
             error("bad type '" .. type(e) .. "'")
@@ -293,19 +313,26 @@ function class.compile(s, expr)
    local bs = l(l('_', body))
    -- Compile the module bindings in a loop, since new module bindings
    -- might be introduced during compilation.
-   local done
+   local did
+   local have = {}
+   local i = 1
    repeat
-      done = true
-      log("compiling bindings\n")
-      local mbs = s.module_bindings
-      s.module_bindings = {}
-      for src_name, binding in pairs(mbs) do
-         local top_var, top_expr = se.unpack(binding, {n = 2})
-         local b = l(top_var, s:comp(top_expr))
-         bs = {b, bs}
-         done = false
+      did = false
+      log("modbind " .. i .. "\n")
+      for src_name, binding in pairs(s.module_bindings) do
+         assert(type(src_name) == 'string')
+         -- src_name is either gensym or global, so always unique
+         if not have[src_name] then
+            have[src_name] = true
+            log_w(" - ", src_name, "\n")
+            local top_var, top_expr = se.unpack(binding, {n = 2})
+            local b = l(top_var, s:comp(top_expr))
+            bs = {b, bs}
+            did = true
+         end
       end
-   until (done)
+      i = i + 1
+   until (not did)
    return {'block', bs}
 end
 
@@ -319,11 +346,12 @@ end
 
 -- Insert module-level definition before evaluation of body code.
 -- These should all be independent, so we don't care about order.
-function class.module_define(s, sym, expr)
+function class.module_define(s, src_name, expr)
    -- Just register now.  Compile after compiling body.
-   assert(type(sym) == 'string')
-   local var = s:var_def(sym)
-   s.module_bindings[sym] = l(var,expr)
+   assert(type(src_name) == 'string')
+   local var = s:var_def(src_name)
+   assert(not s.module_bindings[src_name])
+   s.module_bindings[src_name] = l(var,expr)
    return var
 end
 
@@ -363,21 +391,20 @@ function class.var_ref(s, var)
 
    -- Module level variables are handled separately.
    local binding = s.module_bindings[name]
-   if binding then return binding[1] end
+   if binding then return se.car(binding) end
 
    -- Free variables are explicitly associated to a base dictionary
    -- dereference.  We need to keep track of them so they always map
    -- to the same var.
    local v = s.free_variables[name]
    if not v then
-      local sym = s:gensym()
       if name == s.base_ref then
          -- This is the only free variable left.
          v = s:var_def(name)
          v.free = true
       else
          -- All the rest is bound through base-ref
-         v = s:module_define(sym, l(s.base_ref,l('quote',name)))
+         v = s:module_define(name, l(s.base_ref,l('quote',name)))
       end
       s.free_variables[name] = v
    end
@@ -402,4 +429,3 @@ end
 
 
 return class
-

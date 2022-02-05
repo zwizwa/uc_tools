@@ -4,12 +4,15 @@ local mod = {}
 function log(str)
    io.stderr:write(str)
 end
-function log_w(thing)
-   if type(thing) == 'table' then
-      for _,thing1 in ipairs(thing) do log_w(thing1) end
-   else
+function log_w(...)
+   function w(thing)
+      if type(thing) == 'table' then
+         for _,thing1 in ipairs(thing) do w(thing1) end
+      else
       log(thing .. "")
+      end
    end
+   w({...})
 end
 function log_desc(thing)
    log(prompt.describe(thing))

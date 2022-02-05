@@ -385,6 +385,9 @@ function se.expr_type(e)
    end
    return typ
 end
+function se.is_pair(e)
+   return 'pair' == se.expr_type(e)
+end
 
 function se.new(stream)
    assert(stream)

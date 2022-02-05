@@ -15,10 +15,12 @@ return require("lure") -- ; -*- scheme -*-
 ;; instead of Lua.
   
 (define (f x) (+ x x))
-(define (match-add e)
-  (match-qq e ((add ,a ,b) (+ a b))))
-(define (test)
-  (log-se (match-add '(add 1 2))))
+;(define (match-add e) (match-qq e ((add ,a ,b) (+ a b))))
+;(define (test) (log-se (match-add '(add 1 2))))
+
+(define x '(1 2 3))
+
+
 
 ;; Additional
 ]],{verbose=true})
