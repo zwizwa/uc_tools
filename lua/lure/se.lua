@@ -27,7 +27,10 @@ function se:next()
 end
 
 function se:skip_line()
-   while '\n' ~= self:next() do end
+   while true do
+      local c = self:next()
+      if c == '\n' or c == EOF then return end
+   end
 end
 
 function se:peek()
@@ -301,6 +304,8 @@ function se:read_list()
          -- this as a list of pairs instead of an array.
          -- return objs
          return self.array_to_list(objs)
+      elseif EOF == c then
+         error("missing ')'")
       end
       local obj = self:read()
       table.insert(objs, obj)

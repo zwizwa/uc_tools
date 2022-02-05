@@ -1,25 +1,33 @@
 -- Write Lua modules in Scheme.  See lib_scm.lua for a usage example.
-local se   = require('lure.se')
-local slc2 = require('lure.slc2')
+--
+-- Example module body:
+--
+-- return require('lure').slc2([[
+-- (define (f x) x)
+-- (define (g x) (f (f x)))
+-- ]])
+--
+-- Adding {verbose = true} config argument prints out IR of the compiler passes.
 
-local pretty = require('lure.scheme_pretty')
-local pprint = pretty.new()
+local se     = require('lure.se')
+local slc2   = require('lure.slc2')
 
 local function trace(ir, pass, config)
    local s = io.stderr
    if config.verbose then
+      local pretty = require('lure.scheme_pretty')
+
       s:write("\n" .. pass .. ":\n")
       assert(type(ir) == 'table')
       if ir.class then
          log_w(se.iolist(ir))
       else
-         pprint:pprint_to_stream(s,ir)
+         pretty.log_pp(ir)
       end
-      -- log_se(ir)
    end
 end
 
-function compile_module(str, config)
+function compile_module_slc2(str, config)
    config = config or {}
    config.trace = trace
    local exprs = se.read_string_multi(str) ; assert(exprs)
@@ -28,4 +36,6 @@ function compile_module(str, config)
    return slc2.eval(lua)
 end
 
-return compile_module
+return {
+   slc2 = compile_module_slc2
+}

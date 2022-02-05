@@ -132,14 +132,18 @@ local class = {
    tab = tab,
    parameterize = comp.parameterize,
 }
-local function new()
+function class.new()
    local obj = {
-      count = 0,
       indent = -1 -- 'block' will indent
    }
    setmetatable(obj, { __index = class })
    return obj
 end
-class.new = new
+
+function class.log_pp(ir)
+   local pp = class.new()
+   pp:pprint_to_stream(io.stderr, ir)
+end
+
 return class
 

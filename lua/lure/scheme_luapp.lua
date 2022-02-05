@@ -24,15 +24,13 @@ class.tab          = lure_comp.tab
 -- Expressions are always compiled in binding position, are already at
 -- indented position and should not print newline.
 
-local infix = {
-   ['add'] = '+'
-}
+local lib = require('lure.slc_runtime')
 
 local function free_var(name)
-   if not lua_name then
+   if not lib[name] then
       error("undefined variable '" .. name .. "'")
    end
-   return lua_name
+   return {"lib['",name,"']"}
 end
 
 local function mangle(var)
@@ -77,15 +75,6 @@ local function iol_atom(a)
    end
 end
 
-local special_function = {}
-special_function['module-register!'] = function(s, args)
-   s.match(
-      args,
-      {{"(,name ,ref)", function(m)
-           s:w("mod[",iol_atom(m.name),"] = ",iol_atom(m.ref))
-        end}})
-end
-
 local function commalist(lst)
    local iol = {}
    for el, last in se.elements(lst) do
@@ -96,6 +85,48 @@ local function commalist(lst)
    end
    return iol
 end
+
+
+-- Special syntax is implemented using another layer of special forms.
+local form = {}
+form['module-register!'] = function(s, args)
+   s.match(
+      args,
+      {{"(,name ,ref)", function(m)
+           s:w("mod[",iol_atom(m.name),"] = ",iol_atom(m.ref))
+        end}})
+end
+form['table-set!'] = function(s, args)
+   s.match(
+      args,
+      {{"(,tab ,key, ,val)", function(m)
+           s:w(iol_atom(m.tab), "[", iol_atom(m.key),"] = ",iol_atom(m.val))
+        end}})
+end
+form['table-ref'] = function(s, args)
+   s.match(
+      args,
+      {{"(,tab ,key)", function(m)
+           s:w(iol_atom(m.tab), "[", iol_atom(m.key),"]")
+        end}})
+end
+
+
+-- Lua infix functions
+local infix = {
+   ['+']  = '+',
+   ['-']  = '-',
+   ['*']  = '/',
+   ['/']  = '/',
+}
+for scm,op in pairs(infix) do
+   form[scm] = function(s, args)
+      local a, b = se.unpack(args, {n=2})
+      s:w(iol_atom(a)," ",op," ",iol_atom(b))
+   end
+end
+
+
 
 
 function class.w_bindings(s, bindings)
@@ -168,7 +199,8 @@ function class.compile(s,expr)
          s:w("\n")
       end)
    local mod =
-      {"local mod = {}\n", out,
+      {"local lib = require('lure.slc_runtime')\n",
+       "local mod = {}\n", out,
        "return mod\n"}
    return { class = "iolist", iolist = mod }
 end
@@ -220,18 +252,11 @@ function class.comp(s,expr)
              s:i_comp(m.expr)
          end},
          {"(,fun . ,args)", function(m)
-             local w_f = m.fun.var and special_function[m.fun.var]
-             -- FIXME: Also do infix this way
+             local w_f = m.fun.var and form[m.fun.var]
              if w_f then
                 w_f(s, m.args)
              else
-                local op = m.fun.var and infix[m.fun.var]
-                if op then
-                   local a, b = se.unpack(m.args, {n=2})
-                   s:w(iol_atom(a)," ",op," ",iol_atom(b))
-                else
-                   s:w(iol_atom(m.fun),"(",commalist(m.args),")")
-                end
+                s:w(iol_atom(m.fun),"(",commalist(m.args),")")
              end
          end},
          {",atom", function(m)
