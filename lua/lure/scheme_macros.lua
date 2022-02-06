@@ -171,21 +171,9 @@ macro['named-let'] = function(expr, c)
    local init_expr = se.map(se.cadr, var_init_expr)
    assert(loop_vars)
    assert(init_expr)
-   -- assert(c.named_let_trampoline)
-   if c.named_let_trampoline then
-      local loop_name_iter = tag_name(loop_name .. "_tick")
-      local trampoline_expr =
-         l(c.named_let_trampoline,{c.make_state or 'vector',init_expr},
-           l('lambda',l(loop_name),
-             l('let',l(l(loop_name_iter,
-                         l('lambda',loop_vars,{'begin',loop_body}))),
-               loop_name_iter)))
-      return trampoline_expr
-   else
-      return l('begin',
-               l('define',{loop_name, loop_vars}, {'begin',loop_body}),
-               {loop_name, init_expr})
-   end
+   return l('begin',
+            l('define',{loop_name, loop_vars}, {'begin',loop_body}),
+            {loop_name, init_expr})
 end
 
 -- Frontend uses lambda as only binding form, and will reduce after

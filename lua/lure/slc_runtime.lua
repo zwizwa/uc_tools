@@ -12,30 +12,10 @@ function rt.new(mod)
    return function(k) return lib[k] end
 end
 
--- Tail recursion trampolines.
+-- Tail recursion trampoline.
 -- See scheme_macros.lua
--- FIXME: Remove named-let-trampoline and use only letrec-trampoline?
 -- FIXME: The wrapped recursive calls only work in tail position!
 --        Compiler should probably guarantee that.
-
-rt['named-let-trampoline'] = function(state, body)
-   -- The named let symbol is bound to a wrapper so it behaves just
-   -- like an ordinary function.
-   local done
-   local loop_tick = body(
-      function(...)
-         state = {...}
-         done = false
-      end)
-
-   -- The trampoline
-   while true do
-      done = true
-      local rvs = {loop_tick(unpack(state))}
-      if done then return unpack(rvs) end
-   end
-end
-
 -- FIXME: Optimzation: the argument vector and tag wrapper could be
 -- re-used to avoid allocation while the loop is running.
 

@@ -9,15 +9,11 @@
 --
 -- Adding {verbose = true} config argument prints out IR of the compiler passes.
 
-local se     = require('lure.se')
-local tab    = require('lure.tab')
-local slc2   = require('lure.slc2')
-local l = se.list
-
 local function trace(ir, pass, config)
    local s = io.stderr
    if config.verbose then
       local pretty = require('lure.scheme_pretty')
+      local se     = require('lure.se')
 
       s:write("\n" .. pass .. ":\n")
       assert(type(ir) == 'table')
@@ -30,6 +26,9 @@ local function trace(ir, pass, config)
 end
 
 function compile_module_slc2(str, config)
+   local se     = require('lure.se')
+   local tab    = require('lure.tab')
+   local slc2   = require('lure.slc2')
    config = config or {}
    tab.copy({trace = trace}, config)
    tab.copy(slc2.default_config, config)

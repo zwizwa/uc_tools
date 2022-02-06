@@ -33,6 +33,7 @@ return { modules = {
   'test_scheme_luapp',
   'test_scheme_macros',
   'test_scheme_pass',
+  'test_scm',
   'test_se_match',
   'test_slc',
   'test_smc',

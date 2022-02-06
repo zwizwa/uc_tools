@@ -31,7 +31,6 @@ mod.default_config = {
    -- loop") into a trampoline.  It's currently not clear if
    -- this should be done in the frontend, or as a
    -- transoformation on the IR.
-   named_let_trampoline = 'named-let-trampoline',
    letrec_trampoline = 'letrec-trampoline',
    debug_lua_output = '/tmp/test.lua',
 }
