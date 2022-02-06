@@ -11,6 +11,9 @@
 -- use the code here to implement language-specific macros with
 -- slightly modify the behavior.
 
+-- FIXME: Replace gensym with variable generation.  This would make it
+-- possible to add some human readable tags.
+
 require('lure.log')
 local se    = require('lure.se')
 local match = require('lure.match')
@@ -76,15 +79,32 @@ macro['begin'] = function(expr, config)
    end
 end
 
+macro['letrec-using-trampoline'] = function(expr, c)
+   c = c or {}
+   local _, bindings, body = se.unpack(expr, {n = 2, tail = true})
+   if se.is_empty(bindings) then return {'begin',exprs} end
+   local names = se.map(se.car, bindings)
+   local exprs = se.map(se.cadr, bindings)
+   local function make_fun_lambda(expr) return l('lambda',names,expr) end
+   local fun_lambdas = se.map(make_fun_lambda, exprs)
+   local body_lambda = l('lambda',names,{'lambda',{l(),body}})
+   return {c.letrec_trampoline or 'letrec-trampoline', {body_lambda, fun_lambdas}}
+end
 
 -- Implement letrec on top of let and set!
 macro['letrec'] = function(expr, c)
    c = c or {}
+
+   if c.letrec_trampoline then
+      return macro['letrec-using-trampoline'](expr, c)
+   end
+
    local _, bindings, exprs = se.unpack(expr, {n = 2, tail = true})
    if se.is_empty(bindings) then
       -- Base case is needed to avoid letrec->begin->letrec loop.
       return {c.let or 'begin',exprs}
    end
+
    local void_bindings = se.map(
       function(binding)
          local name, val = se.unpack(binding, {n = 2})

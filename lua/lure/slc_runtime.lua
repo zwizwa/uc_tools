@@ -12,8 +12,12 @@ function rt.new(mod)
    return function(k) return lib[k] end
 end
 
--- See test_slc.lua
--- FIXME: Only works in tail position!
+-- Tail recursion trampolines.
+-- See scheme_macros.lua
+-- FIXME: Remove named-let-trampoline and use only letrec-trampoline?
+-- FIXME: The wrapped recursive calls only work in tail position!
+--        Compiler should probably guarantee that.
+
 rt['named-let-trampoline'] = function(state, body)
    -- The named let symbol is bound to a wrapper so it behaves just
    -- like an ordinary function.
@@ -31,6 +35,84 @@ rt['named-let-trampoline'] = function(state, body)
       if done then return unpack(rvs) end
    end
 end
+
+-- FIXME: Optimzation: the argument vector and tag wrapper could be
+-- re-used to avoid allocation while the loop is running.
+
+rt['letrec-trampoline'] = function(init, ...)
+   local bodies = {...}
+
+   -- We get passed the function bodies of each of the recursive
+   -- functions, and the body of the letrec expression.  Each of these
+   -- functions is "open", i.e. parameterized by the names of the
+   -- recursive functions.
+
+   -- What we do here is act as a fix point combinator for this
+   -- collection of functions.  The bodies are position-encoded.
+
+   -- Example:
+
+   -- (letrec ((check (lambda (n) (if (n > 0) 'done (inc n))))
+   --          (inc   (lambda (n) (check (+ n 1)))))
+   --   (check 0))
+   --
+   -- Which might be an expansion of
+   --
+   -- (begin
+   --   (define (check n) (if (n > 0) 'done (inc n)))
+   --   (define (inc n)   (check (+ n 1)))
+   --   (check 0))
+   --
+   -- Is represend as
+   --
+   -- bodies[1] = (lambda (check inc) (lambda (n) (if (n > 0) 'done (inc n))))
+   -- bodies[2] = (lambda (check inc) (lambda (n) (check (+ n 1))))
+   -- init      = (lambda (check inc) (lambda (n) (check 0)))
+   --
+   -- Where the lambda forms are converted to Lua in the usual way.
+
+
+   -- We implement this by binding the function names to functions
+   -- that construct a data structure that represents a postponed
+   -- call.  This is what happens on the 'inside' of the function
+   -- bodies. These wrappers are then returned to the trampoline
+   -- because we expect these calls to always be in tail position
+   -- (compiler needs to check!). The wrapper contains the argument
+   -- list plus tag data that allows us to refer back to the correct
+   -- function.
+   local inside = {}
+   for i=1,#bodies do
+      inside[i] = function(...)
+         -- We just need a unique tag here.  Something that is not
+         -- known by the function bodies.  The table object will do.
+         return {inside, i, {...}}
+      end
+   end
+   -- On the outside, we bind the function bodies to those
+   -- wrapper-generating functions.
+   local outside = {}
+   for i=1,#bodies do
+      outside[i] = bodies[i](unpack(inside))
+   end
+
+   -- Start the whole thing off with init, then run until we're done
+   -- handling tail recursive calls.
+   local nxt = init(unpack(inside))
+   local nxt_args = {}
+   local rvs
+   while true do
+      rvs = {nxt(unpack(nxt_args))}
+      local rvs1 = rvs[1]
+      if type(rvs1) ~= 'table' then break end
+      local maybe_tag, i, args = unpack(rvs1)
+      if maybe_tag ~= inside then break end
+      -- Found encoded tail call.
+      nxt = outside[i]
+      nxt_args = args
+   end
+   if done then return unpack(rvs) end
+end
+
 
 function rt.vector(...)
    return {...}

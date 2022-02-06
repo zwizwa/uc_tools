@@ -32,6 +32,7 @@ mod.default_config = {
    -- this should be done in the frontend, or as a
    -- transoformation on the IR.
    named_let_trampoline = 'named-let-trampoline',
+   letrec_trampoline = 'letrec-trampoline',
    debug_lua_output = '/tmp/test.lua',
 }
 

@@ -27,6 +27,7 @@ return { modules = {
   'smc_cspc',
   'smc',
   'string_dsl',
+  'tab',
   'test_hoas_match',
   'test',
   'test_scheme_luapp',

@@ -50,6 +50,7 @@ build = {
     ['lure.smc_cspc'] = 'smc_cspc.lua',
     ['lure.smc'] = 'smc.lua',
     ['lure.string_dsl'] = 'string_dsl.lua',
+    ['lure.tab'] = 'tab.lua',
     ['lure.test_hoas_match'] = 'test_hoas_match.lua',
     ['lure.test'] = 'test.lua',
     ['lure.test_scheme_luapp'] = 'test_scheme_luapp.lua',

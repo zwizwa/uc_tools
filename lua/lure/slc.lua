@@ -1,3 +1,6 @@
+-- Note: this is V1, only here for archiving purposes.  Please use V2
+-- instead.  See slc2.lua
+
 -- Limited Scheme to Lua compiler (no tail calls, continuations)
 --
 -- Notes:

@@ -25,7 +25,13 @@ return require("lure") -- ; -*- scheme -*-
         (begin
           (log-se-n n 'LOOP)
           (loop (+ n 1))))))
-        
+
+(define (test_letrec)
+  (define (check n) (if (> n 3) 'done (inc n)))
+  (define (inc n)   (begin (log-se-n n 'LETREC) (check (+ n 1))))
+  (check 0))
+
+
 
 
 ;; Additional

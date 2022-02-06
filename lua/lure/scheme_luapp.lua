@@ -283,7 +283,7 @@ function class.comp(s,expr)
 end
 
 local function new(config)
-   local obj = { match = se_match.new(), indent = 0, config = config }
+   local obj = { match = se_match.new(), indent = 0, config = config or {} }
    setmetatable(obj, { __index = class })
    return obj
 end
