@@ -31,15 +31,14 @@ return require("lure") -- ; -*- scheme -*-
               ;;(log-se-n n 'NAMEDLET:)
               (loop (+ n 1))))))))
 
-;; FIXME: letrec doesn't work properly if the initial call into the
-;; network is not a tail call.
-(define (example_letrec)
-  (define (check n) (if (> n 4) n (inc n)))
-  (define (inc n)   (begin (log-se-n n 'LETREC:) (check (+ n 1))))
-  (check 0)  ;; needs to be tail call
-  )
 (define (test_letrec)
-  (assert (= 5 (example_letrec))))
+  (define (check n)
+    (if (> n 4) n (inc n)))
+  (define (inc n)
+    (begin
+      ;; (log-se-n n 'LETREC:)
+      (check (+ n 1))))
+  (assert (= 5 (check 0))))
 
 
 (define (run)
@@ -52,5 +51,5 @@ return require("lure") -- ; -*- scheme -*-
   
 
 ;; Additional
-]],{verbose=true})
+]],{verbose=false})
 

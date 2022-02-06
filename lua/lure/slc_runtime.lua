@@ -75,22 +75,33 @@ rt['letrec-trampoline'] = function(init, ...)
       outside[i] = bodies[i](unpack(inside))
    end
 
-   -- Start the whole thing off with init, then run until we're done
-   -- handling tail recursive calls.
-   local nxt = init(unpack(inside))
-   local nxt_args = {}
-   local rvs
-   while true do
-      rvs = {nxt(unpack(nxt_args))}
-      local rvs1 = rvs[1]
-      if type(rvs1) ~= 'table' then break end
-      local maybe_tag, i, args = unpack(rvs1)
-      if maybe_tag ~= inside then break end
-      -- Found encoded tail call.
-      nxt = outside[i]
-      nxt_args = args
+   -- Package the loop
+   local function loop(i0, nxt_args)
+      local nxt = outside[i0]
+      local rvs
+      while true do
+         rvs = {nxt(unpack(nxt_args))}
+         -- log_desc({rvs=rvs})
+         local rvs1 = rvs[1]
+         if type(rvs1) ~= 'table' then break end
+         local maybe_tag, i, args = unpack(rvs1)
+         if maybe_tag ~= inside then break end
+         -- Found encoded tail call.
+         nxt = outside[i]
+         nxt_args = args
+      end
+      return unpack(rvs)
    end
-   return unpack(rvs)
+
+   -- The loop is engaged when the init function calls one of the
+   -- recursive functions.  So we parameterize init with another
+   -- wrapper to start the loop.
+   local init_wrappers = {}
+   for i=1,#bodies do
+      init_wrappers[i] = function(...) return loop(i, {...}) end
+   end
+   local init_bound = init(unpack(init_wrappers))
+   return init_bound()
 end
 
 
