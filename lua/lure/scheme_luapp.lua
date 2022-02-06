@@ -26,25 +26,20 @@ class.tab          = lure_comp.tab
 
 local lib = require('lure.slc_runtime')
 
--- FIXME: Library references should insert a module binding.
-local function free_var(name)
-   if not (lib[name]) then
-      error("undefined variable '" .. name .. "'")
-   end
-   return {"lib['",name,"']"}
-end
-
 local function mangle(var)
    assert(var and var.unique)
    local name = var.var
    if not name then return var.unique end
-   if var.free then return free_var(name) end
+   if name == "base-ref" then return "lib" end
 
+   -- Do some exact matches first
    local alias = {
-      ['+'] = 'add'
+      ['+'] = 'add',
+      ['-'] = 'min',
    }
-   if alias[name] then return alias[name] end
+   if alias[name] then name = alias[name] end
 
+   -- Then replace illegal chars
    local subst = {
       ["next"] = "nxt",
       ["-"] = "_", -- "_dash_",
@@ -124,13 +119,6 @@ form['table-ref'] = function(s, args)
            s:w(iol_atom(m.tab), "[", iol_atom(m.key),"]")
         end}})
 end
-form['base-ref'] = function(s, args)
-   s.match(
-      args,
-      {{"(,key)", function(m)
-           s:w("lib[", iol_atom(m.key),"]")
-        end}})
-end
 
 
 -- Lua infix functions
@@ -139,6 +127,8 @@ local infix = {
    ['-']  = '-',
    ['*']  = '/',
    ['/']  = '/',
+   ['>']  = '>',
+   ['<']  = '<',
 }
 for scm,op in pairs(infix) do
    form[scm] = function(s, args)
@@ -219,11 +209,15 @@ function class.compile(s,expr)
          end}})
          s:w("\n")
       end)
-   local mod =
-      {"local mod = {}\n",
-       "local lib = require('lure.slc_runtime').new(mod)\n",
-       out,
-       "return mod\n"}
+   local mod = {
+      "local mod = {}\n",
+      "local lib = require('lure.slc_runtime').new(mod)\n",
+      out,
+      "return mod\n"
+   }
+   if s.config.debug_lua_output then
+      iolist.write_to_file(s.config.debug_lua_output, mod)
+   end
    return { class = "iolist", iolist = mod }
 end
 
@@ -288,9 +282,8 @@ function class.comp(s,expr)
    )
 end
 
-local function new()
-   -- FIXME: Make sure match raises error on mismatch.
-   local obj = { match = se_match.new(), indent = 0 }
+local function new(config)
+   local obj = { match = se_match.new(), indent = 0, config = config }
    setmetatable(obj, { __index = class })
    return obj
 end

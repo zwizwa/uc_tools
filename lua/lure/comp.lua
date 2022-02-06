@@ -185,6 +185,8 @@ function comp.multipass(maybe_config, passes, ir)
          pass = mod.name or "<anonymous-pass>"
       end
       -- Instantiate the compiler, passing it shared config.
+      -- log_desc({multipass_config = config, pass = pass})
+
       local c = mod.new(config)
       -- Run the compiler
       ir = c:compile(ir)
@@ -199,6 +201,7 @@ end
 -- can be used as a pass.  ( Wannabe Monad. )
 function comp.make_multipass_new(passes)
    return function(config)
+      -- log_desc({multipass_config = config})
       return {
          compile = function(_, ir)
             return comp.multipass(config, passes, ir)

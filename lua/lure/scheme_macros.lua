@@ -137,6 +137,8 @@ end
 -- implement the let "bulk binding", it seems simplest just to use a
 -- lambda.
 
+
+
 -- FIXME: Instead of using a trampoline, map it to a loop construct?
 macro['named-let'] = function(expr, c)
    need_gensym(c)
@@ -149,6 +151,7 @@ macro['named-let'] = function(expr, c)
    local init_expr = se.map(se.cadr, var_init_expr)
    assert(loop_vars)
    assert(init_expr)
+   -- assert(c.named_let_trampoline)
    if c.named_let_trampoline then
       local loop_name_iter = tag_name(loop_name .. "_tick")
       local trampoline_expr =

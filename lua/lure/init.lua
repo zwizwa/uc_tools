@@ -10,6 +10,7 @@
 -- Adding {verbose = true} config argument prints out IR of the compiler passes.
 
 local se     = require('lure.se')
+local tab    = require('lure.tab')
 local slc2   = require('lure.slc2')
 local l = se.list
 
@@ -30,7 +31,8 @@ end
 
 function compile_module_slc2(str, config)
    config = config or {}
-   config.trace = trace
+   tab.copy({trace = trace}, config)
+   tab.copy(slc2.default_config, config)
    local exprs = se.read_string_multi(str) ; assert(exprs)
    local c = slc2.new(config)
    local lua = c:compile({'module-begin',exprs})

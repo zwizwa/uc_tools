@@ -212,8 +212,8 @@ end
 
 
 form['block'] = function(self, expr)
-   local _, bindings, forms = se.unpack(expr, {n = 2, tail = true})
-   self:compile_letstar(bindings, forms)
+   local _, bindings = se.unpack(expr, {n = 1, tail = true})
+   self:compile_letstar(bindings, se.empty)
 end
 
 form['define'] = function(self, expr)
@@ -336,7 +336,7 @@ function slc:compile(expr)
    if (expr == 'nil') then
       -- Don't emit assignment
       self:w("\n",self:tab())
-   elseif type(expr) == 'table' then
+   elseif type(expr) == 'table' and not expr.class then
       -- S-expression
       local form_name, form_args = se.unpack(expr, {n = 1, tail = true})
       assert(form_name and type(form_name == 'string'))

@@ -4,6 +4,10 @@
 -- io.write() and friends, or an array of iolists.  It is used to
 -- represent strings without using string concatenation.
 
+-- FIXME: Rename functions.  This is too confusing.
+
+local iolist = { }
+
 local function write(w,iol)
    local typ = type(iol)
    if (typ == 'table') then
@@ -20,15 +24,20 @@ local function write(w,iol)
       w(iol)
    end
 end
+iolist.write = write
 
 local function to_string(iol)
    local out = {}
    write(function(atom) table.insert(out, atom) end, iol)
    return table.concat(out)
 end
+iolist.to_string = to_string
+
 local function stream_writer(write_string)
    return function(...) write(write_string,{...}) end
 end
+iolist.stream_writer = stream_writer
+
 local function io_writer(stream)
    return function(...)
       write(
@@ -38,11 +47,16 @@ local function io_writer(stream)
          {...})
    end
 end
+iolist.io_writer = io_writer
 
-local iolist = {
-   write = write,
-   stream_writer = stream_writer,
-   io_writer = io_writer,
-   to_string = to_string,
-}
+function iolist.write_to_file(filename, iol)
+   local f = io.open(filename, 'w')
+   assert(f)
+   local w = io_writer(f)
+   w(iol)
+   f:close()
+end
+
+
+
 return iolist

@@ -9,7 +9,7 @@ function rt.new(mod)
    lib['module-register!'] = function(k,v) mod[k] = v end
    lib['new'] = function() error "new suppressed" end
    setmetatable(lib, {__index = rt})
-   return lib
+   return function(k) return lib[k] end
 end
 
 -- See test_slc.lua
@@ -86,11 +86,21 @@ end
 rt['list'] = function(...)
    return se.array_to_list({...})
 end
-rt['match-qq-patterns'] = function(...)
-   return se.array_to_list({...})
+rt['match-qq-patterns'] = function(expr, clauses)
+   for clause in se.elements(clauses) do
+      local pat, handle = unpack(clause)
+      local m = match.apply(pat, expr)
+      if m then
+         return handle(m)
+      end
+   end
+   assert('no-match')
 end
 rt['log-se'] = function(se)
    log_se(se)
+end
+rt['log-se-n'] = function(se, tag)
+   log_se_n(se, tag)
 end
 
 

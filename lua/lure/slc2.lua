@@ -18,12 +18,22 @@ local string_dsl = require('lure.string_dsl')
 local mod = { }
 
 mod.new =
-   comp.make_multipass_new({
+   comp.make_multipass_new(
+      {
          'lure.scheme_frontend',
          'lure.scheme_flatten_blocks',
          'lure.scheme_blockval',
          'lure.scheme_luapp',
-   })
+      })
+
+mod.default_config = {
+   -- Configure the frontend to convert named let (i.e. "let
+   -- loop") into a trampoline.  It's currently not clear if
+   -- this should be done in the frontend, or as a
+   -- transoformation on the IR.
+   named_let_trampoline = 'named-let-trampoline',
+   debug_lua_output = '/tmp/test.lua',
+}
 
 -- The compiler produces a data structure representing lua code.  This
 -- evaluates it to a lua module.

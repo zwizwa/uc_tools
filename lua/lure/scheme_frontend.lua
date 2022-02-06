@@ -22,6 +22,7 @@
 -- touching it for now.
 
 local se = require('lure.se')
+local tab = require('lure.tab')
 local comp = require('lure.comp')
 
 require('lure.log_se')
@@ -49,7 +50,9 @@ class.macro = {} ; do
    for name, m in pairs(scheme_macros) do
       -- log("MACRO: " .. name .. "\n")
       class.macro[name] = function(s, expr)
-         return m(expr, { state = s, void = void, })
+         local config = { state = s, void = void }
+         tab.copy(s.config, config)
+         return m(expr, config)
       end
    end
 end
@@ -300,13 +303,13 @@ function class.compile(s, expr)
    local i = 1
    repeat
       did = false
-      log("modbind " .. i .. "\n")
+      -- log("modbind " .. i .. "\n")
       for src_name, binding in pairs(s.module_bindings) do
          assert(type(src_name) == 'string')
          -- src_name is either gensym or global, so always unique
          if not have[src_name] then
             have[src_name] = true
-            log_w(" - ", src_name, "\n")
+            -- log_w(" - ", src_name, "\n")
             local top_var, top_expr = se.unpack(binding, {n = 2})
             local b = l(top_var, s:comp(top_expr))
             bs = {b, bs}
@@ -402,8 +405,9 @@ function class.init(s)
    s.base_ref = 'base-ref'
 end
 
-function class.new()
-   local obj = {}
+function class.new(config)
+   local obj = { config = config }
+   -- log_desc({scheme_frontend_config = config})
    setmetatable(obj, { __index = class })
    obj:init()
    return obj

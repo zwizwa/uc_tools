@@ -21,7 +21,7 @@ test([[
   (fun1
     (lambda (x)
       (block
-        (rv)
+        (rv #<void>)
         (_ (if x
              (block (_ (set! rv 1)))
              (block (_ (set! rv 2))))))))
