@@ -13,30 +13,42 @@ return require("lure") -- ; -*- scheme -*-
 ;; The comment at the first line is for Emacs to perform correct
 ;; syntax higlighting for this file, i.e. selecting scheme-mode
 ;; instead of Lua.
-  
+
 (define (f x) (+ x x))
+
 (define (match-add e) (match-qq e ((add ,a ,b) (+ a b))))
-(define (test_match) (log-se (match-add '(add 1 2))))
-(define x '(1 2 3))
+(define (test_match)  (assert (= 3 (match-add '(add 1 2)))))
 
 (define (test_loop)
-  (let loop ((n 0))
-    (if (> n 3) 'done
-        (begin
-          (log-se-n n 'LOOP)
-          (loop (+ n 1))))))
+  (assert
+   (= 4
+      (let loop ((n 0))
+        (if (> n 3)
+            (begin
+              ;;(log-se-n n 'NAMDEDLETDONE:)
+              n)
+            (begin
+              ;;(log-se-n n 'NAMEDLET:)
+              (loop (+ n 1))))))))
 
+;; FIXME: letrec doesn't work properly if the initial call into the
+;; network is not a tail call.
+(define (example_letrec)
+  (define (check n) (if (> n 4) n (inc n)))
+  (define (inc n)   (begin (log-se-n n 'LETREC:) (check (+ n 1))))
+  (check 0)  ;; needs to be tail call
+  )
 (define (test_letrec)
-  (define (check n) (if (> n 3) 'done (inc n)))
-  (define (inc n)   (begin (log-se-n n 'LETREC) (check (+ n 1))))
-  (check 0))
+  (assert (= 5 (example_letrec))))
 
 
 (define (run)
-  (f 1)
+  (assert (= 2 (f 1)))
+  ;(assert (eqv? (list 1 2 3) '(1 2 3)))) ;; HANGS
   (test_match)
   (test_letrec)
-  (test_loop))
+  (test_loop)
+  )
   
 
 ;; Additional

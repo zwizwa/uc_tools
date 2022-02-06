@@ -56,6 +56,7 @@ build = {
     ['lure.test_scheme_luapp'] = 'test_scheme_luapp.lua',
     ['lure.test_scheme_macros'] = 'test_scheme_macros.lua',
     ['lure.test_scheme_pass'] = 'test_scheme_pass.lua',
+    ['lure.test_scm'] = 'test_scm.lua',
     ['lure.test_se_match'] = 'test_se_match.lua',
     ['lure.test_slc'] = 'test_slc.lua',
     ['lure.test_smc'] = 'test_smc.lua',
