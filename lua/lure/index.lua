@@ -15,14 +15,10 @@
 -- {q = {a = 1, b = 3}, r = {a = 2, b = 4}}
 --
 -- But it seems better to implement such operations on indices.
-function index2(tab)
-   return function(i,j)
-      local v = tab[i][j]
-      assert(v)
-      return v
-   end
-end
-function transpose2(index)
+function index1(tab) return function(i)   return tab[i]    end end
+function index2(tab) return function(i,j) return tab[i][j] end end
+
+function transpose(index)
    return function(i,j) return index2(j,i) end
 end
 
@@ -34,7 +30,7 @@ function to_array(index, nb)
 end
 
 return {
-   to_array = to_array,
    index2 = index2,
-   transpose2 = transpose2,
+   to_array = to_array,
+   transpose = transpose,
 }

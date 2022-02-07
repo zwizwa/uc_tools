@@ -69,17 +69,33 @@ return require("lure") -- ; -*- scheme -*-
 (define (test_match)  (assert (= 3 (match-add '(add 1 2)))))
 
 
+;; Dynamic binding
+(define par (make-parameter 1))
+(define (test_par_is n)
+  (assert (= n (par))))
+(define (test_par)
+  (assert (= 1 (par)))
+  (parameterize ((par 2))
+    (assert (= 2 (par)))
+    (test_par_is 2)
+    )
+     
+  (test_par_is 1)
+  (assert (= 1 (par)))
+  )
+
 (define (run)
   (test_letrec)
   (test_named_let)
   (test_foldl)
   (test_foldr)
   (test_map)
+  (test_par)
   
   (test_match)
   )
   
 
-;; Additional
-]],{verbose=true})
+;; Additional config.
+]],{verbose=false})
 

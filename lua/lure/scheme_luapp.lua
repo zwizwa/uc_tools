@@ -148,6 +148,9 @@ function class.w_bindings(s, bindings)
          {
             -- Statements
             {"(_ ,expr)", function(b)
+                if se.expr_type(b.expr) ~= 'pair' then
+                   s:w("-- ")
+                end
                 s:i_comp(b.expr)
             end},
             -- Special case the function definitions
@@ -161,6 +164,8 @@ function class.w_bindings(s, bindings)
             end},
             -- Other variable definitions
             {"(,var ,expr)", function(b)
+                -- Lua does not allow naked values to appear in a
+                -- statement position.  Replace them with a comment.
                 s:w("local ", iol_atom(b.var), " = ")
                 s:i_comp(b.expr)
                 -- FIXME: print orig var name in comment

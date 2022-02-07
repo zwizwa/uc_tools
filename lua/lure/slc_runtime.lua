@@ -179,10 +179,24 @@ local function import_from(other_mod, names)
 end
 import_from(se, {'cons','list','car','cdr','cadr','reverse','map','zip','foldr','foldl','length'})
 
+-- Compiler will generate code for these when applied, but we still
+-- need to be able to reference the functions as values.
 rt['+'] = function(a,b) return a + b end
 rt['-'] = function(a,b) return a - b end
 rt['*'] = function(a,b) return a * b end
 rt['/'] = function(a,b) return a / b end
+
+-- (define p (make-parameter 'init_val))
+-- (p) -> 'init_val
+-- (p 'new_val) (p) -> 'new_val
+-- See 'parameterize' in scheme_macros.lua
+rt['make-parameter'] = function(init_val)
+   local val = init_val
+   return function(new_val)
+      if new_val ~= nil then val = new_val end
+      return val
+   end
+end
 
 
 -- FIXME: for testing rvm
