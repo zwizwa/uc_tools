@@ -120,6 +120,28 @@ function class.eval_loop(s, expr, k)
       end
    end
 
+   -- Primitive evaluations that terminate immediately.
+   -- local function prim_eval(expr)
+   --    s.match(
+   --       {"(block)", function(m)
+   --           return void
+   --       end},
+   --       {"(set! ,var ,val)", function(m)
+   --           set(m.var, lit_or_ref(m.val))
+   --           return void
+   --       end},
+   --       {"(lambda ,args ,body)", function(m)
+   --           trace("LAMBDA",l(m.args, m.body))
+   --           return ({args = m.args, body = m.body, env = env, class = 'closure'})
+   --       end},
+   --       {"(,fun . ,args)", function(m)
+   --           local fun = lit_or_ref(m.fun)
+   --           local vals = se.map(lit_or_ref, m.args)
+   --           if 'function' == type(fun) then
+   --              ret(fun(unpack(l2a(vals))))
+   --           else
+   -- end
+
    -- Run until the nil continuation.
    repeat
       trace("EVAL", expr)
@@ -156,7 +178,7 @@ function class.eval_loop(s, expr, k)
                 trace("LAMBDA",l(m.args, m.body))
                 ret({args = m.args, body = m.body, env = env, class = 'closure'})
             end},
-            {"(,fun . ,args)", function(m)
+            {"(app ,fun . ,args)", function(m)
                 local fun = lit_or_ref(m.fun)
                 local vals = se.map(lit_or_ref, m.args)
                 if 'function' == type(fun) then
@@ -171,6 +193,9 @@ function class.eval_loop(s, expr, k)
                    se.zip(def, fun.args, vals)
                    expr = fun.body
                 end
+            end},
+            {"(,form . ,args)", function(m)
+                error("form '" .. m.form .. "' not supported")
             end},
             {",atom", function(m)
                 ret(lit_or_ref(m.atom))

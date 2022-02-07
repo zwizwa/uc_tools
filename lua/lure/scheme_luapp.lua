@@ -272,13 +272,16 @@ function class.comp(s,expr)
              s:w("return ")
              s:i_comp(m.expr)
          end},
-         {"(,fun . ,args)", function(m)
+         {"(app, fun . ,args)", function(m)
              local w_f = m.fun.var and form[m.fun.var]
              if w_f then
                 w_f(s, m.args)
              else
                 s:w(iol_atom(m.fun),"(",s:commalist(m.args),")")
              end
+         end},
+         {"(,form . ,args)", function(m)
+             error("form '" .. m.form .. "' not supported")
          end},
          {",atom", function(m)
              s:w_atom(m.atom)

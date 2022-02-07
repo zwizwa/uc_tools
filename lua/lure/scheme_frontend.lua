@@ -258,7 +258,7 @@ local function apply(s, expr)
    else
       -- Ordinary application.
       trace("APPLY", expr)
-      return s:anf(expr, function(e) return e end)
+      return s:anf(expr, function(e) return {'app', e} end)
    end
 end
 
