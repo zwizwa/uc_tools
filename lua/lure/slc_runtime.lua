@@ -185,6 +185,7 @@ rt['+'] = function(a,b) return a + b end
 rt['-'] = function(a,b) return a - b end
 rt['*'] = function(a,b) return a * b end
 rt['/'] = function(a,b) return a / b end
+rt['>'] = function(a,b) return a > b end
 
 -- (define p (make-parameter 'init_val))
 -- (p) -> 'init_val
