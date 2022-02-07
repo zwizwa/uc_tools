@@ -10,8 +10,6 @@
 -- . User provides primitives implementing 'base-ref' free variables.
 -- . Simpler to implement this in Lua, using pattern matching library.
 
--- FIXME: NEED TO USE ENVIRONMENT TO MAP TO LOCAL STORAGE
-
 
 local se       = require('lure.se')
 local se_match = require('lure.se_match')
@@ -24,7 +22,7 @@ local class = {}
 local void = "#<void>"
 
 local function trace(tag, expr)
-   log_se_n(expr, tag .. ":")
+   -- log_se_n(expr, tag .. ":")
 end
 
 local function ifte(c,t,f)
@@ -37,17 +35,15 @@ function class.eval_loop(s, expr, k)
    -- implemented by a table mapping variables to values.
    local env = {}
 
-   -- FIXME: This is too hard to read.
-   -- There are 3 operations:
-   -- 1. create binding
-   -- 2. reference binding value
-   -- 3. set new binding value
-
+   -- Create binding, always in current environment.  Called on 'ret'
+   -- and for function arguments on frame entry.
    function def(var, val)
       assert(val ~= nil)
       trace("DEF",l(var,val))
       env[var] = val
    end
+   -- Reference ans assigment operate on the chained environment.  One
+   -- table per function activation, linked by 'parent' member.
    function cell_env(var)
       local e = env
       while nil ~= e do
@@ -71,28 +67,28 @@ function class.eval_loop(s, expr, k)
 
    -- Initial continuation
    local retvar = { class = 'var' }
-   local k = { var = retvar, nxt = nil, env = {} }
+   local k = { var = retvar, parent = nil, env = {} }
 
-   -- Continuations are chained.
-   -- Call with continuation.  When evaluation is done (through ret),
-   -- the var will be bound, and execution resumes at block_rest.
+   -- Call pushes execution frame and return pops.  Note that lexical
+   -- environment is decoupled from this dynamic chain of stack
+   -- frames.
    local function call(expr1, var, block_rest)
-      assert(block_rest)
-      trace("CALL",expr1,var,block_rest)
       assert(var)
+      trace("CALL",expr1,var,block_rest)
       expr = expr1
-      k = {expr = {'block', block_rest}, var = var, env = env, nxt = k}
+      k = {expr = {'block', block_rest}, var = var, env = env, parent = k}
    end
+   -- Restore execution context, storing result of subexpression evaluation.
    local function ret(val)
-      -- Restore variable and code context.
-      env        = k.env
-      expr       = k.expr
-      -- Create the cell
+      -- 'def' operates on current environment, so restore that first
+      env  = k.env
       def(k.var, val)
-      k          = k.nxt
+      expr = k.expr
+      k    = k.parent
    end
 
-   -- The 'base-ref' function resolves primitives.
+   -- The lexical environment is extended with one magic variable
+   -- 'base-ref', which is used to obtain references to primitives.
    local function base_ref(name)
       assert(type(name) == 'string')
       local fun = s.prim[name]
@@ -102,8 +98,6 @@ function class.eval_loop(s, expr, k)
       trace("PRIM",name)
       return fun
    end
-
-   -- Interpret variable reference
    local function ref(var)
       assert(var.class == 'var')
       if var.var == 'base-ref' then return base_ref end
@@ -141,11 +135,14 @@ function class.eval_loop(s, expr, k)
             {"(block (,var ,expr))", function(m)
                 error("last expression in 'block' is bound: '" .. m.var .. "'")
             end},
-            -- FIXME: Do primitives here.
-            {"(block (_ ,expr) . ,rest)", function(m)
-                call(m.expr, {class = 'var', iolist = function() return "ignore" end}, m.rest)
-            end},
+            -- FIXME: Call is only necessary in case the expression is
+            -- a closure.  Re-arrange thigs to avoid the call/ret pair
+            -- in other cases.  Instead of evaluating expressions, we
+            -- should invert things and focus on evaluating bindings.
             {"(block (,var ,expr) . ,rest)", function(m)
+                if m.var == '_' then
+                   m.var = {class = 'var', iolist = "_"}
+                end
                 call(m.expr, m.var, m.rest)
             end},
             {"(if ,cond ,iftrue ,iffalse)", function(m)
@@ -165,9 +162,6 @@ function class.eval_loop(s, expr, k)
                 if 'function' == type(fun) then
                    ret(fun(unpack(l2a(vals))))
                 else
-                   assert(fun.args)
-                   assert(fun.body)
-                   assert(fun.env)
                    trace("APPLY",l(fun.args, vals))
                    -- Inside a function body all names are unique, so
                    -- we only need to make sure that different
