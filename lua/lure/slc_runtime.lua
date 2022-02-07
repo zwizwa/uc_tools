@@ -20,6 +20,7 @@ end
 -- re-used to avoid allocation while the loop is running.
 
 rt['letrec-trampoline'] = function(init, ...)
+   -- log('letrec-trampoline\n')
    local bodies = {...}
 
    -- We get passed the function bodies of each of the recursive
@@ -76,7 +77,7 @@ rt['letrec-trampoline'] = function(init, ...)
    end
 
    -- Package the loop
-   local function loop(i0, nxt_args)
+   local function start(i0, nxt_args)
       local nxt = outside[i0]
       local rvs
       while true do
@@ -96,12 +97,11 @@ rt['letrec-trampoline'] = function(init, ...)
    -- The loop is engaged when the init function calls one of the
    -- recursive functions.  So we parameterize init with another
    -- wrapper to start the loop.
-   local init_wrappers = {}
+   local starts = {}
    for i=1,#bodies do
-      init_wrappers[i] = function(...) return loop(i, {...}) end
+      starts[i] = function(...) return start(i, {...}) end
    end
-   local init_bound = init(unpack(init_wrappers))
-   return init_bound()
+   return init(unpack(starts))()
 end
 
 

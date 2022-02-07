@@ -16,12 +16,18 @@
 
 require('lure.log')
 local se    = require('lure.se')
+local tab   = require('lure.tab')
 local match = require('lure.match')
 local macro = {}
 local l = se.list
 local r = se.reverse
 
 local void = l('begin')
+
+macro['begin@'] = function(expr, config)
+   local c = tab.copy(config or {}, { letrec = 'letrec@' })
+   return macro['begin'](expr, c)
+end
 
 -- Map definitions in begin form to letrec.
 macro['begin'] = function(expr, config)
@@ -79,7 +85,8 @@ macro['begin'] = function(expr, config)
    end
 end
 
-macro['letrec-using-trampoline'] = function(expr, c)
+macro['letrec@'] = function(expr, c)
+   -- log('letrec@\n')
    c = c or {}
    local _, bindings, body = se.unpack(expr, {n = 2, tail = true})
    if se.is_empty(bindings) then return {'begin',exprs} end
@@ -88,15 +95,15 @@ macro['letrec-using-trampoline'] = function(expr, c)
    local function make_fun_lambda(expr) return l('lambda',names,expr) end
    local fun_lambdas = se.map(make_fun_lambda, exprs)
    local body_lambda = l('lambda',names,{'lambda',{l(),body}})
-   return {c.letrec_trampoline or 'letrec-trampoline', {body_lambda, fun_lambdas}}
+   return {c.letrec_loop or 'letrec-trampoline', {body_lambda, fun_lambdas}}
 end
 
 -- Implement letrec on top of let and set!
 macro['letrec'] = function(expr, c)
    c = c or {}
 
-   if c.letrec_trampoline then
-      return macro['letrec-using-trampoline'](expr, c)
+   if c.letrec_loop then
+      return macro['letrec@'](expr, c)
    end
 
    local _, bindings, exprs = se.unpack(expr, {n = 2, tail = true})
@@ -144,36 +151,11 @@ macro['case'] = function(expr, config)
 end
 
 
--- Let:
---
--- 1. Named let trampoline
---
--- When generating lambdas it makes sense to bind them to names.  This
--- makes Lua backtraces and generated source code easier to read.
---
--- 2. Non-sequential binding
---
--- Most languages have sequential let*-style binding forms.  To
--- implement the let "bulk binding", it seems simplest just to use a
--- lambda.
-
-
-
--- FIXME: Instead of using a trampoline, map it to a loop construct?
-macro['named-let'] = function(expr, c)
-   need_gensym(c)
-   local _, loop_name, var_init_expr, loop_body = se.unpack(expr, {n = 3, tail = true})
-   local tag_name =
-      function(src_name)
-         return c.state:gensym(src_name .. "_")
-      end
-   local loop_vars = se.map(se.car,  var_init_expr)
-   local init_expr = se.map(se.cadr, var_init_expr)
-   assert(loop_vars)
-   assert(init_expr)
-   return l('begin',
-            l('define',{loop_name, loop_vars}, {'begin',loop_body}),
-            {loop_name, init_expr})
+-- It's currently not possible to check if letrec@ trampolines are
+-- safe, so keep them explicit.
+macro['let@'] = function(expr, config)
+   local c = tab.copy(config or {}, { begin = 'begin@' })
+   return macro['let'](expr, c)
 end
 
 -- Frontend uses lambda as only binding form, and will reduce after
@@ -181,7 +163,15 @@ end
 macro['let'] = function(expr, c)
    local _, maybe_bindings, rest = se.unpack(expr, {n = 2, tail = true})
    if type(maybe_bindings) == 'string' then
-      return {'named-let',{maybe_bindings, rest}}
+      -- Named let.
+      local _, loop_name, var_init_expr, loop_body = se.unpack(expr, {n = 3, tail = true})
+      local loop_vars = se.map(se.car,  var_init_expr)
+      local init_expr = se.map(se.cadr, var_init_expr)
+      assert(loop_vars)
+      assert(init_expr)
+      return l(c.begin or 'begin',
+               l('define',{loop_name, loop_vars}, {'begin',loop_body}),
+               {loop_name, init_expr})
    elseif se.length(maybe_bindings) == 0 then
       -- Don't make it worse...
       return {'begin', rest}

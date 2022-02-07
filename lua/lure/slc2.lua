@@ -27,11 +27,10 @@ mod.new =
       })
 
 mod.default_config = {
-   -- Configure the frontend to convert named let (i.e. "let
-   -- loop") into a trampoline.  It's currently not clear if
-   -- this should be done in the frontend, or as a
-   -- transoformation on the IR.
-   letrec_trampoline = 'letrec-trampoline',
+   -- Until this as completely clean semantics, it is not ok to
+   -- configure the frontend to always convert named let (i.e. "let
+   -- loop") into a trampoline.
+   -- letrec_loop = 'letrec-loop',
    debug_lua_output = '/tmp/test.lua',
 }
 

@@ -39,5 +39,5 @@ function compile_module_slc2(str, config)
 end
 
 return {
-   slc2 = compile_module_slc2
+   slc = compile_module_slc2
 }
