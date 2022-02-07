@@ -21,6 +21,8 @@ local l = se.list
 
 local class = {}
 
+local void = "#<void>"
+
 local function trace(tag, expr)
    log_se_n(expr, tag .. ":")
 end
@@ -36,21 +38,36 @@ function class.eval_loop(s, expr, k)
    local env = {}
 
    -- FIXME: This is too hard to read.
+   -- There are 3 operations:
+   -- 1. create binding
+   -- 2. reference binding value
+   -- 3. set new binding value
 
-   -- Definition and referenced rolled into one.  Do this better.
-   function cell_op(env, var, val)
-      while nil ~= env do
-         if nil ~= env[var] then
-            if nil ~= val then
-               env[var] = val
-            end
-            return env[var]
-         end
-         env = env.parent
+   function def(var, val)
+      assert(val ~= nil)
+      trace("DEF",l(var,val))
+      env[var] = val
+   end
+   function cell_env(var)
+      local e = env
+      while nil ~= e do
+         if nil ~= e[var] then return e end
+         e = e.parent
       end
       error("undefined variable '" .. var.unique .. "'")
    end
-
+   function ref1(var)
+      local e = cell_env(var)
+      local v = e[var]
+      assert(v ~= nil)
+      return v
+   end
+   function set(var, val)
+      assert(val ~= nil)
+      trace("SET", l(var, val))
+      local e = cell_env(var)
+      e[var] = val
+   end
 
    -- Initial continuation
    local retvar = { class = 'var' }
@@ -60,6 +77,8 @@ function class.eval_loop(s, expr, k)
    -- Call with continuation.  When evaluation is done (through ret),
    -- the var will be bound, and execution resumes at block_rest.
    local function call(expr1, var, block_rest)
+      assert(block_rest)
+      trace("CALL",expr1,var,block_rest)
       assert(var)
       expr = expr1
       k = {expr = {'block', block_rest}, var = var, env = env, nxt = k}
@@ -69,7 +88,7 @@ function class.eval_loop(s, expr, k)
       env        = k.env
       expr       = k.expr
       -- Create the cell
-      env[k.var] = val
+      def(k.var, val)
       k          = k.nxt
    end
 
@@ -88,8 +107,7 @@ function class.eval_loop(s, expr, k)
    local function ref(var)
       assert(var.class == 'var')
       if var.var == 'base-ref' then return base_ref end
-      local val = cell_op(env, var) ; assert(val ~= nil)
-      return val
+      return ref1(var)
    end
 
    -- Primitive value: literal or variable referenece.
@@ -125,21 +143,21 @@ function class.eval_loop(s, expr, k)
             end},
             -- FIXME: Do primitives here.
             {"(block (_ ,expr) . ,rest)", function(m)
-                call(m.expr, {class = 'var'}, m.rest)
+                call(m.expr, {class = 'var', iolist = function() return "ignore" end}, m.rest)
             end},
             {"(block (,var ,expr) . ,rest)", function(m)
-                call(m.expr, {}, m.rest)
+                call(m.expr, m.var, m.rest)
             end},
             {"(if ,cond ,iftrue ,iffalse)", function(m)
                 expr = ifte(lit_or_ref(m.cond), m.iftrue, m.iffalse)
             end},
             {"(set! ,var ,val)", function(m)
-                cell_op(env, var, lit_or_ref(m.val))
+                set(m.var, lit_or_ref(m.val))
                 ret(void)
             end},
             {"(lambda ,args ,body)", function(m)
                 trace("LAMBDA",l(m.args, m.body))
-                ret({args = m.args, body = m.body, env = env})
+                ret({args = m.args, body = m.body, env = env, class = 'closure'})
             end},
             {"(,fun . ,args)", function(m)
                 local fun = lit_or_ref(m.fun)
@@ -149,17 +167,14 @@ function class.eval_loop(s, expr, k)
                 else
                    assert(fun.args)
                    assert(fun.body)
+                   assert(fun.env)
+                   trace("APPLY",l(fun.args, vals))
                    -- Inside a function body all names are unique, so
                    -- we only need to make sure that different
                    -- instantiations of the same function use
                    -- different storage.  Create a new environment.
                    env = {parent = fun.env}
-                   se.zip(
-                      -- Create the cell
-                      function(arg, val)
-                         cell_op(env, var, lit_or_ref(m.val))
-                      end,
-                      fun.args, vals)
+                   se.zip(def, fun.args, vals)
                    expr = fun.body
                 end
             end},

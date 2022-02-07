@@ -275,9 +275,12 @@ function se:read_atom()
 end
 
 function se.iolist(expr)
-   if expr ~= empty and type(expr) ~= 'table' then
+   local typ = type(expr)
+   if typ == 'function' then
+      return '#<function>'
+   elseif expr ~= empty and typ ~= 'table' then
       return expr
-   elseif type(expr) == 'table' and expr.class then
+   elseif typ == 'table' and expr.class then
       if expr.iolist then
          if type(expr.iolist) == 'function' then
             return expr.iolist(expr)
