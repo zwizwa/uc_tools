@@ -1,5 +1,3 @@
--- FIXME: Basic idea looks ok. Details are wrong.
-
 -- Interpreter for the block language.
 --
 -- Key elements:
@@ -69,17 +67,16 @@ function class.eval_loop(s, expr, k)
    local retvar = { class = 'var' }
    local k = { var = retvar, parent = nil, env = {} }
 
-   -- Call pushes execution frame and return pops.  Note that lexical
-   -- environment is decoupled from this dynamic chain of stack
-   -- frames.
-   local function call(expr1, var, block_rest)
+   -- Push / pop evaluation frames.  Note that lexical environment is
+   -- decoupled from this dynamic chain of stack frames.
+   local function push(expr1, var, rest_block)
       assert(var)
       trace("CALL",expr1,var,block_rest)
       expr = expr1
-      k = {expr = {'block', block_rest}, var = var, env = env, parent = k}
+      k = {expr = rest_block, var = var, env = env, parent = k}
    end
    -- Restore execution context, storing result of subexpression evaluation.
-   local function ret(val)
+   local function pop(val)
       -- 'def' operates on current environment, so restore that first
       env  = k.env
       def(k.var, val)
@@ -121,89 +118,108 @@ function class.eval_loop(s, expr, k)
    end
 
    -- Primitive evaluations that terminate immediately.
-   -- local function prim_eval(expr)
-   --    s.match(
-   --       {"(block)", function(m)
-   --           return void
-   --       end},
-   --       {"(set! ,var ,val)", function(m)
-   --           set(m.var, lit_or_ref(m.val))
-   --           return void
-   --       end},
-   --       {"(lambda ,args ,body)", function(m)
-   --           trace("LAMBDA",l(m.args, m.body))
-   --           return ({args = m.args, body = m.body, env = env, class = 'closure'})
-   --       end},
-   --       {"(,fun . ,args)", function(m)
-   --           local fun = lit_or_ref(m.fun)
-   --           local vals = se.map(lit_or_ref, m.args)
-   --           if 'function' == type(fun) then
-   --              ret(fun(unpack(l2a(vals))))
-   --           else
-   -- end
-
-   -- Run until the nil continuation.
-   repeat
-      trace("EVAL", expr)
-      s.match(
+   -- This returns nil if not primitive.
+   local function prim_eval(expr)
+      return s.match(
          expr,
          {
             {"(block)", function(m)
-                ret(void)
-            end},
-            {"(block (_ ,expr))", function(m)
-                expr = m.expr
-            end},
-            {"(block (,var ,expr))", function(m)
-                error("last expression in 'block' is bound: '" .. m.var .. "'")
-            end},
-            -- FIXME: Call is only necessary in case the expression is
-            -- a closure.  Re-arrange thigs to avoid the call/ret pair
-            -- in other cases.  Instead of evaluating expressions, we
-            -- should invert things and focus on evaluating bindings.
-            {"(block (,var ,expr) . ,rest)", function(m)
-                if m.var == '_' then
-                   m.var = {class = 'var', iolist = "_"}
-                end
-                call(m.expr, m.var, m.rest)
-            end},
-            {"(if ,cond ,iftrue ,iffalse)", function(m)
-                expr = ifte(lit_or_ref(m.cond), m.iftrue, m.iffalse)
+                return void
             end},
             {"(set! ,var ,val)", function(m)
                 set(m.var, lit_or_ref(m.val))
-                ret(void)
+                return void
             end},
             {"(lambda ,args ,body)", function(m)
                 trace("LAMBDA",l(m.args, m.body))
-                ret({args = m.args, body = m.body, env = env, class = 'closure'})
+                return ({args = m.args, body = m.body, env = env, class = 'closure'})
             end},
             {"(app ,fun . ,args)", function(m)
                 local fun = lit_or_ref(m.fun)
                 local vals = se.map(lit_or_ref, m.args)
                 if 'function' == type(fun) then
-                   ret(fun(unpack(l2a(vals))))
+                   return fun(unpack(l2a(vals)))
                 else
+                   -- Closure evaluation is not primitive.
+                   return nil
+                end
+            end},
+            {",other", function(m)
+                if se.is_pair(m.other) then
+                   return nil
+                else
+                   local v = lit_or_ref(m.other)
+                   assert(v)
+                   return v
+                end
+            end},
+         })
+   end
+
+   -- Run until the nil continuation.
+   repeat
+      trace("EVAL", expr)
+
+      local val = prim_eval(expr)
+      if val ~= nil then
+         trace("PRIMVAL",val)
+         pop(val)
+      else
+         s.match(
+            expr,
+            {
+               {"(block (_ ,expr))", function(m)
+                   expr = m.expr
+               end},
+               {"(block (,var ,expr))", function(m)
+                   error("last expression in 'block' is bound: '" .. m.var .. "'")
+               end},
+               {"(block (,var ,expr) . ,rest)", function(m)
+                   if m.var == '_' then
+                      m.var = {class = 'var', iolist = "_"}
+                   end
+                   local rest_block = {'block', m.rest}
+                   local val = prim_eval(m.expr)
+                   if val then
+                      -- Primitive evaluations don't need call/ret pair.
+                      trace("PRIMBIND", val)
+                      def(m.var, val)
+                      expr = rest_block
+                   else
+                      -- For all the rest we switch evaluation context.
+                      push(m.expr,     -- subexpression to evaluate
+                           m.var,      -- return value goes here
+                           rest_block) -- execution resumes here
+                   end
+               end},
+               {"(if ,cond ,iftrue ,iffalse)", function(m)
+                   expr = ifte(lit_or_ref(m.cond), m.iftrue, m.iffalse)
+               end},
+               {"(app ,fun . ,args)", function(m)
+                   local fun = lit_or_ref(m.fun)
+                   local vals = se.map(lit_or_ref, m.args)
+                   -- Primitives handled elsewhere.
+                   assert('function' ~= type(fun))
                    trace("APPLY",l(fun.args, vals))
-                   -- Inside a function body all names are unique, so
-                   -- we only need to make sure that different
-                   -- instantiations of the same function use
-                   -- different storage.  Create a new environment.
+                   -- Replace current context with that of the
+                   -- function to be applied.  Inside a function body
+                   -- all names are unique, so we only need to make
+                   -- sure that different instantiations of the same
+                   -- closure use different storage.  Create a new
+                   -- lexical frame.
                    env = {parent = fun.env}
                    se.zip(def, fun.args, vals)
                    expr = fun.body
-                end
-            end},
-            {"(,form . ,args)", function(m)
-                error("form '" .. m.form .. "' not supported")
-            end},
-            {",atom", function(m)
-                ret(lit_or_ref(m.atom))
-            end},
+               end},
+               {",other", function(m)
+                   log_se_n(expr, "BAD:")
+                   error("bad form")
+               end},
          })
-      until (not k)
-      -- return env[retvar]
-      return ref(retvar)
+      end
+   until (not k)
+   -- return env[retvar]
+   return ref(retvar)
 end
 
 

@@ -272,7 +272,7 @@ function class.comp(s,expr)
              s:w("return ")
              s:i_comp(m.expr)
          end},
-         {"(app, fun . ,args)", function(m)
+         {"(app ,fun . ,args)", function(m)
              local w_f = m.fun.var and form[m.fun.var]
              if w_f then
                 w_f(s, m.args)
