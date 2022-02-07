@@ -6,12 +6,165 @@
 
 -- require('lure.log')
 
+
+-- LIBRARY
+
 local empty = '#<nil>'
 
 local se = { empty = empty }
 
 -- Represent EOF as a thing, not nil.
 local EOF = { "<EOF>" }
+
+
+local function assert_pair(pair) assert(type(pair) == 'table') end
+local function car(pair) assert_pair(pair); return pair[1] end; se.car = car
+local function cdr(pair) assert_pair(pair); return pair[2] end; se.cdr = cdr
+local function cadr(ppair) return car(cdr(ppair)) end; se.cadr = cadr
+local function cons(a, d) return {a, d} end; se.cons = cons
+local function is_empty(lst) return lst == empty end; se.is_empty = is_empty
+
+-- Note that this does not work well if the array contains an empty
+-- list, which is represented by Lua nil.
+local function array_to_list(arr)
+   local lst = empty
+   for i=#arr,1,-1 do
+      local el = arr[i]
+      lst = {el, lst}
+   end
+   return lst
+end
+se.array_to_list = array_to_list
+
+
+-- Same as Scheme (list ...)
+local function list(...) return array_to_list({...}) end; se.list = list
+
+
+local function list_to_array(lst)
+   local arr = {}
+   for el in se.elements(lst) do
+      table.insert(arr, el)
+   end
+   return arr
+end
+se.list_to_array = list_to_array
+
+local function elements(lst)
+   assert(lst)
+   local l = lst
+   return function()
+      if l ~= empty then
+         if type(l) ~= 'table' then
+            log_desc({bad_list = lst})
+            if type(l) == 'string' then
+               error('bad list pair: ' .. l)
+            else
+               error('bad list pair: type=' .. type(l))
+            end
+         end
+         local el, rest = unpack(l)
+         l = rest
+         -- It's very convenient to also return the tail of the list.
+         return el, l
+      end
+   end
+end
+se.elements = elements
+
+local function reverse(lst)
+   local l = empty
+   for el in elements(lst) do
+      l = {el, l}
+   end
+   return l
+end
+se.reverse = reverse
+
+local function map_to_array(fun, lst)
+   local arr = {}
+   for el in elements(lst) do
+      local single_val = fun(el)
+      table.insert(arr, single_val)
+   end
+   return arr
+end
+local function map(fun, lst)
+   assert(lst)
+   return array_to_list(map_to_array(fun,lst))
+end
+se.map = map
+
+
+-- FIXME: generalize
+local function zip_to_array(fun, lst_a, lst_b)
+   local arr = {}
+   for el in elements(lst_a) do
+      local single_val = fun(el, car(lst_b))
+      lst_b = cdr(lst_b)
+      table.insert(arr, single_val)
+   end
+   return arr
+end
+local function zip(fun, lst_a, lst_b)
+   assert(lst_a)
+   assert(lst_b)
+   return array_to_list(zip_to_array(fun,lst_a,lst_b))
+end
+se.zip = zip
+
+
+
+function se.foldr(on_pair, on_empty, lst)
+   local function foldr(lst)
+      if is_empty(lst) then
+         return on_empty
+      else
+         return on_pair(car(lst), foldr(cdr(lst)))
+      end
+   end
+   return foldr(lst)
+end
+
+function se.foldl(update, state, lst)
+   local function foldl(lst)
+      if is_empty(lst) then
+         return state
+      else
+         state = update(car(lst), state)
+         lst = cdr(lst)
+      end
+   end
+   return foldl(lst)
+end
+
+
+
+
+function se.array(lst)
+   local arr = {}
+   for el in elements(lst) do
+      table.insert(arr, el)
+   end
+   return arr
+end
+function se.length(lst)
+   local n = 0
+   for el in elements(lst) do
+      n = n + 1
+   end
+   return n
+end
+function se.append(a, b)
+   for el in elements(reverse(a)) do
+      b = {el, b}
+   end
+   return b
+end
+
+
+
+-- READER
 
 function se:next()
    local char = self.stream:read(1)
@@ -96,135 +249,6 @@ function se:read_atom()
       self:pop()
    end
 end
--- Note that this does not work well if the array contains an empty
--- list, which is represented by Lua nil.
-function se.array_to_list(arr)
-   local lst = empty
-   for i=#arr,1,-1 do
-      local el = arr[i]
-      lst = {el, lst}
-   end
-   return lst
-end
-function se.list_to_array(lst)
-   local arr = {}
-   for el in se.elements(lst) do
-      table.insert(arr, el)
-   end
-   return arr
-end
-
--- Same as Scheme (list ...)
-function se.list(...)
-   return se.array_to_list({...})
-end
-function se.elements(lst)
-   assert(lst)
-   local l = lst
-   return function()
-      if l ~= empty then
-         if type(l) ~= 'table' then
-            log_desc({bad_list = lst})
-            if type(l) == 'string' then
-               error('bad list pair: ' .. l)
-            else
-               error('bad list pair: type=' .. type(l))
-            end
-         end
-         local el, rest = unpack(l)
-         l = rest
-         -- It's very convenient to also return the tail of the list.
-         return el, l
-      end
-   end
-end
-function se.reverse(lst)
-   local l = empty
-   for el in se.elements(lst) do
-      l = {el, l}
-   end
-   return l
-end
-
-function se.map_to_array(fun, lst)
-   local arr = {}
-   for el in se.elements(lst) do
-      local single_val = fun(el)
-      table.insert(arr, single_val)
-   end
-   return arr
-end
-function se.map(fun, lst)
-   assert(lst)
-   return se.array_to_list(se.map_to_array(fun,lst))
-end
-
--- FIXME: generalize
-function se.zip_to_array(fun, lst_a, lst_b)
-   local arr = {}
-   for el in se.elements(lst_a) do
-      local single_val = fun(el, se.car(lst_b))
-      lst_b = se.cdr(lst_b)
-      table.insert(arr, single_val)
-   end
-   return arr
-end
-function se.zip(fun, lst_a, lst_b)
-   assert(lst_a)
-   assert(lst_b)
-   return se.array_to_list(se.zip_to_array(fun,lst_a,lst_b))
-end
-
-
-
-function se.foldr(on_pair, on_empty, lst)
-   local function foldr(lst)
-      if se.is_empty(lst) then
-         return on_empty
-      else
-         return on_pair(se.car(lst), foldr(se.cdr(lst)))
-      end
-   end
-   return foldr(lst)
-end
-
-function se.array(lst)
-   local arr = {}
-   for el in se.elements(lst) do
-      table.insert(arr, el)
-   end
-   return arr
-end
-function se.length(lst)
-   local n = 0
-   for el in se.elements(lst) do
-      n = n + 1
-   end
-   return n
-end
-function se.car(pair)
-   assert(type(pair) == 'table')
-   return pair[1]
-end
-function se.cdr(pair)
-   assert(type(pair) == 'table')
-   return pair[2]
-end
-function se.cadr(ppair)
-   return se.car(se.cdr(ppair))
-end
-function se.cons(car, cdr)
-   return {car, cdr}
-end
-function se.is_empty(lst)
-   return lst == empty
-end
-function se.append(a, b)
-   for el in se.elements(se.reverse(a)) do
-      b = {el, b}
-   end
-   return b
-end
 
 function se.iolist(expr)
    if expr ~= empty and type(expr) ~= 'table' then
@@ -241,9 +265,9 @@ function se.iolist(expr)
       end
    else
       local iol = {"("}
-      for el, rest in se.elements(expr) do
+      for el, rest in elements(expr) do
          table.insert(iol, se.iolist(el))
-         if not se.is_empty(rest) then
+         if not is_empty(rest) then
             table.insert(iol, " ")
          end
       end
@@ -274,8 +298,8 @@ function se.unpack_array(expr, config, body)
    end
    local args = {}
    for i=1,config.n do
-      table.insert(args, se.car(expr))
-      expr = se.cdr(expr)
+      table.insert(args, car(expr))
+      expr = cdr(expr)
    end
    table.insert(args, expr) -- tail
    return args
@@ -321,7 +345,7 @@ se.ticks = {
 function se:read()
    local function tagged(tag)
       self:pop()
-      return se.list(tag, self:read())
+      return list(tag, self:read())
    end
    local c = self:skip_space()
    local tick = self.ticks[c]
@@ -343,7 +367,7 @@ function se:read_multi()
       if char == EOF then break end
       table.insert(exprs, self:read())
    end
-   return se.array_to_list(exprs)
+   return array_to_list(exprs)
 end
 
 function se.string_to_stream(str)
@@ -444,7 +468,7 @@ function se.qq_eval(env, expr)
    local function sub(expr1)
       return se.qq_eval(env, expr1)
    end
-   -- return se.map(sub, expr)
+   -- return map(sub, expr)
    -- This needs to operate on pairs to allow unquoted tails.
    return {sub(expr[1]), sub(expr[2])}
 end

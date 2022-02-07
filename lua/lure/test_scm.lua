@@ -81,5 +81,5 @@ return require("lure") -- ; -*- scheme -*-
   
 
 ;; Additional
-]],{verbose=false})
+]],{verbose=true})
 

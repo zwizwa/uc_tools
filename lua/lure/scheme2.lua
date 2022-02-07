@@ -1,5 +1,13 @@
 -- Variant of Scheme2
 -- This is an interpreter for the block language.
+-- Idea is to keep this as simple as possible.
+--
+-- Question is: should this be in Scheme or not?  First: what is the
+-- purpose?  I need this to support the partial evaluation in SMC.
+-- Eventually I would like to write the SMC in Scheme.  Also, it would
+-- be a good test of the SLC to use it to write something non-trivial
+-- as soon as possible.
+
 local class = {}
 
 -- The evaluator is a loop to properly handle tail calls and

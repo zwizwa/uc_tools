@@ -20,8 +20,11 @@ local str = asset[filename]
 function mod.run()
    local expr = {'begin',se.read_string_multi(str)}
    log_se_n(expr, "INPUT:")
+   local c = c_new()
+   local ir = c:compile(expr)
+   log_se_n(ir, "IR:")
    local e = scheme2.new()
-   local rv = e:eval(expr)
+   local rv = e:eval(ir)
    log_se_n(rv, "OUTPUT:")
 end
 
