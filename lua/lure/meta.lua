@@ -12,6 +12,7 @@ return { modules = {
   'meta',
   'scheme2',
   'scheme_blockval',
+  'scheme_cps',
   'scheme_flatten_blocks',
   'scheme_frontend',
   'scheme',

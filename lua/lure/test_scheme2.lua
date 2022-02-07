@@ -18,14 +18,21 @@ local filename = 'test_scheme2.scm'
 local str = asset[filename]
 
 function mod.run()
-   local expr = {'begin',se.read_string_multi(str)}
-   log_se_n(expr, "INPUT:")
-   local c = c_new()
-   local ir = c:compile(expr)
-   log_se_n(ir, "IR:")
-   local e = scheme2.new()
-   local rv = e:eval(ir)
-   log_se_n(rv, "OUTPUT:")
+   local exprs = se.read_string_multi(str)
+
+   -- Instead of creating a single expression, restart the interpreter
+   -- for each expression to isolate the tests.
+   for expr in se.elements(exprs) do
+      log_se_n(expr, "INPUT:")
+      local c = c_new()
+      local ir = c:compile(expr)
+      log_se_n(ir, "IR:")
+      local e = scheme2.new()
+      e.prim = require('lure.slc_runtime')
+      local rv = e:eval(ir)
+      log_se_n(rv, "OUTPUT:")
+      log("\n")
+   end
 end
 
 return mod
