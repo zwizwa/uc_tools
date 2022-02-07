@@ -58,24 +58,24 @@ return require("lure") -- ; -*- scheme -*-
      (check (+ n 1)))
    (assert (= 5 (check 0)))))
 
-
+;; Recursive/loop combinators
+;;
+;; foldr is recursive, foldl is implemented using a Lua while loop
+(define (test_foldl) (assert (= 6 (foldl + 0 '(1 2 3)))))
+(define (test_foldr) (assert (= 6 (foldr + 0 '(1 2 3)))))
+(define (test_map)   (assert (equal? '(2 3 4) (map (lambda (x) (+ x 1)) '(1 2 3)))))
   
-  
-
-(define (f x) (+ x x))
-
 (define (match-add e) (match-qq e ((add ,a ,b) (+ a b))))
 (define (test_match)  (assert (= 3 (match-add '(add 1 2)))))
-
-
 
 
 (define (run)
   (test_letrec)
   (test_named_let)
+  (test_foldl)
+  (test_foldr)
+  (test_map)
   
-  (assert (= 2 (f 1)))
-  ;(assert (eqv? (list 1 2 3) '(1 2 3)))) ;; HANGS
   (test_match)
   )
   

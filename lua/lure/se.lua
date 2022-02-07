@@ -81,6 +81,7 @@ local function reverse(lst)
 end
 se.reverse = reverse
 
+-- FIXME: avoid array
 local function map_to_array(fun, lst)
    local arr = {}
    for el in elements(lst) do
@@ -96,7 +97,7 @@ end
 se.map = map
 
 
--- FIXME: generalize
+-- FIXME: generalize map, zip, ...
 local function zip_to_array(fun, lst_a, lst_b)
    local arr = {}
    for el in elements(lst_a) do
@@ -114,8 +115,7 @@ end
 se.zip = zip
 
 
-
-function se.foldr(on_pair, on_empty, lst)
+local function foldr(on_pair, on_empty, lst)
    local function foldr(lst)
       if is_empty(lst) then
          return on_empty
@@ -125,43 +125,59 @@ function se.foldr(on_pair, on_empty, lst)
    end
    return foldr(lst)
 end
+se.foldr = foldr
 
-function se.foldl(update, state, lst)
-   local function foldl(lst)
-      if is_empty(lst) then
-         return state
-      else
-         state = update(car(lst), state)
-         lst = cdr(lst)
-      end
+local function foldl(update, state, lst)
+   while not is_empty(lst) do
+      state = update(car(lst), state)
+      lst = cdr(lst)
    end
-   return foldl(lst)
+   return state
 end
+se.foldl = foldl
 
-
-
-
-function se.array(lst)
+local function array(lst)
    local arr = {}
    for el in elements(lst) do
       table.insert(arr, el)
    end
    return arr
 end
-function se.length(lst)
+se.array = array
+
+local function length(lst)
    local n = 0
    for el in elements(lst) do
       n = n + 1
    end
    return n
 end
-function se.append(a, b)
+se.length = length
+
+-- FIXME: avoid reverse
+local function append(a, b)
    for el in elements(reverse(a)) do
       b = {el, b}
    end
    return b
 end
+se.append = append
 
+
+local function equalp(a, b)
+   local ta = type(a)
+   local tb = type(b)
+   if ta ~= tb then return false end
+   if ta ~= 'table' then return a == b end
+   if ta.class then
+      -- FIXME this is not implemented.
+      assert(ta.class.equal)
+      return ta.class.equal(a, b)
+   end
+   -- It is assumed these are pairs
+   return equalp(a[1],b[1]) and equalp(a[2],b[2])
+end
+se.equalp = equalp
 
 
 -- READER
