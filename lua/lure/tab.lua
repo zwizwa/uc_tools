@@ -1,4 +1,5 @@
 local tab = {}
+local ins = table.insert
 
 -- Invert key <-> value
 function tab.invert(t, into)
@@ -17,5 +18,18 @@ function tab.copy(t, into)
    end
    return into
 end
+
+function tab.map(fun, inp)
+   assert(fun)
+   assert(inp)
+   local outp = {}
+   for k,v in pairs(inp) do
+      outp[k] = fun(v)
+   end
+   return outp
+end
+
+
+
 
 return tab

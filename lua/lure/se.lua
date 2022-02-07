@@ -9,6 +9,8 @@
 
 -- LIBRARY
 
+local tab = require('lure.tab')
+
 local empty = '#<nil>'
 
 local se = { empty = empty }
@@ -80,6 +82,12 @@ local function reverse(lst)
    return l
 end
 se.reverse = reverse
+
+
+-- FIXME: avoid array
+local function take(iter, nb)
+   return array_to_list(map.take(iter), nb)
+end
 
 -- FIXME: avoid array
 local function map_to_array(fun, lst)

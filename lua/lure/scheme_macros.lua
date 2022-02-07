@@ -17,6 +17,7 @@
 require('lure.log')
 local se    = require('lure.se')
 local tab   = require('lure.tab')
+local index = require('lure.index')
 local match = require('lure.match')
 local macro = {}
 local l = se.list
@@ -249,6 +250,52 @@ macro['module-let'] = function(expr, c)
 end
 
 
+-- State is stored in the parameter structs.
+-- Currently there is no dynamic-wind...
+--
+-- (parameterize ((p pval) ...) (body)) ->
+-- (let ((p-old (p)) ...)
+--    (p pval) ...
+--    (let ((rv (body)))
+--      (p p-old) ...
+--      rv))
+
+local function unpack_bindings_arrays(bindings_expr)
+   local vars  = se.list_to_array(se.map(se.car,  bindings_expr))
+   local exprs = se.list_to_array(se.map(se.cadr, bindings_expr))
+   return vars, exprs
+end
+
+macro['parameterize'] = function(expr, c)
+   need_gensym(c)
+   local _, bindings_expr, body = se.unpack(expr, {n = 2, tail = true})
+   local rv = c.state:gensym()
+
+   -- param_data is a 2D table param_data[<param_number>][<item>]
+   -- bindings, exprs, save_vars are 1D tables
+   local params, exprs = unpack_bindings_arrays(bindings_expr)
+   local save_vars     = tab.map(function() return c.state:gensym() end, params)
+   local code_tab      = index.to_array(function(i)
+         return {save_old    = l(save_vars[i], l(params[i])), -- binding clause
+                 set_new     = l(params[i], exprs[i]),        -- expression
+                 restore_old = l(params[i], save_vars[i])}    -- expression
+   end, #params)
+
+   -- Collect by transposing
+   local function collect(tag)
+      return se.array_to_list(
+         index.to_array(
+            function(i) return code_tab[i][tag] end,
+            #params))
+   end
+   return l('let', collect('save_old'),
+            {'begin',collect('set_new')},
+            l('let',l(l(rv, {'begin',body})),
+              {'begin',collect('restore_old')},
+              rv))
+end
+
+
 -- FIXME: Rewrite this in terms of the above.
 
 -- Use match.lua to implement a small matcher DSL.
@@ -300,5 +347,7 @@ end
 -- macro["let*"] = mcase({"(,1 . ,2)", "(block ,1 (begin . ,2))"})
 macro["or"]   = mcase({"(,1   ,2)", "(let ((,tmp ,1)) (if ,tmp ,tmp ,2))"})
 macro["and"]  = mcase({"(,1   ,2)", "(let ((,tmp ,1)) (if (not ,tmp) ,tmp ,2))"})
+
+
 
 return macro

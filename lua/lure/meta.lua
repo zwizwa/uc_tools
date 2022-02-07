@@ -1,8 +1,10 @@
 return { modules = {
   'asset_scm',
   'comp',
+  'index',
   'init',
   'iolist',
+  'iter',
   'lib_scm',
   'log',
   'log_se',
