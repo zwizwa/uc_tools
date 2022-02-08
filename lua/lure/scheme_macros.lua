@@ -86,6 +86,7 @@ macro['begin'] = function(expr, config)
    end
 end
 
+
 macro['letrec@'] = function(expr, c)
    -- log('letrec@\n')
    c = c or {}
@@ -98,6 +99,12 @@ macro['letrec@'] = function(expr, c)
    local body_lambda = l('lambda',names,{'lambda',{l(),body}})
    return {c.letrec_loop or 'letrec-trampoline', {body_lambda, fun_lambdas}}
 end
+
+
+-- FIXME: I'd like to create a pass that can take a letrec, inspect
+-- it, and if it doesn't contain any mutual recursion to compile it to
+-- let* instead.  That would produce much simpler block output + make
+-- it possible to insert a marker for mutual recursion.
 
 -- Implement letrec on top of let and set!
 macro['letrec'] = function(expr, c)

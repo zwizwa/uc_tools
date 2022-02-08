@@ -9,6 +9,12 @@
 -- . Simpler to implement this in Lua, using pattern matching library.
 
 
+-- Now the real question is: what would an IR be that represents the
+-- iteration pattern of this interpreter?  Basically following the
+-- hint that each iteration pattern defines a natural data structure
+-- where each handler maps directly to a constructor.
+
+
 local se       = require('lure.se')
 local se_match = require('lure.se_match')
 
