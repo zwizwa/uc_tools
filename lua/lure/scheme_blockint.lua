@@ -163,6 +163,8 @@ function class.eval_loop(s, expr, k)
       local val = prim_eval(expr)
       if val ~= nil then
          trace("PRIMVAL",val)
+         -- Evaluation in this context has ended.  Return to previous
+         -- context, passing the return value.
          pop(val)
       else
          s.match(
@@ -187,15 +189,17 @@ function class.eval_loop(s, expr, k)
                    local rest_block = {'block', m.rest}
                    local val = prim_eval(m.expr)
                    if val then
-                      -- Primitive evaluations don't need call/ret pair.
+                      -- As an optimization, we can perform primitive
+                      -- evaluation without a push/pop sequence.
                       trace("PRIMBIND", val)
                       def(m.var, val)
                       expr = rest_block
                    else
-                      -- For all the rest we switch evaluation context.
+                      -- For all the rest we switch evaluation context
+                      -- to focus on the subexperssion.
                       push(m.expr,     -- subexpression to evaluate
                            m.var,      -- return value goes here
-                           rest_block) -- execution resumes here
+                           rest_block) -- evaluation resumes here
                    end
                end},
 
@@ -206,7 +210,7 @@ function class.eval_loop(s, expr, k)
                    -- Primitives handled elsewhere.
                    assert('function' ~= type(fun))
                    trace("APPLY",l(fun.args, vals))
-                   -- Replace current context with that of the
+                   -- Replace current lexcial context with that of the
                    -- function to be applied.  Inside a function body
                    -- all names are unique, so we only need to make
                    -- sure that different instantiations of the same

@@ -1,7 +1,7 @@
-local se      = require('lure.se')
-local comp    = require('lure.comp')
-local asset   = require('lure.asset_scm')
-local scheme2 = require('lure.scheme2')
+local se              = require('lure.se')
+local comp            = require('lure.comp')
+local asset           = require('lure.asset_scm')
+local scheme_blockint = require('lure.scheme_blockint')
 
 require('lure.log_se')
 
@@ -14,7 +14,7 @@ local c_new =
          'lure.scheme_frontend',
          'lure.scheme_flatten_blocks',
       })
-local filename = 'test_scheme2.scm'
+local filename = 'test_scheme_blockint.scm'
 local str = asset[filename]
 
 function mod.run()
@@ -27,7 +27,7 @@ function mod.run()
       local c = c_new()
       local ir = c:compile(expr)
       log_se_n(ir, "IR:")
-      local e = scheme2.new()
+      local e = scheme_blockint.new()
       e.prim = require('lure.slc_runtime')
       local rv = e:eval(ir)
       log_se_n(rv, "OUTPUT:")
