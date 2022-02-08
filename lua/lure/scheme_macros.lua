@@ -355,6 +355,13 @@ end
 macro["or"]   = mcase({"(,1 ,2)", "(let ((,tmp ,1)) (if ,tmp ,tmp ,2))"})
 macro["and"]  = mcase({"(,1 ,2)", "(let ((,tmp ,1)) (if (not ,tmp) ,tmp ,2))"})
 
-
+-- This is an implementation of 'block' mapping back to begin, let*.
+-- This cannot be called 'block' as it would create an expander feedback loop.
+macro["block*"] = mcase(
+   {"(block)",              "(begin)"},
+   {"(block (_  ,s))",      ",s"},
+   {"(block (_  ,s) . ,r)", "(begin ,s (block* . ,r))"},
+   {"(block (,v ,e) . ,r)", "(let ((,v ,e)) (block* . ,r))"}
+)
 
 return macro
