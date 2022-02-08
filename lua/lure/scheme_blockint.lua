@@ -35,38 +35,32 @@ end
 
 function class.eval_loop(s, expr, k)
 
-   -- The environment consists of linked frames, each frame
-   -- implemented by a table mapping variables to values.
-   local env = {}
+   -- The environment is implemented as a flat list.  This is not
+   -- fast, but very convenient for analysis.
+   local env = se.empty
 
-   -- Create binding, always in current environment.  Called on 'ret'
-   -- and for function arguments on frame entry.
+   -- Create binding
    function def(var, val)
       assert(val ~= nil)
       trace("DEF",l(var,val))
-      env[var] = val
+      env = {{var,{val = val}},env}
    end
    -- Reference ans assigment operate on the chained environment.  One
    -- table per function activation, linked by 'parent' member.
-   function cell_env(var)
-      local e = env
-      while nil ~= e do
-         if nil ~= e[var] then return e end
-         e = e.parent
+   function find_cell(var)
+      for pair in se.elements(env) do
+         local v,cell = unpack(pair)
+         if v == var then return cell end
       end
       error("undefined variable '" .. var.unique .. "'")
    end
+
    function ref1(var)
-      local e = cell_env(var)
-      local v = e[var]
-      assert(v ~= nil)
-      return v
+      return find_cell(var).val
    end
    function set(var, val)
-      assert(val ~= nil)
-      trace("SET", l(var, val))
-      local e = cell_env(var)
-      e[var] = val
+      local cell = find_cell(var)
+      cell.val = val
    end
 
    -- Initial continuation
@@ -222,7 +216,7 @@ function class.eval_loop(s, expr, k)
                    -- sure that different instantiations of the same
                    -- closure use different storage.  Create a new
                    -- lexical frame.
-                   env = {parent = fun.env}
+                   env = fun.env
                    se.zip(def, fun.args, vals)
                    expr = fun.body
                end},

@@ -86,8 +86,11 @@ local function s_id(s, thing) return thing end
 class.expander = {
    ['string'] = s_id,
    ['number'] = s_id,
-   ['var']    = s_id,
    ['void']   = s_id,
+   ['var']    = s_id,
+   --['var']    = function(s, expr)
+   --   return l('ref',expr)
+   --end,
    ['pair']   = function(s, expr)
       local car, cdr = unpack(expr)
       local m = s.macro[car]
