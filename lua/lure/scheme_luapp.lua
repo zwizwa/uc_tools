@@ -234,6 +234,21 @@ function class.w_atom(s, a)
    s:w(iol_atom(a))
 end
 
+-- FIXME: Also do 'quote' or 'lit'
+
+-- Undo the form tags.  Those have been added to make matching easier.
+-- The values themselves are also tagged via the 'class' attribute,
+-- which is what we use for dispatch.
+--function class.unref(s,e)
+--   local a = function(m) return m.a end
+--   return s.match({{"(ref ,a)", a}, {",a", a}})
+--end
+function class.map(s,method,lst)
+   return se.map(function(e) return s[method](s,e) end, lst)
+end
+
+
+
 -- Recursive expression compiler.
 function class.comp(s,expr)
    s.match(
@@ -280,6 +295,10 @@ function class.comp(s,expr)
                 s:w(iol_atom(m.fun),"(",s:commalist(m.args),")")
              end
          end},
+         --{"(ref ,var)", function(m)
+         --    assert(m.var.class == 'var')
+         --    s:w_atom(m.var)
+         --end},
          {"(,form . ,args)", function(m)
              error("form '" .. m.form .. "' not supported")
          end},

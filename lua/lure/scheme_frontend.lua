@@ -210,6 +210,7 @@ function class.anf(s, exprs, fn)
       -- FIXME: This should compile before checking if it's primitive.
       if type(e) == 'string' then
          -- Source variable
+         -- ins(normalform, l('ref', s:var_ref(e)))
          ins(normalform, s:var_ref(e))
       elseif is_var(e) then
          -- Abstract variable reference (is this actually possible here?)
