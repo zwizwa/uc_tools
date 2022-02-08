@@ -168,12 +168,18 @@ function class.eval_loop(s, expr, k)
          s.match(
             expr,
             {
+               -- Inplace reductions
+               {"(if ,cond ,iftrue ,iffalse)", function(m)
+                   expr = ifte(lit_or_ref(m.cond), m.iftrue, m.iffalse)
+               end},
                {"(block (_ ,expr))", function(m)
                    expr = m.expr
                end},
                {"(block (,var ,expr))", function(m)
                    error("last expression in 'block' is bound: '" .. m.var .. "'")
                end},
+
+               -- Reduce sequence
                {"(block (,var ,expr) . ,rest)", function(m)
                    if m.var == '_' then
                       m.var = {class = 'var', iolist = "_"}
@@ -192,9 +198,8 @@ function class.eval_loop(s, expr, k)
                            rest_block) -- execution resumes here
                    end
                end},
-               {"(if ,cond ,iftrue ,iffalse)", function(m)
-                   expr = ifte(lit_or_ref(m.cond), m.iftrue, m.iffalse)
-               end},
+
+               -- Enter closure
                {"(app ,fun . ,args)", function(m)
                    local fun = lit_or_ref(m.fun)
                    local vals = se.map(lit_or_ref, m.args)
