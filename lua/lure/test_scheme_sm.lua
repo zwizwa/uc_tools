@@ -3,6 +3,7 @@ local comp      = require('lure.comp')
 local asset     = require('lure.asset_scm')
 local scheme_sm = require('lure.scheme_sm')
 local pretty    = require('lure.scheme_pretty')
+local flat      = require('lure.scheme_flatten_blocks')
 
 require('lure.log_se')
 
@@ -37,6 +38,8 @@ function mod.run()
       local out = e:compile(ir)
 
       log("OUTPUT:")
+      -- Flatten before pp
+      local f = flat.new() ; out = f:compile(out)
       pretty.log_pp(out)
 
    end

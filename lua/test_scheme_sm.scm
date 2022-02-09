@@ -1,7 +1,12 @@
 ;; Each expression is compiled separately.
 
+;; Note that the state machine compiler only compiles infinite loops,
+;; so none of these expressions will terminate.
+
 (let loop ((n 0))
-  (if (> n 3) n (loop (+ n 1))))
+  (if (> n 3)
+      (loop 0)
+      (loop (+ n 1))))
 
 
 ;; 123

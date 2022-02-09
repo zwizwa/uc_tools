@@ -44,8 +44,20 @@ function frame(args, env)
 end
 
 
+local ephemeral = {
+   ['closure'] = true,
+   ['lib'] = true,
+}
 
 function class.comp(s, expr)
+
+   local function lit_or_ref(thing)
+      local typ = se.expr_type(thing)
+      if typ == 'var' then return s:ref(thing)
+      else return thing end
+   end
+
+
    trace("COMP",expr)
    return s.match(
       expr,
@@ -61,21 +73,23 @@ function class.comp(s, expr)
 
                 },
                 function()
-                   local bindings =
-                      se.map(
-                         function(binding)
-                            local var, vexpr = se.unpack(binding, {n=2})
-                            local vexpr1 = s:comp(vexpr)
-                            assert(vexpr1)
-                            -- Define it for remaining expressions.
-                            if var ~= '_' then
-                               s:def(var, vexpr1)
-                            end
-                            return l(var, vexpr1)
-                         end,
-                         m.bindings)
-                   -- trace("BLOCK",bindings)
-                   return {'block',bindings}
+                   local bindings = {}
+                   for binding in se.elements(m.bindings) do
+                      local var, vexpr = se.unpack(binding, {n=2})
+                      local vexpr1 = s:comp(vexpr)
+                      assert(vexpr1)
+                      -- Define it for remaining expressions.
+                      if var ~= '_' then
+                         s:def(var, vexpr1)
+                      end
+                      local typ = se.expr_type(vexpr1)
+                      trace("BINDING",l(var, vexpr1, typ))
+                      if not ephemeral[typ] then
+                         -- Only collect concrete stuff.
+                         ins(bindings, l(var, vexpr1))
+                      end
+                   end
+                   return {'block',a2l(bindings)}
                 end)
          end},
          {"(if ,c ,t ,f)", function(m)
@@ -91,10 +105,13 @@ function class.comp(s, expr)
                       env = s.env }
          end},
          {"(set! ,var ,val)", function(m)
-             s:set(m.var, s:ref(m.val))
-             -- FIXME: This needs to distinguish ephemeral variables
-             -- from variables that make it through to the code.
-             return expr
+             local val = s:ref(m.val)
+             s:set(m.var, val)
+             if not ephemeral[se.expr_type(val)] then
+                return expr
+             else
+                return '#<void>'
+             end
          end},
          {"(app ,fun . ,args)", function(m)
              -- Compile function entry: set argument registers + goto.
@@ -105,7 +122,8 @@ function class.comp(s, expr)
              local fun = s:ref(m.fun)
              trace("APP",l(m.fun, fun))
              if type(fun) == 'function' then
-                return fun
+                local vals = se.map(lit_or_ref, m.args)
+                return fun(unpack(l2a(vals)))
              else
                 assert(fun.class)
                 if fun.class == 'closure' then
@@ -139,7 +157,8 @@ function class.comp(s, expr)
                    end
                    return {'block',a2l(seq)}
                 else
-                   return fun
+                   assert(fun.class == 'prim')
+                   return {fun.name, m.args}
                 end
              end
          end},
@@ -164,8 +183,9 @@ function class.compile(s,expr)
            -- original scheme code.
            s:def(m.lib_ref, function(name)
                     return {
-                       class = 'lib',
-                       iolist = {"#<",name,">"}
+                       class = 'prim',
+                       name = name,
+                       iolist = {"#<prim '",name.expr,"'>"}
                     }
            end)
            return s:comp(m.body)
