@@ -30,7 +30,6 @@ local function mangle(var)
    assert(var and var.unique)
    local name = var.var
    if not name then return var.unique end
-   if name == "base-ref" then return "lib" end
 
    -- Do some exact matches first
    local alias = {
@@ -199,6 +198,18 @@ end
 
 -- Top level entry point
 function class.compile(s,expr)
+
+   -- Unwrap the top lambda.
+   local lib_ref =
+      s.match(
+         expr,
+         {{'(lambda (,lib_ref) ,expr)',
+           function(m)
+              expr = m.expr
+              assert(m.lib_ref.class == 'var')
+              return mangle(m.lib_ref)
+           end}})
+
    -- pprint:pprint_to_stream(io.stderr,expr)
    local out = {}
    s:parameterize(
@@ -216,7 +227,7 @@ function class.compile(s,expr)
       end)
    local mod = {
       "local mod = {}\n",
-      "local lib = require('lure.slc_runtime').new(mod)\n",
+      "local ", lib_ref, " = require('lure.slc_runtime').new(mod)\n",
       out,
       "return mod\n"
    }

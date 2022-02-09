@@ -301,8 +301,8 @@ function class.compile(s, expr)
 
    -- Body is parameterized by a function that resolves all free
    -- variables.
-   s.base_ref = s:var_def('base-ref')
-   local top_args = l(s.base_ref)
+   s.lib_ref = s:var_def('lib-ref')
+   local top_args = l(s.lib_ref)
    local body = s:comp_extend(expr,top_args)
 
    local bs = l(l('_', body))
@@ -393,7 +393,7 @@ function class.var_ref(s, var)
    -- to the same var.
    local v = s.free_variables[name]
    if not v then
-      v = s:module_define(name, l(s.base_ref,l('quote',name)))
+      v = s:module_define(name, l(s.lib_ref,l('quote',name)))
       s.free_variables[name] = v
    end
    return v
@@ -405,7 +405,7 @@ function class.init(s)
    s.free_variables = {}
    s.env = {}
    s.module_bindings = {}
-   s.base_ref = nil
+   s.lib_ref = nil
 end
 
 function class.new(config)
