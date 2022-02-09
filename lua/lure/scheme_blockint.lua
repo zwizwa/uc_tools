@@ -17,6 +17,7 @@
 
 local se       = require('lure.se')
 local se_match = require('lure.se_match')
+local comp     = require('lure.comp')
 
 local l2a = se.list_to_array
 local l = se.list
@@ -33,36 +34,20 @@ local function ifte(c,t,f)
    if c then return t else return f end
 end
 
+-- These operate on s.env
+class.def       = comp.def
+class.find_cell = comp.find_cell
+class.ref       = comp.ref
+class.set       = comp.set
+
 function class.eval_loop(s, expr, k)
 
-   -- The environment is implemented as a flat list.  This is not
-   -- fast, but very convenient for analysis.
-   local env = se.empty
+   -- The lexical environment is implemented as a flat list.  This is
+   -- slow, but very convenient for analysis.
+   s.env = se.empty
 
-   -- Create binding
-   function def(var, val)
-      assert(val ~= nil)
-      trace("DEF",l(var,val))
-      env = {{var,{val = val}},env}
-   end
-   -- Reference ans assigment operate on the chained environment.  One
-   -- table per function activation, linked by 'parent' member.
-   function find_cell(var)
-      for pair in se.elements(env) do
-         local v,cell = unpack(pair)
-         if v == var then return cell end
-      end
-      error("undefined variable '" .. var.unique .. "'")
-   end
 
-   function ref1(var)
-      return find_cell(var).val
-   end
-   function set(var, val)
-      local cell = find_cell(var)
-      cell.val = val
-   end
-
+   -- FIXME: Implement the continuation as a list to make it printable.
    -- Initial continuation
    local retvar = { class = 'var' }
    local k = { var = retvar, parent = nil, env = {} }
@@ -73,13 +58,13 @@ function class.eval_loop(s, expr, k)
       assert(var)
       trace("CALL",expr1,var,block_rest)
       expr = expr1
-      k = {expr = rest_block, var = var, env = env, parent = k}
+      k = {expr = rest_block, var = var, env = s.env, parent = k}
    end
    -- Restore execution context, storing result of subexpression evaluation.
    local function pop(val)
       -- 'def' operates on current environment, so restore that first
-      env  = k.env
-      def(k.var, val)
+      s.env  = k.env
+      s:def(k.var, val)
       expr = k.expr
       k    = k.parent
    end
@@ -98,7 +83,7 @@ function class.eval_loop(s, expr, k)
    local function ref(var)
       assert(var.class == 'var')
       if var.var == 'base-ref' then return base_ref end
-      return ref1(var)
+      return s:ref(var)
    end
 
    -- Primitive value: literal or variable referenece.
@@ -127,12 +112,12 @@ function class.eval_loop(s, expr, k)
                 return void
             end},
             {"(set! ,var ,val)", function(m)
-                set(m.var, lit_or_ref(m.val))
+                s:set(m.var, lit_or_ref(m.val))
                 return void
             end},
             {"(lambda ,args ,body)", function(m)
                 trace("LAMBDA",l(m.args, m.body))
-                return ({args = m.args, body = m.body, env = env, class = 'closure'})
+                return ({args = m.args, body = m.body, env = s.env, class = 'closure'})
             end},
             {"(app ,fun . ,args)", function(m)
                 local fun = lit_or_ref(m.fun)
@@ -192,7 +177,7 @@ function class.eval_loop(s, expr, k)
                       -- As an optimization, we can perform primitive
                       -- evaluation without a push/pop sequence.
                       trace("PRIMBIND", val)
-                      def(m.var, val)
+                      s:def(m.var, val)
                       expr = rest_block
                    else
                       -- For all the rest we switch evaluation context
@@ -216,8 +201,8 @@ function class.eval_loop(s, expr, k)
                    -- sure that different instantiations of the same
                    -- closure use different storage.  Create a new
                    -- lexical frame.
-                   env = fun.env
-                   se.zip(def, fun.args, vals)
+                   s.env = fun.env
+                   se.zip(function(var,val) s:def(var,val) end, fun.args, vals)
                    expr = fun.body
                end},
                {",other", function(m)
@@ -227,7 +212,6 @@ function class.eval_loop(s, expr, k)
          })
       end
    until (not k)
-   -- return env[retvar]
    return ref(retvar)
 end
 

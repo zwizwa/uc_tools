@@ -1,6 +1,13 @@
--- Compiler from block language to State Machine, with all lambdas
--- combined with combinator forms, all tail calls replaced by goto,
--- and all other functions other than primitives inlined.
+-- Compiler from block language to State Machine.  This has slightly
+-- modified structure that cannot represent all of Scheme.  The two
+-- main differences are:
+--
+-- 1. Non tail-recursive applications are inlined.
+--
+-- 2. Downward closures are allowed in functional loop combinators,
+--    where they also will be aligned/specialized.
+
+
 
 local se       = require('lure.se')
 local comp     = require('lure.comp')
