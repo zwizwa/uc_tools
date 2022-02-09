@@ -24,6 +24,8 @@ class.tab          = lure_comp.tab
 -- Expressions are always compiled in binding position, are already at
 -- indented position and should not print newline.
 
+-- FIXME: There's a double :tab() somewhere.
+
 local lib = require('lure.slc_runtime')
 
 local function mangle(var)
@@ -199,36 +201,25 @@ end
 -- Top level entry point
 function class.compile(s,expr)
 
-   -- Unwrap the top lambda.
-   local lib_ref =
-      s.match(
-         expr,
-         {{'(lambda (,lib_ref) ,expr)',
-           function(m)
-              expr = m.expr
-              assert(m.lib_ref.class == 'var')
-              return mangle(m.lib_ref)
-           end}})
-
-   -- pprint:pprint_to_stream(io.stderr,expr)
-   local out = {}
+   -- The IR expr is a single lambda expression, parameterized by
+   -- 'lib_ref', a function that performs library symbol lookup for
+   -- all free variables that were found by scheme_frontend.
+   local mod_body = {}
    s:parameterize(
-      {out = out},
+      {out = mod_body},
       function()
-         -- Toplevel block can be removed.  We assume the toplevel
-         -- expression is a block representing a Lua module.
-         s.indent = -1 -- Undo indent in w_bindings
-         s.match(
-            expr,
-            {{"(block . ,bindings)", function(m)
-                 s:w_bindings(m.bindings)
-         end}})
+         s:comp(expr)
          s:w("\n")
       end)
    local mod = {
+      "local mod_body = ",mod_body,"\n",
+
+      -- Emit code that binds this function to the library.  The
+      -- library 'module-register!' will record definitions in the
+      -- 'mod' table.
       "local mod = {}\n",
-      "local ", lib_ref, " = require('lure.slc_runtime').new(mod)\n",
-      out,
+      "local lib_ref = require('lure.slc_runtime').new(mod)\n",
+      "mod_body(lib_ref)\n",
       "return mod\n"
    }
    if s.config.debug_lua_output then
