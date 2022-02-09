@@ -5,7 +5,7 @@
 -- . Space-safe tail recursion.
 --
 -- Implementation:
--- . User provides primitives implementing 'base-ref' free variables.
+-- . User provides primitives through main expression's 'base-ref' parameter.
 -- . Simpler to implement this in Lua, using pattern matching library.
 
 
@@ -46,10 +46,30 @@ end
 
 function class.eval_loop(s, expr, k)
 
+
    -- The lexical environment is implemented as a flat list.  This is
    -- slow, but very convenient for analysis.
    s.env = se.empty
 
+   -- Top level expression is a lambda that defines the linker for all
+   -- free variables present in the original source.
+   s.match(
+      expr,
+      {{'(lambda (,base_ref) ,expr)',
+        function(m)
+           expr = m.expr
+           assert(m.base_ref.class == 'var')
+           s:def(m.base_ref,
+                 function(name)
+                    assert(type(name) == 'string')
+                    local fun = s.prim[name]
+                    if not fun then
+                       error("primitive '" .. name .. "' not defined")
+                    end
+                    trace("PRIM",name)
+                    return fun
+                 end)
+        end}})
 
    -- FIXME: Implement the continuation as a list to make it printable.
    -- Initial continuation
@@ -60,7 +80,7 @@ function class.eval_loop(s, expr, k)
           -- executing 'return' which will exit the loop.
           retvar,
           l('return'),
-          se.empty),
+          s.env),
        se.empty}
 
    -- Push / pop evaluation frames.  Note that lexical environment is
@@ -81,30 +101,13 @@ function class.eval_loop(s, expr, k)
       k    = se.cdr(k)
    end
 
-   -- The lexical environment is extended with one magic variable
-   -- 'base-ref', which is used to obtain references to primitives.
-   local function base_ref(name)
-      assert(type(name) == 'string')
-      local fun = s.prim[name]
-      if not fun then
-         error("primitive '" .. name .. "' not defined")
-      end
-      trace("PRIM",name)
-      return fun
-   end
-   local function ref(var)
-      assert(var.class == 'var')
-      if var.var == 'base-ref' then return base_ref end
-      return s:ref(var)
-   end
-
    -- Primitive value: literal or variable referenece.
    local function lit_or_ref(thing)
       if type(thing) ~= 'table' then return thing end
       local class = thing.class
       assert(class)
       if 'var' == class then
-         return ref(thing)
+         return s:ref(thing)
       elseif 'expr' == class then
          return thing.expr
       elseif 'void' == class then
@@ -159,7 +162,7 @@ function class.eval_loop(s, expr, k)
 
       -- Break out of the loop and return to caller.
       if type(expr) == 'table' and expr[1] == 'return' then
-         return ref(retvar)
+         return s:ref(retvar)
       end
 
       -- Primitive evaluations

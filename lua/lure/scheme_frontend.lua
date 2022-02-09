@@ -298,7 +298,13 @@ end
 -- Entry point
 function class.compile(s, expr)
    s:init()
-   local body = s:comp(expr)
+
+   -- Body is parameterized by a function that resolves all free
+   -- variables.
+   s.base_ref = s:var_def('base-ref')
+   local top_args = l(s.base_ref)
+   local body = s:comp_extend(expr,top_args)
+
    local bs = l(l('_', body))
    -- Compile the module bindings in a loop, since new module bindings
    -- might be introduced during compilation.
@@ -322,7 +328,7 @@ function class.compile(s, expr)
       end
       i = i + 1
    until (not did)
-   return {'block', bs}
+   return l('lambda',top_args,{'block', bs})
 end
 
 -- All variables are renamed, so gensyms will never clash with anything.
@@ -387,14 +393,7 @@ function class.var_ref(s, var)
    -- to the same var.
    local v = s.free_variables[name]
    if not v then
-      if name == s.base_ref then
-         -- This is the only free variable left.
-         v = s:var_def(name)
-         v.free = true
-      else
-         -- All the rest is bound through base-ref
-         v = s:module_define(name, l(s.base_ref,l('quote',name)))
-      end
+      v = s:module_define(name, l(s.base_ref,l('quote',name)))
       s.free_variables[name] = v
    end
    return v
@@ -406,7 +405,7 @@ function class.init(s)
    s.free_variables = {}
    s.env = {}
    s.module_bindings = {}
-   s.base_ref = 'base-ref'
+   s.base_ref = nil
 end
 
 function class.new(config)

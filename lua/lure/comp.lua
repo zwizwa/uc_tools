@@ -134,18 +134,20 @@ function comp:def(var, val)
    assert(self.env)
    assert(val ~= nil)
    -- trace("DEF", l(var,val))
-   local cell = {val = val}
-   self.env = {{var, cell}, self.env}
+   local cell = {class = 'cell', val = val}
+   self.env = {l(var,cell), self.env}
 end
 -- Reference and assigment operate on the chained environment.  One
 -- table per function activation, linked by 'parent' member.
 function comp:find_cell(var)
+   local unique = var.unique
    assert(self.env)
    for pair in se.elements(self.env) do
-      local v,cell = unpack(pair)
-      if v == var then return cell end
+      local v, rest = unpack(pair)
+      if v.unique == unique then return se.car(rest) end
    end
    local mangled = iolist.to_string(se.iolist(var))
+   log_se_n(self.env,"ENV:")
    error("undefined variable '" .. mangled .. "'")
 end
 function comp:ref(var)
