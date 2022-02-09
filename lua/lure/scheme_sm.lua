@@ -49,19 +49,26 @@ local ephemeral = {
    ['void'] = true,
 }
 
+-- Move to se.lua
+local function map0(fun, list)
+   local i = 0
+   return se.map(
+      function(el)
+         local rv = fun(i, el)
+         i = i + 1
+         return rv
+      end,
+      list)
+end
 
 function class.compile_fun(s, fun, label)
    assert(nil == s.compiled[fun])
    s.compiled[fun] = {label = label}
-   local i = 0
-   local arg_bindings =
-      se.map(
-         function(arg)
-            local b = l(arg, l('arg-ref', i))
-            i = i + 1
-            return b
-         end,
-         fun.args)
+   local arg_bindings = map0(
+      function(i, arg)
+         return l(arg, l('arg-ref', i))
+      end,
+      fun.args)
    ins(s.compiled_seq,
        l('_',
          l('label', label,
@@ -87,11 +94,11 @@ function class.comp(s, expr)
              return s:parameterize(
                 {
                    -- Save the environment here so it will be restored
-                   -- on block exit.  We'll update the env one
-                   -- variable at a time as we iterate through the
-                   -- bindings.
+                   -- on block exit.  It's more convenient to update
+                   -- the env one variable at a time as we iterate
+                   -- through the bindings, as opposed to inserting
+                   -- s:parameterize for each binding.
                    env = s.env,
-
                 },
                 function()
                    local bindings = {}
@@ -149,36 +156,30 @@ function class.comp(s, expr)
              else
                 assert(fun.class)
                 if fun.class == 'closure' then
-
-                   -- Compile the function call
-                   local i=0
-                   for arg in se.elements(m.args) do
-                      ins(seq, l('_',l('set-arg!',i,arg)))
-                      i=i+1
-                   end
+                   -- Compile the function call: set arguments.
+                   map0(
+                      function(i, arg)
+                         ins(seq, l('_',l('set-arg!', i, arg)))
+                      end,
+                      m.args)
+                   -- Jump to label.  Create label if the function is
+                   -- not yet compiled.
                    local compiled = s.compiled[fun]
-                   local label
-                   if compiled then
-                      label = compiled.label
-                      assert(type(label) == "string")
-                   else
-                      label = s:gensym()
-                   end
+                   local label = (compiled and compiled.label) or s:gensym()
                    trace("LABEL",label)
                    ins(seq, l('_',l('goto',label)))
 
                    if not compiled then
                       -- Compile the function label + body.
                       if not s.compiled_seq then
-                         -- Create an inlining context.
+                         -- Create a compilation context for function bodies.
                          s:parameterize(
                             { compiled_seq = seq },
                             function()
                                s:compile_fun(fun, label)
                          end)
                       else
-                         -- Already in an inlining context.  New labels
-                         -- will be lifted.
+                         -- Already in a a compilation context.
                          s:compile_fun(fun, label)
                       end
                    end
