@@ -74,6 +74,15 @@ local pprint_form = {
             s:pprint(efalse)
          end)
    end,
+   ['label'] = function(s, expr)
+      local _, name, expr = se.unpack(expr, {n=3})
+      s:w("(label ", se.iolist(name)," ")
+      s:indented(
+         function()
+            s:pprint(expr)
+         end)
+   end,
+
 }
 local function pp_app(s, expr)
    s:w(se.iolist(expr))

@@ -95,6 +95,10 @@ local compile_form = {
       local _, var, etrue, efalse = se.unpack(expr, {n=4})
       return l('if',var,s:compile(etrue),s:compile(efalse))
    end,
+   ['label'] = function(s, expr)
+      local _, label, body = se.unpack(expr, {n=3})
+      return l('label',label,s:compile(body))
+   end,
 }
 local function default(s, expr)
    return expr

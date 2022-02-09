@@ -46,7 +46,7 @@ end
 
 local ephemeral = {
    ['closure'] = true,
-   ['lib'] = true,
+   ['prim'] = true,
 }
 
 function class.comp(s, expr)
@@ -138,7 +138,6 @@ function class.comp(s, expr)
                    -- inline if necessary
                    if not inlined then
                       s.inlined[fun] = {label = label}
-                      ins(seq,l('_',l('label', label)))
                       local i = 0
                       local arg_bindings =
                          se.map(
@@ -150,15 +149,16 @@ function class.comp(s, expr)
                             fun.args)
                       ins(seq,
                           l('_',
-                            s:comp({'block',
-                                    se.append(arg_bindings,
-                                              l(l('_', fun.body)))})))
+                            l('label', label,
+                              s:comp({'block',
+                                      se.append(arg_bindings,
+                                                l(l('_', fun.body)))}))))
                       trace("INLINE",a2l(seq))
                    end
                    return {'block',a2l(seq)}
                 else
                    assert(fun.class == 'prim')
-                   return {fun.name, m.args}
+                   return {fun, m.args}
                 end
              end
          end},
@@ -185,7 +185,7 @@ function class.compile(s,expr)
                     return {
                        class = 'prim',
                        name = name,
-                       iolist = {"#<prim '",name.expr,"'>"}
+                       iolist = {"prim:",name.expr}
                     }
            end)
            return s:comp(m.body)
