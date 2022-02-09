@@ -40,6 +40,10 @@ class.find_cell = comp.find_cell
 class.ref       = comp.ref
 class.set       = comp.set
 
+function frame(var, expr, env)
+   return {class = 'frame', var = var, expr = expr, env = env }
+end
+
 function class.eval_loop(s, expr, k)
 
    -- The lexical environment is implemented as a flat list.  This is
@@ -50,7 +54,14 @@ function class.eval_loop(s, expr, k)
    -- FIXME: Implement the continuation as a list to make it printable.
    -- Initial continuation
    local retvar = { class = 'var' }
-   local k = { var = retvar, parent = nil, env = {} }
+   local k =
+      {frame(
+          -- Root continuation receives value in retvar and proceeds
+          -- executing 'return' which will exit the loop.
+          retvar,
+          l('return'),
+          se.empty),
+       se.empty}
 
    -- Push / pop evaluation frames.  Note that lexical environment is
    -- decoupled from this dynamic chain of stack frames.
@@ -58,15 +69,16 @@ function class.eval_loop(s, expr, k)
       assert(var)
       trace("CALL",expr1,var,block_rest)
       expr = expr1
-      k = {expr = rest_block, var = var, env = s.env, parent = k}
+      k = {frame(var, rest_block, s.env), k}
    end
    -- Restore execution context, storing result of subexpression evaluation.
    local function pop(val)
       -- 'def' operates on current environment, so restore that first
-      s.env  = k.env
-      s:def(k.var, val)
-      expr = k.expr
-      k    = k.parent
+      local frame = se.car(k)
+      s.env  = frame.env
+      s:def(frame.var, val)
+      expr = frame.expr
+      k    = se.cdr(k)
    end
 
    -- The lexical environment is extended with one magic variable
@@ -142,9 +154,15 @@ function class.eval_loop(s, expr, k)
    end
 
    -- Run until the nil continuation.
-   repeat
+   while true do
       trace("EVAL", expr)
 
+      -- Break out of the loop and return to caller.
+      if type(expr) == 'table' and expr[1] == 'return' then
+         return ref(retvar)
+      end
+
+      -- Primitive evaluations
       local val = prim_eval(expr)
       if val ~= nil then
          trace("PRIMVAL",val)
@@ -211,8 +229,7 @@ function class.eval_loop(s, expr, k)
                end},
          })
       end
-   until (not k)
-   return ref(retvar)
+   end
 end
 
 
