@@ -299,8 +299,8 @@ end
 function class.compile(s, expr)
    s:init()
 
-   -- Body is parameterized by a function that resolves all free
-   -- variables.
+   -- Body is parameterized by a function that is used to perform
+   -- symbol lookup for all free variables.
    s.lib_ref = s:var_def('lib-ref')
    local top_args = l(s.lib_ref)
    local body = s:comp_extend(expr,top_args)
@@ -388,9 +388,9 @@ function class.var_ref(s, var)
    local binding = s.module_bindings[name]
    if binding then return se.car(binding) end
 
-   -- Free variables are explicitly associated to a base dictionary
-   -- dereference.  We need to keep track of them so they always map
-   -- to the same var.
+   -- Free variables are mapped to a symbol lookup expression inserted
+   -- at the head of the module.  We need to keep track of them so
+   -- they always map to the same lexical variable.
    local v = s.free_variables[name]
    if not v then
       v = s:module_define(name, l(s.lib_ref,l('quote',name)))
