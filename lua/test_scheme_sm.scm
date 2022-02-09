@@ -9,6 +9,17 @@
       (loop (+ n 1))))
 
 
+(begin
+  (define (f1 n)
+    (if (> n 3)
+        (f1 0)
+        (f2 (+ n 1))))
+  (define (f2 n)
+    (f1 (+ n 1)))
+  (f1 0))
+
+
+
 ;; 123
 
 ;; (begin 1 2)

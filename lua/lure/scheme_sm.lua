@@ -21,8 +21,7 @@ local l = se.list
 local class = {}
 
 class.parameterize = comp.parameterize
-
-local void = "#<void>"
+local void = {class = 'void', iolist = "#<void>"}
 
 local function trace(tag, expr)
    log_se_n(expr, tag .. ":")
@@ -47,7 +46,29 @@ end
 local ephemeral = {
    ['closure'] = true,
    ['prim'] = true,
+   ['void'] = true,
 }
+
+
+function class.compile_fun(s, fun, label)
+   assert(nil == s.compiled[fun])
+   s.compiled[fun] = {label = label}
+   local i = 0
+   local arg_bindings =
+      se.map(
+         function(arg)
+            local b = l(arg, l('arg-ref', i))
+            i = i + 1
+            return b
+         end,
+         fun.args)
+   ins(s.compiled_seq,
+       l('_',
+         l('label', label,
+           s:comp({'block',
+                   se.append(arg_bindings,
+                             l(l('_', fun.body)))}))))
+end
 
 function class.comp(s, expr)
 
@@ -84,6 +105,7 @@ function class.comp(s, expr)
                       end
                       local typ = se.expr_type(vexpr1)
                       trace("BINDING",l(var, vexpr1, typ))
+                      log_desc(typ)
                       if not ephemeral[typ] then
                          -- Only collect concrete stuff.
                          ins(bindings, l(var, vexpr1))
@@ -110,7 +132,7 @@ function class.comp(s, expr)
              if not ephemeral[se.expr_type(val)] then
                 return expr
              else
-                return '#<void>'
+                return void
              end
          end},
          {"(app ,fun . ,args)", function(m)
@@ -127,35 +149,42 @@ function class.comp(s, expr)
              else
                 assert(fun.class)
                 if fun.class == 'closure' then
-                   -- local fun_val = ref(m.fun)
+
+                   -- Compile the function call
+                   local i=0
                    for arg in se.elements(m.args) do
                       ins(seq, l('_',l('set-arg!',i,arg)))
                       i=i+1
                    end
-                   local inlined = s.inlined[fun]
-                   local label = (inlined and inlined.label) or s:gensym()
-                   ins(seq, l('_',l('goto',label)))
-                   -- inline if necessary
-                   if not inlined then
-                      s.inlined[fun] = {label = label}
-                      local i = 0
-                      local arg_bindings =
-                         se.map(
-                            function(arg)
-                               local b = l(arg, l('arg-ref', i))
-                               i = i + 1
-                               return b
-                            end,
-                            fun.args)
-                      ins(seq,
-                          l('_',
-                            l('label', label,
-                              s:comp({'block',
-                                      se.append(arg_bindings,
-                                                l(l('_', fun.body)))}))))
-                      trace("INLINE",a2l(seq))
+                   local compiled = s.compiled[fun]
+                   local label
+                   if compiled then
+                      label = compiled.label
+                      assert(type(label) == "string")
+                   else
+                      label = s:gensym()
                    end
-                   return {'block',a2l(seq)}
+                   trace("LABEL",label)
+                   ins(seq, l('_',l('goto',label)))
+
+                   if not compiled then
+                      -- Compile the function label + body.
+                      if not s.compiled_seq then
+                         -- Create an inlining context.
+                         s:parameterize(
+                            { compiled_seq = seq },
+                            function()
+                               s:compile_fun(fun, label)
+                         end)
+                      else
+                         -- Already in an inlining context.  New labels
+                         -- will be lifted.
+                         s:compile_fun(fun, label)
+                      end
+                   end
+                   local block ={'block',a2l(seq)}
+                   trace("BLOCK", block)
+                   return block
                 else
                    assert(fun.class == 'prim')
                    return {fun, m.args}
@@ -173,7 +202,7 @@ function class.compile(s,expr)
    s.nb_sym = 0
    s.symbol_prefix = "l" -- only for labels
 
-   s.inlined = {}
+   s.compiled = {}
 
    return s.match(
       expr,
