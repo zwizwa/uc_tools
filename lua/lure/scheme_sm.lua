@@ -28,10 +28,12 @@ local function trace(tag, expr)
    log_se_n(expr, tag .. ":")
 end
 
-class.def = comp.def
-class.ref = comp.ref
-class.set = comp.set
+class.def       = comp.def
+class.ref       = comp.ref
+class.set       = comp.set
 class.find_cell = comp.find_cell
+class.gensym    = comp.gensym
+class.inc       = comp.inc
 
 local function ifte(c,t,f)
    if c then return t else return f end
@@ -42,19 +44,6 @@ function frame(args, env)
 end
 
 
--- function class.comp_extend(s, expr, vars)
-
---    local new_env = s.env
---    for var in se.elements(vars) do
---       new_env = {var, new_env}
---    end
---    return s:parameterize(
---       {env = new_env},
---       function()
---          -- log_se_n(expr, "COMPILE_EXTEND:")
---          return s:comp(expr)
---       end)
-
 
 function class.comp(s, expr)
    trace("COMP",expr)
@@ -63,10 +52,14 @@ function class.comp(s, expr)
       {
          {"(block . ,bindings)", function(m)
              return s:parameterize(
-                -- Save the environment here so it will be restored on
-                -- block exit.  We'll update the env one variable at a
-                -- time as we iterate through the bindings.
-                {env = s.env},
+                {
+                   -- Save the environment here so it will be restored
+                   -- on block exit.  We'll update the env one
+                   -- variable at a time as we iterate through the
+                   -- bindings.
+                   env = s.env,
+
+                },
                 function()
                    local bindings =
                       se.map(
@@ -121,7 +114,29 @@ function class.comp(s, expr)
                       ins(seq, l('_',l('set-arg!',i,arg)))
                       i=i+1
                    end
-                   ins(seq, l('_',l('goto',m.fun.unique)))
+                   local inlined = s.inlined[fun]
+                   local label = (inlined and inlined.label) or s:gensym()
+                   ins(seq, l('_',l('goto',label)))
+                   -- inline if necessary
+                   if not inlined then
+                      s.inlined[fun] = {label = label}
+                      ins(seq,l('_',l('label', label)))
+                      local i = 0
+                      local arg_bindings =
+                         se.map(
+                            function(arg)
+                               local b = l(arg, l('arg-ref', i))
+                               i = i + 1
+                               return b
+                            end,
+                            fun.args)
+                      ins(seq,
+                          l('_',
+                            s:comp({'block',
+                                    se.append(arg_bindings,
+                                              l(l('_', fun.body)))})))
+                      trace("INLINE",a2l(seq))
+                   end
                    return {'block',a2l(seq)}
                 else
                    return fun
@@ -136,6 +151,11 @@ end
 
 function class.compile(s,expr)
    s.env = se.empty
+   s.nb_sym = 0
+   s.symbol_prefix = "l" -- only for labels
+
+   s.inlined = {}
+
    return s.match(
       expr,
       {{"(lambda (,lib_ref) ,body)", function(m)
