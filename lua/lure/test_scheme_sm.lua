@@ -30,15 +30,13 @@ function mod.run()
       local c = c_new()
       local ir = c:compile(expr)
 
-      log("IR:")
-      pretty.log_pp(ir)
+      -- log("IR:") ; pretty.log_pp(ir)
 
       local e = scheme_sm.new()
       e.prim = require('lure.slc_runtime')
       local out = e:compile(ir)
 
-      log("OUTPUT1:")
-      pretty.log_pp(out)
+      --log("OUTPUT1:") ; pretty.log_pp(out)
 
       log("OUTPUT:")
       -- Flatten before pp

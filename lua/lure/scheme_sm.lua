@@ -12,6 +12,7 @@
 local se       = require('lure.se')
 local comp     = require('lure.comp')
 local se_match = require('lure.se_match')
+local frontend = require('lure.scheme_frontend')
 
 local ins = table.insert
 local l2a = se.list_to_array
@@ -43,6 +44,7 @@ function frame(args, env)
 end
 
 
+
 local ephemeral = {
    ['closure'] = true,
    ['prim'] = true,
@@ -61,19 +63,14 @@ local function map0(fun, list)
       list)
 end
 
-local return_var = {
-   class = 'var',
-   unique = 'return',
-   iolist = '#<return>',
-}
-local function ignore_var(s)
+function class.make_var(s, src_name)
    return {
       class = 'var',
       unique = s:gensym(),
-      iolist = '#<ignore>',
+      var = src_name,
+      iolist = frontend.var_iolist
    }
 end
-
 
 
 -- Note that we do NOT change environment to that of the closure.  The
@@ -106,6 +103,15 @@ function class.compile_fun(s, fun, label)
          --ins(s.context.seq,
          --    l('_', compileD))
       end)
+end
+
+
+-- Propagate source names for debugging.
+function class.set_debug_name(s, var, val)
+   local typ = se.expr_type(val)
+   if typ == 'closure' then
+      val.debug_name = var.var
+   end
 end
 
 function class.comp(s, expr)
@@ -146,7 +152,7 @@ function class.comp(s, expr)
                       elseif var ~= '_' then
                          s.var = var
                       else
-                         s.var = ignore_var(s)
+                         s.var = s:make_var("_")
                       end
 
                       local vexpr1 = s:comp(vexpr)
@@ -158,6 +164,7 @@ function class.comp(s, expr)
                       local typ = se.expr_type(vexpr1)
                       if typ == 'closure' then
                          local fun = vexpr1
+                         s:set_debug_name(s.var, fun)
                          -- Closures will only be accessed through
                          -- ref().  The code representation is a block
                          -- that contains one or more instantiations.
@@ -167,6 +174,12 @@ function class.comp(s, expr)
                          -- be in the correct scope.  Currently not
                          -- clear if more than one instance is
                          -- necessary.
+
+                         -- FIXME: There should be at least one
+                         -- instance per continuation, as the jump is
+                         -- hardcoded.  Maybe continuation can
+                         -- actually be dynamic now?
+
                          local instances = l('block')
                          local function add_instance(expr)
                             se.push_cdr(l('_',expr), instances)
@@ -198,7 +211,9 @@ function class.comp(s, expr)
          {"(set! ,var ,val)", function(m)
              local val = s:ref(m.val)
              s:set(m.var, val)
-             if not ephemeral[se.expr_type(val)] then
+             local typ = se.expr_type(val)
+             s:set_debug_name(m.var, val)
+             if not ephemeral[typ] then
                 return expr
              else
                 return void
@@ -255,16 +270,19 @@ function class.comp(s, expr)
                    -- Jump to label.  Create label if the function is
                    -- not yet compiled.
                    local compiled = fun.compiled
-                   local label = compiled or s:gensym()
+                   local label = compiled or s:make_var(fun.debug_name)
+
                    trace("LABEL",label)
                    ins(seq, l('_',l('goto',label)))
 
                    if not s.tail then
                       -- If not a tail call, compile and set the continuation.
-                      if s.var then
-                         -- Reuse tha name for the label
-                         s.var.label = s.var.unique
-                      end
+                      assert(s.var)
+                      -- Reuse tha name for the label
+                      local cont_label = s:make_var(s.var.var)
+                      -- Attach the label to the cont var.
+                      s.var.label = cont_label
+                      -- And generate the code
                       ins(seq, l('_',l('label', s.var.label, l('set!', s.var, l('ref-arg', 0)))))
                    end
 
@@ -286,9 +304,13 @@ function class.comp(s, expr)
              local typ = se.expr_type(m.other)
              if typ == 'var' and s.var.label then
                 -- This is a return from the current mutrec context.
-                return l('block',
-                         l('_',l('set-arg!',0,m.other)),
-                         l('_',l('goto',s.var.label)))
+                if s.var == s.ret then
+                   return l('return',m.other)
+                else
+                   return l('block',
+                            l('_',l('set-arg!',0,m.other)),
+                            l('_',l('goto',s.var.label)))
+                end
              else
                 return expr
              end
@@ -303,13 +325,17 @@ end
 -- s.context.seq.
 
 function class.compile(s,expr)
+   -- Prefix needs to be different from what is used in the frontend,
+   -- so we don't clash.
+   s.symbol_prefix = "l"
    s.env = se.empty
-   s.var = return_var
    s.nb_sym = 0
-   s.symbol_prefix = "l" -- only for labels
 
-   s.var = return_var
-
+   -- Goto return can be special
+   s.ret = s:make_var('return')
+   s.ret.label = s.ret.var
+   s.var = s.ret
+   s.tail = true
 
    return s.match(
       expr,

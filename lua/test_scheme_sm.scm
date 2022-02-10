@@ -36,7 +36,7 @@
 ;          (if (> (+ i j) 3) j
 ;              (loop2 (+ j 1)))))))
 
-
+;; Finite nested
 (begin
   (let ((done 123))
     (let loopi ((i 0))
@@ -48,6 +48,12 @@
                   (loopj (+ j 1))))
             (loopi (+ i 1)))))))
 
+
+;; Finite single
+(let loop ((n 0))
+  (if (> n 3)
+      n
+      (loop (+ n 1))))
 
 
 ;; 123

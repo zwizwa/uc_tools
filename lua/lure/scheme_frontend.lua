@@ -357,6 +357,7 @@ function var_iolist(var)
    if nil == var.var then orig = "" end
    return {var.unique,orig}
 end
+class.var_iolist = var_iolist
 
 function class.make_var(unique, name)
    assert(unique)
