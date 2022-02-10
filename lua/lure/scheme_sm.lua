@@ -199,12 +199,13 @@ end
 function class.compile_closure_app(s, fun, args)
 
    -- Function instances are specialized to the continuation,
-   -- i.e. they 'return' through 'goto'.
-   local compiled = fun.compiled[s.var]
+   -- i.e. they 'return' through 'goto'.  The continuation can be
+   -- mapped to the label if it was already compiled.
+   local maybe_label = fun.compiled[s.var]
 
-   -- Reuse label or generate a new one in case we still need to
-   -- compile it.
-   local label = compiled or s:make_var(fun.debug_name)
+   -- Use the label of the compiled function, or generate a new one in
+   -- case we still need to compile it.
+   local label = maybe_label or s:make_var(fun.debug_name)
 
    trace("LABEL",label)
 
@@ -231,7 +232,7 @@ function class.compile_closure_app(s, fun, args)
    -- Compile function body if it's not there yet.  It would be there
    -- already if a function is called from multiple points in a
    -- tail recursive loop.
-   if not compiled then
+   if not maybe_label then
       fun.compiled[s.var] = label
       s:compile_fun(fun, label)
    end
@@ -271,12 +272,18 @@ function class.comp(s, expr)
          {"(set! ,var ,val)", function(m)
              local val = s:ref(m.val)
              s:set(m.var, val)
-             local typ = se.expr_type(val)
              s:set_debug_name(m.var, val)
-             if not ephemeral[typ] then
-                return expr
-             else
+             if m.var.var == '_' then
+                -- This is used e.g. to represent a continuation that
+                -- ignores the return value.
                 return void
+             else
+                local typ = se.expr_type(val)
+                if not ephemeral[typ] then
+                   return expr
+                else
+                   return void
+                end
              end
          end},
          {"(app ,fun . ,args)", function(m)
@@ -335,7 +342,8 @@ function class.compile(s,expr)
 
    -- The 'var' parameter contains the continuation, which is a
    -- variable that will receive the value of the computation.  If
-   -- s.var.label is defined it contains the jump label.
+   -- s.var.label is defined it contains the jump label, otherwise it
+   -- is an ordinary block binding.
    s.var = s.ret
 
    -- Tracks the maximum of arg-ref
