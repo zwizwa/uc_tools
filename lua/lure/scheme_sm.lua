@@ -24,7 +24,7 @@ class.parameterize = comp.parameterize
 local void = {class = 'void', iolist = "#<void>"}
 
 local function trace(tag, expr)
-   -- log_se_n(expr, tag .. ":")
+   log_se_n(expr, tag .. ":")
 end
 
 class.def       = comp.def
@@ -44,9 +44,9 @@ end
 
 
 local ephemeral = {
-   ['closure'] = true,
-   ['prim'] = true,
-   ['void'] = true,
+   --['closure'] = true,
+   --['prim'] = true,
+   --['void'] = true,
 }
 
 -- Move to se.lua
@@ -68,14 +68,14 @@ function class.compile_fun(s, fun, label)
          var  = nil, -- FIXME
       },
       function()
-         assert(nil == s.compiled[fun])
-         s.compiled[fun] = {label = label}
+         assert(nil == s.context.fun[fun])
+         s.context.fun[fun] = {label = label}
          local arg_bindings = map0(
             function(i, arg)
                return l(arg, l('arg-ref', i))
             end,
             fun.args)
-         ins(s.compiled_seq,
+         ins(s.context.seq,
              l('_',
                l('label', label,
                  s:comp({'block',
@@ -160,10 +160,6 @@ function class.comp(s, expr)
              end
          end},
          {"(app ,fun . ,args)", function(m)
-             -- Compile function entry: set argument registers + goto.
-             -- If the function has not yet been compiled, then emit a
-             -- (label) expression.
-             local seq = {}
              local i=0
              local fun = s:ref(m.fun)
              trace("APP",l(m.fun, fun))
@@ -172,69 +168,65 @@ function class.comp(s, expr)
                 local vals = se.map(lit_or_ref, m.args)
                 return fun(unpack(l2a(vals)))
              else
-                -- Behavior of closures depends on how they are
-                -- called.  For calls in tail position, a goto is
-                -- inserted and the body of the code is compiled into
-                -- the local function block.  For non-tail calls, a
-                -- new empty function block is started together with
-                -- an exit continuation. Note the similarity between
-                -- creating stack frames and creating new compilation
-                -- contexts.
 
                 assert(fun.class)
-                if fun.class == 'closure' then
-                   -- Compile the function call: set arguments.
-                   map0(
-                      function(i, arg)
-                         ins(seq, l('_',l('set-arg!', i, arg)))
-                      end,
-                      m.args)
-                   -- Jump to label.  Create label if the function is
-                   -- not yet compiled.
-                   local compiled = s.compiled[fun]
-                   local label = (compiled and compiled.label) or s:gensym()
-                   trace("LABEL",label)
-                   ins(seq, l('_',l('goto',label)))
+
+                if fun.class == 'prim' then
+                   return {fun, m.args}
+
+                elseif fun.class == 'closure' then
 
 
-                   if not compiled then
-                      -- Compile the function label + body.
-                      if not s.compiled_seq then
-                         -- Create a compilation context for function bodies.
+                   -- Compile function entry: set argument registers +
+                   -- goto.  If the function has not yet been
+                   -- compiled, then emit a (label) expression.
 
-                         -- The continuation label for the end of the loop.
-                         -- local k_label = s:gensym()
-                         local k_label = "FIXME_k_label"
 
-                         s:parameterize(
-                            { compiled_seq = seq,
-                              k_label = k_label },
-                            function()
-                               s:compile_fun(fun, label)
-                            end)
+                   -- Behavior of closures depends on how they are
+                   -- called.  For calls in tail position, a goto is
+                   -- inserted and the body of the code is compiled
+                   -- into the local function block.  For non-tail
+                   -- calls, a new empty function block is started
+                   -- together with an exit continuation. Note the
+                   -- similarity between creating stack frames and
+                   -- creating new compilation contexts.
 
-                         -- Compile the continuation.
-                         -- FIXME: This could do multiple arguments.
-                         -- FIXME: It doesn't need to use the arg, can set var directly.
-                         local k_var = {class = "var", unique = "FIXME_k_var"}
-                         ins(seq, l('_',l('label', k_label,
-                                          l('block',
-                                            l('_',l('set!',k_var,l('ref-arg',0)))))))
 
-                      else
-                         -- Already in a a compilation context.
+
+                   function ins_call()
+                      local seq = {}
+
+                      -- Compile the function call: set arguments.
+                      map0(
+                         function(i, arg)
+                            ins(seq, l('_', l('set-arg!', i, arg)))
+                         end,
+                         m.args)
+                      -- Jump to label.  Create label if the function is
+                      -- not yet compiled.
+                      local compiled = s.context.fun[fun]
+                      local label = (compiled and compiled.label) or s:gensym()
+                      trace("LABEL",label)
+                      ins(seq, l('_',l('goto',label)))
+
+                      if not compiled then
                          s:compile_fun(fun, label)
                       end
+
+                      local block ={'block',a2l(seq)}
+                      trace("BLOCK", block)
+                      return block
+
                    end
 
+                   if s.tail then
+                      return ins_call()
+                   else
+                      return s:comp_new_context(ins_call)
+                   end
 
-
-                   local block ={'block',a2l(seq)}
-                   trace("BLOCK", block)
-                   return block
                 else
-                   assert(fun.class == 'prim')
-                   return {fun, m.args}
+                   error("bad func class '" .. fun.class .. "'")
                 end
              end
          end},
@@ -244,17 +236,43 @@ function class.comp(s, expr)
    })
 end
 
+function class.comp_new_context(s, fun)
+
+   -- The continuation label for the end of the loop.
+   -- local k_label = s:gensym()
+   local seq = {}
+   local k_var = s.var
+   -- Keep them associated.
+   local k_label = (k_var and k_var.unique) or s:gensym()
+
+   return s:parameterize(
+      { context = { fun = {}, seq = seq, k_label = k_label } },
+      function()
+
+         local expr1 = fun()
+         ins(seq, l('_', expr1))
+
+         -- Compile the continuation.
+         -- FIXME: This could do multiple arguments.
+         -- FIXME: It doesn't need to use the arg, can set var directly.
+         ins(seq, l('_',l('label', k_label,
+                          l('block',
+                            l('_',l('set!',k_var,l('ref-arg',0)))))))
+
+         return {'block',a2l(seq)}
+      end)
+end
+
+
 
 -- FIXME: Start with top level function body that is compiled into a
--- s.compiled_seq then on each non-tail call, recurse starting a new
--- s.compiled_seq.
+-- s.context.seq then on each non-tail call, recurse starting a new
+-- s.context.seq.
 
 function class.compile(s,expr)
    s.env = se.empty
    s.nb_sym = 0
    s.symbol_prefix = "l" -- only for labels
-
-   s.compiled = {}
 
    return s.match(
       expr,
@@ -269,7 +287,10 @@ function class.compile(s,expr)
                        iolist = {"prim:",name.expr}
                     }
            end)
-           return s:comp(m.body)
+           return s:comp_new_context(
+              function()
+                 return s:comp(m.body)
+              end)
       end}})
 end
 
