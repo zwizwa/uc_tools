@@ -193,38 +193,41 @@ function class.comp(s, expr)
 
 
 
-                   function ins_call()
-                      local seq = {}
+                   local seq = {}
 
-                      -- Compile the function call: set arguments.
-                      map0(
-                         function(i, arg)
-                            ins(seq, l('_', l('set-arg!', i, arg)))
-                         end,
-                         m.args)
-                      -- Jump to label.  Create label if the function is
-                      -- not yet compiled.
-                      local compiled = s.context.fun[fun]
-                      local label = (compiled and compiled.label) or s:gensym()
-                      trace("LABEL",label)
-                      ins(seq, l('_',l('goto',label)))
+                   -- Compile the function call: set arguments.
+                   map0(
+                      function(i, arg)
+                         ins(seq, l('_', l('set-arg!', i, arg)))
+                      end,
+                      m.args)
 
-                      if not compiled then
-                         s:compile_fun(fun, label)
+                   -- Jump to label.  Create label if the function is
+                   -- not yet compiled.
+                   local compiled = s.context.fun[fun]
+                   local label = (compiled and compiled.label) or s:gensym()
+                   trace("LABEL",label)
+                   ins(seq, l('_',l('goto',label)))
+
+                   local function compile_fun()
+                      s:compile_fun(fun, label)
+                   end
+
+                   if not compiled then
+                      if s.tail then
+                         -- Tail calls are always recursive.  They
+                         -- trigger function body compilation in the
+                         -- current mutrec context.
+                         compile_fun()
+                      else
+                         -- Other calls create a new mutrec context.
+                         s:comp_to_seq(seq, compile_fun)
                       end
-
-                      local block ={'block',a2l(seq)}
-                      trace("BLOCK", block)
-                      return block
-
                    end
 
-                   if s.tail then
-                      return ins_call()
-                   else
-                      return s:comp_new_context(ins_call)
-                   end
-
+                   local block = {'block',a2l(seq)}
+                   trace("APPBLOCK", block)
+                   return block
                 else
                    error("bad func class '" .. fun.class .. "'")
                 end
@@ -236,21 +239,19 @@ function class.comp(s, expr)
    })
 end
 
-function class.comp_new_context(s, fun)
+function class.comp_to_seq(s, seq, fun)
 
    -- The continuation label for the end of the loop.
    -- local k_label = s:gensym()
-   local seq = {}
    local k_var = s.var
    -- Keep them associated.
    local k_label = (k_var and k_var.unique) or s:gensym()
 
-   return s:parameterize(
+   s:parameterize(
       { context = { fun = {}, seq = seq, k_label = k_label } },
       function()
 
-         local expr1 = fun()
-         ins(seq, l('_', expr1))
+         fun()
 
          -- Compile the continuation.
          -- FIXME: This could do multiple arguments.
@@ -259,7 +260,6 @@ function class.comp_new_context(s, fun)
                           l('block',
                             l('_',l('set!',k_var,l('ref-arg',0)))))))
 
-         return {'block',a2l(seq)}
       end)
 end
 
@@ -287,10 +287,13 @@ function class.compile(s,expr)
                        iolist = {"prim:",name.expr}
                     }
            end)
-           return s:comp_new_context(
+           local top_seq = {}
+           s:comp_to_seq(
+              top_seq,
               function()
-                 return s:comp(m.body)
+                 ins(s.context.seq,l('_', s:comp(m.body)))
               end)
+           return {'block',a2l(top_seq)}
       end}})
 end
 
