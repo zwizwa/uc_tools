@@ -29,13 +29,24 @@
 
 
 ;; Nested loops
-(begin
-  (let loop1 ((i 0))
-    (if (> i 3) i
-        (let loop2 ((j 0))
-          (if (> (+ i j) 3) j
-              (loop2 (+ j 1)))))))
+;(begin
+;  (let loop1 ((i 0))
+;    (if (> i 3) i
+;        (let loop2 ((j 0))
+;          (if (> (+ i j) 3) j
+;              (loop2 (+ j 1)))))))
 
+
+(begin
+  (let ((done 123))
+    (let loopi ((i 0))
+      (if (> i 3) done
+          (begin
+            (let loopj ((j 0))
+              (if (> j i)
+                  done
+                  (loopj (+ j 1))))
+            (loopi (+ i 1)))))))
 
 
 

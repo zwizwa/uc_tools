@@ -148,7 +148,7 @@ function class.comp(s, expr)
                       else
                          s.var = ignore_var(s)
                       end
-                      
+
                       local vexpr1 = s:comp(vexpr)
                       assert(vexpr1)
                       -- Define it for remaining expressions.
