@@ -66,6 +66,15 @@ local return_var = {
    unique = 'return',
    iolist = '#<return>',
 }
+local function ignore_var(s)
+   return {
+      class = 'var',
+      unique = s:gensym(),
+      iolist = '#<ignore>',
+   }
+end
+
+
 
 -- Note that we do NOT change environment to that of the closure.  The
 -- C output only can support downward closures: every variable that
@@ -78,11 +87,8 @@ function class.compile_fun(s, fun, label)
    s:parameterize(
       {
          tail = true,
-         var  = return_var,
       },
       function()
-         assert(nil == s.context.fun[fun])
-         s.context.fun[fun] = {label = label}
          local arg_bindings = map0(
             function(i, arg)
                return l(arg, l('arg-ref', i))
@@ -137,9 +143,12 @@ function class.comp(s, expr)
                       if s.tail then
                          assert(var == '_')
                          s.var = up_var
-                      else
+                      elseif var ~= '_' then
                          s.var = var
+                      else
+                         s.var = ignore_var(s)
                       end
+                      
                       local vexpr1 = s:comp(vexpr)
                       assert(vexpr1)
                       -- Define it for remaining expressions.
@@ -148,6 +157,7 @@ function class.comp(s, expr)
                       end
                       local typ = se.expr_type(vexpr1)
                       if typ == 'closure' then
+                         local fun = vexpr1
                          -- Closures will only be accessed through
                          -- ref().  The code representation is a block
                          -- that contains one or more instantiations.
@@ -161,7 +171,8 @@ function class.comp(s, expr)
                          local function add_instance(expr)
                             se.push_cdr(l('_',expr), instances)
                          end
-                         vexpr1.add_instance = add_instance
+                         fun.add_instance = add_instance
+                         fun.compiled = false
                          -- FIXME: Jump over the block.
                          ins(bindings, l('_', l('if',0,0,instances)))
                       elseif not ephemeral[typ] then
@@ -236,27 +247,31 @@ function class.comp(s, expr)
                       end,
                       m.args)
 
+                   -- FIXME: Currently not really clear how to see if
+                   -- more instances are needed, so just sticking to
+                   -- one instance.
+
+
                    -- Jump to label.  Create label if the function is
                    -- not yet compiled.
-                   local compiled = s.context.fun[fun]
-                   local label = (compiled and compiled.label) or s:gensym()
+                   local compiled = fun.compiled
+                   local label = compiled or s:gensym()
                    trace("LABEL",label)
                    ins(seq, l('_',l('goto',label)))
 
-                   local function compile_fun()
-                      s:compile_fun(fun, label)
+                   if not s.tail then
+                      -- If not a tail call, compile and set the continuation.
+                      if s.var then
+                         -- Reuse tha name for the label
+                         s.var.label = s.var.unique
+                      end
+                      ins(seq, l('_',l('label', s.var.label, l('set!', s.var, l('ref-arg', 0)))))
                    end
 
                    if not compiled then
-                      if s.tail then
-                         -- Tail calls are always recursive.  They
-                         -- trigger function body compilation in the
-                         -- current mutrec context.
-                         compile_fun()
-                      else
-                         -- Other calls create a new mutrec context.
-                         s:comp_to_seq(seq, compile_fun)
-                      end
+                      -- This will stop recursive calls from compiling again
+                      fun.compiled = label
+                      s:compile_fun(fun, label)
                    end
 
                    local block = {'block',a2l(seq)}
@@ -269,40 +284,16 @@ function class.comp(s, expr)
          end},
          {",other", function(m)
              local typ = se.expr_type(m.other)
-             if typ == 'var' and s.var == return_var then
+             if typ == 'var' and s.var.label then
                 -- This is a return from the current mutrec context.
                 return l('block',
                          l('_',l('set-arg!',0,m.other)),
-                         l('_',l('goto',s.context.k_label)))
+                         l('_',l('goto',s.var.label)))
              else
                 return expr
              end
          end},
    })
-end
-
-function class.comp_to_seq(s, seq, fun)
-
-   -- The continuation label for the end of the loop.
-   -- local k_label = s:gensym()
-   local k_var = s.var
-   -- Keep them associated.
-   local k_label = (kvar and k_var.unique) or s:gensym()
-   assert(k_label)
-
-   s:parameterize(
-      { context = { fun = {}, seq = seq, k_label = k_label } },
-      function()
-
-         fun()
-
-         -- Compile the continuation.
-         -- FIXME: This could do multiple arguments.
-         -- FIXME: It doesn't need to use the arg, can set var directly.
-         -- FIXME: maybe better to use set! instead of a binding
-         ins(seq, l('_',l('label', k_label, l('set!', k_var, l('ref-arg', 0)))))
-
-      end)
 end
 
 
@@ -317,6 +308,9 @@ function class.compile(s,expr)
    s.nb_sym = 0
    s.symbol_prefix = "l" -- only for labels
 
+   s.var = return_var
+
+
    return s.match(
       expr,
       {{"(lambda (,lib_ref) ,body)", function(m)
@@ -330,13 +324,7 @@ function class.compile(s,expr)
                        iolist = {"prim:",name.expr}
                     }
            end)
-           local top_seq = {}
-           s:comp_to_seq(
-              top_seq,
-              function()
-                 ins(s.context.seq,l('_', s:comp(m.body)))
-              end)
-           return {'block',a2l(top_seq)}
+           return s:comp(m.body)
       end}})
 end
 
