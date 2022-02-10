@@ -12,6 +12,7 @@ return { modules = {
   'meta',
   'scheme_blockint',
   'scheme_blockval',
+  'scheme_escape',
   'scheme_flatten_blocks',
   'scheme_frontend',
   'scheme',
