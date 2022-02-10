@@ -75,8 +75,9 @@ end
 -- the function instances right where the lambda used to be so its
 -- variable references are legal.
 --
+
 function class.compile_fun(s, fun, label)
-   s:parameterize(
+   return s:parameterize(
       {
          -- Expression is in tail position.
          tail = true,
@@ -84,7 +85,7 @@ function class.compile_fun(s, fun, label)
          -- function return maps to a goto.
       },
       function()
-         local compiled =
+         return
             l('label', label,
               s:comp(
                  block_with_args(
@@ -94,22 +95,24 @@ function class.compile_fun(s, fun, label)
                     end,
                     fun.args,
                     l(_(fun.body)))))
-
-         fun.add_instance(compiled)
       end)
 end
 
 
+function class.compile_fun_add_instance(s, fun, label)
+   fun.add_instance(s:compile_fun(fun, label))
+end
+
+
 -- Goto with arguments.
-function gotoa(label, args)
+function wrap_args(goto_or_label_expr, args)
    local expr =
       block_with_args(
          function(i, arg)
             return _(l('set-arg!', i, arg))
          end,
          args,
-         l(_(l('goto', label))))
-   trace("GOTOA",l(label,args,expr))
+         l(_(goto_or_label_expr)))
    return expr
 end
 
@@ -211,7 +214,11 @@ function class.compile_closure_app(s, fun, args)
 
    -- The expression we produce here is a goto (+ argument
    -- assignment).
-   local outexpr = gotoa(label,args)
+   local callexpr = wrap_args(l('goto',label),args)
+
+   local function wrap_cont(expr)
+      return expr
+   end
 
    -- Together with a return point if the app is not in tail position.
    if not s.tail then
@@ -223,10 +230,13 @@ function class.compile_closure_app(s, fun, args)
       -- tail position expressions to compile into a goto.
       s.var.label = cont_label
       -- And generate the label that will be jumped to.
-      outexpr = l('block',
-                  _(outexpr),
-                  _(l('label', s.var.label,
-                      l('set!', s.var, l('arg-ref',0)))))
+      wrap_cont = function(expr)
+         return
+            l('block',
+              _(expr),
+              _(l('label', s.var.label,
+                  l('set!', s.var, l('arg-ref',0)))))
+      end
    end
 
    -- Compile function body if it's not there yet.  It would be there
@@ -234,11 +244,12 @@ function class.compile_closure_app(s, fun, args)
    -- tail recursive loop.
    if not maybe_label then
       fun.compiled[s.var] = label
-      s:compile_fun(fun, label)
+      -- s:compile_fun_add_instance(fun, label)
+      callexpr = wrap_args(s:compile_fun(fun, label), args)
    end
 
    trace("APPBLOCK", outexpr)
-   return outexpr
+   return wrap_cont(callexpr)
 end
 
 
@@ -313,7 +324,7 @@ function class.comp(s, expr)
                 if s.var == s.ret then
                    return l('return',m.other)
                 else
-                   return gotoa(s.var.label, l(m.other))
+                   return wrap_args(l('goto',s.var.label), l(m.other))
                 end
              else
                 -- This is an ordinary block binding.
