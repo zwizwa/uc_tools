@@ -1,12 +1,12 @@
 ;; Each expression is compiled separately.
 
-;; Inf 1
+;; Infinite single rec
 (let loop ((n 0))
   (if (> n 3)
       (loop 0)
       (loop (+ n 1))))
 
-;; Inf 2
+;; Infinite mutual rec
 (begin
   (define (f1 n)
     (if (> n 3)
@@ -16,7 +16,7 @@
     (f1 (+ n 1)))
   (f1 0))
 
-;; Finite 2
+;; Finite mutual rec loop
 (begin
   (define (f1 n)
     (if (> n 3)

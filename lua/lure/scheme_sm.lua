@@ -24,7 +24,7 @@ class.parameterize = comp.parameterize
 local void = {class = 'void', iolist = "#<void>"}
 
 local function trace(tag, expr)
-   log_se_n(expr, tag .. ":")
+   -- log_se_n(expr, tag .. ":")
 end
 
 class.def       = comp.def
@@ -44,9 +44,9 @@ end
 
 
 local ephemeral = {
-   --['closure'] = true,
-   --['prim'] = true,
-   --['void'] = true,
+   ['closure'] = true,
+   ['prim'] = true,
+   ['void'] = true,
 }
 
 -- Move to se.lua
@@ -61,11 +61,22 @@ local function map0(fun, list)
       list)
 end
 
+local return_var = {
+   class = 'var',
+   unique = 'return',
+   iolist = '#<return>',
+}
+
+-- Note that we do NOT change environment to that of the closure.  The
+-- C output only can support downward closures: every variable that
+-- makes it into the code should be checked to make sure it is defined
+-- in the lexical environment.
+
 function class.compile_fun(s, fun, label)
    s:parameterize(
       {
          tail = true,
-         var  = nil, -- FIXME
+         var  = return_var,
       },
       function()
          assert(nil == s.context.fun[fun])
@@ -234,7 +245,15 @@ function class.comp(s, expr)
              end
          end},
          {",other", function(m)
-             return expr
+             local typ = se.expr_type(m.other)
+             if typ == 'var' and s.var == return_var then
+                -- This is a return from the current mutrec context.
+                return l('block',
+                         l('_',l('set-arg!',0,m.other)),
+                         l('_',l('goto',s.context.k_label)))
+             else
+                return expr
+             end
          end},
    })
 end
@@ -245,7 +264,8 @@ function class.comp_to_seq(s, seq, fun)
    -- local k_label = s:gensym()
    local k_var = s.var
    -- Keep them associated.
-   local k_label = (k_var and k_var.unique) or s:gensym()
+   local k_label = (kvar and k_var.unique) or s:gensym()
+   assert(k_label)
 
    s:parameterize(
       { context = { fun = {}, seq = seq, k_label = k_label } },
@@ -256,9 +276,8 @@ function class.comp_to_seq(s, seq, fun)
          -- Compile the continuation.
          -- FIXME: This could do multiple arguments.
          -- FIXME: It doesn't need to use the arg, can set var directly.
-         ins(seq, l('_',l('label', k_label,
-                          l('block',
-                            l('_',l('set!',k_var,l('ref-arg',0)))))))
+         -- FIXME: maybe better to use set! instead of a binding
+         ins(seq, l('_',l('label', k_label, l('set!', k_var, l('ref-arg', 0)))))
 
       end)
 end
@@ -271,6 +290,7 @@ end
 
 function class.compile(s,expr)
    s.env = se.empty
+   s.var = return_var
    s.nb_sym = 0
    s.symbol_prefix = "l" -- only for labels
 
