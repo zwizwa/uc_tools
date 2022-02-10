@@ -56,6 +56,16 @@
       (loop (+ n 1))))
 
 
+;; Finite single, twice
+(begin
+  (define (loop n)
+    (if (> n 3)
+        n
+        (loop (+ n 1))))
+  (loop 0)
+  (loop 0))
+
+
 ;; 123
 
 ;; (begin 1 2)

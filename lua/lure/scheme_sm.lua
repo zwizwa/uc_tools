@@ -51,16 +51,18 @@ local ephemeral = {
    ['void'] = true,
 }
 
--- Move to se.lua
-local function map0(fun, list)
+-- Compile a block with some arg manipulation at the start.
+local function block_with_args(fun, list, tail)
+   tail = tail or se.empty
    local i = 0
-   return se.map(
-      function(el)
+   return {'block', se.foldr(
+      function(el, rest)
          local rv = fun(i, el)
          i = i + 1
-         return rv
+         return {rv, rest}
       end,
-      list)
+      tail,
+      list)}
 end
 
 function class.make_var(s, src_name)
@@ -78,7 +80,7 @@ end
 -- makes it into the code should be checked to make sure it is defined
 -- in the lexical environment.
 
-
+local function _(expr) return l('_',expr) end
 
 function class.compile_fun(s, fun, label)
    s:parameterize(
@@ -86,16 +88,15 @@ function class.compile_fun(s, fun, label)
          tail = true,
       },
       function()
-         local arg_bindings = map0(
-            function(i, arg)
-               return l(arg, l('arg-ref', i))
-            end,
-            fun.args)
          local compiled =
             l('label', label,
-              s:comp({'block',
-                      se.append(arg_bindings,
-                                l(l('_', fun.body)))}))
+              s:comp(
+                 block_with_args(
+                    function(i, arg)
+                       return l(arg, l('arg-ref', i))
+                    end,
+                    fun.args,
+                    l(_(fun.body)))))
 
          -- {'block' . tail}
          fun.add_instance(compiled)
@@ -112,6 +113,19 @@ function class.set_debug_name(s, var, val)
    if typ == 'closure' then
       val.debug_name = var.var
    end
+end
+
+-- Goto with arguments
+function gotoa(label, args)
+   local expr =
+      block_with_args(
+         function(i, arg)
+            return _(l('set-arg!', i, arg))
+         end,
+         args,
+         l(_(l('goto', label))))
+   trace("GOTOA",l(label,args,expr))
+   return expr
 end
 
 function class.comp(s, expr)
@@ -182,12 +196,12 @@ function class.comp(s, expr)
 
                          local instances = l('block')
                          local function add_instance(expr)
-                            se.push_cdr(l('_',expr), instances)
+                            se.push_cdr(_(expr), instances)
                          end
                          fun.add_instance = add_instance
-                         fun.compiled = false
+                         fun.compiled = {}
                          -- FIXME: Jump over the block.
-                         ins(bindings, l('_', l('if',0,0,instances)))
+                         ins(bindings, _(l('if',0,0,instances)))
                       elseif not ephemeral[typ] then
                          -- Only collect concrete stuff.
                          ins(bindings, l(var, vexpr1))
@@ -253,14 +267,6 @@ function class.comp(s, expr)
 
 
 
-                   local seq = {}
-
-                   -- Compile the function call: set arguments.
-                   map0(
-                      function(i, arg)
-                         ins(seq, l('_', l('set-arg!', i, arg)))
-                      end,
-                      m.args)
 
                    -- FIXME: Currently not really clear how to see if
                    -- more instances are needed, so just sticking to
@@ -268,12 +274,19 @@ function class.comp(s, expr)
 
 
                    -- Jump to label.  Create label if the function is
-                   -- not yet compiled.
-                   local compiled = fun.compiled
+                   -- not yet compiled for this continuation.
+
+                   -- FIXME: Looks like it would be possible now to
+                   -- allow for parameterized continations, to avoid
+                   -- duplication?  E.g. to have function re-use
+                   -- without re-entrancy?
+
+                   local compiled = fun.compiled[s.var]
                    local label = compiled or s:make_var(fun.debug_name)
 
                    trace("LABEL",label)
-                   ins(seq, l('_',l('goto',label)))
+
+                   local outexpr = gotoa(label,m.args)
 
                    if not s.tail then
                       -- If not a tail call, compile and set the continuation.
@@ -283,33 +296,34 @@ function class.comp(s, expr)
                       -- Attach the label to the cont var.
                       s.var.label = cont_label
                       -- And generate the code
-                      ins(seq, l('_',l('label', s.var.label, l('set!', s.var, l('ref-arg', 0)))))
+                      outexpr = l('block',
+                                  _(outexpr),
+                                  _(l('label', s.var.label,
+                                      l('set!', s.var, l('arg-ref',0)))))
                    end
 
                    if not compiled then
                       -- This will stop recursive calls from compiling again
-                      fun.compiled = label
+                      fun.compiled[s.var] = label
                       s:compile_fun(fun, label)
                    end
 
-                   local block = {'block',a2l(seq)}
-                   trace("APPBLOCK", block)
-                   return block
+                   trace("APPBLOCK", outexpr)
+                   return outexpr
                 else
                    error("bad func class '" .. fun.class .. "'")
                 end
              end
          end},
          {",other", function(m)
+             trace("OTHER",m.other)
              local typ = se.expr_type(m.other)
              if typ == 'var' and s.var.label then
                 -- This is a return from the current mutrec context.
                 if s.var == s.ret then
                    return l('return',m.other)
                 else
-                   return l('block',
-                            l('_',l('set-arg!',0,m.other)),
-                            l('_',l('goto',s.var.label)))
+                   return gotoa(s.var.label, l(m.other))
                 end
              else
                 return expr

@@ -36,7 +36,7 @@ function mod.run()
       e.prim = require('lure.slc_runtime')
       local out = e:compile(ir)
 
-      --log("OUTPUT1:") ; pretty.log_pp(out)
+      -- log("OUTPUT1:") ; pretty.log_pp(out)
 
       log("OUTPUT:")
       -- Flatten before pp
