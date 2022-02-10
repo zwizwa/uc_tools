@@ -99,10 +99,6 @@ function class.compile_fun(s, fun, label)
 end
 
 
-function class.compile_fun_add_instance(s, fun, label)
-   fun.add_instance(s:compile_fun(fun, label))
-end
-
 
 -- Goto with arguments.
 function wrap_args(goto_or_label_expr, args)
@@ -133,27 +129,6 @@ function class.set_debug_name(s, var, val)
    end
 end
 
--- Preparse closure for later compilation.
-function class.wrap_closure(s, fun)
-
-   -- Create a block where we can later insert instances, right where
-   -- the lambda expression was located.  This ensures that anything
-   -- we compile here is properly scoped.
-   local instances = l('block')
-   fun.add_instance = function(expr)
-      se.push_cdr(_(expr), instances)
-   end
-
-   -- Continuations are hardcoded.  We compile one instance per
-   -- continuation, and use this map to indicate that a function has
-   -- been compiled.  Functions will be compiled later when they are
-   -- referenced by the 'app' form.
-   fun.compiled = {}
-
-   -- FIXME: Control will roll into the definition if we don't prevent
-   -- that. Find a better way.
-   return _(l('if',0,0,instances))
-end
 
 function class.comp_bindings(s, bindings_list)
    return s:parameterize(
@@ -187,8 +162,14 @@ function class.comp_bindings(s, bindings_list)
                s:def(var, vexpr1)
             end
             if typ == 'closure' then
+               local fun = vexpr1
                s:set_debug_name(s.var, fun)
-               ins(bindings, s:wrap_closure(vexpr1))
+               -- Continuations are hardcoded.  We compile one
+               -- instance per continuation, and use this map to
+               -- indicate that a function has been compiled.
+               -- Functions will be compiled later when they are
+               -- referenced by the 'app' form.
+               fun.compiled = {}
             elseif not ephemeral[typ] then
                -- Only collect concrete stuff.
                ins(bindings, l(var, vexpr1))
@@ -211,10 +192,6 @@ function class.compile_closure_app(s, fun, args)
    local label = maybe_label or s:make_var(fun.debug_name)
 
    trace("LABEL",label)
-
-   -- The expression we produce here is a goto (+ argument
-   -- assignment).
-   local callexpr = wrap_args(l('goto',label),args)
 
    local function wrap_cont(expr)
       return expr
@@ -239,17 +216,18 @@ function class.compile_closure_app(s, fun, args)
       end
    end
 
-   -- Compile function body if it's not there yet.  It would be there
-   -- already if a function is called from multiple points in a
-   -- tail recursive loop.
+   local callexpr
    if not maybe_label then
+      -- Fall through into the function body.
       fun.compiled[s.var] = label
-      -- s:compile_fun_add_instance(fun, label)
-      callexpr = wrap_args(s:compile_fun(fun, label), args)
+      callexpr = s:compile_fun(fun, label)
+   else
+      -- Jump to previously compiled body.
+      callexpr = l('goto',label)
    end
 
    trace("APPBLOCK", outexpr)
-   return wrap_cont(callexpr)
+   return wrap_cont(wrap_args(callexpr, args))
 end
 
 
