@@ -72,6 +72,8 @@ local return_var = {
 -- makes it into the code should be checked to make sure it is defined
 -- in the lexical environment.
 
+
+
 function class.compile_fun(s, fun, label)
    s:parameterize(
       {
@@ -86,12 +88,17 @@ function class.compile_fun(s, fun, label)
                return l(arg, l('arg-ref', i))
             end,
             fun.args)
-         ins(s.context.seq,
-             l('_',
-               l('label', label,
-                 s:comp({'block',
-                         se.append(arg_bindings,
-                                   l(l('_', fun.body)))}))))
+         local compiled =
+            l('label', label,
+              s:comp({'block',
+                      se.append(arg_bindings,
+                                l(l('_', fun.body)))}))
+
+         -- {'block' . tail}
+         fun.add_instance(compiled)
+
+         --ins(s.context.seq,
+         --    l('_', compileD))
       end)
 end
 
@@ -140,8 +147,24 @@ function class.comp(s, expr)
                          s:def(var, vexpr1)
                       end
                       local typ = se.expr_type(vexpr1)
-                      trace("BINDING",l(var, vexpr1, typ))
-                      if not ephemeral[typ] then
+                      if typ == 'closure' then
+                         -- Closures will only be accessed through
+                         -- ref().  The code representation is a block
+                         -- that contains one or more instantiations.
+                         -- Link the closure object to this reservoir
+                         -- for later compilation.  It is done this
+                         -- way to ensure that compiled functions will
+                         -- be in the correct scope.  Currently not
+                         -- clear if more than one instance is
+                         -- necessary.
+                         local instances = l('block')
+                         local function add_instance(expr)
+                            se.push_cdr(l('_',expr), instances)
+                         end
+                         vexpr1.add_instance = add_instance
+                         -- FIXME: Jump over the block.
+                         ins(bindings, l('_', l('if',0,0,instances)))
+                      elseif not ephemeral[typ] then
                          -- Only collect concrete stuff.
                          ins(bindings, l(var, vexpr1))
                       end

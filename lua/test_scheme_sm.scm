@@ -28,6 +28,15 @@
     (+ rv 1)))
 
 
+;; Nested loops
+(begin
+  (let loop1 ((i 0))
+    (if (> i 3) i
+        (let loop2 ((j 0))
+          (if (> (+ i j) 3) j
+              (loop2 (+ j 1)))))))
+
+
 
 
 ;; 123

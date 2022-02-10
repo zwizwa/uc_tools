@@ -188,6 +188,15 @@ end
 se.equalp = equalp
 
 
+-- Use a tagged s-expression as a stack.
+local function push_cdr(el, lst)
+   local tail = cdr(lst)
+   lst[2] = {el, tail}
+end
+se.push_cdr = push_cdr
+
+
+
 -- READER
 
 function se:next()
