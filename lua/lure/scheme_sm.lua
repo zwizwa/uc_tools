@@ -24,7 +24,7 @@ class.parameterize = comp.parameterize
 local void = {class = 'void', iolist = "#<void>"}
 
 local function trace(tag, expr)
-   log_se_n(expr, tag .. ":")
+   -- log_se_n(expr, tag .. ":")
 end
 
 class.def       = comp.def
@@ -62,19 +62,26 @@ local function map0(fun, list)
 end
 
 function class.compile_fun(s, fun, label)
-   assert(nil == s.compiled[fun])
-   s.compiled[fun] = {label = label}
-   local arg_bindings = map0(
-      function(i, arg)
-         return l(arg, l('arg-ref', i))
-      end,
-      fun.args)
-   ins(s.compiled_seq,
-       l('_',
-         l('label', label,
-           s:comp({'block',
-                   se.append(arg_bindings,
-                             l(l('_', fun.body)))}))))
+   s:parameterize(
+      {
+         tail = true,
+         var  = nil, -- FIXME
+      },
+      function()
+         assert(nil == s.compiled[fun])
+         s.compiled[fun] = {label = label}
+         local arg_bindings = map0(
+            function(i, arg)
+               return l(arg, l('arg-ref', i))
+            end,
+            fun.args)
+         ins(s.compiled_seq,
+             l('_',
+               l('label', label,
+                 s:comp({'block',
+                         se.append(arg_bindings,
+                                   l(l('_', fun.body)))}))))
+      end)
 end
 
 function class.comp(s, expr)
@@ -98,12 +105,23 @@ function class.comp(s, expr)
                    -- the env one variable at a time as we iterate
                    -- through the bindings, as opposed to inserting
                    -- s:parameterize for each binding.
-                   env = s.env,
+                   env  = s.env,
+                   var  = s.var,
+                   tail = s.tail,
                 },
                 function()
+                   local up_var = s.var
+                   local tail = s.tail
                    local bindings = {}
-                   for binding in se.elements(m.bindings) do
+                   for binding, rest in se.elements(m.bindings) do
                       local var, vexpr = se.unpack(binding, {n=2})
+                      s.tail = tail and se.is_empty(rest)
+                      if s.tail then
+                         assert(var == '_')
+                         s.var = up_var
+                      else
+                         s.var = var
+                      end
                       local vexpr1 = s:comp(vexpr)
                       assert(vexpr1)
                       -- Define it for remaining expressions.
@@ -112,7 +130,6 @@ function class.comp(s, expr)
                       end
                       local typ = se.expr_type(vexpr1)
                       trace("BINDING",l(var, vexpr1, typ))
-                      log_desc(typ)
                       if not ephemeral[typ] then
                          -- Only collect concrete stuff.
                          ins(bindings, l(var, vexpr1))
@@ -151,9 +168,19 @@ function class.comp(s, expr)
              local fun = s:ref(m.fun)
              trace("APP",l(m.fun, fun))
              if type(fun) == 'function' then
+                -- Primitive functions can be ephemeral and/or emit code.
                 local vals = se.map(lit_or_ref, m.args)
                 return fun(unpack(l2a(vals)))
              else
+                -- Behavior of closures depends on how they are
+                -- called.  For calls in tail position, a goto is
+                -- inserted and the body of the code is compiled into
+                -- the local function block.  For non-tail calls, a
+                -- new empty function block is started together with
+                -- an exit continuation. Note the similarity between
+                -- creating stack frames and creating new compilation
+                -- contexts.
+
                 assert(fun.class)
                 if fun.class == 'closure' then
                    -- Compile the function call: set arguments.
@@ -169,20 +196,39 @@ function class.comp(s, expr)
                    trace("LABEL",label)
                    ins(seq, l('_',l('goto',label)))
 
+
                    if not compiled then
                       -- Compile the function label + body.
                       if not s.compiled_seq then
                          -- Create a compilation context for function bodies.
+
+                         -- The continuation label for the end of the loop.
+                         -- local k_label = s:gensym()
+                         local k_label = "FIXME_k_label"
+
                          s:parameterize(
-                            { compiled_seq = seq },
+                            { compiled_seq = seq,
+                              k_label = k_label },
                             function()
                                s:compile_fun(fun, label)
-                         end)
+                            end)
+
+                         -- Compile the continuation.
+                         -- FIXME: This could do multiple arguments.
+                         -- FIXME: It doesn't need to use the arg, can set var directly.
+                         local k_var = {class = "var", unique = "FIXME_k_var"}
+                         ins(seq, l('_',l('label', k_label,
+                                          l('block',
+                                            l('_',l('set!',k_var,l('ref-arg',0)))))))
+
                       else
                          -- Already in a a compilation context.
                          s:compile_fun(fun, label)
                       end
                    end
+
+
+
                    local block ={'block',a2l(seq)}
                    trace("BLOCK", block)
                    return block
@@ -197,6 +243,11 @@ function class.comp(s, expr)
          end},
    })
 end
+
+
+-- FIXME: Start with top level function body that is compiled into a
+-- s.compiled_seq then on each non-tail call, recurse starting a new
+-- s.compiled_seq.
 
 function class.compile(s,expr)
    s.env = se.empty

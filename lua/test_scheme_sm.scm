@@ -1,14 +1,12 @@
 ;; Each expression is compiled separately.
 
-;; Note that the state machine compiler only compiles infinite loops,
-;; so none of these expressions will terminate.
-
+;; Inf 1
 (let loop ((n 0))
   (if (> n 3)
       (loop 0)
       (loop (+ n 1))))
 
-
+;; Inf 2
 (begin
   (define (f1 n)
     (if (> n 3)
@@ -17,6 +15,18 @@
   (define (f2 n)
     (f1 (+ n 1)))
   (f1 0))
+
+;; Finite 2
+(begin
+  (define (f1 n)
+    (if (> n 3)
+        n
+        (f2 (+ n 1))))
+  (define (f2 n)
+    (f1 (+ n 1)))
+  (let ((rv (f1 0)))
+    (+ rv 1)))
+
 
 
 
