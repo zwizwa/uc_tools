@@ -68,8 +68,9 @@
     (if (> n 3)
         n
         (loop (+ n 1))))
-  (loop 0)
-  (loop 0))
+  (let* ((a (loop 0))
+         (b (loop 0)))
+    (+ a b)))
 
 
 ;; Constructed to break the label lexical scope rules.
@@ -82,3 +83,5 @@
         (loop1 (+ n 1))
         (loop1 (+ n 2))))
   (loop2 0))
+
+;; Similar, but scope issue prevents.
