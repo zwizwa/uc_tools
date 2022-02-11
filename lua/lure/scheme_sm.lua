@@ -27,7 +27,7 @@ class.parameterize = comp.parameterize
 local void = {class = 'void', iolist = "#<void>"}
 
 local function trace(tag, expr)
-   -- log_se_n(expr, tag .. ":")
+   log_se_n(expr, tag .. ":")
 end
 
 class.def       = comp.def
@@ -131,6 +131,13 @@ end
 
 
 function class.comp_bindings(s, bindings_list)
+
+   local function lit_or_ref(thing)
+      local typ = se.expr_type(thing)
+      if typ == 'var' then return s:ref(thing)
+      else return thing end
+   end
+
    return s:parameterize(
       {
          -- These variables are just saved and updated in-place.
@@ -142,6 +149,12 @@ function class.comp_bindings(s, bindings_list)
          local up_var = s.cont
          local tail = s.tail
          local bindings = {}
+         local function bind(var, val)
+            assert(var)
+            assert(val)
+            ins(bindings, l(var, val))
+         end
+
          for binding, rest in se.elements(bindings_list) do
             local var, vexpr = se.unpack(binding, {n=2})
             s.tail = tail and se.is_empty(rest)
@@ -159,34 +172,91 @@ function class.comp_bindings(s, bindings_list)
             -- FIXME: Actually, if there is a continuation here, we
             -- probably can drop the variable?  Or always emit it for
             -- later assignment?
+            trace("VEXPR", vexpr)
 
             s.match(
                vexpr,
                {
-                  {",other",function(m)
-                      local cexpr = s:comp(m.other)
-                      assert(cexpr)
 
+                  {"(block . ,bindings)", function(m)
+                      bind(var, s:comp_bindings(m.bindings))
+                  end},
 
-                      local typ = se.expr_type(cexpr)
-                      -- Record the value in the environment for later ref().
-                      if var ~= '_' then
-                         s:def(var, cexpr)
+                  {"(lambda ,args ,body)", function(m)
+                      -- Definitions are ephemeral.  Bodies will be compiled
+                      -- when they are referenced by 'app'.
+                      local fun = {
+                         class = 'closure',
+                         args = m.args,
+                         body = m.body,
+                         env = s.env,
+                         compiled = {}
+                      }
+                      s:set_debug_name(s.cont, fun)
+                      s:def(var, fun)
+
+                  end},
+
+                  {"(set! ,var ,val)", function(m)
+                      local val = s:ref(m.val)
+                      s:set(m.var, val)
+                      s:set_debug_name(m.var, val)
+                      if m.var.var == '_' then
+                         -- This is used e.g. to represent a continuation that
+                         -- ignores the return value.
+                         bind(var, vold)
+                      else
+                         local typ = se.expr_type(val)
+                         if not ephemeral[typ] then
+                            bind(var, val)
+                         else
+                            s:def(var, val)
+                         end
                       end
-                      if typ == 'closure' then
-                         local fun = cexpr
-                         s:set_debug_name(s.cont, fun)
-                         -- Continuations are hardcoded.  We compile one
-                         -- instance per continuation, and use this map to
-                         -- indicate that a function has been compiled.
-                         -- Functions will be compiled later when they are
-                         -- referenced by the 'app' form.
-                         fun.compiled = {}
-                      elseif not ephemeral[typ] then
-                         -- Only collect concrete stuff.
-                         ins(bindings, l(var, cexpr))
+                  end},
+
+                  {"(app ,fun . ,args)", function(m)
+                      local i=0
+                      local fun = s:ref(m.fun)
+                      trace("APP",l(m.fun, fun))
+                      if type(fun) == 'function' then
+                         -- Primitive functions can be ephemeral and/or emit code.
+                         local vals = se.map(lit_or_ref, m.args)
+                         s:def(var, fun(unpack(l2a(vals))))
+                      else
+                         assert(fun.class)
+                         if fun.class == 'prim' then
+                            bind(var, {fun, m.args})
+                         elseif fun.class == 'closure' then
+                            -- FIXME: Probably better to split the
+                            -- block at the application to have a more
+                            -- consistent label form.
+                            local app = s:compile_closure_app(fun,m.args)
+                            assert(app)
+                            bind(var, app)
+                         else
+                            error("bad func class '" .. fun.class .. "'")
+                         end
                       end
-                  end}
+                  end},
+
+                  {"(if ,c ,t ,f)", function(m)
+                      -- FIXME: Pass continuation.
+                      bind(var, l('if', m.c, s:comp(m.t), s:comp(m.f)))
+                  end},
+
+                  {",other", function(m)
+                      trace("OTHER",m.other)
+                      s:def(var, m.other)
+                      local typ = se.expr_type(m.other)
+                      if typ == 'var' and s.cont.fun then
+                         bind(var, s.cont.fun(m.other))
+                      else
+                         -- This is an ordinary block binding.
+                         bind(var, m.other)
+                      end
+                  end},
+
                })
          end
          return {'block',a2l(bindings)}
@@ -231,7 +301,7 @@ function class.compile_closure_app(s, fun, args)
               _(expr),
               _(l('label', cont_label,
                   ifte(s.cont.var == '_',
-                       l('block'),
+                       void, --l('block'),
                        l('set!', s.cont, l('arg-ref',0))))))
       end
    end
@@ -246,20 +316,15 @@ function class.compile_closure_app(s, fun, args)
       callexpr = l('goto',label)
    end
 
+   local outexpr = wrap_cont(wrap_args(callexpr, args))
    trace("APPBLOCK", outexpr)
-   return wrap_cont(wrap_args(callexpr, args))
+   return outexpr
 end
 
 
+-- Compiler is contained in comp_bindings.  This is just a trampoline
+-- that wraps a block if necessary.
 function class.comp(s, expr)
-
-   local function lit_or_ref(thing)
-      local typ = se.expr_type(thing)
-      if typ == 'var' then return s:ref(thing)
-      else return thing end
-   end
-
-
    trace("COMP",expr)
    return s.match(
       expr,
@@ -267,62 +332,8 @@ function class.comp(s, expr)
          {"(block . ,bindings)", function(m)
              return s:comp_bindings(m.bindings)
          end},
-         {"(if ,c ,t ,f)", function(m)
-             return l('if', m.c, s:comp(m.t), s:comp(m.f))
-         end},
-         {"(lambda ,args ,body)", function(m)
-             -- Definitions are ephemeral.  Bodies will be compiled
-             -- when they are referenced by 'app'.
-             return { class = 'closure',
-                      args = m.args,
-                      body = m.body,
-                      env = s.env }
-         end},
-         {"(set! ,var ,val)", function(m)
-             local val = s:ref(m.val)
-             s:set(m.var, val)
-             s:set_debug_name(m.var, val)
-             if m.var.var == '_' then
-                -- This is used e.g. to represent a continuation that
-                -- ignores the return value.
-                return void
-             else
-                local typ = se.expr_type(val)
-                if not ephemeral[typ] then
-                   return expr
-                else
-                   return void
-                end
-             end
-         end},
-         {"(app ,fun . ,args)", function(m)
-             local i=0
-             local fun = s:ref(m.fun)
-             trace("APP",l(m.fun, fun))
-             if type(fun) == 'function' then
-                -- Primitive functions can be ephemeral and/or emit code.
-                local vals = se.map(lit_or_ref, m.args)
-                return fun(unpack(l2a(vals)))
-             else
-                assert(fun.class)
-                if fun.class == 'prim' then
-                   return {fun, m.args}
-                elseif fun.class == 'closure' then
-                   return s:compile_closure_app(fun,m.args)
-                else
-                   error("bad func class '" .. fun.class .. "'")
-                end
-             end
-         end},
          {",other", function(m)
-             trace("OTHER",m.other)
-             local typ = se.expr_type(m.other)
-             if typ == 'var' and s.cont.fun then
-                return s.cont.fun(m.other)
-             else
-                -- This is an ordinary block binding.
-                return expr
-             end
+             return s:comp_bindings(l(_(m.other)))
          end},
    })
 end
