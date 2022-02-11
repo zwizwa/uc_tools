@@ -27,7 +27,7 @@ class.parameterize = comp.parameterize
 local void = {class = 'void', iolist = "#<void>"}
 
 local function trace(tag, expr)
-   log_se_n(expr, tag .. ":")
+   -- log_se_n(expr, tag .. ":")
 end
 
 class.def       = comp.def
@@ -112,23 +112,27 @@ function class.compile_closure_app(s, fun, args)
 
    -- Together with a return point if the app is not in tail position.
    if not s.tail then
-      assert(s.cont)
-      -- Re-use the continuation variable's source name as the jump
-      -- label's source name.
+      -- When not in tail position, compile_bindings will have created
+      -- an ordinary value continuation. We take over control flow so
+      -- make sure we're not overwriting any special behavior.
+      assert(s.cont and (not s.cont.fun))
+      -- The continuation we install will set the argument register
+      -- and jump to a label.  We create the label here and pass it up
+      -- to compile_bindings, where the 'label' target code is
+      -- inserted.
       cont_label = s:make_var(s.cont.var)
-      -- Attach the label to the cont var.  This instructs non-app
-      -- tail position expressions to compile into a goto.
       s.cont.fun =
          function(val)
             local got = l('goto', cont_label)
+            -- Optimize: don't set args when they will be ignored.
             if s.cont.var ~= '_' then
                return wrap_args(got, l(val))
             else
-               -- Continuation will ignore variable, so we don't need
-               -- to set the argument register.
                return got
             end
          end
+   else
+      assert(s.cont.fun)
    end
 
    local callexpr
@@ -215,7 +219,11 @@ function class.comp_bindings(s, bindings_in)
 
             local var, vexpr = se.unpack(binding, {n=2})
 
-            -- Set the continuation.
+            -- Set the continuation.  The receiver of this is the
+            -- primval case at the bottom of the match.  The default
+            -- is an ordinary block binding, but it can be modified by
+            -- forms to turn it into set! or goto or complex
+            -- expressions.
             if s.tail then
                assert(var == '_')
                s.cont = parent_cont
@@ -323,17 +331,17 @@ function class.comp_bindings(s, bindings_in)
                   end},
 
                   -- Primitive value: return to continuation.
-                  {",prim", function(m)
-                      s:def(var, m.prim)
-                      local typ = se.expr_type(m.prim)
+                  {",primval", function(m)
+                      s:def(var, m.primval)
+                      local typ = se.expr_type(m.primval)
                       if not ephemeral[typ] then
                          if  s.cont.fun then
-                            trace("PRIMCONT",m.prim)
-                            bind(var, s.cont.fun(m.prim))
+                            trace("PRIMVALCONT",m.primval)
+                            bind(var, s.cont.fun(m.primval))
                          else
                             -- This is an ordinary block binding.
-                            trace("PRIMRET",m.prim)
-                            bind(var, m.prim)
+                            trace("PRIMVALRET",m.primval)
+                            bind(var, m.primval)
                          end
                       end
                   end},
@@ -376,15 +384,15 @@ function class.compile(s,expr)
    -- Top environment is empty.
    s.env = se.empty
 
-   -- Goto return can be special
-   s.ret = s:make_var('return')
-   s.ret.fun = function(val) return l('return',val) end
+   -- Top continuation
+   local ret = s:make_var()
+   ret.fun = function(val) return l('return',val) end
 
    -- The 'var' parameter contains the continuation, which is a
    -- variable that will receive the value of the computation.  If
-   -- s.cont.label is defined it contains the jump label, otherwise it
-   -- is an ordinary block binding.
-   s.cont = s.ret
+   -- s.cont.fun is defined, it encodes other behavior such as 'set!',
+   -- 'goto' or 'return'.
+   s.cont = ret
 
    -- Tracks the maximum of arg-ref
    s.nb_args = -1
