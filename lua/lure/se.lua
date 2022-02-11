@@ -23,6 +23,7 @@ local function assert_pair(pair) assert(type(pair) == 'table') end
 local function car(pair) assert_pair(pair); return pair[1] end; se.car = car
 local function cdr(pair) assert_pair(pair); return pair[2] end; se.cdr = cdr
 local function cadr(ppair) return car(cdr(ppair)) end; se.cadr = cadr
+local function caar(ppair) return car(car(ppair)) end; se.caar = caar
 local function cons(a, d) return {a, d} end; se.cons = cons
 local function is_empty(lst) return lst == empty end; se.is_empty = is_empty
 

@@ -119,20 +119,27 @@ macro['letrec'] = function(expr, c)
       -- Base case is needed to avoid letrec->begin->letrec loop.
       return {c.let or 'begin',exprs}
    end
+   local names = se.map(se.car, bindings)
 
    local void_bindings = se.map(
-      function(binding)
-         local name, val = se.unpack(binding, {n = 2})
+      function(name)
          return l(name, c.void or void)
       end,
-      bindings)
+      names)
    local set_variables = se.map(
       function(binding)
          local name, val = se.unpack(binding, {n = 2})
          return l(c.set or "set!", name, val)
       end,
       bindings)
-   return {c.let or 'let', {void_bindings, {{c.begin or 'begin', set_variables}, exprs}}}
+   -- With this not being a primitive form, it is hard to see where
+   -- the context actually starts.  Insert a marker.
+   local mark = {c.mark or 'mark', {l('quote','letrec'), names}}
+   return {c.let or 'let',
+           {void_bindings,
+            {{c.begin or 'begin', set_variables},
+               {mark,
+                exprs}}}}
 end
 
 

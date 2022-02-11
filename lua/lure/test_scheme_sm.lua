@@ -30,7 +30,7 @@ function mod.run()
       local c = c_new()
       local ir = c:compile(expr)
 
-      -- log("IR:") ; pretty.log_pp(ir)
+      log("IR:") ; pretty.log_pp(ir)
 
       local e = scheme_sm.new()
       e.prim = require('lure.slc_runtime')

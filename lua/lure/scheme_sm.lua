@@ -43,6 +43,14 @@ local function _(expr)
    return l('_',expr)
 end
 
+local function closure_iolist(c)
+   if c.debug_name then
+      return {"#<closure:",c.debug_name,">"}
+   else
+      return {"#<closure>"}
+   end
+end
+
 local ephemeral = {
    ['closure'] = true,
    ['prim'] = true,
@@ -230,16 +238,17 @@ function class.comp_bindings(s, bindings_in)
    return s:parameterize(
       {
          -- These variables are just saved and updated in-place.
-         env  = s.env,
-         cont = s.cont,
+         env    = s.env,
+         cont   = s.cont,
+         labels = s.labels,
       },
       function()
          local parent_cont = s.cont
-         local bindings_out = {}
+         local bindings_out_arr = {}
          local function bind(var, val)
             assert(var)
             assert(val)
-            ins(bindings_out, l(var, val))
+            ins(bindings_out_arr, l(var, val))
          end
 
 
@@ -280,6 +289,20 @@ function class.comp_bindings(s, bindings_in)
                -- assert(var == '_')
                bind('_', recurse())
             end
+
+            -- Cut the current "program" and compile provided
+            -- expression (containing bindings_in) separately.
+            local function cut_bindings_in(cont_expr)
+               trace("CUTOFF", cont_expr)
+               bindings_in = se.empty
+               return
+                  s:parameterize(
+                     {cont = parent_cont},
+                     function()
+                        return s:comp(cont_expr)
+                  end)
+            end
+
 
             trace("VEXPR", vexpr)
 
@@ -326,10 +349,21 @@ function class.comp_bindings(s, bindings_in)
                          args = m.args,
                          body = m.body,
                          env = s.env,
-                         compiled = {}
+                         compiled = {},
+                         iolist = closure_iolist,
                       }
                       s:set_debug_name(s.cont, fun)
                       s:def(var, fun)
+                      -- Insert a labels form to provile a place to
+                      -- compile this lambda.  If this is not used it
+                      -- will be eliminated in postproc.
+
+                      -- FIXME: Use mark instead.
+                      --local labels = l('labels')
+                      --s.labels = {labels, s.labels}
+                      --local compiled_cut = cut_bindings_in({'block',bindings_in})
+                      --se.push_cdr(l('_',compiled_cut), labels)
+                      --bind('_',labels)
 
                   end},
 
@@ -349,15 +383,8 @@ function class.comp_bindings(s, bindings_in)
                          elseif fun.class == 'closure' then
                             local compiled_cont = nil
                             if not tail then
-                               -- Cut the current "program" and compile it separately.
-                               local bindings_cont = {l(var,l('arg-ref', 0)),bindings_in}
-                               bindings_in = se.empty
                                compiled_cont =
-                                  s:parameterize(
-                                     {cont = parent_cont},
-                                     function()
-                                        return s:comp_bindings(bindings_cont)
-                                     end)
+                                  cut_bindings_in({'block',{l(var,l('arg-ref', 0)),bindings_in}})
                             end
                             local app = s:compile_app(fun, m.args, compiled_cont)
                             bind('_', app)
@@ -388,7 +415,7 @@ function class.comp_bindings(s, bindings_in)
 
                })
          end
-         return {'block',a2l(bindings_out)}
+         return {'block',a2l(bindings_out_arr)}
    end)
 end
 
@@ -411,7 +438,11 @@ function class.comp(s, expr)
    })
 end
 
-
+local special = {}
+function special.mark(tag, ...)
+   log_se_n({tag,a2l({...})}, "MARK:")
+   return {class = "mark"}
+end
 
 function class.compile(s,expr)
    -- Prefix needs to be different from what is used in the frontend,
@@ -437,6 +468,9 @@ function class.compile(s,expr)
    -- Tracks the maximum of arg-ref
    s.nb_args = -1
 
+   -- Tracks the list of labels forms
+   s.lables = se.empty
+
    return s.match(
       expr,
       {{"(lambda (,lib_ref) ,body)", function(m)
@@ -444,6 +478,8 @@ function class.compile(s,expr)
            -- function, which gets passed the names of all the free
            -- variables in the original scheme code.
            local function lib_ref(name)
+              local val = special[name.expr]
+              if val then return val end
               return {
                  class = 'prim',
                  name = name,
