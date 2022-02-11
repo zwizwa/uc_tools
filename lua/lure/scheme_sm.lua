@@ -150,11 +150,9 @@ function class.comp_bindings(s, bindings_in)
          -- These variables are just saved and updated in-place.
          env  = s.env,
          cont = s.cont,
-         tail = s.tail,
       },
       function()
          local parent_cont = s.cont
-         local tail = s.tail
          local bindings_out = {}
          local function bind(var, val)
             assert(var)
@@ -166,7 +164,7 @@ function class.comp_bindings(s, bindings_in)
          while not se.is_empty(bindings_in) do
 
             local binding, rest = unpack(bindings_in)
-            s.tail = se.is_empty(rest)
+            local tail = se.is_empty(rest)
             bindings_in = rest
 
             local var, vexpr = se.unpack(binding, {n=2})
@@ -176,7 +174,7 @@ function class.comp_bindings(s, bindings_in)
             -- is an ordinary block binding, but it can be modified by
             -- forms to turn it into set! or goto or complex
             -- expressions.
-            if s.tail then
+            if tail then
                assert(var == '_')
                s.cont = parent_cont
             elseif var ~= '_' then
@@ -285,7 +283,7 @@ function class.comp_bindings(s, bindings_in)
                             local cont_label = nil
 
                             -- Together with a return point if the app is not in tail position.
-                            if not s.tail then
+                            if not tail then
                                -- When not in tail position, compile_bindings will have created
                                -- an ordinary value continuation. We take over control flow so
                                -- make sure we're not overwriting any special behavior.
@@ -324,7 +322,7 @@ function class.comp_bindings(s, bindings_in)
 
                             assert(app)
                             bind('_', app)
-                            if cont_label then
+                            if cont_label then -- same as if tail
                                bind('_', l('labels', l(cont_label, void)))
                                if s.cont.var ~= '_' then
                                   bind('_', (l('set!', s.cont, l('arg-ref',0))))
@@ -405,9 +403,6 @@ function class.compile(s,expr)
 
    -- Tracks the maximum of arg-ref
    s.nb_args = -1
-
-   -- Top expression is in tail position.
-   s.tail = true
 
    return s.match(
       expr,
