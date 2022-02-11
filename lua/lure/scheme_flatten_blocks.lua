@@ -95,10 +95,14 @@ local compile_form = {
       local _, var, etrue, efalse = se.unpack(expr, {n=4})
       return l('if',var,s:compile(etrue),s:compile(efalse))
    end,
-   ['label'] = function(s, expr)
-      local _, label, bodies = se.unpack(expr, {n=2, tail=true})
-      local cbodies = se.map(function(b) return s:compile(b) end, bodies)
-      return {'label',{label,cbodies}}
+   ['labels'] = function(s, expr)
+      local _, clauses = se.unpack(expr, {n=1, tail=true})
+      return {'labels', se.map(
+         function(clause)
+            local name, body = se.unpack(clause, {n=2})
+            return l(name, s:compile(body))
+         end,
+         clauses)}
    end,
 }
 local function default(s, expr)

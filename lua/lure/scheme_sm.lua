@@ -89,15 +89,16 @@ function class.compile_fun(s, fun, label)
       },
       function()
          return
-            l('label', label,
-              s:comp(
-                 block_enter(
-                    function(i, arg)
-                       s:track_max("nb_args", i)
-                       return l(arg, l('arg-ref', i))
-                    end,
-                    fun.args,
-                    l(_(fun.body)))))
+            l('labels',
+              l(label,
+                s:comp(
+                   block_enter(
+                      function(i, arg)
+                         s:track_max("nb_args", i)
+                         return l(arg, l('arg-ref', i))
+                      end,
+                      fun.args,
+                      l(_(fun.body))))))
       end)
 end
 
@@ -325,7 +326,7 @@ function class.comp_bindings(s, bindings_in)
                             assert(app)
                             bind('_', app)
                             if cont_label then
-                               bind('_', l('label', cont_label))
+                               bind('_', l('labels', l(cont_label, void)))
                                if s.cont.var ~= '_' then
                                   bind('_', (l('set!', s.cont, l('arg-ref',0))))
                                end
