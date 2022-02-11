@@ -160,26 +160,34 @@ function class.comp_bindings(s, bindings_list)
             -- probably can drop the variable?  Or always emit it for
             -- later assignment?
 
-            local vexpr1 = s:comp(vexpr)
-            assert(vexpr1)
-            local typ = se.expr_type(vexpr1)
-            -- Record the value in the environment for later ref().
-            if var ~= '_' then
-               s:def(var, vexpr1)
-            end
-            if typ == 'closure' then
-               local fun = vexpr1
-               s:set_debug_name(s.cont, fun)
-               -- Continuations are hardcoded.  We compile one
-               -- instance per continuation, and use this map to
-               -- indicate that a function has been compiled.
-               -- Functions will be compiled later when they are
-               -- referenced by the 'app' form.
-               fun.compiled = {}
-            elseif not ephemeral[typ] then
-               -- Only collect concrete stuff.
-               ins(bindings, l(var, vexpr1))
-            end
+            s.match(
+               vexpr,
+               {
+                  {",other",function(m)
+                      local cexpr = s:comp(m.other)
+                      assert(cexpr)
+
+
+                      local typ = se.expr_type(cexpr)
+                      -- Record the value in the environment for later ref().
+                      if var ~= '_' then
+                         s:def(var, cexpr)
+                      end
+                      if typ == 'closure' then
+                         local fun = cexpr
+                         s:set_debug_name(s.cont, fun)
+                         -- Continuations are hardcoded.  We compile one
+                         -- instance per continuation, and use this map to
+                         -- indicate that a function has been compiled.
+                         -- Functions will be compiled later when they are
+                         -- referenced by the 'app' form.
+                         fun.compiled = {}
+                      elseif not ephemeral[typ] then
+                         -- Only collect concrete stuff.
+                         ins(bindings, l(var, cexpr))
+                      end
+                  end}
+               })
          end
          return {'block',a2l(bindings)}
    end)
