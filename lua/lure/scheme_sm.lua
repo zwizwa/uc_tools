@@ -239,10 +239,21 @@ function class.comp_bindings(s, bindings_list)
                             -- that way.
                             -- local cont_block = {'block',bindings_list}
                             -- bindings_list = se.empty
-                            local app = s:compile_closure_app(fun,m.args)
+                            local app, cont_label = s:compile_closure_app(fun,m.args)
                             assert(app)
                             log_se_n(app,"ASDF:")
                             bind('_', app)
+                            if cont_label then
+                               -- If this was not a tail call, code
+                               -- will jump to the cont_label.
+                               -- Generate code to receive that call.
+                               bind('_',
+                                    l('label', cont_label,
+                                      ifte(s.cont.var == '_',
+                                           l('block'),
+                                           _(l('set!', s.cont, l('arg-ref',0))))))
+                            end
+
                          else
                             error("bad func class '" .. fun.class .. "'")
                          end
@@ -286,35 +297,20 @@ function class.compile_closure_app(s, fun, args)
 
    trace("LABEL",label)
 
-   local function wrap_cont(expr)
-      return expr
-   end
+   local cont_label
 
    -- Together with a return point if the app is not in tail position.
    if not s.tail then
       assert(s.cont)
       -- Re-use the continuation variable's source name as the jump
       -- label's source name.
-      local cont_label = s:make_var(s.cont.var)
+      cont_label = s:make_var(s.cont.var)
       -- Attach the label to the cont var.  This instructs non-app
       -- tail position expressions to compile into a goto.
       s.cont.fun =
          function(val)
             return wrap_args(l('goto', cont_label), l(val))
          end
-
-      -- And generate the label that will be jumped to.  This contains
-      -- the cont_block that the app split in half.
-      wrap_cont = function(expr)
-         -- local ccont_block = s:comp(cont_block)
-         return
-            l('block',
-              _(expr),
-              _(l('label', cont_label,
-                  ifte(s.cont.var == '_',
-                       l('block'),
-                       _(l('set!', s.cont, l('arg-ref',0)))))))
-      end
    end
 
    local callexpr
@@ -327,9 +323,9 @@ function class.compile_closure_app(s, fun, args)
       callexpr = l('goto',label)
    end
 
-   local outexpr = wrap_cont(wrap_args(callexpr, args))
+   local outexpr = wrap_args(callexpr, args)
    trace("APPBLOCK", outexpr)
-   return outexpr
+   return outexpr, cont_label
 end
 
 
