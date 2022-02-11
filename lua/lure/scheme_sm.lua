@@ -154,16 +154,29 @@ function class.compile_app(s, fun, args, compiled_cont)
    -- case we still need to compile it.
    local label = maybe_label or s:make_var(fun.debug_name)
 
+   -- local function compile_callexpr_old()
+   --    if not maybe_label then
+   --       -- Fall through into the function body, recording that we've
+   --       -- compiled for this continuation.
+   --       fun.compiled[s.cont] = label
+   --       return l('labels',l(label, s:compile_fun(fun)))
+   --    else
+   --       -- Jump to previously compiled body.
+   --       return l('goto',label)
+   --    end
+   -- end
+
    local function compile_callexpr()
       if not maybe_label then
          -- Fall through into the function body, recording that we've
          -- compiled for this continuation.
          fun.compiled[s.cont] = label
-         return l('labels',l(label, s:compile_fun(fun)))
-      else
-         -- Jump to previously compiled body.
-         return l('goto',label)
+         local compiled = s:compile_fun(fun)
+         local labels = fun.labels
+         assert(labels)
+         se.push_cdr(l(label, compiled), labels)
       end
+      return l('goto',label)
    end
 
    trace("LABEL",label)
