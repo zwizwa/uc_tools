@@ -27,7 +27,7 @@ class.parameterize = comp.parameterize
 local void = {class = 'void', iolist = "#<void>"}
 
 local function trace(tag, expr)
-   -- log_se_n(expr, tag .. ":")
+   log_se_n(expr, tag .. ":")
 end
 
 class.def       = comp.def
@@ -177,12 +177,16 @@ function class.set_debug_name(s, var, val)
 end
 
 
-function class.comp_bindings(s, bindings_list)
+function class.comp_bindings(s, bindings_in)
 
    local function lit_or_ref(thing)
       local typ = se.expr_type(thing)
       if typ == 'var' then return s:ref(thing)
       else return thing end
+   end
+
+   local function comp(expr)
+      return s:comp(expr)
    end
 
    return s:parameterize(
@@ -193,30 +197,48 @@ function class.comp_bindings(s, bindings_list)
          tail = s.tail,
       },
       function()
-         local up_var = s.cont
+         local parent_cont = s.cont
          local tail = s.tail
-         local bindings = {}
+         local bindings_out = {}
          local function bind(var, val)
             assert(var)
             assert(val)
-            ins(bindings, l(var, val))
+            ins(bindings_out, l(var, val))
          end
 
 
-         while not se.is_empty(bindings_list) do
+         while not se.is_empty(bindings_in) do
 
-            local binding, rest = unpack(bindings_list)
-            s.tail = tail and se.is_empty(rest)
-            bindings_list = rest
+            local binding, rest = unpack(bindings_in)
+            s.tail = se.is_empty(rest)
+            bindings_in = rest
 
             local var, vexpr = se.unpack(binding, {n=2})
+
+            -- Set the continuation.
             if s.tail then
                assert(var == '_')
-               s.cont = up_var
+               s.cont = parent_cont
             elseif var ~= '_' then
+               assert(var and var.class == 'var')
                s.cont = var
             else
                s.cont = s:make_var("_")
+            end
+
+            trace("CONT",l(s.cont, s.cont.ret ~= nil))
+
+            -- Called before decending into non-primitive expressions.
+            local function bind_cps(recurse)
+               -- Insert set! continuation if there isn't one already.
+               if not s.cont.fun then
+                  bind(var, void)
+                  trace("CONTSET",vexpr)
+                  s.cont.fun = function(val) return l('set!',s.cont,val) end
+                  var = '_'
+               end
+               -- assert(var == '_')
+               bind('_', recurse())
             end
 
             trace("VEXPR", vexpr)
@@ -224,11 +246,21 @@ function class.comp_bindings(s, bindings_list)
             s.match(
                vexpr,
                {
-
+                  -- Recursive expressions
                   {"(block . ,bindings)", function(m)
-                      bind(var, s:comp_bindings(m.bindings))
+                      bind_cps(
+                         function()
+                            return s:comp_bindings(m.bindings)
+                         end)
+                  end},
+                  {"(if ,c ,t ,f)", function(m)
+                      bind_cps(
+                         function()
+                            return l('if', m.c, s:comp(m.t), s:comp(m.f))
+                         end)
                   end},
 
+                  -- Primitive Expressions
                   {"(set! ,var ,val)", function(m)
                       local val = s:ref(m.val)
                       s:set(m.var, val)
@@ -246,7 +278,6 @@ function class.comp_bindings(s, bindings_list)
                          end
                       end
                   end},
-
                   {"(lambda ,args ,body)", function(m)
                       -- Definitions are ephemeral.  Bodies will be compiled
                       -- when they are referenced by 'app'.
@@ -262,6 +293,7 @@ function class.comp_bindings(s, bindings_list)
 
                   end},
 
+                  -- Application (ephemeral, primitive, closure)
                   {"(app ,fun . ,args)", function(m)
                       local i=0
                       local fun = s:ref(m.fun)
@@ -290,26 +322,25 @@ function class.comp_bindings(s, bindings_list)
                       end
                   end},
 
-                  {"(if ,c ,t ,f)", function(m)
-                      -- FIXME: Pass continuation.
-                      bind(var, l('if', m.c, s:comp(m.t), s:comp(m.f)))
-                  end},
-
-                  {",other", function(m)
-                      trace("OTHER",m.other)
-                      s:def(var, m.other)
-                      local typ = se.expr_type(m.other)
-                      if typ == 'var' and s.cont.fun then
-                         bind(var, s.cont.fun(m.other))
-                      elseif not ephemeral[typ] then
-                         -- This is an ordinary block binding.
-                         bind(var, m.other)
+                  -- Primitive value: return to continuation.
+                  {",prim", function(m)
+                      s:def(var, m.prim)
+                      local typ = se.expr_type(m.prim)
+                      if not ephemeral[typ] then
+                         if  s.cont.fun then
+                            trace("PRIMCONT",m.prim)
+                            bind(var, s.cont.fun(m.prim))
+                         else
+                            -- This is an ordinary block binding.
+                            trace("PRIMRET",m.prim)
+                            bind(var, m.prim)
+                         end
                       end
                   end},
 
                })
          end
-         return {'block',a2l(bindings)}
+         return {'block',a2l(bindings_out)}
    end)
 end
 

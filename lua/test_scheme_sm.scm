@@ -1,5 +1,9 @@
 ;; Each expression is compiled separately.
 
+;; The 'blockval' problem: convert binding to void binding + set! cont.
+(let ((a (if 1 2 3)))
+  (+ a a))
+
 ;; Infinite single rec
 (let loop ((n 0))
   (if (> n 3)
