@@ -75,11 +75,13 @@ local pprint_form = {
          end)
    end,
    ['label'] = function(s, expr)
-      local _, name, expr = se.unpack(expr, {n=3})
+      local _, name, exprs = se.unpack(expr, {n=2, tail=true})
       s:w("(label ", se.iolist(name)," ")
       s:indented(
          function()
-            s:pprint(expr)
+            for e in se.elements(exprs) do
+               s:pprint(e)
+            end
          end)
    end,
 

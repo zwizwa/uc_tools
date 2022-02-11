@@ -27,7 +27,7 @@ class.parameterize = comp.parameterize
 local void = {class = 'void', iolist = "#<void>"}
 
 local function trace(tag, expr)
-   log_se_n(expr, tag .. ":")
+   -- log_se_n(expr, tag .. ":")
 end
 
 class.def       = comp.def
@@ -71,10 +71,7 @@ end
 -- Note that we intentionally do NOT change environment to that of the
 -- closure!  The C output only can support downward closures: every
 -- variable that makes it into the code should be checked to make sure
--- it is defined in the lexical environment.  This is why we generate
--- the function instances right where the lambda used to be so its
--- variable references are legal.
---
+-- it is defined in the lexical environment.
 
 function class.compile_fun(s, fun, label)
    return s:parameterize(
@@ -98,6 +95,56 @@ function class.compile_fun(s, fun, label)
       end)
 end
 
+function class.compile_closure_app(s, fun, args)
+
+   -- Function instances are specialized to a particular continuation
+   -- i.e. they 'return' through 'goto'.  The continuation can be
+   -- mapped to the label if it was already compiled.
+   local maybe_label = fun.compiled[s.cont]
+
+   -- Use the label of the compiled function, or generate a new one in
+   -- case we still need to compile it.
+   local label = maybe_label or s:make_var(fun.debug_name)
+
+   trace("LABEL",label)
+
+   local cont_label = nil
+
+   -- Together with a return point if the app is not in tail position.
+   if not s.tail then
+      assert(s.cont)
+      -- Re-use the continuation variable's source name as the jump
+      -- label's source name.
+      cont_label = s:make_var(s.cont.var)
+      -- Attach the label to the cont var.  This instructs non-app
+      -- tail position expressions to compile into a goto.
+      s.cont.fun =
+         function(val)
+            local got = l('goto', cont_label)
+            if s.cont.var ~= '_' then
+               return wrap_args(got, l(val))
+            else
+               -- Continuation will ignore variable, so we don't need
+               -- to set the argument register.
+               return got
+            end
+         end
+   end
+
+   local callexpr
+   if not maybe_label then
+      -- Fall through into the function body.
+      fun.compiled[s.cont] = label
+      callexpr = s:compile_fun(fun, label)
+   else
+      -- Jump to previously compiled body.
+      callexpr = l('goto',label)
+   end
+
+   local outexpr = wrap_args(callexpr, args)
+   trace("APPBLOCK", outexpr)
+   return outexpr, cont_label
+end
 
 
 -- Goto with arguments.
@@ -172,11 +219,6 @@ function class.comp_bindings(s, bindings_list)
                s.cont = s:make_var("_")
             end
 
-            -- FIXME: Handle forms here.  Primitive ones can be bound,
-            -- others (if, app, block) will need custom continuations.
-            -- FIXME: Actually, if there is a continuation here, we
-            -- probably can drop the variable?  Or always emit it for
-            -- later assignment?
             trace("VEXPR", vexpr)
 
             s.match(
@@ -185,21 +227,6 @@ function class.comp_bindings(s, bindings_list)
 
                   {"(block . ,bindings)", function(m)
                       bind(var, s:comp_bindings(m.bindings))
-                  end},
-
-                  {"(lambda ,args ,body)", function(m)
-                      -- Definitions are ephemeral.  Bodies will be compiled
-                      -- when they are referenced by 'app'.
-                      local fun = {
-                         class = 'closure',
-                         args = m.args,
-                         body = m.body,
-                         env = s.env,
-                         compiled = {}
-                      }
-                      s:set_debug_name(s.cont, fun)
-                      s:def(var, fun)
-
                   end},
 
                   {"(set! ,var ,val)", function(m)
@@ -220,6 +247,21 @@ function class.comp_bindings(s, bindings_list)
                       end
                   end},
 
+                  {"(lambda ,args ,body)", function(m)
+                      -- Definitions are ephemeral.  Bodies will be compiled
+                      -- when they are referenced by 'app'.
+                      local fun = {
+                         class = 'closure',
+                         args = m.args,
+                         body = m.body,
+                         env = s.env,
+                         compiled = {}
+                      }
+                      s:set_debug_name(s.cont, fun)
+                      s:def(var, fun)
+
+                  end},
+
                   {"(app ,fun . ,args)", function(m)
                       local i=0
                       local fun = s:ref(m.fun)
@@ -233,27 +275,15 @@ function class.comp_bindings(s, bindings_list)
                          if fun.class == 'prim' then
                             bind(var, {fun, m.args})
                          elseif fun.class == 'closure' then
-                            -- We cut off the current bindings list to
-                            -- create a new labeled block that will
-                            -- act as the continuation.  Seems cleaner
-                            -- that way.
-                            -- local cont_block = {'block',bindings_list}
-                            -- bindings_list = se.empty
                             local app, cont_label = s:compile_closure_app(fun,m.args)
                             assert(app)
-                            log_se_n(app,"ASDF:")
                             bind('_', app)
                             if cont_label then
-                               -- If this was not a tail call, code
-                               -- will jump to the cont_label.
-                               -- Generate code to receive that call.
-                               bind('_',
-                                    l('label', cont_label,
-                                      ifte(s.cont.var == '_',
-                                           l('block'),
-                                           _(l('set!', s.cont, l('arg-ref',0))))))
+                               bind('_', l('label', cont_label))
+                               if s.cont.var ~= '_' then
+                                  bind('_', (l('set!', s.cont, l('arg-ref',0))))
+                               end
                             end
-
                          else
                             error("bad func class '" .. fun.class .. "'")
                          end
@@ -271,7 +301,7 @@ function class.comp_bindings(s, bindings_list)
                       local typ = se.expr_type(m.other)
                       if typ == 'var' and s.cont.fun then
                          bind(var, s.cont.fun(m.other))
-                      else
+                      elseif not ephemeral[typ] then
                          -- This is an ordinary block binding.
                          bind(var, m.other)
                       end
@@ -284,49 +314,6 @@ function class.comp_bindings(s, bindings_list)
 end
 
 
-function class.compile_closure_app(s, fun, args)
-
-   -- Function instances are specialized to the continuation,
-   -- i.e. they 'return' through 'goto'.  The continuation can be
-   -- mapped to the label if it was already compiled.
-   local maybe_label = fun.compiled[s.cont]
-
-   -- Use the label of the compiled function, or generate a new one in
-   -- case we still need to compile it.
-   local label = maybe_label or s:make_var(fun.debug_name)
-
-   trace("LABEL",label)
-
-   local cont_label
-
-   -- Together with a return point if the app is not in tail position.
-   if not s.tail then
-      assert(s.cont)
-      -- Re-use the continuation variable's source name as the jump
-      -- label's source name.
-      cont_label = s:make_var(s.cont.var)
-      -- Attach the label to the cont var.  This instructs non-app
-      -- tail position expressions to compile into a goto.
-      s.cont.fun =
-         function(val)
-            return wrap_args(l('goto', cont_label), l(val))
-         end
-   end
-
-   local callexpr
-   if not maybe_label then
-      -- Fall through into the function body.
-      fun.compiled[s.cont] = label
-      callexpr = s:compile_fun(fun, label)
-   else
-      -- Jump to previously compiled body.
-      callexpr = l('goto',label)
-   end
-
-   local outexpr = wrap_args(callexpr, args)
-   trace("APPBLOCK", outexpr)
-   return outexpr, cont_label
-end
 
 
 -- Compiler is contained in comp_bindings.  This is just a trampoline
