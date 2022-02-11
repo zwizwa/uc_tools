@@ -155,9 +155,14 @@ function class.comp_bindings(s, bindings_list)
             ins(bindings, l(var, val))
          end
 
-         for binding, rest in se.elements(bindings_list) do
-            local var, vexpr = se.unpack(binding, {n=2})
+
+         while not se.is_empty(bindings_list) do
+
+            local binding, rest = unpack(bindings_list)
             s.tail = tail and se.is_empty(rest)
+            bindings_list = rest
+
+            local var, vexpr = se.unpack(binding, {n=2})
             if s.tail then
                assert(var == '_')
                s.cont = up_var
@@ -228,12 +233,16 @@ function class.comp_bindings(s, bindings_list)
                          if fun.class == 'prim' then
                             bind(var, {fun, m.args})
                          elseif fun.class == 'closure' then
-                            -- FIXME: Probably better to split the
-                            -- block at the application to have a more
-                            -- consistent label form.
+                            -- We cut off the current bindings list to
+                            -- create a new labeled block that will
+                            -- act as the continuation.  Seems cleaner
+                            -- that way.
+                            -- local cont_block = {'block',bindings_list}
+                            -- bindings_list = se.empty
                             local app = s:compile_closure_app(fun,m.args)
                             assert(app)
-                            bind(var, app)
+                            log_se_n(app,"ASDF:")
+                            bind('_', app)
                          else
                             error("bad func class '" .. fun.class .. "'")
                          end
@@ -294,15 +303,17 @@ function class.compile_closure_app(s, fun, args)
             return wrap_args(l('goto', cont_label), l(val))
          end
 
-      -- And generate the label that will be jumped to.
+      -- And generate the label that will be jumped to.  This contains
+      -- the cont_block that the app split in half.
       wrap_cont = function(expr)
+         -- local ccont_block = s:comp(cont_block)
          return
             l('block',
               _(expr),
               _(l('label', cont_label,
                   ifte(s.cont.var == '_',
-                       void, --l('block'),
-                       l('set!', s.cont, l('arg-ref',0))))))
+                       l('block'),
+                       _(l('set!', s.cont, l('arg-ref',0)))))))
       end
    end
 
