@@ -104,7 +104,7 @@ end
 -- FIXME: I'd like to create a pass that can take a letrec, inspect
 -- it, and if it doesn't contain any mutual recursion to compile it to
 -- let* instead.  That would produce much simpler block output + make
--- it possible to insert a marker for mutual recursion.
+-- it possible to insert a hint for mutual recursion.
 
 -- Implement letrec on top of let and set!
 macro['letrec'] = function(expr, c)
@@ -133,12 +133,12 @@ macro['letrec'] = function(expr, c)
       end,
       bindings)
    -- With this not being a primitive form, it is hard to see where
-   -- the context actually starts.  Insert a marker.
-   local mark = {c.mark or 'mark', {l('quote','letrec'), names}}
+   -- the context actually starts.  Insert a hint.
+   local hint = {c.hint or 'hint', {l('quote','letrec'), names}}
    return {c.let or 'let',
            {void_bindings,
             {{c.begin or 'begin', set_variables},
-               {mark,
+               {hint,
                 exprs}}}}
 end
 

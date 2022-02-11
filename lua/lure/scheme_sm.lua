@@ -240,7 +240,6 @@ function class.comp_bindings(s, bindings_in)
          -- These variables are just saved and updated in-place.
          env    = s.env,
          cont   = s.cont,
-         labels = s.labels,
       },
       function()
          local parent_cont = s.cont
@@ -303,6 +302,27 @@ function class.comp_bindings(s, bindings_in)
                   end)
             end
 
+            -- Hints contain information that was present in the
+            -- original source but is no longer readily available in
+            -- the IR.
+            local hint = {}
+            function hint.letrec(closures)
+               log_se_n(closures,"HINT_LETREC:")
+               -- A letrec hint is inserted after all letrec bindings
+               -- are complete, before the evaluation of the letrec
+               -- body.  It is passed the list of closures.  We use
+               -- this as the place to insert a labels form to provile
+               -- a location to compile instances.
+
+               local labels = l('labels')
+               for closure in se.elements(closures) do
+                  closure.labels = labels
+               end
+               local compiled_cut = cut_bindings_in({'block',bindings_in})
+               -- se.push_cdr(l('_',l('quote',123)), labels)
+               se.push_cdr(l('_',compiled_cut), labels)
+               bind('_',labels)
+            end
 
             trace("VEXPR", vexpr)
 
@@ -354,33 +374,45 @@ function class.comp_bindings(s, bindings_in)
                       }
                       s:set_debug_name(s.cont, fun)
                       s:def(var, fun)
-                      -- Insert a labels form to provile a place to
-                      -- compile this lambda.  If this is not used it
-                      -- will be eliminated in postproc.
-
-                      -- FIXME: Use mark instead.
-                      --local labels = l('labels')
-                      --s.labels = {labels, s.labels}
-                      --local compiled_cut = cut_bindings_in({'block',bindings_in})
-                      --se.push_cdr(l('_',compiled_cut), labels)
-                      --bind('_',labels)
-
+                      -- FIXME: Insert a labels form here as well?
                   end},
 
-                  -- Application (ephemeral, primitive, closure)
+                  -- Application (ephemeral, hint, primitive, closure)
                   {"(app ,fun . ,args)", function(m)
                       local i=0
                       local fun = s:ref(m.fun)
                       trace("APP",l(m.fun, fun))
                       if type(fun) == 'function' then
-                         -- Primitive functions can be ephemeral and/or emit code.
+                         -- Ephemeral functions are evaluated.  This
+                         -- is currently only used for lib-ref, which
+                         -- is given a symbol and returns a prim.
                          local vals = se.map(lit_or_ref, m.args)
-                         s:def(var, fun(unpack(l2a(vals))))
+                         local rv = fun(unpack(l2a(vals)))
+                         -- Only ephemeral.
+                         s:def(var, rv)
                       else
                          assert(fun.class)
                          if fun.class == 'prim' then
-                            bind(var, {fun, m.args})
+                            if fun.name == 'hint' then
+                               -- Hints are encoded as a regular
+                               -- function call such that they do not
+                               -- have any syntactic significance.
+                               -- However, the information they
+                               -- provide can lead to compilation
+                               -- actions.
+                               local hint_name, hint_args = unpack(m.args)
+                               local hint_fun = hint[hint_name.expr]
+                               if hint_fun then
+                                  hint_fun(se.map(lit_or_ref, hint_args))
+                               else
+                                  log("WARNING: unknown hint " .. hint_name)
+                               end
+                            else
+                               -- Primitives are compiled
+                               bind(var, {fun, m.args})
+                            end
                          elseif fun.class == 'closure' then
+                            -- Closures are compiled
                             local compiled_cont = nil
                             if not tail then
                                compiled_cont =
@@ -438,11 +470,6 @@ function class.comp(s, expr)
    })
 end
 
-local special = {}
-function special.mark(tag, ...)
-   log_se_n({tag,a2l({...})}, "MARK:")
-   return {class = "mark"}
-end
 
 function class.compile(s,expr)
    -- Prefix needs to be different from what is used in the frontend,
@@ -478,11 +505,9 @@ function class.compile(s,expr)
            -- function, which gets passed the names of all the free
            -- variables in the original scheme code.
            local function lib_ref(name)
-              local val = special[name.expr]
-              if val then return val end
               return {
                  class = 'prim',
-                 name = name,
+                 name = name.expr,
                  iolist = {"prim:",name.expr}
               }
            end
