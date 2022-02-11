@@ -2,14 +2,11 @@
 -- modified structure that cannot represent all of Scheme.  The two
 -- main differences are:
 --
--- 1. Non tail-recursive applications are inlined.
+-- 1. All function applications are inlined, with support for loops.
 --
--- 2. Downward closures are allowed in functional loop combinators,
---    where they also will be aligned/specialized.
+-- 2. Downward closures are allowed.
+--
 
--- TODO:
--- . Non-recursive calls should just be substituted/inlined
--- . Add a parameterized continuation?  E.g. 1-deep CPS?
 
 local se       = require('lure.se')
 local comp     = require('lure.comp')
@@ -52,8 +49,9 @@ local ephemeral = {
    ['void'] = true,
 }
 
--- Compile a block with some arg manipulation at the start.
-local function block_with_args(fun, list, tail)
+-- Compile a block with some statements at the beginning.  This is
+-- used for arg-ref and set-arg!.
+local function block_enter(fun, list, tail)
    tail = tail or se.empty
    local i = 0
    return {'block', se.foldr(
@@ -68,10 +66,18 @@ end
 
 -- Instantiate a function.
 --
--- Note that we intentionally do NOT change environment to that of the
--- closure!  The C output only can support downward closures: every
--- variable that makes it into the code should be checked to make sure
--- it is defined in the lexical environment.
+-- Since we're just inlining and not explicitly handling the closure's
+-- environment, this can only support downward closures.  FIXME: Add a
+-- check to primval that ensures all variables are defined.
+--
+-- Currently there doesn't seem to be any risk of violating scoping
+-- because the ephemeral lambda values cannot be moved around.
+-- I.e. when the variable that binds the closure is in scope, the
+-- variables referenced by that closure are as well.
+--
+-- The takeway here is: keep it simple!  Do not implement higher order
+-- forms in this compiler stage, but instead implement those in terms
+-- of Scheme macros higher up the abstraction chain.
 
 function class.compile_fun(s, fun, label)
    return s:parameterize(
@@ -85,7 +91,7 @@ function class.compile_fun(s, fun, label)
          return
             l('label', label,
               s:comp(
-                 block_with_args(
+                 block_enter(
                     function(i, arg)
                        s:track_max("nb_args", i)
                        return l(arg, l('arg-ref', i))
@@ -154,7 +160,7 @@ end
 -- Goto with arguments.
 function wrap_args(goto_or_label_expr, args)
    local expr =
-      block_with_args(
+      block_enter(
          function(i, arg)
             return _(l('set-arg!', i, arg))
          end,
@@ -332,15 +338,18 @@ function class.comp_bindings(s, bindings_in)
 
                   -- Primitive value: return to continuation.
                   {",primval", function(m)
+                      -- FIXME: Check all references.  We are inlining
+                      -- closures assuming their closed variables are
+                      -- bound.
                       s:def(var, m.primval)
                       local typ = se.expr_type(m.primval)
                       if not ephemeral[typ] then
                          if  s.cont.fun then
-                            trace("PRIMVALCONT",m.primval)
+                            trace("PVCONT",m.primval)
                             bind(var, s.cont.fun(m.primval))
                          else
                             -- This is an ordinary block binding.
-                            trace("PRIMVALRET",m.primval)
+                            trace("PVRET",m.primval)
                             bind(var, m.primval)
                          end
                       end
