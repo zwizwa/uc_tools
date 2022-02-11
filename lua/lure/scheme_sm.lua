@@ -87,7 +87,7 @@ end
 -- forms in this compiler stage, but instead implement those in terms
 -- of Scheme macros higher up the abstraction chain.
 
-function class.compile_fun(s, fun, label)
+function class.compile_fun(s, fun)
    return s:parameterize(
       {
          -- Expression is in tail position.
@@ -97,16 +97,14 @@ function class.compile_fun(s, fun, label)
       },
       function()
          return
-            l('labels',
-              l(label,
-                s:comp(
-                   block_enter(
-                      function(i, arg)
-                         s:track_max("nb_args", i)
-                         return l(arg, l('arg-ref', i))
-                      end,
-                      fun.args,
-                      l(_(fun.body))))))
+            s:comp(
+               block_enter(
+                  function(i, arg)
+                     s:track_max("nb_args", i)
+                     return l(arg, l('arg-ref', i))
+                  end,
+                  fun.args,
+                  l(_(fun.body))))
       end)
 end
 
@@ -161,7 +159,7 @@ function class.compile_app(s, fun, args, compiled_cont)
          -- Fall through into the function body, recording that we've
          -- compiled for this continuation.
          fun.compiled[s.cont] = label
-         return s:compile_fun(fun, label)
+         return l('labels',l(label, s:compile_fun(fun)))
       else
          -- Jump to previously compiled body.
          return l('goto',label)
