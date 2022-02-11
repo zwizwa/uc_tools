@@ -266,7 +266,6 @@ function class.comp_bindings(s, bindings_in)
                             bind(var, {fun, m.args})
                          elseif fun.class == 'closure' then
 
-
                             -- Function instances are specialized to a
                             -- particular continuation i.e. they
                             -- 'return' through 'goto'.  The
@@ -281,9 +280,23 @@ function class.comp_bindings(s, bindings_in)
                             trace("LABEL",label)
 
                             local cont_label = nil
+                            local compiled_cont = nil
 
                             -- Together with a return point if the app is not in tail position.
                             if not tail then
+
+                               -- Cut the current "program" and compile it separately.
+                               local bindings_cont = {l(var,l('arg-ref', 0)),bindings_in}
+                               bindings_in = se.empty
+                               compiled_cont =
+                                  s:parameterize(
+                                     {cont = parent_cont},
+                                     function()
+                                        return s:comp_bindings(bindings_cont)
+                                     end)
+                               -- Parameterize it
+
+
                                -- When not in tail position, compile_bindings will have created
                                -- an ordinary value continuation. We take over control flow so
                                -- make sure we're not overwriting any special behavior.
@@ -323,7 +336,7 @@ function class.comp_bindings(s, bindings_in)
                             assert(app)
                             bind('_', app)
                             if cont_label then -- same as if tail
-                               bind('_', l('labels', l(cont_label, void)))
+                               bind('_', l('labels', l(cont_label, compiled_cont)))
                                if s.cont.var ~= '_' then
                                   bind('_', (l('set!', s.cont, l('arg-ref',0))))
                                end
