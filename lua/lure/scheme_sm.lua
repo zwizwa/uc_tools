@@ -135,11 +135,11 @@ function class.comp_bindings(s, bindings_list)
       {
          -- These variables are just saved and updated in-place.
          env  = s.env,
-         var  = s.var,
+         cont = s.cont,
          tail = s.tail,
       },
       function()
-         local up_var = s.var
+         local up_var = s.cont
          local tail = s.tail
          local bindings = {}
          for binding, rest in se.elements(bindings_list) do
@@ -147,12 +147,18 @@ function class.comp_bindings(s, bindings_list)
             s.tail = tail and se.is_empty(rest)
             if s.tail then
                assert(var == '_')
-               s.var = up_var
+               s.cont = up_var
             elseif var ~= '_' then
-               s.var = var
+               s.cont = var
             else
-               s.var = s:make_var("_")
+               s.cont = s:make_var("_")
             end
+
+            -- FIXME: Handle forms here.  Primitive ones can be bound,
+            -- others (if, app, block) will need custom continuations.
+            -- FIXME: Actually, if there is a continuation here, we
+            -- probably can drop the variable?  Or always emit it for
+            -- later assignment?
 
             local vexpr1 = s:comp(vexpr)
             assert(vexpr1)
@@ -163,7 +169,7 @@ function class.comp_bindings(s, bindings_list)
             end
             if typ == 'closure' then
                local fun = vexpr1
-               s:set_debug_name(s.var, fun)
+               s:set_debug_name(s.cont, fun)
                -- Continuations are hardcoded.  We compile one
                -- instance per continuation, and use this map to
                -- indicate that a function has been compiled.
@@ -185,7 +191,7 @@ function class.compile_closure_app(s, fun, args)
    -- Function instances are specialized to the continuation,
    -- i.e. they 'return' through 'goto'.  The continuation can be
    -- mapped to the label if it was already compiled.
-   local maybe_label = fun.compiled[s.var]
+   local maybe_label = fun.compiled[s.cont]
 
    -- Use the label of the compiled function, or generate a new one in
    -- case we still need to compile it.
@@ -199,27 +205,33 @@ function class.compile_closure_app(s, fun, args)
 
    -- Together with a return point if the app is not in tail position.
    if not s.tail then
-      assert(s.var)
+      assert(s.cont)
       -- Re-use the continuation variable's source name as the jump
       -- label's source name.
-      local cont_label = s:make_var(s.var.var)
+      local cont_label = s:make_var(s.cont.var)
       -- Attach the label to the cont var.  This instructs non-app
       -- tail position expressions to compile into a goto.
-      s.var.label = cont_label
+      s.cont.fun =
+         function(val)
+            return wrap_args(l('goto', cont_label), l(val))
+         end
+
       -- And generate the label that will be jumped to.
       wrap_cont = function(expr)
          return
             l('block',
               _(expr),
-              _(l('label', s.var.label,
-                  l('set!', s.var, l('arg-ref',0)))))
+              _(l('label', cont_label,
+                  ifte(s.cont.var == '_',
+                       l('block'),
+                       l('set!', s.cont, l('arg-ref',0))))))
       end
    end
 
    local callexpr
    if not maybe_label then
       -- Fall through into the function body.
-      fun.compiled[s.var] = label
+      fun.compiled[s.cont] = label
       callexpr = s:compile_fun(fun, label)
    else
       -- Jump to previously compiled body.
@@ -297,13 +309,8 @@ function class.comp(s, expr)
          {",other", function(m)
              trace("OTHER",m.other)
              local typ = se.expr_type(m.other)
-             if typ == 'var' and s.var.label then
-                -- This is a return from the current mutrec context.
-                if s.var == s.ret then
-                   return l('return',m.other)
-                else
-                   return wrap_args(l('goto',s.var.label), l(m.other))
-                end
+             if typ == 'var' and s.cont.fun then
+                return s.cont.fun(m.other)
              else
                 -- This is an ordinary block binding.
                 return expr
@@ -327,13 +334,13 @@ function class.compile(s,expr)
 
    -- Goto return can be special
    s.ret = s:make_var('return')
-   s.ret.label = s.ret.var
+   s.ret.fun = function(val) return l('return',val) end
 
    -- The 'var' parameter contains the continuation, which is a
    -- variable that will receive the value of the computation.  If
-   -- s.var.label is defined it contains the jump label, otherwise it
+   -- s.cont.label is defined it contains the jump label, otherwise it
    -- is an ordinary block binding.
-   s.var = s.ret
+   s.cont = s.ret
 
    -- Tracks the maximum of arg-ref
    s.nb_args = -1
