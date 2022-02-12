@@ -125,6 +125,17 @@ function class.eval(s, top_expr)
       trace("POP",s.env)
    end
 
+   -- This is for app and block descent: when there is a rest
+   -- expression, context needs to be saved, otherwise eval can happen
+   -- in-place.
+   local function push_if_rest()
+      if not is_empty(rest) then
+         push()
+      else
+         assert(var == '_')
+      end
+   end
+
    -- Perform a closure call.
    local function app(fun, vals)
 
@@ -133,12 +144,7 @@ function class.eval(s, top_expr)
       -- Primitives handled elsewhere.
       assert('function' ~= type(fun))
 
-      -- Only push when not a tail call.
-      if not is_tail then
-         push()
-      else
-         assert(var == '_')
-      end
+      push_if_rest()
 
       trace("APPLY",l(fun.args, vals))
       s.env = fun.env
@@ -150,6 +156,13 @@ function class.eval(s, top_expr)
       -- remaining code in rest.  If that state is reached for a
       -- primitive evaluation, the context is popped.
 
+   end
+
+   local function advance()
+      assert(not is_empty(rest))
+      local binding
+      binding, rest = unpack(rest)
+      var, expr = se_unpack(binding, {n = 2})
    end
 
    -- Value return for primtive data.
@@ -175,10 +188,7 @@ function class.eval(s, top_expr)
       -- There is always more code to execute.  Note that the 'halt'
       -- instruction inserted by the trampoline will stop the machine
       -- before running off the end.
-      assert(not is_empty(rest))
-      local binding
-      binding, rest = unpack(rest)
-      var, expr = se_unpack(binding, {n = 2})
+      advance()
    end
 
    -- Like app, but insert stub to undo the effect of ret() called
@@ -246,15 +256,13 @@ function class.eval(s, top_expr)
             {"(block (,var ,expr))", function(m)
                 error("last expression in 'block' is bound: '" .. m.var .. "'")
             end},
-            {"(block (,var ,expr) . ,rest)", function(m)
-                -- Assuming unique names so this doesn't shadow.
-                local binding = l(var, {'block', m.rest})
-                rest = {binding,rest}
-                var  = m.var
-                expr = m.expr
-            end},
             {"(block)", function(m)
                 ret(void)
+            end},
+            {"(block . ,bindings)", function(m)
+                push_if_rest()
+                rest = m.bindings
+                advance()
             end},
             {"(set! ,var ,val)", function(m)
                 s:set(m.var, lit_or_ref(m.val))
