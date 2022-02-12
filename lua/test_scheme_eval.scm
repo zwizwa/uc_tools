@@ -28,6 +28,10 @@
 
 ;; The rest use asserts.
 
+(assert (= 3 (+ 1 (begin 1 2))))
+(assert (= 3 (if #t (begin 1 2 3) (begin 4 5 6))))
+(assert (= 6 (if #f (begin 1 2 3) (begin 4 5 6))))
+
 (assert
  (= 465
     (let loop ((n 2))

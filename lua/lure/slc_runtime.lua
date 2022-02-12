@@ -200,6 +200,9 @@ rt['make-parameter'] = function(init_val)
    end
 end
 
+rt['false'] = false
+rt['true']  = true
+
 rt['mark'] = function(tag, ...)
    log_se_n({tag,a2l({...})},"MARK:")
 end

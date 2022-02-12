@@ -1,20 +1,13 @@
 -- Interpreter for the block language.
 --
 -- Key elements:
--- . Explicit continuations (later e.g. for call/cc)
+-- . Explicit continuations
 -- . Space-safe tail recursion.
 --
 -- Implementation:
 -- . User provides primitives through main expression's 'base-ref' parameter.
 -- . Simpler to implement this in Lua, using pattern matching library.
 
-
--- Note that there are 2 kinds of continuations: the one that is used
--- to save context to evaluate a non-tail closure call, and a 'light'
--- one that occurs when nesting blocks, which only needs to save the
--- current 'variable continuation', which can be done by rewriting the
--- code block.  ( Which is essentially what 'scheme_flatten' pass
--- does. )
 
 local se       = require('lure.se')
 local se_match = require('lure.se_match')
@@ -58,7 +51,7 @@ end
 function class.base_ref(s,name)
    assert(type(name) == 'string')
    local fun = s.prim[name]
-   if not fun then
+   if fun == nil then
       error("primitive '" .. name .. "' not defined")
    end
    trace("PRIM",name)
@@ -138,24 +131,13 @@ function class.eval(s, top_expr)
 
    -- Perform a closure call.
    local function app(fun, vals)
-
-      local is_tail = is_empty(rest)
-
-      -- Primitives handled elsewhere.
       assert('function' ~= type(fun))
-
+      local is_tail = is_empty(rest)
       push_if_rest()
-
       trace("APPLY",l(fun.args, vals))
       s.env = fun.env
       zip(function(var,val) s:def(var,val) end, fun.args, vals)
       expr = fun.body
-
-      -- The evaluation context is now empty, containing just the body
-      -- and environment of the closure, a single var '_', and no
-      -- remaining code in rest.  If that state is reached for a
-      -- primitive evaluation, the context is popped.
-
    end
 
    local function advance()
@@ -167,27 +149,16 @@ function class.eval(s, top_expr)
 
    -- Value return for primtive data.
    local function ret(val)
-
-      trace("RET",l(val,rest))
-
-      -- If we're at the end of the line, pop the contination.
       if (is_empty(rest)) then
-         -- Structural constraint for last binding in block.
          assert(var == '_')
          pop()
       end
-
-      -- Bind variable and continue executing.
       if (var ~= '_') then
          trace("DEF", l(var, val))
          s:def(var, val)
       else
          trace("IGN", l(var, val))
       end
-
-      -- There is always more code to execute.  Note that the 'halt'
-      -- instruction inserted by the trampoline will stop the machine
-      -- before running off the end.
       advance()
    end
 
