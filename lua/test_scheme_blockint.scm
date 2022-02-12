@@ -1,12 +1,36 @@
 ;; Each expression is evaluated separately in test_scheme2.lua
 
-(+ 1 2)
+;; First couple are for manual inspection.
 
+;; Prim val
 123
 
+;; Prim fun
+(+ 1 2)
+
+;; Block sequencing
 (begin 1 2)
 
+;; Block sequencing + prim eval.
 (+ (+ 1 2) (+ 3 4))
+
+;; Closure call to inc, in tail and non tail position.
+;; This is to test push/pop.  See 
+(begin
+  (define (inc x) (+ 1 x)) ;; closure
+  (let ((tmp (inc 1)))     ;; non-tail call
+    (inc tmp)))            ;; tail call
+
+
+
+;; The rest use asserts.
+
+(assert
+ (= 465
+    (let loop ((n 2))
+      (if (> n 10) n
+          (+ (loop (+ n 1))
+             (loop (* 2 n)))))))
 
 (assert
  (= 456
@@ -27,10 +51,3 @@
     (let loop ((n 0))
       (if (> n 3) n (loop (+ n 1))))))
     
-(assert
- (= 465
-    (let loop ((n 2))
-      (if (> n 10) n
-          (+ (loop (+ n 1))
-             (loop (* 2 n)))))))
-

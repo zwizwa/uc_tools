@@ -35,7 +35,8 @@ function mod.run()
 
    -- Instead of creating a single expression, restart the interpreter
    -- for each expression to isolate the tests.
-   exprs[2] = se.empty
+   -- exprs[2] = se.empty
+
    for expr in se.elements(exprs) do
 
       log_se_n(expr, "INPUT:")

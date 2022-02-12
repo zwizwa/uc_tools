@@ -3,6 +3,7 @@ local comp            = require('lure.comp')
 local asset           = require('lure.asset_scm')
 local scheme_blockint = require('lure.scheme_blockint')
 local scheme_interp   = require('lure.scheme_interp')
+local scheme_pretty   = require('lure.scheme_pretty')
 
 require('lure.log_se')
 
@@ -24,13 +25,16 @@ function mod.run()
    -- Instead of creating a single expression, restart the interpreter
    -- for each expression to isolate the tests.
 
-   exprs[2] = se.empty
+   -- exprs[2] = se.empty
 
    for expr in se.elements(exprs) do
       log_se_n(expr, "INPUT:")
       local c = c_new()
       local ir = c:compile(expr)
-      log_se_n(ir, "IR:")
+      -- log_se_n(ir, "IR:")
+      log("IR:") ; scheme_pretty.log_pp(ir)
+
+
       -- local e = scheme_blockint.new()
       local e = scheme_interp.new()
       e.prim = require('lure.slc_runtime')

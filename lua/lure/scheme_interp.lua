@@ -1,3 +1,6 @@
+-- Variant of scheme_blockint.lua
+
+
 -- Interpreter for the block language.
 --
 -- Key elements:
@@ -9,12 +12,17 @@
 -- . Simpler to implement this in Lua, using pattern matching library.
 
 
+-- Note that there are 2 kinds of continuations: the one that is used
+-- to evaluate a non-tail closure call, where everything is saved, and
+-- a 'light' one that occurs when nesting blocks.
+
+
 local se       = require('lure.se')
 local se_match = require('lure.se_match')
 local comp     = require('lure.comp')
 
 local function trace(tag, expr)
-   log_se_n(expr, tag .. ":")
+   -- log_se_n(expr, tag .. ":")
 end
 
 
@@ -87,19 +95,21 @@ function class.eval_loop(s, top_expr)
    -- This context needs to be saved and restored when evaluating
    -- non-tail calls.
    local function push()
+      trace("PUSH",s.env)
       local frame = {
-         env = s.env,
-         var = s.var,
-         rest = s.rest,
+         env  = s.env,
+         var  = var,
+         rest = rest,
       }
       k = {frame, k}
    end
    local function pop()
       local frame = se.car(k)
-      k = se.cdr(k)
+      k     = se.cdr(k)
       s.env = frame.env
-      var = frame.var
-      rest = frame.rest
+      var   = frame.var
+      rest  = frame.rest
+      trace("POP",s.env)
    end
 
    local function advance()
@@ -110,6 +120,9 @@ function class.eval_loop(s, top_expr)
 
    -- Value return for primtive data.
    local function ret(val)
+
+      trace("RET",l(val,rest))
+
       -- If we're at the end of the line, pop the contination: the
       -- binding is stored in the enclosing program.
       if (is_empty(rest)) then
@@ -128,6 +141,35 @@ function class.eval_loop(s, top_expr)
          trace("IGN", l(var, val))
       end
       advance()
+   end
+
+   -- Replace current context with that of the closure.  Is preceeded
+   -- by push this needs to be rpush a continuation if not in tail pos
+   local function app(fun, vals)
+
+      local is_tail = is_empty(rest)
+
+      -- Primitives handled elsewhere.
+      assert('function' ~= type(fun))
+
+      -- Only push when not a tail call.
+      if not is_tail then
+         push()
+         var = '_'
+         rest = se.empty
+      else
+         assert(var == '_')
+      end
+
+      trace("APPLY",l(fun.args, vals))
+      s.env = fun.env
+      se.zip(function(var,val) s:def(var,val) end, fun.args, vals)
+      expr = fun.body
+
+      -- The evaluation context is now empty, containing a single var
+      -- '_', no rest.  If that state is reached for a primitive
+      -- evaluation, the context is popped.
+
    end
 
 
@@ -151,22 +193,6 @@ function class.eval_loop(s, top_expr)
       end
    end
 
-   -- Replace current context with that of the closure.  Is preceeded
-   -- by push this needs to be rpush a continuation if not in tail pos
-   local function app(fun, vals)
-      -- Primitives handled elsewhere.
-      assert('function' ~= type(fun))
-      trace("APPLY",l(fun.args, vals))
-      -- Replace current lexcial context with that of the function
-      -- to be applied.  Inside a function body all names are
-      -- unique, so we only need to make sure that different
-      -- instantiations of the same closure use different storage.
-      -- Create a new lexical frame.
-      s.env = fun.env
-      se.zip(function(var,val) s:def(var,val) end, fun.args, vals)
-      expr = fun.body
-   end
-
 
    -- Main loop
    local halted = false
@@ -176,11 +202,6 @@ function class.eval_loop(s, top_expr)
       s.match(
          expr,
          {
-            -- ret:    return primitive value to continuation
-            -- reduce: reduce without performing call or return
-            -- app:    replace current context with closure
-            -- push:   save context to stack
-
             {"(halt)", function(m)
                 halted = true
             end},
@@ -194,11 +215,6 @@ function class.eval_loop(s, top_expr)
                 error("last expression in 'block' is bound: '" .. m.var .. "'")
             end},
             {"(block (,var ,expr) . ,rest)", function(m)
-                -- When nesting blocks we need to tuck away our
-                -- current variable to make room for the next one in
-                -- the block.  This is essentially another kind of
-                -- continuation, but since it doesn't involve the
-                -- environment we implement it by rewriting the input.
                 local binding = l(var, {'block', m.rest})
                 rest = {binding,rest}
                 var  = m.var
@@ -224,11 +240,6 @@ function class.eval_loop(s, top_expr)
                    trace("PRIM_EVAL", rv)
                    ret(rv)
                 else
-                   -- Only push when not a tail call.
-                   if not is_empty(rest) then
-                      push(var, rest)
-                   end
-                   -- Apply replaces context
                    app(fun, vals)
                 end
             end},
