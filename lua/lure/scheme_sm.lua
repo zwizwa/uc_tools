@@ -172,7 +172,8 @@ function class.compile_app(s, fun, args, compiled_cont)
          -- compiled for this continuation.
          fun.compiled[s.cont] = label
          local compiled = s:compile_fun(fun)
-         local labels = fun.labels
+         local labels = se.car(s.labels)
+         assert(labels)
          assert(labels)
          se.push_cdr(l(label, compiled), labels)
       end
@@ -181,13 +182,19 @@ function class.compile_app(s, fun, args, compiled_cont)
 
    trace("LABEL",label)
 
+   local labels = se.car(s.labels)
+   assert(labels)
+
    if not compiled_cont then
       -- Tail call
       assert(s.cont.fun)
       local app = wrap_args(compile_callexpr(), args)
       trace("APPTAIL", app)
       assert(app)
-      return app
+
+      se.push_cdr(l('_',app), labels)
+
+      return labels
    else
 
       -- The app form will expand into a labels form.  Where the first
@@ -216,19 +223,15 @@ function class.compile_app(s, fun, args, compiled_cont)
             end
          end
 
+      -- Everything will compile here.
+      se.push_cdr(l(cont_label,compiled_cont),labels)
+
       local app = wrap_args(compile_callexpr(), args)
 
-      -- This is never referenced.  For debugging it makes sense to
-      -- give it a name.
-      local app_entry = s:make_var('app_entry')
+      se.push_cdr(l('_',app), labels)
 
-      local app_labels =
-         l('labels',
-           l(app_entry, app),
-           l(cont_label,compiled_cont))
-
-      trace("APPLABELS", app_labels)
-      return app_labels
+      trace("APPLABELS", labels)
+      return labels
 
    end
 end
@@ -251,6 +254,7 @@ function class.comp_bindings(s, bindings_in)
          -- These variables are just saved and updated in-place.
          env    = s.env,
          cont   = s.cont,
+         labels = s.labels,
       },
       function()
          local parent_cont = s.cont
@@ -319,20 +323,9 @@ function class.comp_bindings(s, bindings_in)
             local hint = {}
             function hint.letrec(closures)
                log_se_n(closures,"HINT_LETREC:")
-               -- A letrec hint is inserted after all letrec bindings
-               -- are complete, before the evaluation of the letrec
-               -- body.  It is passed the list of closures.  We use
-               -- this as the place to insert a labels form to provile
-               -- a location to compile instances.
-
-               local labels = l('labels')
                for closure in se.elements(closures) do
-                  closure.labels = labels
+                  closure.letrec = closures
                end
-               local compiled_cut = cut_bindings_in({'block',bindings_in})
-               -- se.push_cdr(l('_',l('quote',123)), labels)
-               se.push_cdr(l('_',compiled_cut), labels)
-               bind('_',labels)
             end
 
             trace("VEXPR", vexpr)
@@ -429,6 +422,10 @@ function class.comp_bindings(s, bindings_in)
                                compiled_cont =
                                   cut_bindings_in({'block',{l(var,l('arg-ref', 0)),bindings_in}})
                             end
+
+                            local labels = l('labels')
+                            s.labels = {labels, s.labels}
+
                             local app = s:compile_app(fun, m.args, compiled_cont)
                             bind('_', app)
                          else
@@ -507,7 +504,7 @@ function class.compile(s,expr)
    s.nb_args = -1
 
    -- Tracks the list of labels forms
-   s.lables = se.empty
+   s.labels = se.empty
 
    return s.match(
       expr,
