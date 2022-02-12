@@ -1,6 +1,3 @@
--- Variant of scheme_blockint.lua
-
-
 -- Interpreter for the block language.
 --
 -- Key elements:
@@ -13,9 +10,11 @@
 
 
 -- Note that there are 2 kinds of continuations: the one that is used
--- to evaluate a non-tail closure call, where everything is saved, and
--- a 'light' one that occurs when nesting blocks.
-
+-- to save context to evaluate a non-tail closure call, and a 'light'
+-- one that occurs when nesting blocks, which only needs to save the
+-- current 'variable continuation', which can be done by rewriting the
+-- code block.  ( Which is essentially what 'scheme_flatten' pass
+-- does. )
 
 local se       = require('lure.se')
 local se_match = require('lure.se_match')
@@ -26,10 +25,16 @@ local function trace(tag, expr)
 end
 
 
-local l2a = se.list_to_array
-local l = se.list
-local is_empty = se.is_empty
-
+local l2a       = se.list_to_array
+local l         = se.list
+local is_empty  = se.is_empty
+local is_pair   = se.is_pair
+local empty     = se.empty
+local car       = se.car
+local cdr       = se.cdr
+local map       = se.map
+local zip       = se.zip
+local se_unpack = se.unpack
 
 local class = {}
 
@@ -59,28 +64,27 @@ function class.base_ref(s,name)
    return fun
 end
 
--- The 'program' type used throughout is a list of bindings from the
--- 'block' form.
 
 
+function class.eval(s, top_expr)
 
-function class.eval_loop(s, top_expr)
+   -- The lexical environment is implemented as a flat list.  Slow but
+   -- convenient.  Stored as s.env to allow def, ref, set methods.
+   s.env = empty
 
-   -- The lexical environment is implemented as a flat list.  This is
-   -- slow, but very convenient for analysis.  This is stored in the
-   -- object to allow reuse of def, ref, set.
-   s.env = se.empty
+   -- The rest of the evaluation context can be local variables: the
+   -- stack / contination list k, the variable that takes the value of
+   -- the current expression, and the rest of the 'program', which is
+   -- a 'block' form without the tag.
 
-   -- The evaluation context is a stack for frames containing env, var
-   -- and rest.
-   local k = se.empty
+   local k = empty
    local var = '_'
-   local rest = se.empty
+   local rest = empty
 
-   -- Top level expression is a lambda that defines the linker for all
-   -- free variables present in the original source.  We evaluate that
-   -- manually to insert that binding + install a trampoline to bind
-   -- the inner expression to a variable before halting.
+   -- Top level expression coming out of scheme_frontend is a lambda
+   -- that defines the linker for all free variables present in the
+   -- original source.  We evaluate this lambda expression manually to
+   -- insert that binding...
    local ret_var = { class = 'var', iolist = 'ret_var' }
    local expr =
       s.match(
@@ -89,11 +93,14 @@ function class.eval_loop(s, top_expr)
            function(m)
               assert(m.base_ref.class == 'var')
               s:def(m.base_ref, function(sym) return s:base_ref(sym) end)
+              -- ... and install a trampoline that binds the remainder
+              -- of the expression to a variable before breaking the
+              -- loop.
               return l('block',l(ret_var, m.expr),l('_',l('halt')))
       end}})
 
-   -- This context needs to be saved and restored when evaluating
-   -- non-tail calls.
+   -- The evaluation context needs to be saved and restored when
+   -- evaluating non-tail calls.
    local function push()
       trace("PUSH",s.env)
       local frame = {
@@ -104,47 +111,15 @@ function class.eval_loop(s, top_expr)
       k = {frame, k}
    end
    local function pop()
-      local frame = se.car(k)
-      k     = se.cdr(k)
+      local frame = car(k)
+      k     = cdr(k)
       s.env = frame.env
       var   = frame.var
       rest  = frame.rest
       trace("POP",s.env)
    end
 
-   local function advance()
-      local binding
-      binding, rest = unpack(rest)
-      var, expr = se.unpack(binding, {n = 2})
-   end
-
-   -- Value return for primtive data.
-   local function ret(val)
-
-      trace("RET",l(val,rest))
-
-      -- If we're at the end of the line, pop the contination: the
-      -- binding is stored in the enclosing program.
-      if (is_empty(rest)) then
-         -- Structural constraint for last binding in block.
-         assert(var == '_')
-         pop()
-      end
-      -- FIXME: Is this ever the case?  I don't think so due to tail
-      -- call elimination.
-      assert(not is_empty(rest))
-      -- Bind variable and continue executing.
-      if (var ~= '_') then
-         trace("DEF", l(var, val))
-         s:def(var, val)
-      else
-         trace("IGN", l(var, val))
-      end
-      advance()
-   end
-
-   -- Replace current context with that of the closure.  Is preceeded
-   -- by push this needs to be rpush a continuation if not in tail pos
+   -- Perform a closure call.
    local function app(fun, vals)
 
       local is_tail = is_empty(rest)
@@ -156,22 +131,51 @@ function class.eval_loop(s, top_expr)
       if not is_tail then
          push()
          var = '_'
-         rest = se.empty
+         rest = empty
       else
          assert(var == '_')
       end
 
       trace("APPLY",l(fun.args, vals))
       s.env = fun.env
-      se.zip(function(var,val) s:def(var,val) end, fun.args, vals)
+      zip(function(var,val) s:def(var,val) end, fun.args, vals)
       expr = fun.body
 
-      -- The evaluation context is now empty, containing a single var
-      -- '_', no rest.  If that state is reached for a primitive
-      -- evaluation, the context is popped.
+      -- The evaluation context is now empty, containing just the body
+      -- and environment of the closure, a single var '_', and no
+      -- remaining code in rest.  If that state is reached for a
+      -- primitive evaluation, the context is popped.
 
    end
 
+   -- Value return for primtive data.
+   local function ret(val)
+
+      trace("RET",l(val,rest))
+
+      -- If we're at the end of the line, pop the contination.
+      if (is_empty(rest)) then
+         -- Structural constraint for last binding in block.
+         assert(var == '_')
+         pop()
+      end
+
+      -- Bind variable and continue executing.
+      if (var ~= '_') then
+         trace("DEF", l(var, val))
+         s:def(var, val)
+      else
+         trace("IGN", l(var, val))
+      end
+
+      -- There is always more code to execute.  Note that the 'halt'
+      -- instruction inserted by the trampoline will stop the machine
+      -- before running off the end.
+      assert(not is_empty(rest))
+      local binding
+      binding, rest = unpack(rest)
+      var, expr = se_unpack(binding, {n = 2})
+   end
 
    -- Primitive value: literal or variable referenece.
    local function lit_or_ref(thing)
@@ -233,7 +237,7 @@ function class.eval_loop(s, top_expr)
             end},
             {"(app ,fun . ,args)", function(m)
                 local fun = lit_or_ref(m.fun)
-                local vals = se.map(lit_or_ref, m.args)
+                local vals = map(lit_or_ref, m.args)
                 if 'function' == type(fun) then
                    local rv = fun(unpack(l2a(vals)))
                    if rv == nil then rv = void end
@@ -244,7 +248,7 @@ function class.eval_loop(s, top_expr)
                 end
             end},
             {",other", function(m)
-                if se.is_pair(m.other) then
+                if is_pair(m.other) then
                    error('bad form')
                 else
                    local v = lit_or_ref(m.other)
@@ -259,12 +263,6 @@ function class.eval_loop(s, top_expr)
 
 end
 
-
-function class.eval(s,expr)
-   local val = s:eval_loop(expr)
-   trace("HALT", val)
-   return val
-end
 
 function class.new()
    local s = { match = se_match.new()  }
