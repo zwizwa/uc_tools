@@ -57,6 +57,12 @@
 
 (assert 123 (call/cc (lambda (k) (k 123) 456)))
 (assert 456 (call/cc (lambda (k) 456)))
+(assert 234 (+ 111 (call/cc (lambda (k) (k 123) 456))))
+(assert 567 (+ 111 (call/cc (lambda (k) 456))))
+(assert 123 (call/cc (lambda (k) (+ 1 (+ 1 (+ 1 (k 123)))))))
+
+
+
 
 
            

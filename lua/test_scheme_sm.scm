@@ -3,6 +3,13 @@
 ;; The compilation path is:
 ;; -> frontend -> flatten -> sm -> escape -> frontend -> flatten -> interp
 
+;; Simplest infinite loop
+(letrec
+    ((x (lambda ()
+          (trace 'tick)
+          (x)))) (x))
+
+
 ;; Finite mutual rec loop
 (begin
   (define (f1 n)
@@ -14,9 +21,6 @@
   (let ((rv (f1 0)))
     (assert (= 5 (+ rv 1)))))
 
-
-;; Simplest infinite loop
-(letrec ((x (lambda () (x)))) (x))
 
 ;; Infinite single rec
 (let loop ((n 0))

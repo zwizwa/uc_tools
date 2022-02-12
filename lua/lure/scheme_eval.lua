@@ -77,7 +77,6 @@ function class.eval(s, top_expr)
    -- stack / contination list k, the variable that takes the value of
    -- the current expression, and the rest of the 'program', which is
    -- a 'block' form without the tag.
-
    local k = empty
    local var = '_'
    local rest = empty
@@ -198,13 +197,17 @@ function class.eval(s, top_expr)
          return val
       end
 
-      -- Stub things out such that the ret() that follows the
-      -- execution of the call/cc primitive results in execution
-      -- falling into the function body.
-      assert(length(fun.args) == 1)
+      -- After push(), var == '_', rest == empty.  Now stub things out
+      -- such that the ret() that follows the execution of the call/cc
+      -- primitive results in execution falling into the function
+      -- body.  The ret() will take the nil value we return here,
+      -- ignore it because var == '_', and will continue executing
+      -- rest as if we are executing a non-tail call.  The value of
+      -- expr will not be used in this process (it still holds the
+      -- call/cc call).
       s.env = fun.env
-      var   = '_'
       rest  = l(l('_', fun.body))
+      assert(length(fun.args) == 1)
       s:def(fun.args[1], k_fun)
       expr = nil
       return nil
@@ -254,6 +257,7 @@ function class.eval(s, top_expr)
                 error("last expression in 'block' is bound: '" .. m.var .. "'")
             end},
             {"(block (,var ,expr) . ,rest)", function(m)
+                -- Assuming unique names so this doesn't shadow.
                 local binding = l(var, {'block', m.rest})
                 rest = {binding,rest}
                 var  = m.var

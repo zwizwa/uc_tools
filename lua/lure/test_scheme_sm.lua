@@ -47,6 +47,14 @@ function mod.run()
 
       local e = scheme_sm.new()
       e.prim = require('lure.slc_runtime')
+      local i = 1
+      local function trace(tag)
+         assert(i < 100)
+         -- log_se_n(tag,"TRACE:")
+         i = i + 1
+      end
+
+      e.prim.trace = trace
       local out = e:compile(ir)
 
       -- log("OUTPUT_NONFLAT:") ; pretty.log_pp(out)

@@ -88,6 +88,7 @@ class.expander = {
    ['number'] = s_id,
    ['void']   = s_id,
    ['prim']   = s_id,
+   ['expr']   = s_id,
    ['var']    = s_id,
    --['var']    = function(s, expr)
    --   return l('ref',expr)
@@ -272,6 +273,7 @@ class.compiler = {
    ['number'] = s_id,
    ['void']   = s_id,
    ['prim']   = s_id,
+   ['expr']   = s_id,
    ['string'] = function(s, str)
       local var = s:var_ref(str)
       assert(var and var.class == 'var')
