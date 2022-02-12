@@ -1,5 +1,17 @@
 ;; Each expression is compiled separately.
 
+;; Finite mutual rec loop
+(begin
+  (define (f1 n)
+    (if (> n 3)
+        n
+        (f2 (+ n 1))))
+  (define (f2 n)
+    (f1 (+ n 1)))
+  (let ((rv (f1 0)))
+    (+ rv 1)))
+
+
 ;; Simplest infinite loop
 (letrec ((x (lambda () (x)))) (x))
 
@@ -27,16 +39,6 @@
     (f1 (+ n 1)))
   (f1 0))
 
-;; Finite mutual rec loop
-(begin
-  (define (f1 n)
-    (if (> n 3)
-        n
-        (f2 (+ n 1))))
-  (define (f2 n)
-    (f1 (+ n 1)))
-  (let ((rv (f1 0)))
-    (+ rv 1)))
 
 
 ;; Nested loops

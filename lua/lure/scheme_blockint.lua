@@ -44,6 +44,16 @@ function frame(var, expr, env)
    return {class = 'frame', var = var, expr = expr, env = env }
 end
 
+function class.base_ref(s,name)
+   assert(type(name) == 'string')
+   local fun = s.prim[name]
+   if not fun then
+      error("primitive '" .. name .. "' not defined")
+   end
+   trace("PRIM",name)
+   return fun
+end
+
 function class.eval_loop(s, expr, k)
 
 
@@ -59,16 +69,7 @@ function class.eval_loop(s, expr, k)
         function(m)
            expr = m.expr
            assert(m.base_ref.class == 'var')
-           s:def(m.base_ref,
-                 function(name)
-                    assert(type(name) == 'string')
-                    local fun = s.prim[name]
-                    if not fun then
-                       error("primitive '" .. name .. "' not defined")
-                    end
-                    trace("PRIM",name)
-                    return fun
-                 end)
+           s:def(m.base_ref, function(sym) return s:base_ref(sym) end)
         end}})
 
    -- FIXME: Implement the continuation as a list to make it printable.
@@ -112,6 +113,9 @@ function class.eval_loop(s, expr, k)
          return thing.expr
       elseif 'void' == class then
          return void
+      elseif 'prim' == class then
+         -- scheme_sm output IR uses this
+         return s:base_ref(thing.name)
       else
          error("lit_or_ref, bad class '" .. class .. "'")
       end
