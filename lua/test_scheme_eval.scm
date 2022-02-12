@@ -1,10 +1,6 @@
 ;; Each expression is evaluated separately in test_scheme2.lua
 
 
-(call/cc (lambda (k) (k 123)))
-
-
-           
 
 
 ;; First couple are for manual inspection.
@@ -59,3 +55,8 @@
       (if (> n 3) n (loop (+ n 1))))))
     
 
+(assert 123 (call/cc (lambda (k) (k 123) 456)))
+(assert 456 (call/cc (lambda (k) 456)))
+
+
+           

@@ -21,7 +21,7 @@ local se_match = require('lure.se_match')
 local comp     = require('lure.comp')
 
 local function trace(tag, expr)
-   log_se_n(expr, tag .. ":")
+   -- log_se_n(expr, tag .. ":")
 end
 
 
@@ -182,28 +182,32 @@ function class.eval(s, top_expr)
       var, expr = se_unpack(binding, {n = 2})
    end
 
-   local op_as_prim = { class = 'op_as_prim' }
-
    s.prim['call/cc'] = function(fun)
       -- If it's not a closure, maybe wrap it?
       assert(fun and fun.class == 'closure')
-      -- Push continuation so we can store it and switch to function
-      -- context.
+
+      -- Push current context and wrap the continuation object in a
+      -- function that behaves as a primitive.
       push()
-      s.env = fun.env
-      expr  = fun.body
-      -- Wrap the continuation object in a function that behaves as a
-      -- primitive.
       local k_saved = k
       local function k_fun(val)
          trace("KFUN", val)
          k = k_saved ; pop()
-         assert(val)
+         -- Context is now the same as it was before the call to
+         -- call/cc primitive.
          return val
       end
+
+      -- Stub things out such that the ret() that follows the
+      -- execution of the call/cc primitive results in execution
+      -- falling into the function body.
       assert(length(fun.args) == 1)
+      s.env = fun.env
+      var   = '_'
+      rest  = l(l('_', fun.body))
       s:def(fun.args[1], k_fun)
-      return op_as_prim
+      expr = nil
+      return nil
    end
 
    -- Primitive value: literal or variable referenece.
@@ -271,14 +275,9 @@ function class.eval(s, top_expr)
                 local vals = map(lit_or_ref, m.args)
                 if 'function' == type(fun) then
                    local rv = fun(unpack(l2a(vals)))
-                   if rv ~= op_as_prim then
-                      if rv == nil then rv = void end
-                      trace("PRIM_EVAL", rv)
-                      ret(rv)
-                   else
-                      -- Function has manipulated the machine, so
-                      -- don't do anything here
-                   end
+                   if rv == nil then rv = void end
+                   trace("PRIM_EVAL", rv)
+                   ret(rv)
                 else
                    app(fun, vals)
                 end
