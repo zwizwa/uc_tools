@@ -1,5 +1,8 @@
 ;; Each expression is compiled separately.
 
+;; The compilation path is:
+;; -> frontend -> flatten -> sm -> escape -> frontend -> flatten -> interp
+
 ;; Finite mutual rec loop
 (begin
   (define (f1 n)
@@ -9,7 +12,7 @@
   (define (f2 n)
     (f1 (+ n 1)))
   (let ((rv (f1 0)))
-    (+ rv 1)))
+    (assert (= 5 (+ rv 1)))))
 
 
 ;; Simplest infinite loop

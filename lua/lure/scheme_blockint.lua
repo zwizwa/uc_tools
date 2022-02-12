@@ -14,10 +14,19 @@
 -- hint that each iteration pattern defines a natural data structure
 -- where each handler maps directly to a constructor.
 
+-- FIXME: Write this with an "instruction pointer" that is a list of
+-- bindings.  That is a much more natural way to deal with things.
+-- Then interpreting expressions can wrap a (_ <e>) around it.
+-- Forking into interp.
 
 local se       = require('lure.se')
 local se_match = require('lure.se_match')
 local comp     = require('lure.comp')
+
+local function trace(tag, expr)
+   -- log_se_n(expr, tag .. ":")
+end
+
 
 local l2a = se.list_to_array
 local l = se.list
@@ -25,10 +34,6 @@ local l = se.list
 local class = {}
 
 local void = "#<void>"
-
-local function trace(tag, expr)
-   log_se_n(expr, tag .. ":")
-end
 
 local function ifte(c,t,f)
    if c then return t else return f end
@@ -114,7 +119,8 @@ function class.eval_loop(s, expr, k)
       elseif 'void' == class then
          return void
       elseif 'prim' == class then
-         -- scheme_sm output IR uses this
+         -- The scheme_sm output IR uses this to quote primitive names
+         -- as data.  We map it to our prims here.
          return s:base_ref(thing.name)
       else
          error("lit_or_ref, bad class '" .. class .. "'")

@@ -3,7 +3,7 @@ local comp      = require('lure.comp')
 local asset     = require('lure.asset_scm')
 local scheme_sm = require('lure.scheme_sm')
 local pretty    = require('lure.scheme_pretty')
-local flat      = require('lure.scheme_flatten_blocks')
+local flat      = require('lure.scheme_flatten')
 local interp    = require('lure.scheme_blockint')
 
 require('lure.log_se')
@@ -15,7 +15,7 @@ local c_new =
    comp.make_multipass_new(
       {
          'lure.scheme_frontend',
-         'lure.scheme_flatten_blocks',
+         'lure.scheme_flatten',
       })
 
 local tx_new =
@@ -23,7 +23,7 @@ local tx_new =
       {
          'lure.scheme_escape',
          'lure.scheme_frontend',
-         'lure.scheme_flatten_blocks',
+         'lure.scheme_flatten',
       })
 
 
@@ -61,7 +61,7 @@ function mod.run()
       -- scheme_escape.
       local tx = tx_new()
       local ir_tx = tx:compile(out)
-      log("TX:") ; pretty.log_pp(ir_tx)
+      -- log("TX:") ; pretty.log_pp(ir_tx)
 
       local e = interp.new()
       e.prim = require('lure.slc_runtime')

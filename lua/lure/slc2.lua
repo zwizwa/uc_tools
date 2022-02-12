@@ -21,7 +21,7 @@ mod.new =
    comp.make_multipass_new(
       {
          'lure.scheme_frontend',
-         'lure.scheme_flatten_blocks',
+         'lure.scheme_flatten',
          'lure.scheme_blockval',
          'lure.scheme_luapp',
       })
