@@ -1,5 +1,12 @@
 ;; Each expression is evaluated separately in test_scheme2.lua
 
+
+(call/cc (lambda (k) (k 123)))
+
+
+           
+
+
 ;; First couple are for manual inspection.
 
 ;; Prim val
@@ -51,3 +58,4 @@
     (let loop ((n 0))
       (if (> n 3) n (loop (+ n 1))))))
     
+

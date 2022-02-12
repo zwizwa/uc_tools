@@ -21,7 +21,7 @@ local se_match = require('lure.se_match')
 local comp     = require('lure.comp')
 
 local function trace(tag, expr)
-   -- log_se_n(expr, tag .. ":")
+   log_se_n(expr, tag .. ":")
 end
 
 
@@ -35,6 +35,7 @@ local cdr       = se.cdr
 local map       = se.map
 local zip       = se.zip
 local se_unpack = se.unpack
+local length    = se.length
 
 local class = {}
 
@@ -101,14 +102,20 @@ function class.eval(s, top_expr)
 
    -- The evaluation context needs to be saved and restored when
    -- evaluating non-tail calls.
-   local function push()
+   local function get_k()
       trace("PUSH",s.env)
       local frame = {
          env  = s.env,
          var  = var,
          rest = rest,
+         class = 'kframe',
       }
-      k = {frame, k}
+      return {frame, k}
+   end
+   local function push()
+      k = get_k()
+      var = '_'
+      rest = empty
    end
    local function pop()
       local frame = car(k)
@@ -130,8 +137,6 @@ function class.eval(s, top_expr)
       -- Only push when not a tail call.
       if not is_tail then
          push()
-         var = '_'
-         rest = empty
       else
          assert(var == '_')
       end
@@ -177,9 +182,35 @@ function class.eval(s, top_expr)
       var, expr = se_unpack(binding, {n = 2})
    end
 
+   local op_as_prim = { class = 'op_as_prim' }
+
+   s.prim['call/cc'] = function(fun)
+      -- If it's not a closure, maybe wrap it?
+      assert(fun and fun.class == 'closure')
+      -- Push continuation so we can store it and switch to function
+      -- context.
+      push()
+      s.env = fun.env
+      expr  = fun.body
+      -- Wrap the continuation object in a function that behaves as a
+      -- primitive.
+      local k_saved = k
+      local function k_fun(val)
+         trace("KFUN", val)
+         k = k_saved ; pop()
+         assert(val)
+         return val
+      end
+      assert(length(fun.args) == 1)
+      s:def(fun.args[1], k_fun)
+      return op_as_prim
+   end
+
    -- Primitive value: literal or variable referenece.
    local function lit_or_ref(thing)
-      if type(thing) ~= 'table' then return thing end
+      local typ = type(thing)
+      if typ ~= 'table' then return thing end
+
       local class = thing.class
       assert(class)
       if 'var' == class then
@@ -240,9 +271,14 @@ function class.eval(s, top_expr)
                 local vals = map(lit_or_ref, m.args)
                 if 'function' == type(fun) then
                    local rv = fun(unpack(l2a(vals)))
-                   if rv == nil then rv = void end
-                   trace("PRIM_EVAL", rv)
-                   ret(rv)
+                   if rv ~= op_as_prim then
+                      if rv == nil then rv = void end
+                      trace("PRIM_EVAL", rv)
+                      ret(rv)
+                   else
+                      -- Function has manipulated the machine, so
+                      -- don't do anything here
+                   end
                 else
                    app(fun, vals)
                 end
