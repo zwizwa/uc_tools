@@ -4,7 +4,7 @@ local asset     = require('lure.asset_scm')
 local scheme_sm = require('lure.scheme_sm')
 local pretty    = require('lure.scheme_pretty')
 local flat      = require('lure.scheme_flatten')
-local interp    = require('lure.scheme_blockint')
+local eval      = require('lure.scheme_eval')
 
 require('lure.log_se')
 
@@ -64,7 +64,7 @@ function mod.run()
       local ir_tx = tx:compile(out)
       -- log("TX:") ; pretty.log_pp(ir_tx)
 
-      local e = interp.new()
+      local e = eval.new()
       e.prim = require('lure.slc_runtime')
       local rv = e:eval(ir_tx)
       log("EVAL:") ; log_se_n(rv)
