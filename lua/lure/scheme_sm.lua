@@ -168,8 +168,6 @@ function class.compile_app(s, fun, args, compiled_cont)
 
    local function compile_callexpr()
       if not maybe_label then
-         -- Fall through into the function body, recording that we've
-         -- compiled for this continuation.
          fun.compiled[s.cont] = label
          local compiled = s:compile_fun(fun)
          local labels = se.car(s.labels)
@@ -181,9 +179,6 @@ function class.compile_app(s, fun, args, compiled_cont)
    end
 
    trace("LABEL",label)
-
-   local labels = se.car(s.labels)
-   assert(labels)
 
    if not compiled_cont then
       -- Tail call
@@ -201,6 +196,8 @@ function class.compile_app(s, fun, args, compiled_cont)
       -- represents the current continuation.  We build that first.
       local cont_label = s:make_var(s.cont.var)
 
+      local labels = l('labels')
+      s.labels = {labels, s.labels}
 
       -- When not in tail position, compile_bindings will have created
       -- an ordinary value continuation. We take over control flow so
@@ -417,13 +414,10 @@ function class.comp_bindings(s, bindings_in)
                             -- Closures are compiled
                             local compiled_cont = nil
                             if not tail then
+                               -- Compile the continuation
                                compiled_cont =
                                   cut_bindings_in({'block',{l(var,l('arg-ref', 0)),bindings_in}})
-                               local labels = l('labels')
-                               s.labels = {labels, s.labels}
-
                             end
-
                             local app = s:compile_app(fun, m.args, compiled_cont)
                             bind('_', app)
                          else

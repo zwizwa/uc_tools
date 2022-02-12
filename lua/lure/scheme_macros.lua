@@ -378,4 +378,31 @@ macro["block*"] = mcase(
    {"(block (,v ,e) . ,r)", "(let ((,v ,e)) (block* . ,r))"}
 )
 
+-- Interpret SM language by mapping it back to scheme.
+-- Labels are implemented as thunks.
+macro["if@"]  = mcase({"(,c ,t ,f)","(if ,c ,t ,f)"})
+macro['goto'] = mcase({"(,label)","(,label)"})
+
+macro["block@"] = mcase(
+   {"()",              "(begin)"},
+   {"((_  ,e))",       ",e"},
+   {"((,v ,e))",       function() error("block@ bad form") end},
+   {"((_ , s) . ,bs)", "(begin ,s      (block@ . ,bs))"},
+   {"((,v ,e) . ,bs)", "(let ((,v ,e)) (block@ . ,bs))"}
+)
+
+macro['labels'] = function(expr, c)
+   need_gensym(c)
+   local _, bindings = se.unpack(expr, {n = 1, tail = true})
+   if se.length(bindings) == 0 then return l(c.begin or 'begin') end
+   -- Change the name of the entry point.
+   local start = c.state:gensym("start")
+   bindings = {{start, se.cdar(bindings)}, se.cdr(bindings)}
+   -- Generate letrec form
+   function make_binding(binding)
+      local label, body = se.unpack(binding, {n = 2})
+      return l(label, l('lambda',l(),body))
+   end
+   return l('letrec', se.map(make_binding, bindings), l(start))
+end
 return macro

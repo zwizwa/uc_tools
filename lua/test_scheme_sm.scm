@@ -1,16 +1,21 @@
 ;; Each expression is compiled separately.
 
-;; The 'blockval' problem: convert binding to void binding + set! cont.
-(let ((a (if 1
-             (if (let ((b 2)) (+ b b)) 3 4)
-             (if 5 6 7))))
-  (+ a a))
+;; Simplest infinite loop
+(letrec ((x (lambda () (x)))) (x))
 
 ;; Infinite single rec
 (let loop ((n 0))
   (if (> n 3)
       (loop 0)
       (loop (+ n 1))))
+
+
+;; The 'blockval' problem: convert binding to void binding + set! cont.
+(let ((a (if 1
+             (if (let ((b 2)) (+ b b)) 3 4)
+             (if 5 6 7))))
+  (+ a a))
+
 
 ;; Infinite mutual rec
 (begin

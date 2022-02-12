@@ -20,26 +20,32 @@ function class.compile(s,expr)
    return s:comp(expr)
 end
 
+function class.comp_bindings(s, bindings)
+   return
+      se.map(
+         function(binding)
+            return s.match(
+               binding,
+               {{"(,var ,expr)",
+                 function(m)
+                    return l(m.var, s:comp(m.expr))
+            end}})
+         end,
+         bindings)
+end
+
 function class.comp(s,expr)
    return s.match(
       expr,
       {
-         {"(block . ,bindings)", function(m)
-             local bindings =
-                se.map(
-                   function(binding)
-                      return s.match(
-                         binding,
-                         {{"(,var ,expr)",
-                           function(m)
-                              return l(m.var, s:comp(m.expr))
-                           end}})
-                   end,
-                   m.bindings)
-             return {'block@', bindings}
+        {"(block . ,bindings)", function(m)
+             return {'block@', s:comp_bindings(m.bindings)}
+         end},
+        {"(labels . ,bindings)", function(m)
+             return {'labels', s:comp_bindings(m.bindings)}
          end},
          {"(lambda ,vars ,expr)", function(m)
-             return l('lambda@', m.vars, s:comp(m.expr))}
+             return l('lambda@', m.vars, s:comp(m.expr))
          end},
          {"(if ,cond ,etrue ,efalse)", function(m)
              return l('if@', m.cond,

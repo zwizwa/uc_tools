@@ -87,6 +87,7 @@ class.expander = {
    ['string'] = s_id,
    ['number'] = s_id,
    ['void']   = s_id,
+   ['prim']   = s_id,
    ['var']    = s_id,
    --['var']    = function(s, expr)
    --   return l('ref',expr)
@@ -167,6 +168,7 @@ class.form = {
       local _, datum = se.unpack(expr, {n = 2})
       return { class = 'expr', expr = datum, iolist = quote_to_iolist }
    end,
+
 }
 
 -- Compile in extended environment
@@ -269,6 +271,7 @@ end
 class.compiler = {
    ['number'] = s_id,
    ['void']   = s_id,
+   ['prim']   = s_id,
    ['string'] = function(s, str)
       local var = s:var_ref(str)
       assert(var and var.class == 'var')
@@ -361,6 +364,14 @@ class.var_iolist = var_iolist
 
 function class.make_var(unique, name)
    assert(unique)
+
+   -- If the input already contains variables (e.g. some other
+   -- compiler output), we will rename in-place.
+   if type(name) == 'table' and name.class == 'var' then
+      name.unique = unique
+      return name
+   end
+
    return { var = name, unique = unique, class = 'var', iolist = var_iolist }
 end
 

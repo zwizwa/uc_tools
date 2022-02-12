@@ -27,7 +27,7 @@ local class = {}
 local void = "#<void>"
 
 local function trace(tag, expr)
-   -- log_se_n(expr, tag .. ":")
+   log_se_n(expr, tag .. ":")
 end
 
 local function ifte(c,t,f)
@@ -138,7 +138,9 @@ function class.eval_loop(s, expr, k)
                 local fun = lit_or_ref(m.fun)
                 local vals = se.map(lit_or_ref, m.args)
                 if 'function' == type(fun) then
-                   return fun(unpack(l2a(vals)))
+                   local rv = fun(unpack(l2a(vals)))
+                   if rv == nil then rv = void end
+                   return rv
                 else
                    -- Closure evaluation is not primitive.
                    return nil
