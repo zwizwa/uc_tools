@@ -58,20 +58,31 @@ end
 
 function class.eval_loop(s, top_expr)
 
-
    -- The lexical environment is implemented as a flat list.  This is
    -- slow, but very convenient for analysis.  This is stored in the
    -- object to allow reuse of def, ref, set.
    s.env = se.empty
 
-   -- The other state contains the current variable to be bound, the
-   -- current expression under evaluation, the rest of the program,
-   -- and the continuation.
-   local ret_var = { class = 'var' }
-   local var  = ret_var
-   local expr = top_expr
-   local k    = se.empty
-   local rest = l(l('_', l('halt')))
+   -- The evaluation context is a stack for frames containing env, var
+   -- and rest.
+   local k = se.empty
+   local var = '_'
+   local rest = se.empty
+
+   -- Top level expression is a lambda that defines the linker for all
+   -- free variables present in the original source.  We evaluate that
+   -- manually to insert that binding + install a trampoline to bind
+   -- the inner expression to a variable before halting.
+   local ret_var = { class = 'var', iolist = 'ret_var' }
+   local expr =
+      s.match(
+         top_expr,
+         {{'(lambda (,base_ref) ,expr)',
+           function(m)
+              assert(m.base_ref.class == 'var')
+              s:def(m.base_ref, function(sym) return s:base_ref(sym) end)
+              return l('block',l(ret_var, m.expr),l('_',l('halt')))
+      end}})
 
    -- This context needs to be saved and restored when evaluating
    -- non-tail calls.
@@ -91,18 +102,11 @@ function class.eval_loop(s, top_expr)
       rest = frame.rest
    end
 
-   -- Top level expression is a lambda that defines the linker for all
-   -- free variables present in the original source.  We evaluate that
-   -- manually to insert the binding.
-   expr =
-      s.match(
-         expr,
-         {{'(lambda (,base_ref) ,expr)',
-           function(m)
-              assert(m.base_ref.class == 'var')
-              s:def(m.base_ref, function(sym) return s:base_ref(sym) end)
-              return m.expr
-      end}})
+   local function advance()
+      local binding
+      binding, rest = unpack(rest)
+      var, expr = se.unpack(binding, {n = 2})
+   end
 
    -- Value return for primtive data.
    local function ret(val)
@@ -118,11 +122,12 @@ function class.eval_loop(s, top_expr)
       assert(not is_empty(rest))
       -- Bind variable and continue executing.
       if (var ~= '_') then
+         trace("DEF", l(var, val))
          s:def(var, val)
+      else
+         trace("IGN", l(var, val))
       end
-      local binding
-      binding, rest = unpack(rest)
-      var, expr = se.unpack(binding, {n = 2})
+      advance()
    end
 
 
@@ -164,7 +169,8 @@ function class.eval_loop(s, top_expr)
 
 
    -- Main loop
-   while true do
+   local halted = false
+   while not halted do
       trace("EVAL", expr)
 
       s.match(
@@ -176,7 +182,7 @@ function class.eval_loop(s, top_expr)
             -- push:   save context to stack
 
             {"(halt)", function(m)
-                error({class = "expr", expr = s:ref(ret_var)})
+                halted = true
             end},
             {"(if ,cond ,iftrue ,iffalse)", function(m)
                 expr = ifte(lit_or_ref(m.cond), m.iftrue, m.iffalse)
@@ -187,7 +193,17 @@ function class.eval_loop(s, top_expr)
             {"(block (,var ,expr))", function(m)
                 error("last expression in 'block' is bound: '" .. m.var .. "'")
             end},
-
+            {"(block (,var ,expr) . ,rest)", function(m)
+                -- When nesting blocks we need to tuck away our
+                -- current variable to make room for the next one in
+                -- the block.  This is essentially another kind of
+                -- continuation, but since it doesn't involve the
+                -- environment we implement it by rewriting the input.
+                local binding = l(var, {'block', m.rest})
+                rest = {binding,rest}
+                var  = m.var
+                expr = m.expr
+            end},
             {"(block)", function(m)
                 ret(void)
             end},
@@ -205,6 +221,7 @@ function class.eval_loop(s, top_expr)
                 if 'function' == type(fun) then
                    local rv = fun(unpack(l2a(vals)))
                    if rv == nil then rv = void end
+                   trace("PRIM_EVAL", rv)
                    ret(rv)
                 else
                    -- Only push when not a tail call.
@@ -215,13 +232,6 @@ function class.eval_loop(s, top_expr)
                    app(fun, vals)
                 end
             end},
-            -- Note that 'scheme_flatten' compiler phase will collapse
-            -- nested blocks like this, so we do the same here: inline
-            -- it.
-            {"(block . ,program)", function(m)
-                rest = se.append(m.program, rest)
-            end},
-
             {",other", function(m)
                 if se.is_pair(m.other) then
                    error('bad form')
@@ -233,15 +243,14 @@ function class.eval_loop(s, top_expr)
             end},
          })
    end
+
+   return s:ref(ret_var)
+
 end
 
 
 function class.eval(s,expr)
-   local ok, halt_val = pcall(function() s:eval_loop(expr) end)
-   assert(not ok) -- only exits via exception
-   assert(halt_val and halt_val.class == 'expr')
-   -- log_desc(halt_val)
-   local val = halt_val.expr
+   local val = s:eval_loop(expr)
    trace("HALT", val)
    return val
 end
