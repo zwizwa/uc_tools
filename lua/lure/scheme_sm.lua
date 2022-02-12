@@ -192,9 +192,7 @@ function class.compile_app(s, fun, args, compiled_cont)
       trace("APPTAIL", app)
       assert(app)
 
-      se.push_cdr(l('_',app), labels)
-
-      return labels
+      return app
    else
 
       -- The app form will expand into a labels form.  Where the first
@@ -421,10 +419,10 @@ function class.comp_bindings(s, bindings_in)
                             if not tail then
                                compiled_cont =
                                   cut_bindings_in({'block',{l(var,l('arg-ref', 0)),bindings_in}})
-                            end
+                               local labels = l('labels')
+                               s.labels = {labels, s.labels}
 
-                            local labels = l('labels')
-                            s.labels = {labels, s.labels}
+                            end
 
                             local app = s:compile_app(fun, m.args, compiled_cont)
                             bind('_', app)
@@ -503,8 +501,10 @@ function class.compile(s,expr)
    -- Tracks the maximum of arg-ref
    s.nb_args = -1
 
-   -- Tracks the list of labels forms
-   s.labels = se.empty
+   -- Tracks the list of labels forms.  Needs to be initialized with
+   -- toplevel one.
+   local labels = l('labels')
+   s.labels = l(labels)
 
    return s.match(
       expr,
@@ -523,9 +523,11 @@ function class.compile(s,expr)
 
            local c_body = s:comp(m.body)
 
+           se.push_cdr(l('_', c_body), labels)
+
            return l('block',
                     _(l('alloc_args', 1 + s.nb_args)),
-                    _(c_body))
+                    _(labels))
       end}})
 end
 
