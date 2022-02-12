@@ -181,36 +181,27 @@ function class.eval(s, top_expr)
       var, expr = se_unpack(binding, {n = 2})
    end
 
-   s.prim['call/cc'] = function(fun)
-      -- If it's not a closure, maybe wrap it?
-      assert(fun and fun.class == 'closure')
+   -- Like app, but insert stub to undo the effect of ret() called
+   -- after primitive return.  The return value of the primitive is
+   -- ignored.
+   local function app_from_prim(fun, args)
+      app(fun, args)
+      rest = l(l('_', expr))
+      expr = nil
+   end
 
-      -- Push current context and wrap the continuation object in a
-      -- function that behaves as a primitive.
+   -- call-with-current-continuation, implemented as primitive
+   s.prim['call/cc'] = function(fun)
+      assert(fun and fun.class == 'closure')
       push()
-      local k_saved = k
+      local k_snap = k
       local function k_fun(val)
          trace("KFUN", val)
-         k = k_saved ; pop()
-         -- Context is now the same as it was before the call to
-         -- call/cc primitive.
+         k = k_snap
+         pop()
          return val
       end
-
-      -- After push(), var == '_', rest == empty.  Now stub things out
-      -- such that the ret() that follows the execution of the call/cc
-      -- primitive results in execution falling into the function
-      -- body.  The ret() will take the nil value we return here,
-      -- ignore it because var == '_', and will continue executing
-      -- rest as if we are executing a non-tail call.  The value of
-      -- expr will not be used in this process (it still holds the
-      -- call/cc call).
-      s.env = fun.env
-      rest  = l(l('_', fun.body))
-      assert(length(fun.args) == 1)
-      s:def(fun.args[1], k_fun)
-      expr = nil
-      return nil
+      app_from_prim(fun, l(k_fun))
    end
 
    -- Primitive value: literal or variable referenece.
@@ -234,7 +225,6 @@ function class.eval(s, top_expr)
          error("lit_or_ref, bad class '" .. class .. "'")
       end
    end
-
 
    -- Main loop
    local halted = false
