@@ -143,7 +143,6 @@ function class.app.mop(s, mop, vals)
    mop.mop(s, vals)
 end
 
--- Example mop: call-with-current-continuation
 function class.k_fun(s, k_snap)
    k_snap = k_snap or s:get_k()
    return function(val)
@@ -153,6 +152,7 @@ function class.k_fun(s, k_snap)
       return val
    end
 end
+-- Example mop: call-with-current-continuation
 function class.callcc(s, args)
    local fun = se.unpack(args, {n=1})
    assert(fun and fun.class == 'closure')
@@ -309,15 +309,13 @@ end
 
 
 function class.new(prim_base)
-   local prim = {
-      -- call-with-current-continuation, implemented as a mop
-      ['call/cc'] = { class = 'mop', mop = s.callcc }
-   }
+   local prim = { }
    setmetatable(prim, {__index = prim_base})
    local s = { match = se_match.new(), prim = prim }
    setmetatable(s, {__index = class})
    s:reset(s)
-
+   -- call-with-current-continuation, implemented as a mop
+   prim['call/cc'] = { class = 'mop', mop = s.callcc }
    return s
 end
 
