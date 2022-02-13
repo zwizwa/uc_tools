@@ -113,8 +113,8 @@ function mod.run()
       -- maybe an accidental global variable?.  It's as if the
       -- evaluation here uses some other environment.
       --
-      -- local input_ir_val = make_interp():eval(ir)
-      -- log("EVAL_INPUT_IR:") ; log_se_n(input_ir_val)
+      --local input_ir_val = make_interp():eval(ir)
+      --log("EVAL_INPUT_IR:") ; log_se_n(input_ir_val)
       -- I think that smc is modifying the ir in-place.
 
    end

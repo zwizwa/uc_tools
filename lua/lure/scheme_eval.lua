@@ -170,15 +170,15 @@ function class.reset(s)
    -- convenient.  Stored as s.env to allow def, ref, set methods.
    s.env = empty
 
-   -- he stack / contination list k, the variable that takes the value
-   -- of the current expression, and the rest of the 'program', which
-   -- is a 'block' form without the tag.
+   -- The variable that takes the value of the current expression.
    s.var = '_'
+
+   -- The remainder of the current block.
    s.rest = empty
 
    -- Top level contination falls into the halt instruction.
    local k_var = {
-      class = 'var',
+      class  = 'var',
       iolist = 'k_var',
       unique = 'k_var'
    }
@@ -192,9 +192,6 @@ function class.reset(s)
 
    -- Register top continuation as a primitive
    s.prim['abort'] = s:k_fun()
-
-   -- call-with-current-continuation, implemented as a mop
-   s.prim['call/cc'] = { class = 'mop', mop = s.callcc }
 
 end
 
@@ -312,11 +309,15 @@ end
 
 
 function class.new(prim_base)
-   local prim = {}
+   local prim = {
+      -- call-with-current-continuation, implemented as a mop
+      ['call/cc'] = { class = 'mop', mop = s.callcc }
+   }
    setmetatable(prim, {__index = prim_base})
    local s = { match = se_match.new(), prim = prim }
    setmetatable(s, {__index = class})
    s:reset(s)
+
    return s
 end
 
