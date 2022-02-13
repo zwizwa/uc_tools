@@ -42,13 +42,15 @@ local function make_trace()
       events = {event, events}
       i = i + 1
       if i > 10 then
-         s.halted = true
-         s:def(s.ret_var, se.reverse(events))
+         local abort = s.prim['abort']
+         local rv = event
          -- Reset for next run
          events = {}
          i = 0
+         s:ret(abort(rv))
+      else
+         s:ret(event)
       end
-      s:ret(event)
    end
 end
 

@@ -180,7 +180,7 @@ function class.eval(s, top_expr)
    -- Top level expression coming out of scheme_frontend is a lambda
    -- that defines the linker for all free variables present in the
    -- original source.  We evaluate this lambda expression manually to
-   -- insert that binding...
+   -- insert that binding.
    s.match(
       top_expr,
       {{'(lambda (,base_ref) ,expr)',
@@ -192,16 +192,20 @@ function class.eval(s, top_expr)
 
    -- Top level contination falls into the halt instruction.
    local k_var = {
-      class = 'var', iolist = 'k_var', unique = 'k_var'
+      class = 'var',
+      iolist = 'k_var',
+      unique = 'k_var'
    }
-   s.k = {{ class = 'kframe',
-            env = s.env,
-            var = k_var,
-            rest = l(l('_',l('halt',k_var)))
-          }, empty }
+   local top_kframe = {
+      class = 'kframe',
+      env = s.env,
+      var = k_var,
+      rest = l(l('_',l('halt',k_var)))
+   }
+   s.k = { top_kframe, empty }
 
-   -- Register it as a primitive
-   s.prim['abort'] = s:k_fun(k_abort)
+   -- Register top continuation as a primitive
+   s.prim['abort'] = s:k_fun()
 
    -- call-with-current-continuation, implemented as a mop
    s.prim['call/cc'] = { class = 'mop', mop = s.callcc }
