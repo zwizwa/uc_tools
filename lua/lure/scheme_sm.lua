@@ -112,7 +112,7 @@ end
 
 
 -- goto / label fallthrough with arguments.
-function wrap_args(goto_or_label_expr, args)
+function wrap_set_args(goto_or_label_expr, args)
    local expr =
       block_enter(
          function(i, arg)
@@ -151,6 +151,14 @@ end
 -- 2. When calling a lambda that is defined inside one of the mutual
 --    bodies, it needs to be placed under a deeper labels form.
 
+function class.push_to_current_labels(s, label, body_expr)
+   -- FIXME: This is currently a stack.  Is that really necessary?
+   assert(s.labels)
+   local current_labels = se.car(s.labels)
+   se.push_cdr(l(label, body_expr), current_labels)
+end
+
+
 function class.compile_app(s, fun, args, compiled_cont)
 
    -- This is tricky to define properly... The essential piece of
@@ -179,27 +187,23 @@ function class.compile_app(s, fun, args, compiled_cont)
    -- used for the goto.
    local label = maybe_label or s:make_var(fun.debug_name)
 
-   -- A call amounts to a goto, with function body inlined at a
-   -- specific place if it is not already there.
-   local function maybe_compile()
-      if not already_compiled then
-         local funs = l(fun)
-         if fun.letrec then
-            -- Compile all of them at once.
-            -- funs = fun.letrec
-         end
-         -- Mark them first to prevent infinite loop.
-         for fun in se.elements(funs) do
-            fun.compiled[s.cont] = label
-         end
-         for fun in se.elements(funs) do
-            -- log_desc(fun)
-            local compiled = s:compile_fun(fun)
-            local labels = se.car(s.labels)
-            assert(labels)
-            assert(labels)
-            se.push_cdr(l(label, compiled), labels)
-         end
+
+   -- Compile the current function and all its letrec siblings.
+   local function compile()
+      local funs = l(fun)
+      if fun.letrec then
+         -- FIXME: Tests also pass without this.  Find a good example
+         -- where this is really necessary.
+         funs = fun.letrec
+      end
+      -- Mark them first to prevent infinite compilation loop, as we
+      -- will re-enter compile_app() here.
+      for fun in se.elements(funs) do
+         fun.compiled[s.cont] = label
+      end
+      for fun in se.elements(funs) do
+         local compiled = s:compile_fun(fun)
+         s:push_to_current_labels(label, compiled)
       end
    end
 
@@ -209,24 +213,29 @@ function class.compile_app(s, fun, args, compiled_cont)
       return labels
    end
 
+   -- If everything is compiled in the proper context, the call
+   -- amounts to a goto + setting of argument registers.
+   local app = wrap_set_args(l('goto',label), args)
+
 
    if not compiled_cont then
       -- Tail call
       --
-
-      local app = wrap_args(l('goto',label), args)
-      trace("APPTAIL", app)
-      assert(app)
-
-
-      -- If the function is not yet compiled for the current
-      -- contination, we need to insert a labels form.
       if not already_compiled then
+         -- If the function is not yet compiled for the current
+         -- contination, we need to insert a labels form to host
+         -- (potential) mutually recursive functions.
          local labels = insert_labels()
-         maybe_compile()
-         se.push_cdr(l('_',app), labels)
+         compile()
+         -- Save it.  Here we assume this will be the "fall through"
+         -- label, i.e. nobody will push to this lables form after
+         -- this app.  This should be true beacuse all the compilation
+         -- and pushing happened before.
+         s:push_to_current_labels('_', app)
          return labels
       else
+         -- Already compiled, this is a call inside the network which
+         -- is just a goto.
          return app
       end
 
@@ -258,25 +267,24 @@ function class.compile_app(s, fun, args, compiled_cont)
       assert(s.cont and (not s.cont.fun))
       s.cont.fun =
          function(val)
-            local got = l('goto', cont_label)
+            local goto_cont = l('goto', cont_label)
             -- Optimize: don't set args when they will be ignored.
             if s.cont.var ~= '_' then
-               return wrap_args(got, l(val))
+               return wrap_set_args(goto_cont, l(val))
             else
-               return got
+               return goto_cont
             end
          end
-      se.push_cdr(l(cont_label,compiled_cont),labels)
+      s:push_to_current_labels(cont_label, compiled_cont)
 
-      -- Now that new labels form is inserted, the fallthrough part of
-      -- the labels form is the code that performs the application.
-      -- This will compile the call.
-      maybe_compile()
-      local app = wrap_args(l('goto',label), args)
+      -- Now that new labels form is inserted we can compile
+      -- everything that is relative to this call.
+      compile()
 
-      se.push_cdr(l('_',app), labels)
+      -- The fallthrough part of the labels form is the code that
+      -- performs the application.  This is just a goto.
+      s:push_to_current_labels('_',app)
 
-      trace("APPLABELS", labels)
       return labels
 
    end
