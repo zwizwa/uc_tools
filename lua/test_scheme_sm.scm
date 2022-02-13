@@ -3,6 +3,13 @@
 ;; The compilation path is:
 ;; -> frontend -> flatten -> sm -> escape -> frontend -> flatten -> interp
 
+;; Compiler output is converted back to Scheme and interpreted.  The
+;; evaluation result is compared with the result of interpreting the
+;; original Scheme code.
+
+;; The trace function is used to abort execution after a fixed number
+;; of calls.
+
 ;; Infinite single rec
 (let loop ((n 0))
   (trace n)
@@ -16,7 +23,8 @@
 (letrec
     ((x (lambda ()
           (trace 'tick)
-          (x)))) (x))
+          (x))))
+  (x))
 
 
 ;; Finite mutual rec loop
@@ -91,7 +99,7 @@
     (+ a b)))
 
 
-;; Constructed to break the label lexical scope rules.
+;; Constructed to trigger old scope issue.
 (begin
   (define (loop1 n)
     (if (> n 3) 3 (loop1 (+ n 1))))
@@ -102,4 +110,23 @@
         (loop1 (+ n 2))))
   (loop2 0))
 
-;; Similar, but scope issue prevents.
+
+;; Constructed to trigger old scope issue.
+;; FIXME: Currently fails
+(begin
+  (define (loop1 n)
+    (let* ((a 1)
+           (add1 (lambda (x) (+ a x))))
+      
+      (if (> n 3) 3
+          (loop1 (add1 n)))))
+              
+  (define (loop2 n)
+    (if n
+        (loop1 (+ n 1))
+        (loop1 (+ n 2))))
+  (loop2 0))
+
+
+
+

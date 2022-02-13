@@ -314,9 +314,9 @@ function class.new(prim_base)
    setmetatable(prim, {__index = prim_base})
    local s = { match = se_match.new(), prim = prim }
    setmetatable(s, {__index = class})
-   s:reset(s)
    -- call-with-current-continuation, implemented as a mop
    prim['call/cc'] = { class = 'mop', mop = s.callcc }
+   s:reset(s)
    return s
 end
 
