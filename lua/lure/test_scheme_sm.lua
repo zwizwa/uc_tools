@@ -33,7 +33,7 @@ local re_scheme =
 local filename = 'test_scheme_sm.scm'
 local str = asset[filename]
 
--- Implement trace as a machine operation that Xcan halt the
+-- Implement trace as a machine operation that can halt the
 -- machine as an infinite loop guard.
 local function make_trace()
    local events = se.empty
@@ -101,17 +101,19 @@ function mod.run()
       local output_ir_val = make_interp():eval(ir_tx)
 
 
-      -- FIXME: Re-interpretation of ir fails for some reason giving
-      -- bizarre error.  There is some lingering (accidental global
-      -- variable?)  state somewhere.  It's as if the evaluation here
-      -- uses the environment of the ir_tx
-      -- local input_ir_val = make_interp():eval(ir)
-      -- log("EVAL_INPUT_IR:") ; log_se_n(input_ir_val)
-      -- I think that smc is modifying the ir in-place.
       if not (runtime['equal?'])(input_ir_val, output_ir_val) then
          log("EVAL_OUTPUT_IR:") ; log_se_n(output_ir_val)
          error('eval-difference')
       end
+
+      -- FIXME: Re-interpretation of ir fails for some reason giving
+      -- bizarre error.  There is some lingering state somehwere,
+      -- maybe an accidental global variable?.  It's as if the
+      -- evaluation here uses some other environment.
+      --
+      -- local input_ir_val = make_interp():eval(ir)
+      -- log("EVAL_INPUT_IR:") ; log_se_n(input_ir_val)
+      -- I think that smc is modifying the ir in-place.
 
    end
 end

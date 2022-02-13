@@ -144,18 +144,20 @@ function class.app.mop(s, mop, vals)
 end
 
 -- Example mop: call-with-current-continuation
-function class.callcc(s, args)
-   local fun = se.unpack(args, {n=1})
-   assert(fun and fun.class == 'closure')
-   -- Snap cont + wrap it as a primitive function that restores it.
-   s:push()
-   local k_snap = s.k
-   local function k_fun(val)
+function class.k_fun(s, k_snap)
+   k_snap = k_snap or s:get_k()
+   return function(val)
       trace("KFUN", val)
       s.k = k_snap
       s:pop()
       return val
    end
+end
+function class.callcc(s, args)
+   local fun = se.unpack(args, {n=1})
+   assert(fun and fun.class == 'closure')
+   -- Snap cont + wrap it as a primitive function that restores it.
+   local k_fun = s:k_fun()
    -- Apply the closure
    s:app_closure(fun, l(k_fun))
 end
@@ -172,7 +174,6 @@ function class.eval(s, top_expr)
    -- he stack / contination list k, the variable that takes the value
    -- of the current expression, and the rest of the 'program', which
    -- is a 'block' form without the tag.
-   s.k = empty
    s.var = '_'
    s.rest = empty
 
@@ -180,19 +181,27 @@ function class.eval(s, top_expr)
    -- that defines the linker for all free variables present in the
    -- original source.  We evaluate this lambda expression manually to
    -- insert that binding...
-   s.ret_var = { class = 'var', iolist = 'ret_var' }
-   s.expr =
-      s.match(
-         top_expr,
-         {{'(lambda (,base_ref) ,expr)',
-           function(m)
-              assert(m.base_ref.class == 'var')
-              s:def(m.base_ref, function(sym) return s:base_ref(sym) end)
-              -- ... and install a trampoline that binds the remainder
-              -- of the expression to a variable before breaking the
-              -- loop.
-              return l('block',l(s.ret_var, m.expr),l('_',l('halt')))
-      end}})
+   s.match(
+      top_expr,
+      {{'(lambda (,base_ref) ,expr)',
+        function(m)
+           assert(m.base_ref.class == 'var')
+           s:def(m.base_ref, function(sym) return s:base_ref(sym) end)
+           s.expr = m.expr
+   end}})
+
+   -- Top level contination falls into the halt instruction.
+   local k_var = {
+      class = 'var', iolist = 'k_var', unique = 'k_var'
+   }
+   s.k = {{ class = 'kframe',
+            env = s.env,
+            var = k_var,
+            rest = l(l('_',l('halt',k_var)))
+          }, empty }
+
+   -- Register it as a primitive
+   s.prim['abort'] = s:k_fun(k_abort)
 
    -- call-with-current-continuation, implemented as a mop
    s.prim['call/cc'] = { class = 'mop', mop = s.callcc }
@@ -222,15 +231,15 @@ function class.eval(s, top_expr)
    end
 
    -- Main loop
-   s.halted  = false
-   while not s.halted do
+   local rv
+   while rv == nil do
       trace("EVAL", s.expr)
 
       s.match(
          s.expr,
          {
-            {"(halt)", function(m)
-                s.halted = true
+            {"(halt ,rv)", function(m)
+                rv = lit_or_ref(m.rv)
             end},
             {"(if ,cond ,iftrue ,iffalse)", function(m)
                 s.expr = ifte(lit_or_ref(m.cond), m.iftrue, m.iffalse)
@@ -287,7 +296,7 @@ function class.eval(s, top_expr)
          })
    end
 
-   return s:ref(s.ret_var)
+   return rv
 
 end
 
