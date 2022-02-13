@@ -26,7 +26,7 @@ class.parameterize = comp.parameterize
 local void = {class = 'void', iolist = "#<void>"}
 
 local function trace(tag, expr)
-   -- log_se_n(expr, tag .. ":")
+   log_se_n(expr, tag .. ":")
 end
 
 class.def       = comp.def
@@ -202,6 +202,7 @@ function class.compile_app(s, fun, args, compiled_cont)
                -- compile_bindings.
                { labels = s.labels },
                function()
+                  assert(s.cont.fun)
                   return s:compile_fun(f)
                end)
          local f_label = f.compiled[s.cont]
@@ -501,11 +502,11 @@ function class.comp_bindings(s, bindings_in)
                       local typ = se.expr_type(m.primval)
                       if not ephemeral[typ] then
                          if  s.cont.fun then
-                            trace("PVCONT",m.primval)
+                            trace("PVCONT",l(m.primval,s.expr))
                             bind(var, s.cont.fun(m.primval))
                          else
                             -- This is an ordinary block binding.
-                            trace("PVRET",m.primval)
+                            trace("PVRET",l(m.primval,s.expr))
                             bind(var, m.primval)
                          end
                       end
