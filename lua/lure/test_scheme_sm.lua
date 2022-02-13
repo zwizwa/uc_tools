@@ -99,7 +99,6 @@ function mod.run()
       -- log("IR_TX:") ; pretty.log_pp(ir_tx)
 
       local output_ir_val = make_interp():eval(ir_tx)
-      log("EVAL_OUTPUT_IR:") ; log_se_n(output_ir_val)
 
 
       -- FIXME: Re-interpretation of ir fails for some reason giving
@@ -109,8 +108,10 @@ function mod.run()
       -- local input_ir_val = make_interp():eval(ir)
       -- log("EVAL_INPUT_IR:") ; log_se_n(input_ir_val)
       -- I think that smc is modifying the ir in-place.
-
-      assert((runtime['equal?'])(input_ir_val, output_ir_val))
+      if not (runtime['equal?'])(input_ir_val, output_ir_val) then
+         log("EVAL_OUTPUT_IR:") ; log_se_n(output_ir_val)
+         error('eval-difference')
+      end
 
    end
 end

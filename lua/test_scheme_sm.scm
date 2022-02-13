@@ -5,7 +5,7 @@
 
 ;; Infinite single rec
 (let loop ((n 0))
-  (trace 'tick)
+  (trace n)
   (if (> n 3)
       (loop 0)
       (loop (+ n 1))))
@@ -41,11 +41,12 @@
 ;; Infinite mutual rec
 (begin
   (define (f1 n)
-    (trace 'tick)
+    (trace 'f1 n)
     (if (> n 3)
         (f1 0)
         (f2 (+ n 1))))
   (define (f2 n)
+    (trace 'f2 n)
     (f1 (+ n 1)))
   (f1 0))
 
