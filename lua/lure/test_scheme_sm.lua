@@ -10,6 +10,7 @@ local runtime   = require('lure.slc_runtime')
 require('lure.log_se')
 
 local ins = table.insert
+local a2l = se.array_to_list
 
 local mod = {}
 
@@ -35,20 +36,12 @@ local str = asset[filename]
 
 -- Implement trace as a machine operation that can halt the
 -- machine as an infinite loop guard.
-local function make_trace(s)
-   local events = se.empty
-   local i = 0
-   return function(event)
-      events = {event, events}
-      i = i + 1
-      if i > 10 then
-         -- Call the top level continuation.
-         local abort = s.prim['abort']
-         local rv = event
-         -- Reset for next run
-         events = {}
-         i = 0
-         return abort(rv)
+local function make_trace(abort)
+   local events = {}
+   return function(...)
+      ins(events, a2l({...}))
+      if #events > 10 then
+         return abort(a2l(events))
       else
          return event
       end
@@ -57,7 +50,7 @@ end
 
 local function make_interp()
    local e = eval.new(runtime)
-   e.prim['trace']  = make_trace(e)
+   e.prim['trace']  = make_trace(e.prim['abort'])
    e.prim['return'] = function(val) return val end
    return e
 end

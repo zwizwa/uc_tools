@@ -280,8 +280,9 @@ function class.eval(s, top_expr)
                    trace("PRIM_EVAL", rv)
                    s:ret(rv)
                 elseif type(fun) == 'table' then
-                   local class = fun.class
+                   local class = fun.class  -- closure, mop
                    local app = s.app[class]
+                   s.expr = nil
                    app(s, fun, vals)
                 else
                    log_se_n(s.env,  "ENV:")
