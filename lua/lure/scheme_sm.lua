@@ -138,9 +138,14 @@ function class.set_debug_name(s, var, val)
    end
 end
 
--- FIXME: Still not convinced that 'goto' will include a visible
--- label.  This is not a problem for C, but it is for Scheme
--- emulation.
+-- This is not yet correct.  Problems:
+
+-- 1. It is possible to enter a mutual call network in tail position.
+--    When this is true, a new labels form needs to be compiled as
+--    well.
+--
+-- 2. When calling a lambda that is defined inside one of the mutual
+--    bodies, it needs to be placed under a deeper labels form.
 
 function class.compile_app(s, fun, args, compiled_cont)
 
@@ -150,23 +155,13 @@ function class.compile_app(s, fun, args, compiled_cont)
    -- was compiled, or nil if it wasn't.
    local maybe_label = fun.compiled[s.cont]
 
-   -- Use the label of the compiled function, or generate a new one in
-   -- case we still need to compile it.
+   -- If the function was not yet compiled, generate a new label to be
+   -- used for the goto.
    local label = maybe_label or s:make_var(fun.debug_name)
 
-   -- local function compile_callexpr_old()
-   --    if not maybe_label then
-   --       -- Fall through into the function body, recording that we've
-   --       -- compiled for this continuation.
-   --       fun.compiled[s.cont] = label
-   --       return l('labels',l(label, s:compile_fun(fun)))
-   --    else
-   --       -- Jump to previously compiled body.
-   --       return l('goto',label)
-   --    end
-   -- end
-
-   local function compile_callexpr()
+   -- A call amounts to a goto, with function body inlined at a
+   -- specific place if it is not already there.
+   local function maybe_compile_label()
       if not maybe_label then
          fun.compiled[s.cont] = label
          local compiled = s:compile_fun(fun)
@@ -175,38 +170,45 @@ function class.compile_app(s, fun, args, compiled_cont)
          assert(labels)
          se.push_cdr(l(label, compiled), labels)
       end
-      return l('goto',label)
    end
-
-   trace("LABEL",label)
 
    if not compiled_cont then
       -- Tail call
+      --
+      -- Currently we assume that the labels form is present.  This is
+      -- not correct, but will do for now.
       assert(s.cont.fun)
-      local app = wrap_args(compile_callexpr(), args)
+      maybe_compile_label()
+      local app = wrap_args(l('goto',label), args)
       trace("APPTAIL", app)
       assert(app)
 
       return app
    else
-
-      -- The app form will expand into a labels form.  Where the first
-      -- label is the "fall through" containing the inlined function
-      -- application.  In addition it contains another label that
-      -- represents the current continuation.  We build that first.
-      local cont_label = s:make_var(s.cont.var)
-
+      -- Non-tail call: app is compiled as goto + continuation is
+      -- applied as goto.
+      --
+      -- The question is _where_ to hide the bodies.
+      --
+      -- Compilation happens under a 'labels' form, which behaves
+      -- similar to 'letrec' in that all labels are visible from
+      -- within the bodies of each of the inlined functions.
+      --
+      -- Inlined function bodies need to respect scoping rules for
+      -- their captured variables, but also for the new labels that
+      -- we're introducing, such as the continuation.  This means that
+      -- the function bodies need to be compiled below all the
+      -- variables they capture, but above the continuation such that
+      -- it's label is still visible.
+      --
+      -- So for non-tail call: always insert a labels form.
       local labels = l('labels')
       s.labels = {labels, s.labels}
 
-      -- When not in tail position, compile_bindings will have created
-      -- an ordinary value continuation. We take over control flow so
-      -- make sure we're not overwriting any special behavior.
+      -- Change the current value continuation into a goto that jumps
+      -- to the contination body we will insert into the labels form.
+      local cont_label = s:make_var(s.cont.var)
       assert(s.cont and (not s.cont.fun))
-      -- The continuation we install will set the argument register
-      -- and jump to a label.  We create the label here and pass it up
-      -- to compile_bindings, where the 'label' target code is
-      -- inserted.
       s.cont.fun =
          function(val)
             local got = l('goto', cont_label)
@@ -217,11 +219,13 @@ function class.compile_app(s, fun, args, compiled_cont)
                return got
             end
          end
-
-      -- Everything will compile here.
       se.push_cdr(l(cont_label,compiled_cont),labels)
 
-      local app = wrap_args(compile_callexpr(), args)
+      -- Now that new labels form is inserted, the fallthrough part of
+      -- the labels form is the code that performs the application.
+      -- This will compile the call.
+      maybe_compile_label()
+      local app = wrap_args(l('goto',label), args)
 
       se.push_cdr(l('_',app), labels)
 
@@ -414,10 +418,11 @@ function class.comp_bindings(s, bindings_in)
                             -- Closures are compiled
                             local compiled_cont = nil
                             if not tail then
-                               -- Compile the continuation
+                               -- Compile the continuation = remainder of the bindings form.
                                compiled_cont =
                                   cut_bindings_in({'block',{l(var,l('arg-ref', 0)),bindings_in}})
                             end
+                            -- Compile the call (goto) + continuation if any.
                             local app = s:compile_app(fun, m.args, compiled_cont)
                             bind('_', app)
                          else
