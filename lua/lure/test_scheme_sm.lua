@@ -48,14 +48,23 @@ function mod.run()
       local e = scheme_sm.new()
       e.prim = require('lure.slc_runtime')
       local i = 1
-      local function trace(tag)
-         assert(i < 100)
+
+      -- Implement trace as a machine operation that can halt the
+      -- machine as an infinite loop guard.
+      local function mop_trace(s,tag)
+         if i > 100 then
+            s.halted = true
+            s:def(s.ret_var, 'TRACE_HALT')
+         end
          -- log_se_n(tag,"TRACE:")
          i = i + 1
+         -- return value and advance
+         s:ret(i)
       end
 
       -- e.prim.halt  = halt
-      e.prim.trace = trace
+      e.prim['trace']  = {class = 'mop', mop = mop_trace}
+      e.prim['return'] = function(val) return val end
       local out = e:compile(ir)
 
       -- log("OUTPUT_NONFLAT:") ; pretty.log_pp(out)

@@ -180,7 +180,7 @@ function class.eval(s, top_expr)
    -- that defines the linker for all free variables present in the
    -- original source.  We evaluate this lambda expression manually to
    -- insert that binding...
-   local ret_var = { class = 'var', iolist = 'ret_var' }
+   s.ret_var = { class = 'var', iolist = 'ret_var' }
    s.expr =
       s.match(
          top_expr,
@@ -191,7 +191,7 @@ function class.eval(s, top_expr)
               -- ... and install a trampoline that binds the remainder
               -- of the expression to a variable before breaking the
               -- loop.
-              return l('block',l(ret_var, m.expr),l('_',l('halt')))
+              return l('block',l(s.ret_var, m.expr),l('_',l('halt')))
       end}})
 
    -- call-with-current-continuation, implemented as a mop
@@ -220,15 +220,15 @@ function class.eval(s, top_expr)
    end
 
    -- Main loop
-   local halted = false
-   while not halted do
+   s.halted  = false
+   while not s.halted do
       trace("EVAL", s.expr)
 
       s.match(
          s.expr,
          {
             {"(halt)", function(m)
-                halted = true
+                s.halted = true
             end},
             {"(if ,cond ,iftrue ,iffalse)", function(m)
                 s.expr = ifte(lit_or_ref(m.cond), m.iftrue, m.iffalse)
@@ -264,11 +264,6 @@ function class.eval(s, top_expr)
                    trace("PRIM_EVAL", rv)
                    s:ret(rv)
                 else
-                   -- Allow extension of the machine via primitive
-                   -- functions that have access to machine state.
-                   -- The most common one here is 'closure'.  Another
-                   -- one is 'mop' which is used to implement
-                   -- 'call/cc' as an example extension.
                    local class = fun.class
                    local app = s.app[class]
                    app(s, fun, vals)
@@ -286,7 +281,7 @@ function class.eval(s, top_expr)
          })
    end
 
-   return s:ref(ret_var)
+   return s:ref(s.ret_var)
 
 end
 
