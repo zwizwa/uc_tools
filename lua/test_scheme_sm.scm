@@ -3,6 +3,15 @@
 ;; The compilation path is:
 ;; -> frontend -> flatten -> sm -> escape -> frontend -> flatten -> interp
 
+;; Infinite single rec
+(let loop ((n 0))
+  (trace 'tick)
+  (if (> n 3)
+      (loop 0)
+      (loop (+ n 1))))
+
+
+
 ;; Simplest infinite loop
 (letrec
     ((x (lambda ()
@@ -20,14 +29,6 @@
     (f1 (+ n 1)))
   (let ((rv (f1 0)))
     (assert (= 5 (+ rv 1)))))
-
-
-;; Infinite single rec
-(let loop ((n 0))
-  (trace 'tick)
-  (if (> n 3)
-      (loop 0)
-      (loop (+ n 1))))
 
 
 ;; The 'blockval' problem: convert binding to void binding + set! cont.

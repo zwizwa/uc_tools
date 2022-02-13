@@ -5,8 +5,11 @@ local scheme_sm = require('lure.scheme_sm')
 local pretty    = require('lure.scheme_pretty')
 local flat      = require('lure.scheme_flatten')
 local eval      = require('lure.scheme_eval')
+local runtime   = require('lure.slc_runtime')
 
 require('lure.log_se')
+
+local ins = table.insert
 
 local mod = {}
 
@@ -18,7 +21,7 @@ local c_new =
          'lure.scheme_flatten',
       })
 
-local tx_new =
+local re_scheme =
    comp.make_multipass_new(
       {
          'lure.scheme_escape',
@@ -30,12 +33,40 @@ local tx_new =
 local filename = 'test_scheme_sm.scm'
 local str = asset[filename]
 
+-- Implement trace as a machine operation that Xcan halt the
+-- machine as an infinite loop guard.
+local function make_trace()
+   local events = se.empty
+   local i = 0
+   return function(s, event)
+      events = {event, events}
+      i = i + 1
+      if i > 10 then
+         s.halted = true
+         s:def(s.ret_var, se.reverse(events))
+         -- Reset for next run
+         events = {}
+         i = 0
+      end
+      s:ret(event)
+   end
+end
+
+local function make_interp()
+   local e = eval.new()
+   e.prim = runtime
+   e.prim['trace']  = {class = 'mop', mop = make_trace()}
+   e.prim['return'] = function(val) return val end
+   return e
+end
+
 function mod.run()
    local exprs = se.read_string_multi(str)
 
    -- Instead of creating a single expression, restart the interpreter
    -- for each expression to isolate the tests.
-   -- exprs[2] = se.empty
+
+   -- exprs[2] = se.empty  -- only first expression
 
    for expr in se.elements(exprs) do
 
@@ -43,49 +74,43 @@ function mod.run()
       local c = c_new()
       local ir = c:compile(expr)
 
-      -- log("IR:") ; pretty.log_pp(ir)
+      -- log("INPUT_IR:") ; pretty.log_pp(ir)
+      local input_ir_val = make_interp():eval(ir)
+      log("EVAL_INPUT_IR:") ; log_se_n(input_ir_val)
 
-      local e = scheme_sm.new()
-      e.prim = require('lure.slc_runtime')
+      local smc = scheme_sm.new()
+      smc.prim = require('lure.slc_runtime')
       local i = 1
 
-      -- Implement trace as a machine operation that can halt the
-      -- machine as an infinite loop guard.
-      local function mop_trace(s,tag)
-         if i > 100 then
-            s.halted = true
-            s:def(s.ret_var, 'TRACE_HALT')
-         end
-         -- log_se_n(tag,"TRACE:")
-         i = i + 1
-         -- return value and advance
-         s:ret(i)
-      end
-
-      -- e.prim.halt  = halt
-      e.prim['trace']  = {class = 'mop', mop = mop_trace}
-      e.prim['return'] = function(val) return val end
-      local out = e:compile(ir)
-
+      local out = smc:compile(ir)
       -- log("OUTPUT_NONFLAT:") ; pretty.log_pp(out)
 
       -- Flatten before pp
       local f = flat.new() ; out = f:compile(out)
-      log("OUTPUT:") ; pretty.log_pp(out)
+      log("OUTPUT_IR:") ; pretty.log_pp(out)
 
-      -- Interpret as Scheme.
+
+      -- Interpret output IR as Scheme
 
       -- Note that 'block' and 'if' are the same as their primitive
       -- form, so we don't need to remap to 'block@' and 'if@' using
       -- scheme_escape.
-      local tx = tx_new()
-      local ir_tx = tx:compile(out)
-      -- log("TX:") ; pretty.log_pp(ir_tx)
+      local ir_tx = re_scheme():compile(out)
+      -- log("IR_TX:") ; pretty.log_pp(ir_tx)
 
-      local e = eval.new()
-      e.prim = require('lure.slc_runtime')
-      local rv = e:eval(ir_tx)
-      log("EVAL:") ; log_se_n(rv)
+      local output_ir_val = make_interp():eval(ir_tx)
+      log("EVAL_OUTPUT_IR:") ; log_se_n(output_ir_val)
+
+
+      -- FIXME: Re-interpretation of ir fails for some reason giving
+      -- bizarre error.  There is some lingering (accidental global
+      -- variable?)  state somewhere.  It's as if the evaluation here
+      -- uses the environment of the ir_tx
+      -- local input_ir_val = make_interp():eval(ir)
+      -- log("EVAL_INPUT_IR:") ; log_se_n(input_ir_val)
+      -- I think that smc is modifying the ir in-place.
+
+      assert((runtime['equal?'])(input_ir_val, output_ir_val))
 
    end
 end

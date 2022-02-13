@@ -199,6 +199,8 @@ function class.eval(s, top_expr)
 
    -- Primitive value: literal or variable referenece.
    local function lit_or_ref(thing)
+      trace("REF",l(thing,s.env))
+
       local typ = type(thing)
       if typ ~= 'table' then return thing end
 
@@ -263,10 +265,14 @@ function class.eval(s, top_expr)
                    if rv == nil then rv = void end
                    trace("PRIM_EVAL", rv)
                    s:ret(rv)
-                else
+                elseif type(fun) == 'table' then
                    local class = fun.class
                    local app = s.app[class]
                    app(s, fun, vals)
+                else
+                   log_se_n(s.env,  "ENV:")
+                   log_se_n(s.expr, "EXPR:")
+                   error("bad fun type '" .. type(fun) .. "'")
                 end
             end},
             {",other", function(m)

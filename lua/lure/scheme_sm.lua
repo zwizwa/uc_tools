@@ -302,10 +302,6 @@ function class.comp_bindings(s, bindings_in)
       else return thing end
    end
 
-   local function comp(expr)
-      return s:comp(expr)
-   end
-
    return s:parameterize(
       {
          -- These variables are just saved and updated in-place.
@@ -361,11 +357,13 @@ function class.comp_bindings(s, bindings_in)
                bind('_', recurse())
             end
 
-            -- Cut the current "program" and compile provided
+            -- Compile the rest of the bindings as a function that can
+            -- be jumped into.
             -- expression (containing bindings_in) separately.
-            local function cut_bindings_in(cont_expr)
-               trace("CUTOFF", cont_expr)
+            local function compile_cont()
+               local cont_expr = {'block',{l(var,l('arg-ref', 0)),bindings_in}}
                bindings_in = se.empty
+               trace("COMPILE_CONT", cont_expr)
                return
                   s:parameterize(
                      {cont = parent_cont},
@@ -378,6 +376,12 @@ function class.comp_bindings(s, bindings_in)
             -- original source but is no longer readily available in
             -- the IR.
             local hint = {}
+            -- We currently rely on this letrec hint to correctly
+            -- compile all letrec siblings at once.  That information
+            -- can in principle be recovered through analysis, but
+            -- it's much easier to let the letrec macro insert the
+            -- hint, since it has this information centralized before
+            -- it gets spread out.
             function hint.letrec(closures)
                log_se_n(closures,"HINT_LETREC:")
                for closure in se.elements(closures) do
@@ -477,8 +481,7 @@ function class.comp_bindings(s, bindings_in)
                             local compiled_cont = nil
                             if not tail then
                                -- Compile the continuation = remainder of the bindings form.
-                               compiled_cont =
-                                  cut_bindings_in({'block',{l(var,l('arg-ref', 0)),bindings_in}})
+                               compiled_cont = compile_cont()
                             end
                             -- Compile the call (goto) + continuation if any.
                             local app = s:compile_app(fun, m.args, compiled_cont)
@@ -562,7 +565,7 @@ function class.compile(s,expr)
    -- toplevel one.
    -- local labels = l('labels')
    -- s.labels = l(labels)
-   s.labels = nil
+   s.labels = se.empty
 
    return s.match(
       expr,
