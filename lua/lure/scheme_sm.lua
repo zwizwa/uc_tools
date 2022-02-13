@@ -142,15 +142,6 @@ function class.set_debug_name(s, var, val)
    end
 end
 
--- This is not yet correct.  Problems:
-
--- 1. It is possible to enter a mutual call network in tail position.
---    When this is true, a new labels form needs to be compiled as
---    well.
---
--- 2. When calling a lambda that is defined inside one of the mutual
---    bodies, it needs to be placed under a deeper labels form.
-
 function class.push_to_current_labels(s, label, body_expr)
    -- FIXME: This is currently a stack.  Is that really necessary?
    assert(s.labels)
@@ -187,23 +178,35 @@ function class.compile_app(s, fun, args, compiled_cont)
    -- used for the goto.
    local label = maybe_label or s:make_var(fun.debug_name)
 
-
    -- Compile the current function and all its letrec siblings.
    local function compile()
       local funs = l(fun)
       if fun.letrec then
-         -- FIXME: Tests also pass without this.  Find a good example
-         -- where this is really necessary.
          funs = fun.letrec
       end
       -- Mark them first to prevent infinite compilation loop, as we
-      -- will re-enter compile_app() here.
-      for fun in se.elements(funs) do
-         fun.compiled[s.cont] = label
+      -- will re-enter compile_app() here.  We have the label for fun
+      -- already...
+      fun.compiled[s.cont] = label
+      -- But the other ones need to be generated.
+      for other in se.elements(funs) do
+         if other ~= fun then
+            other.compiled[s.cont] = s:make_var(other.debug_name)
+         end
       end
-      for fun in se.elements(funs) do
-         local compiled = s:compile_fun(fun)
-         s:push_to_current_labels(label, compiled)
+      for f in se.elements(funs) do
+         local f_compiled =
+            s:parameterize(
+               -- Recursive calls will likely modify this, so it needs
+               -- to be protected.  Might be protected already by
+               -- compile_bindings.
+               { labels = s.labels },
+               function()
+                  return s:compile_fun(f)
+               end)
+         local f_label = f.compiled[s.cont]
+         assert(f_label)
+         s:push_to_current_labels(f_label, f_compiled)
       end
    end
 
