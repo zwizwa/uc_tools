@@ -153,11 +153,27 @@ end
 
 function class.compile_app(s, fun, args, compiled_cont)
 
+   -- This is tricky to define properly... The essential piece of
+   -- information we need is whether this call enters a
+   -- not-yet-compiled mutually recursive call network, or whether it
+   -- is a call that is inside such a network.
+   --
+   -- We disambiguate it like this:
+   --
+   -- 1. If fun is mutually recursive (information recovered via
+   --    letrec hint), then compile _all_ instances in the letrec
+   --    network if it is not yet compiled.
+   --
+   -- 2. We know whether a function is compiled by tracking its label
+   --    _specialized to the current continuation_.
+   --
+
    -- Function instances are specialized to a specific continuation.
    -- We track compilation state for the current continuation inside
    -- the closure data structure.  This will return the label if it
    -- was compiled, or nil if it wasn't.
    local maybe_label = fun.compiled[s.cont]
+   local already_compiled = maybe_label ~= nil
 
    -- If the function was not yet compiled, generate a new label to be
    -- used for the goto.
@@ -165,29 +181,57 @@ function class.compile_app(s, fun, args, compiled_cont)
 
    -- A call amounts to a goto, with function body inlined at a
    -- specific place if it is not already there.
-   local function maybe_compile_label()
-      if not maybe_label then
-         fun.compiled[s.cont] = label
-         local compiled = s:compile_fun(fun)
-         local labels = se.car(s.labels)
-         assert(labels)
-         assert(labels)
-         se.push_cdr(l(label, compiled), labels)
+   local function maybe_compile()
+      if not already_compiled then
+         local funs = l(fun)
+         if fun.letrec then
+            -- Compile all of them at once.
+            -- funs = fun.letrec
+         end
+         -- Mark them first to prevent infinite loop.
+         for fun in se.elements(funs) do
+            fun.compiled[s.cont] = label
+         end
+         for fun in se.elements(funs) do
+            -- log_desc(fun)
+            local compiled = s:compile_fun(fun)
+            local labels = se.car(s.labels)
+            assert(labels)
+            assert(labels)
+            se.push_cdr(l(label, compiled), labels)
+         end
       end
    end
+
+   local function insert_labels()
+      local labels = l('labels')
+      s.labels = {labels, s.labels}
+      return labels
+   end
+
 
    if not compiled_cont then
       -- Tail call
       --
-      -- Currently we assume that the labels form is present.  This is
-      -- not correct, but will do for now.
-      assert(s.cont.fun)
-      maybe_compile_label()
+
       local app = wrap_args(l('goto',label), args)
       trace("APPTAIL", app)
       assert(app)
 
-      return app
+
+      -- If the function is not yet compiled for the current
+      -- contination, we need to insert a labels form.
+      if not already_compiled then
+         local labels = insert_labels()
+         maybe_compile()
+         se.push_cdr(l('_',app), labels)
+         return labels
+      else
+         return app
+      end
+
+      assert(s.cont.fun)
+
    else
       -- Non-tail call: app is compiled as goto + continuation is
       -- applied as goto.
@@ -206,8 +250,7 @@ function class.compile_app(s, fun, args, compiled_cont)
       -- it's label is still visible.
       --
       -- So for non-tail call: always insert a labels form.
-      local labels = l('labels')
-      s.labels = {labels, s.labels}
+      local labels = insert_labels()
 
       -- Change the current value continuation into a goto that jumps
       -- to the contination body we will insert into the labels form.
@@ -228,7 +271,7 @@ function class.compile_app(s, fun, args, compiled_cont)
       -- Now that new labels form is inserted, the fallthrough part of
       -- the labels form is the code that performs the application.
       -- This will compile the call.
-      maybe_compile_label()
+      maybe_compile()
       local app = wrap_args(l('goto',label), args)
 
       se.push_cdr(l('_',app), labels)
@@ -506,8 +549,9 @@ function class.compile(s,expr)
 
    -- Tracks the list of labels forms.  Needs to be initialized with
    -- toplevel one.
-   local labels = l('labels')
-   s.labels = l(labels)
+   -- local labels = l('labels')
+   -- s.labels = l(labels)
+   s.labels = nil
 
    return s.match(
       expr,
@@ -526,11 +570,13 @@ function class.compile(s,expr)
 
            local c_body = s:comp(m.body)
 
-           se.push_cdr(l('_', c_body), labels)
+           -- se.push_cdr(l('_', c_body), labels)
 
            return l('block',
                     _(l('alloc_args', 1 + s.nb_args)),
-                    _(labels))
+                    -- _(labels)
+                    _(c_body)
+                    )
       end}})
 end
 
