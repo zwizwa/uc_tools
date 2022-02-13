@@ -313,12 +313,21 @@ function class.comp_bindings(s, bindings_in)
       function()
          local parent_cont = s.cont
          local bindings_out_arr = {}
+
+         -- FIXME: Define semantics: first one will propagate
+         -- continuation to subexpressions, second one will "consume"
+         -- the continuation, e.g. returning a primitive vaue.
          local function bind(var, val)
             assert(var)
             assert(val)
             ins(bindings_out_arr, l(var, val))
          end
-
+         local function bind_ret(var, val)
+            if s.cont.fun then
+               val = s.cont.fun(val)
+            end
+            return bind(var, val)
+         end
 
          while not se.is_empty(bindings_in) do
 
@@ -475,7 +484,7 @@ function class.comp_bindings(s, bindings_in)
                                end
                             else
                                -- Primitives are compiled
-                               bind(var, {fun, m.args})
+                               bind_ret(var, {fun, m.args})
                             end
                          elseif fun.class == 'closure' then
                             -- Closures are compiled
@@ -501,14 +510,7 @@ function class.comp_bindings(s, bindings_in)
                       s:def(var, m.primval)
                       local typ = se.expr_type(m.primval)
                       if not ephemeral[typ] then
-                         if  s.cont.fun then
-                            trace("PVCONT",l(m.primval,s.expr))
-                            bind(var, s.cont.fun(m.primval))
-                         else
-                            -- This is an ordinary block binding.
-                            trace("PVRET",l(m.primval,s.expr))
-                            bind(var, m.primval)
-                         end
+                         bind_ret(var, m.primval)
                       end
                   end},
 
