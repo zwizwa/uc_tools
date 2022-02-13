@@ -62,7 +62,7 @@ end
 -- Perform a closure call.
 
 
-function class.closure(s, fun, vals)
+function class.app_closure(s, fun, vals)
    local is_tail = is_empty(s.rest)
    s:push_if_rest()
    trace("APPLY",l(fun.args, vals))
@@ -132,8 +132,14 @@ function class.ret(s,val)
    s:advance()
 end
 
--- Apply a class='mop' extension.
-function class.mop(s, mop, vals)
+-- Application of thing to values is implemented abstractly based on
+-- the class tag in the object.  Currently there are two:
+
+class.app = {}
+-- Ordinary closure application.
+class.app.closure = class.app_closure
+-- Machine operation extensions.  See e.g. call/cc prim.
+function class.app.mop(s, mop, vals)
    mop.mop(s, vals)
 end
 
@@ -151,7 +157,7 @@ function class.callcc(s, args)
       return val
    end
    -- Apply the closure
-   s:closure(fun, l(k_fun))
+   s:app_closure(fun, l(k_fun))
 end
 
 
@@ -264,7 +270,7 @@ function class.eval(s, top_expr)
                    -- one is 'mop' which is used to implement
                    -- 'call/cc' as an example extension.
                    local class = fun.class
-                   local app = s[class]
+                   local app = s.app[class]
                    app(s, fun, vals)
                 end
             end},
