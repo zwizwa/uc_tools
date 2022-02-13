@@ -6,6 +6,8 @@
 --
 -- 2. Downward closures are allowed.
 --
+-- FIXME: This can produce useful output for plain mutual recursion,
+-- but still has some scoping issues for corner cases.
 
 
 local se       = require('lure.se')
@@ -57,8 +59,8 @@ local ephemeral = {
    ['void'] = true,
 }
 
--- Compile a block with some statements at the beginning.  This is
--- used for arg-ref and set-arg!.
+-- Compile a block with some 0-indexed statements at the beginning.
+-- This is used for arg-ref and set-arg!.
 local function block_enter(fun, list, tail)
    tail = tail or se.empty
    local i = 0
@@ -75,17 +77,17 @@ end
 -- Instantiate a function.
 --
 -- Since we're just inlining and not explicitly handling the closure's
--- environment, this can only support downward closures.  FIXME: Add a
--- check to primval that ensures all variables are defined.
+-- environment, this can only support downward closures.
 --
--- Currently there doesn't seem to be any risk of violating scoping
--- because the ephemeral lambda values cannot be moved around.
--- I.e. when the variable that binds the closure is in scope, the
--- variables referenced by that closure are as well.
+-- FIXME: Add a check to primval that ensures all variables are
+-- defined.
 --
--- The takeway here is: keep it simple!  Do not implement higher order
--- forms in this compiler stage, but instead implement those in terms
--- of Scheme macros higher up the abstraction chain.
+-- FIXME: There are still scope violations.
+--
+-- The takeway here is: moving lambda bodies around is necessary but
+-- not trivial.  Keep it simple!  Do not implement higher order forms
+-- in this compiler stage, but instead implement those in terms of
+-- Scheme macros higher up the abstraction chain.
 
 function class.compile_fun(s, fun)
    return s:parameterize(
@@ -109,7 +111,7 @@ function class.compile_fun(s, fun)
 end
 
 
--- Goto with arguments.
+-- goto / label fallthrough with arguments.
 function wrap_args(goto_or_label_expr, args)
    local expr =
       block_enter(
@@ -130,7 +132,9 @@ function class.make_var(s, src_name)
    }
 end
 
--- Propagate source names for debugging.
+-- For debugging, closures have names determined from the initial
+-- binding or the last assigment.  This is a hack but works for letrec
+-- output.
 function class.set_debug_name(s, var, val)
    local typ = se.expr_type(val)
    if typ == 'closure' then

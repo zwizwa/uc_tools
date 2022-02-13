@@ -59,27 +59,123 @@ function class.base_ref(s,name)
 end
 
 
+-- Perform a closure call.
+
+
+function class.closure(s, fun, vals)
+   local is_tail = is_empty(s.rest)
+   s:push_if_rest()
+   trace("APPLY",l(fun.args, vals))
+   s.env = fun.env
+   zip(function(var,val) s:def(var,val) end, fun.args, vals)
+   s.expr = fun.body
+end
+
+-- The evaluation context needs to be saved and restored when
+-- evaluating non-tail calls.
+function class.get_k(s)
+   trace("PUSH",s.env)
+   local frame = {
+      env  = s.env,
+      var  = s.var,
+      rest = s.rest,
+      class = 'kframe',
+   }
+   return {frame, s.k}
+end
+
+function class.push(s)
+   s.k = s:get_k()
+   s.var = '_'
+   s.rest = empty
+end
+
+function class.pop(s)
+   local frame = car(s.k)
+   s.k     = cdr(s.k)
+   s.env   = frame.env
+   s.var   = frame.var
+   s.rest  = frame.rest
+   trace("POP",s.env)
+end
+
+-- This is for app and block descent: when there is a rest expression,
+-- context needs to be saved, otherwise eval can happen in-place.
+function class.push_if_rest(s)
+   if not is_empty(s.rest) then
+      s:push()
+   else
+      assert(s.var == '_')
+   end
+end
+
+-- Move on to the next instruction in s.rest
+function class.advance(s)
+   assert(not is_empty(rest))
+   local binding
+   binding, s.rest = unpack(s.rest)
+   s.var, s.expr = se_unpack(binding, {n = 2})
+end
+
+-- Value return for primtive data.
+function class.ret(s,val)
+   if (is_empty(s.rest)) then
+      assert(s.var == '_')
+      s:pop()
+   end
+   if (s.var ~= '_') then
+      trace("DEF", l(s.var, val))
+      s:def(s.var, val)
+   else
+      trace("IGN", l(s.var, val))
+   end
+   s:advance()
+end
+
+-- Apply a class='mop' extension.
+function class.mop(s, mop, vals)
+   mop.mop(s, vals)
+end
+
+-- Example mop: call-with-current-continuation
+function class.callcc(s, args)
+   local fun = se.unpack(args, {n=1})
+   assert(fun and fun.class == 'closure')
+   -- Snap cont + wrap it as a primitive function that restores it.
+   s:push()
+   local k_snap = s.k
+   local function k_fun(val)
+      trace("KFUN", val)
+      s.k = k_snap
+      s:pop()
+      return val
+   end
+   -- Apply the closure
+   s:closure(fun, l(k_fun))
+end
+
 
 function class.eval(s, top_expr)
+
+   -- Machine state is stored in s to allow reuse and extension.
 
    -- The lexical environment is implemented as a flat list.  Slow but
    -- convenient.  Stored as s.env to allow def, ref, set methods.
    s.env = empty
 
-   -- The rest of the evaluation context can be local variables: the
-   -- stack / contination list k, the variable that takes the value of
-   -- the current expression, and the rest of the 'program', which is
-   -- a 'block' form without the tag.
-   local k = empty
-   local var = '_'
-   local rest = empty
+   -- he stack / contination list k, the variable that takes the value
+   -- of the current expression, and the rest of the 'program', which
+   -- is a 'block' form without the tag.
+   s.k = empty
+   s.var = '_'
+   s.rest = empty
 
    -- Top level expression coming out of scheme_frontend is a lambda
    -- that defines the linker for all free variables present in the
    -- original source.  We evaluate this lambda expression manually to
    -- insert that binding...
    local ret_var = { class = 'var', iolist = 'ret_var' }
-   local expr =
+   s.expr =
       s.match(
          top_expr,
          {{'(lambda (,base_ref) ,expr)',
@@ -92,98 +188,8 @@ function class.eval(s, top_expr)
               return l('block',l(ret_var, m.expr),l('_',l('halt')))
       end}})
 
-   -- The evaluation context needs to be saved and restored when
-   -- evaluating non-tail calls.
-   local function get_k()
-      trace("PUSH",s.env)
-      local frame = {
-         env  = s.env,
-         var  = var,
-         rest = rest,
-         class = 'kframe',
-      }
-      return {frame, k}
-   end
-   local function push()
-      k = get_k()
-      var = '_'
-      rest = empty
-   end
-   local function pop()
-      local frame = car(k)
-      k     = cdr(k)
-      s.env = frame.env
-      var   = frame.var
-      rest  = frame.rest
-      trace("POP",s.env)
-   end
-
-   -- This is for app and block descent: when there is a rest
-   -- expression, context needs to be saved, otherwise eval can happen
-   -- in-place.
-   local function push_if_rest()
-      if not is_empty(rest) then
-         push()
-      else
-         assert(var == '_')
-      end
-   end
-
-   -- Perform a closure call.
-   local function app(fun, vals)
-      assert('function' ~= type(fun))
-      local is_tail = is_empty(rest)
-      push_if_rest()
-      trace("APPLY",l(fun.args, vals))
-      s.env = fun.env
-      zip(function(var,val) s:def(var,val) end, fun.args, vals)
-      expr = fun.body
-   end
-
-   local function advance()
-      assert(not is_empty(rest))
-      local binding
-      binding, rest = unpack(rest)
-      var, expr = se_unpack(binding, {n = 2})
-   end
-
-   -- Value return for primtive data.
-   local function ret(val)
-      if (is_empty(rest)) then
-         assert(var == '_')
-         pop()
-      end
-      if (var ~= '_') then
-         trace("DEF", l(var, val))
-         s:def(var, val)
-      else
-         trace("IGN", l(var, val))
-      end
-      advance()
-   end
-
-   -- Like app, but insert stub to undo the effect of ret() called
-   -- after primitive return.  The return value of the primitive is
-   -- ignored.
-   local function app_from_prim(fun, args)
-      app(fun, args)
-      rest = l(l('_', expr))
-      expr = nil
-   end
-
-   -- call-with-current-continuation, implemented as primitive
-   s.prim['call/cc'] = function(fun)
-      assert(fun and fun.class == 'closure')
-      push()
-      local k_snap = k
-      local function k_fun(val)
-         trace("KFUN", val)
-         k = k_snap
-         pop()
-         return val
-      end
-      app_from_prim(fun, l(k_fun))
-   end
+   -- call-with-current-continuation, implemented as a mop
+   s.prim['call/cc'] = { class = 'mop', mop = s.callcc }
 
    -- Primitive value: literal or variable referenece.
    local function lit_or_ref(thing)
@@ -210,38 +216,38 @@ function class.eval(s, top_expr)
    -- Main loop
    local halted = false
    while not halted do
-      trace("EVAL", expr)
+      trace("EVAL", s.expr)
 
       s.match(
-         expr,
+         s.expr,
          {
             {"(halt)", function(m)
                 halted = true
             end},
             {"(if ,cond ,iftrue ,iffalse)", function(m)
-                expr = ifte(lit_or_ref(m.cond), m.iftrue, m.iffalse)
+                s.expr = ifte(lit_or_ref(m.cond), m.iftrue, m.iffalse)
             end},
             {"(block (_ ,expr))", function(m)
-                expr = m.expr
+                s.expr = m.expr
             end},
             {"(block (,var ,expr))", function(m)
                 error("last expression in 'block' is bound: '" .. m.var .. "'")
             end},
             {"(block)", function(m)
-                ret(void)
+                s:ret(void)
             end},
             {"(block . ,bindings)", function(m)
-                push_if_rest()
-                rest = m.bindings
-                advance()
+                s:push_if_rest()
+                s.rest = m.bindings
+                s:advance()
             end},
             {"(set! ,var ,val)", function(m)
                 s:set(m.var, lit_or_ref(m.val))
-                ret(void)
+                s:ret(void)
             end},
             {"(lambda ,args ,body)", function(m)
                 trace("LAMBDA",l(m.args, m.body))
-                ret({args = m.args, body = m.body, env = s.env, class = 'closure'})
+                s:ret({args = m.args, body = m.body, env = s.env, class = 'closure'})
             end},
             {"(app ,fun . ,args)", function(m)
                 local fun = lit_or_ref(m.fun)
@@ -250,9 +256,16 @@ function class.eval(s, top_expr)
                    local rv = fun(unpack(l2a(vals)))
                    if rv == nil then rv = void end
                    trace("PRIM_EVAL", rv)
-                   ret(rv)
+                   s:ret(rv)
                 else
-                   app(fun, vals)
+                   -- Allow extension of the machine via primitive
+                   -- functions that have access to machine state.
+                   -- The most common one here is 'closure'.  Another
+                   -- one is 'mop' which is used to implement
+                   -- 'call/cc' as an example extension.
+                   local class = fun.class
+                   local app = s[class]
+                   app(s, fun, vals)
                 end
             end},
             {",other", function(m)
@@ -261,7 +274,7 @@ function class.eval(s, top_expr)
                 else
                    local v = lit_or_ref(m.other)
                    assert(v)
-                   ret(v)
+                   s:ret(v)
                 end
             end},
          })

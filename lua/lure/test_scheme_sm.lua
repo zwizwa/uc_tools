@@ -54,6 +54,7 @@ function mod.run()
          i = i + 1
       end
 
+      -- e.prim.halt  = halt
       e.prim.trace = trace
       local out = e:compile(ir)
 
