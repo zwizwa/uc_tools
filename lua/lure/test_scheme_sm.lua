@@ -35,21 +35,22 @@ local str = asset[filename]
 
 -- Implement trace as a machine operation that can halt the
 -- machine as an infinite loop guard.
-local function make_trace()
+local function make_trace(e)
    local events = se.empty
    local i = 0
    return function(s, event)
       events = {event, events}
       i = i + 1
       if i > 10 then
+         -- Call the top level continuation.
          local abort = s.prim['abort']
          local rv = event
          -- Reset for next run
          events = {}
          i = 0
-         s:ret(abort(rv))
+         return abort(rv)
       else
-         s:ret(event)
+         return event
       end
    end
 end
@@ -57,7 +58,7 @@ end
 local function make_interp()
    local e = eval.new()
    e.prim = runtime
-   e.prim['trace']  = {class = 'mop', mop = make_trace()}
+   e.prim['trace']  = make_trace(e)
    e.prim['return'] = function(val) return val end
    return e
 end
