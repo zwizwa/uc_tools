@@ -33,9 +33,8 @@ function mod.run()
       -- log_se_n(ir, "IR:")
       log("IR:") ; scheme_pretty.log_pp(ir)
 
-
-      local e = scheme_eval.new()
-      e.prim = require('lure.slc_runtime')
+      local prim = require('lure.slc_runtime')
+      local e = scheme_eval.new(prim)
       local rv = e:eval(ir)
       log_se_n(rv, "OUTPUT:")
       log("\n")

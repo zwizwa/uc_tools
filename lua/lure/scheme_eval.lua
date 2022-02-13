@@ -162,8 +162,7 @@ function class.callcc(s, args)
    s:app_closure(fun, l(k_fun))
 end
 
-
-function class.eval(s, top_expr)
+function class.reset(s)
 
    -- Machine state is stored in s to allow reuse and extension.
 
@@ -176,19 +175,6 @@ function class.eval(s, top_expr)
    -- is a 'block' form without the tag.
    s.var = '_'
    s.rest = empty
-
-   -- Top level expression coming out of scheme_frontend is a lambda
-   -- that defines the linker for all free variables present in the
-   -- original source.  We evaluate this lambda expression manually to
-   -- insert that binding.
-   s.match(
-      top_expr,
-      {{'(lambda (,base_ref) ,expr)',
-        function(m)
-           assert(m.base_ref.class == 'var')
-           s:def(m.base_ref, function(sym) return s:base_ref(sym) end)
-           s.expr = m.expr
-   end}})
 
    -- Top level contination falls into the halt instruction.
    local k_var = {
@@ -209,6 +195,24 @@ function class.eval(s, top_expr)
 
    -- call-with-current-continuation, implemented as a mop
    s.prim['call/cc'] = { class = 'mop', mop = s.callcc }
+
+end
+
+
+function class.eval(s, top_expr)
+
+   -- Top level expression coming out of scheme_frontend is a lambda
+   -- that defines the linker for all free variables present in the
+   -- original source.  We evaluate this lambda expression manually to
+   -- insert that binding.
+   s.match(
+      top_expr,
+      {{'(lambda (,base_ref) ,expr)',
+        function(m)
+           assert(m.base_ref.class == 'var')
+           s:def(m.base_ref, function(sym) return s:base_ref(sym) end)
+           s.expr = m.expr
+   end}})
 
    -- Primitive value: literal or variable referenece.
    local function lit_or_ref(thing)
@@ -305,9 +309,14 @@ function class.eval(s, top_expr)
 end
 
 
-function class.new()
-   local s = { match = se_match.new()  }
+
+
+function class.new(prim_base)
+   local prim = {}
+   setmetatable(prim, {__index = prim_base})
+   local s = { match = se_match.new(), prim = prim }
    setmetatable(s, {__index = class})
+   s:reset(s)
    return s
 end
 
