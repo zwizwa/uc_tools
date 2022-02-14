@@ -61,7 +61,7 @@ function mod.run()
    -- Instead of creating a single expression, restart the interpreter
    -- for each expression to isolate the tests.
 
-   exprs[2] = se.empty  -- only first expression
+   -- exprs[2] = se.empty  -- only first expression
 
    for expr in se.elements(exprs) do
 

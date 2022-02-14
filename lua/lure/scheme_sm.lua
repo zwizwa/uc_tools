@@ -29,7 +29,7 @@ local function _trace(tag, expr)
    log_se_n(expr, tag .. ":")
 end
 local function trace(tag, expr)
-   _trace(tag, expr)
+   -- _trace(tag, expr)
 end
 
 class.def       = comp.def
@@ -472,6 +472,9 @@ function class.comp_bindings(s, bindings_in)
                          if not ephemeral[typ] then
                             ins_prim(val)
                          else
+                            -- FIXME: Shadowing is probably not a good
+                            -- idea....  Can the environment be muted
+                            -- instead?
                             s:def(var, val)
                          end
                       end
@@ -525,6 +528,7 @@ function class.comp_bindings(s, bindings_in)
                                end
                             else
                                -- Primitives are compiled
+                               s:def(var, {fun, m.args})
                                ins_prim({fun, m.args})
                             end
                          elseif fun.class == 'closure' then
@@ -535,7 +539,7 @@ function class.comp_bindings(s, bindings_in)
                             if not already_compiled and not fun.letrec then
                                local inlined_bindings =
                                   se.append(se.zip(l, fun.args, m.args), l(_(fun.body)))
-                               _trace("INLINED_BINDINGS", inlined_bindings)
+                               trace("INLINED_BINDINGS", inlined_bindings)
                                ins_retval_subexpr(
                                   function()
                                      return s:comp_bindings(inlined_bindings)

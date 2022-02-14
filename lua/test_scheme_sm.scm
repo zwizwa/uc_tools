@@ -11,14 +11,6 @@
 ;; of calls.
 
 
-;; Constructed to trigger bug in if continuation.
-(begin
-  (define (loop1 n)
-    (trace)
-    (loop1 (if #t (+ n 1) 0)))
-  (loop1 0))
-
-
 ;; Constructed to trigger old scope issue.
 ;; FIXME: Currently fails
 (begin
@@ -38,6 +30,15 @@
 
 
 123
+
+;; Constructed to trigger bug in if continuation.
+(begin
+  (define (loop1 n)
+    (trace)
+    (loop1 (if #t (+ n 1) 0)))
+  (loop1 0))
+
+
 
 ;; Non-recursive function inline path.
 (let* ((f (lambda (x) (+ x 1)))
