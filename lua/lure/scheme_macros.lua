@@ -380,8 +380,8 @@ macro["block*"] = mcase(
 
 -- Interpret SM language by mapping it back to scheme.
 -- Labels are implemented as thunks.
-macro["if@"]  = mcase({"(,c ,t ,f)","(if ,c ,t ,f)"})
-macro['goto'] = mcase({"(,label)","(,label)"})
+macro["if@"]    = mcase({"(,c ,t ,f)","(if ,c ,t ,f)"})
+macro['goto']   = mcase({"(,label)","(,label)"})
 
 macro["block@"] = mcase(
    {"()",              "(begin)"},

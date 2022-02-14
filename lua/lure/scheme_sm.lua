@@ -23,10 +23,10 @@ local l = se.list
 local class = {}
 
 class.parameterize = comp.parameterize
-local void = {class = 'void', iolist = "#<void>"}
+local void = frontend.void
 
 local function trace(tag, expr)
-   log_se_n(expr, tag .. ":")
+   -- log_se_n(expr, tag .. ":")
 end
 
 class.def       = comp.def
@@ -349,9 +349,10 @@ function class.comp_bindings(s, bindings_in)
             -- Consistency check: if there is a custom continuation
             -- handler, the binding here is meaningless and should be
             -- ignored.
-            local function check_cont(var)
-               if s.cont.fun then
-                  assert(var == '_')
+            local function check_cont(var, dbg)
+               if s.cont.fun and var ~= '_' then
+                  log_se_n(l(var, dbg or l()), "VAR:")
+                  error('s.cont.fun and var')
                end
             end
 
@@ -359,7 +360,7 @@ function class.comp_bindings(s, bindings_in)
             -- form.  Invoke the continuation if it is defined.  This
             -- always goes in the default var position.
             local function ins_prim(val)
-               check_cont(var)
+               check_cont(var, l('prim',val))
                if s.cont.fun then
                   val = s.cont.fun(val)
                end
@@ -371,7 +372,7 @@ function class.comp_bindings(s, bindings_in)
             local function ins_subexpr(val)
                assert(var)
                assert(val)
-               check_cont(var)
+               check_cont(var, l('subexpr',val))
                ins(bindings_out_arr, l(var, val))
                var = '_'
             end
@@ -381,14 +382,19 @@ function class.comp_bindings(s, bindings_in)
             -- expressions, and need an explicit set (if they don't
             -- have some other continuation handler already).
             local function ins_retval_subexpr(recurse)
-               -- Insert set! continuation if there isn't one already.
                if not s.cont.fun then
-                  ins_subexpr(void)
-                  trace("CONTSET",vexpr)
-                  s.cont.fun = function(val) return l('set!',s.cont,val) end
-                  var = '_'
+                  if var ~= '_' then
+                     -- Define undefined variable and install the set! continuation.
+                     local var1 = var
+                     ins_subexpr(void)
+                     s.cont.fun = function (val) return l('set!',var1,val) end
+                  else
+                     -- The subexpression value is ignored. Just recurse.
+                  end
+               else
+                  -- Continuation is already set.
+                  assert(var == '_')
                end
-               -- assert(var == '_')
                ins_subexpr(recurse())
             end
 
@@ -586,7 +592,7 @@ function class.compile(s,expr)
    s.env = se.empty
 
    -- Top continuation
-   s.cont = s:make_cont('ret', function(val) l('return',ret_var) end)
+   s.cont = s:make_cont('ret', function(val) return l('return',val) end)
 
    -- Tracks the maximum of arg-ref
    s.nb_args = -1

@@ -40,7 +40,8 @@ local class = {
 }
 
 local void = {
-   class = "void"
+   class = "void",
+   iolist = '#<scheme_frontend:void>'
 }
 class.void = void
 

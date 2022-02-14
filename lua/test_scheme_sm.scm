@@ -10,6 +10,8 @@
 ;; The trace function is used to abort execution after a fixed number
 ;; of calls.
 
+123
+
 ;; Infinite single rec
 (let loop ((n 0))
   (trace n)
@@ -38,11 +40,22 @@
   (let ((rv (f1 0)))
     (assert (= 5 (+ rv 1)))))
 
+;; Test if contination
+(if #t 1 2)
+(if #t 1 (if #f 2 3))
+(let ((a (if #t 1 2)))
+  a)
 
 ;; The 'blockval' problem: convert binding to void binding + set! cont.
-(let ((a (if 1
-             (if (let ((b 2)) (+ b b)) 3 4)
-             (if 5 6 7))))
+(let ((a
+       (if 1
+           (if (let ((b 2))
+                 (+ b b))
+               3
+               4)
+           (if 5
+               6
+               7))))
   (+ a a))
 
 
