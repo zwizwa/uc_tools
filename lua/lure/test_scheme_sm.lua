@@ -82,7 +82,7 @@ function mod.run()
 
       -- Flatten before pp
       local f = flat.new() ; out = f:compile(out)
-      -- log("OUTPUT_IR:") ; pretty.log_pp(out)
+      log("OUTPUT_IR:") ; pretty.log_pp(out)
 
 
       -- Interpret output IR as Scheme
@@ -94,7 +94,6 @@ function mod.run()
       -- log("IR_TX:") ; pretty.log_pp(ir_tx)
 
       local output_ir_val = make_interp():eval(ir_tx)
-
 
       log("EVAL:") ; log_se_n(output_ir_val)
       if not (runtime['equal?'])(input_ir_val, output_ir_val) then

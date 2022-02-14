@@ -158,6 +158,23 @@
         (loop1 (+ n 2))))
   (loop2 0))
 
+(begin
+  (define (fib1 n n1)
+    (trace n)
+    (fib1 (+ n n1) n))
+  (fib1 1 1))
+
+
+(begin
+  (let ((s 0))
+    (define (fib2 n)
+      (trace n)
+      (let ((next (+ n s)))
+        (set! s n)
+        (fib2 next)))
+    (fib2 1)))
+
+
 
 
 

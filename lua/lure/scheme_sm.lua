@@ -479,12 +479,12 @@ function class.comp_bindings(s, bindings_in)
                       else
                          local typ = se.expr_type(val)
                          if not ephemeral[typ] then
-                            ins_prim(val)
+                            ins_prim(l('set!', m.var, m.val))
                          else
                             -- FIXME: Shadowing is probably not a good
                             -- idea....  Can the environment be muted
                             -- instead?
-                            s:def(var, val)
+                            -- s:def(var, val)
                          end
                       end
                   end},
