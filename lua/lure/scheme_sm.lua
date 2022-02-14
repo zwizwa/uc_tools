@@ -195,16 +195,7 @@ function class.compile_app(s, fun, args, compiled_cont)
          end
       end
       for f in se.elements(funs) do
-         local f_compiled =
-            s:parameterize(
-               -- Recursive calls will likely modify this, so it needs
-               -- to be protected.  Might be protected already by
-               -- compile_bindings.
-               { labels = s.labels },
-               function()
-                  assert(s.cont.fun)
-                  return s:compile_fun(f)
-               end)
+         local f_compiled = s:compile_fun(f)
          local f_label = f.compiled[s.cont]
          assert(f_label)
          s:push_to_current_labels(f_label, f_compiled)
@@ -314,20 +305,6 @@ function class.comp_bindings(s, bindings_in)
          local parent_cont = s.cont
          local bindings_out_arr = {}
 
-         -- FIXME: Define semantics: first one will propagate
-         -- continuation to subexpressions, second one will "consume"
-         -- the continuation, e.g. returning a primitive vaue.
-         local function bind(var, val)
-            assert(var)
-            assert(val)
-            ins(bindings_out_arr, l(var, val))
-         end
-         local function bind_ret(var, val)
-            if s.cont.fun then
-               val = s.cont.fun(val)
-            end
-            return bind(var, val)
-         end
 
          while not se.is_empty(bindings_in) do
 
@@ -337,11 +314,23 @@ function class.comp_bindings(s, bindings_in)
 
             local var, vexpr = se.unpack(binding, {n=2})
 
-            -- Set the continuation.  The receiver of this is the
-            -- primval case at the bottom of the match.  The default
-            -- is an ordinary block binding, but it can be modified by
-            -- forms to turn it into set! or goto or complex
-            -- expressions.
+            -- Our main task here is to translate each binding form
+            -- into something that can be implemented in a language
+            -- like C.  What survives is primitive non-tail bindings
+            -- (values and primitive function calls).  Most of the
+            -- rest is modified by chainging the continuation in some
+            -- way, to either an explicit return, goto + arg reg set,
+            -- or an explicit set!  to another variable.
+
+            -- Start out by setting the current continuation based on
+            -- the parent continuation and the position in the
+            -- bindings form.
+
+            -- The receiver of s.cont is are the primitive value and
+            -- primitive application expressions.  The default
+            -- continuation ordinary block binding (without
+            -- s.cont.fun), but it can be modified by forms to turn it
+            -- into set! or goto or complex expressions.
             if tail then
                assert(var == '_')
                s.cont = parent_cont
@@ -352,20 +341,49 @@ function class.comp_bindings(s, bindings_in)
                s.cont = s:make_var("_")
             end
 
-            trace("CONT",l(s.cont, s.cont.ret ~= nil))
+            -- Consistency check: if there is a custom continuation
+            -- handler, the binding here is meaningless and should be
+            -- ignored.
+            local function check_cont(var)
+               if s.cont.fun then
+                  assert(var == '_')
+               end
+            end
+
+            -- Insert a primitive binding in the outgoig bindings
+            -- form.  Invoke the continuation if it is defined.  This
+            -- always goes in the default var position.
+            local function ins_prim(val)
+               check_cont(var)
+               if s.cont.fun then
+                  val = s.cont.fun(val)
+               end
+               ins(bindings_out_arr, l(var, val))
+            end
+
+            -- Basic form: save variable binding to variable.
+            local function ins_subexpr(var, val)
+               assert(var)
+               assert(val)
+               check_cont(var)
+               ins(bindings_out_arr, l(var, val))
+            end
 
             -- Called before decending into non-primitive expressions.
             local function bind_cps(recurse)
                -- Insert set! continuation if there isn't one already.
                if not s.cont.fun then
-                  bind(var, void)
+                  ins_subexpr(var, void)
                   trace("CONTSET",vexpr)
                   s.cont.fun = function(val) return l('set!',s.cont,val) end
                   var = '_'
                end
                -- assert(var == '_')
-               bind('_', recurse())
+               ins_subexpr('_', recurse())
             end
+
+
+            trace("CONT",l(s.cont, s.cont.ret ~= nil))
 
             -- Compile the rest of the bindings as a function that can
             -- be jumped into.
@@ -426,11 +444,11 @@ function class.comp_bindings(s, bindings_in)
                       if m.var.var == '_' then
                          -- This is used e.g. to represent a continuation that
                          -- ignores the return value.
-                         bind(var, vold)
+                         ins_prim(vold)
                       else
                          local typ = se.expr_type(val)
                          if not ephemeral[typ] then
-                            bind(var, val)
+                            ins_prim(val)
                          else
                             s:def(var, val)
                          end
@@ -484,7 +502,7 @@ function class.comp_bindings(s, bindings_in)
                                end
                             else
                                -- Primitives are compiled
-                               bind_ret(var, {fun, m.args})
+                               ins_prim({fun, m.args})
                             end
                          elseif fun.class == 'closure' then
                             -- Closures are compiled
@@ -495,7 +513,7 @@ function class.comp_bindings(s, bindings_in)
                             end
                             -- Compile the call (goto) + continuation if any.
                             local app = s:compile_app(fun, m.args, compiled_cont)
-                            bind('_', app)
+                            ins_subexpr('_', app)
                          else
                             error("bad func class '" .. fun.class .. "'")
                          end
@@ -510,7 +528,7 @@ function class.comp_bindings(s, bindings_in)
                       s:def(var, m.primval)
                       local typ = se.expr_type(m.primval)
                       if not ephemeral[typ] then
-                         bind_ret(var, m.primval)
+                         ins_prim( m.primval)
                       end
                   end},
 
