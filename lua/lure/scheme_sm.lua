@@ -394,6 +394,7 @@ function class.comp_bindings(s, bindings_in)
                   if var ~= '_' then
                      -- Define undefined variable and install the set! continuation.
                      local cont_var = var  -- var is muted, so deref before capture
+                     s:def(var,void)
                      ins_subexpr(void)
                      s.cont.fun = function (val) return l('set!',cont_var,val) end
                   else
@@ -524,7 +525,7 @@ function class.comp_bindings(s, bindings_in)
                                end
                             else
                                -- Primitives are compiled
-                               ins_prim({fun, vals})
+                               ins_prim({fun, m.args})
                             end
                          elseif fun.class == 'closure' then
 
@@ -533,7 +534,7 @@ function class.comp_bindings(s, bindings_in)
                             local already_compiled = fun.compiled[s.cont] ~= nil
                             if not already_compiled and not fun.letrec then
                                local inlined_bindings =
-                                  se.append(se.zip(l, fun.args, vals), l(_(fun.body)))
+                                  se.append(se.zip(l, fun.args, m.args), l(_(fun.body)))
                                _trace("INLINED_BINDINGS", inlined_bindings)
                                ins_retval_subexpr(
                                   function()
@@ -551,7 +552,7 @@ function class.comp_bindings(s, bindings_in)
                                -- Compile the call as a goto + insert
                                -- compiled function bodies, contination
                                -- as needed.
-                               local app = s:compile_app(fun, vals, compiled_cont)
+                               local app = s:compile_app(fun, m.args, compiled_cont)
                                ins_subexpr(app)
                             end
                          else
