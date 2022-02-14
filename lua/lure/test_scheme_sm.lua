@@ -69,9 +69,9 @@ function mod.run()
       local c = c_new()
       local ir = c:compile(expr)
 
-      log("INPUT_IR:") ; pretty.log_pp(ir)
+      -- log("INPUT_IR:") ; pretty.log_pp(ir)
       local input_ir_val = make_interp():eval(ir)
-      log("EVAL_INPUT_IR:") ; log_se_n(input_ir_val)
+      -- log("EVAL_INPUT_IR:") ; log_se_n(input_ir_val)
 
       local smc = scheme_sm.new()
       smc.prim = require('lure.slc_runtime')
@@ -82,7 +82,7 @@ function mod.run()
 
       -- Flatten before pp
       local f = flat.new() ; out = f:compile(out)
-      log("OUTPUT_IR:") ; pretty.log_pp(out)
+      -- log("OUTPUT_IR:") ; pretty.log_pp(out)
 
 
       -- Interpret output IR as Scheme
@@ -91,16 +91,17 @@ function mod.run()
       -- form, so we don't need to remap to 'block@' and 'if@' using
       -- scheme_escape.
       local ir_tx = re_scheme():compile(out)
-      log("IR_TX:") ; pretty.log_pp(ir_tx)
+      -- log("IR_TX:") ; pretty.log_pp(ir_tx)
 
       local output_ir_val = make_interp():eval(ir_tx)
 
 
+      log("EVAL:") ; log_se_n(output_ir_val)
       if not (runtime['equal?'])(input_ir_val, output_ir_val) then
-         log("EVAL_OUTPUT_IR:") ; log_se_n(output_ir_val)
+         -- log("EVAL_INPUT:") ; log_se_n(input_ir_val)
          error('eval-difference')
       end
-
+      log("\n")
    end
 end
 

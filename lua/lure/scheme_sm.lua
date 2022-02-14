@@ -85,8 +85,6 @@ end
 -- FIXME: Add a check to primval that ensures all variables are
 -- defined.
 --
--- FIXME: There are still scope violations.
---
 -- The takeway here is: moving lambda bodies around is necessary but
 -- not trivial.  Keep it simple!  Do not implement higher order forms
 -- in this compiler stage, but instead implement those in terms of
@@ -408,7 +406,8 @@ function class.comp_bindings(s, bindings_in)
             end
 
             -- Compile the rest of the bindings as a 1-arg function
-            -- that can be installed in a labels form.
+            -- that can be installed in a labels form.  This is passed
+            -- to compile_app.
             local function compile_cont()
                local cont_expr = {'block',{l(var,l('arg-ref', 0)),bindings_in}}
                var = '_'
@@ -533,9 +532,9 @@ function class.comp_bindings(s, bindings_in)
                             end
                          elseif fun.class == 'closure' then
 
-                            -- Not recursive?  No need to mess with
-                            -- continuations.  Inline it as a block.
                             local already_compiled = fun.compiled[s.cont] ~= nil
+
+                            -- Not recursive? Can be inlined.
                             if not already_compiled and not fun.letrec then
                                local inlined_bindings =
                                   se.append(se.zip(l, fun.args, m.args), l(_(fun.body)))
@@ -545,17 +544,8 @@ function class.comp_bindings(s, bindings_in)
                                      return s:comp_bindings(inlined_bindings)
                                   end)
                             else
-                               -- (potentially) recursive closures are
-                               -- compiled in CPS form.
-                               local compiled_cont = nil
-                               if not tail then
-                                  -- Compile the continuation = remainder
-                                  -- of the bindings form.
-                                  compiled_cont = compile_cont()
-                               end
-                               -- Compile the call as a goto + insert
-                               -- compiled function bodies, contination
-                               -- as needed.
+                               -- Closures defined by letrec are potentially recursive.
+                               local compiled_cont = (not tail) and compile_cont()
                                local app = s:compile_app(fun, m.args, compiled_cont)
                                ins_subexpr(app)
                             end

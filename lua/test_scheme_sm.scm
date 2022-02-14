@@ -11,34 +11,9 @@
 ;; of calls.
 
 
-;; Constructed to trigger old scope issue.
-;; FIXME: Currently fails
-(begin
-  (define (loop1 n)
-    (let* ((a 1)
-           (add1 (lambda (x) (+ a x))))
-      
-      (if (> n 3) 3
-          (loop1 (add1 n)))))
-              
-  (define (loop2 n)
-    (if n
-        (loop1 (+ n 1))
-        (loop1 (+ n 2))))
-  (loop2 0))
-
 
 
 123
-
-;; Constructed to trigger bug in if continuation.
-(begin
-  (define (loop1 n)
-    (trace)
-    (loop1 (if #t (+ n 1) 0)))
-  (loop1 0))
-
-
 
 ;; Non-recursive function inline path.
 (let* ((f (lambda (x) (+ x 1)))
@@ -151,6 +126,29 @@
   (let* ((a (loop 0))
          (b (loop 0)))
     (+ a b)))
+
+
+;; Constructed to trigger bug in if continuation.
+(begin
+  (define (loop1 n)
+    (trace)
+    (loop1 (if #t (+ n 1) 0)))
+  (loop1 0))
+
+;; Constructed to trigger old scope issue.
+(begin
+  (define (loop1 n)
+    (let* ((a 1)
+           (add1 (lambda (x) (+ a x))))
+      
+      (if (> n 3) 3
+          (loop1 (add1 n)))))
+              
+  (define (loop2 n)
+    (if n
+        (loop1 (+ n 1))
+        (loop1 (+ n 2))))
+  (loop2 0))
 
 
 ;; Constructed to trigger old scope issue.
