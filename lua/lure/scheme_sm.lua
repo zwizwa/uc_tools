@@ -285,6 +285,11 @@ local function is_var(var)
    return se.expr_type(var) == 'var'
 end
 
+-- The compile-time ephemeral environment only needs to indicate that
+-- variables that are in the output are in scope.
+local defined = {class = 'defined'}
+class.defined = defined
+
 function class.comp_bindings(s, bindings_in)
 
    local function lit_or_ref(thing)
@@ -371,6 +376,9 @@ function class.comp_bindings(s, bindings_in)
                   val = s.cont.fun(val)
                end
                ins(bindings_out_arr, l(var, val))
+               if var ~= '_' then
+                  s:def(var, defined)
+               end
                var = '_'
             end
 
@@ -380,6 +388,9 @@ function class.comp_bindings(s, bindings_in)
                assert(val)
                check_cont(var, l('subexpr',val))
                ins(bindings_out_arr, l(var, val))
+               if var ~= '_' then
+                  s:def(var,defined)
+               end
                var = '_'
             end
 
@@ -392,7 +403,6 @@ function class.comp_bindings(s, bindings_in)
                   if var ~= '_' then
                      -- Define undefined variable and install the set! continuation.
                      local cont_var = var  -- var is muted, so deref before capture
-                     s:def(var,void)
                      ins_subexpr(void)
                      s.cont.fun = function (val) return l('set!',cont_var,val) end
                   else
@@ -527,7 +537,6 @@ function class.comp_bindings(s, bindings_in)
                                end
                             else
                                -- Primitives are compiled
-                               s:def(var, {fun, m.args})
                                ins_prim({fun, m.args})
                             end
                          elseif fun.class == 'closure' then
@@ -560,10 +569,11 @@ function class.comp_bindings(s, bindings_in)
                       -- FIXME: Check all references.  We are inlining
                       -- closures assuming their closed variables are
                       -- bound.
-                      s:def(var, m.primval)
                       local typ = se.expr_type(m.primval)
                       if not ephemeral[typ] then
                          ins_prim( m.primval)
+                      else
+                         s:def(var, m.primval)
                       end
                   end},
 

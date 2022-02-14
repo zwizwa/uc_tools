@@ -1,15 +1,16 @@
 ;; Each expression is compiled separately.
 
 ;; The compilation path is:
-;; -> frontend -> flatten -> sm -> escape -> frontend -> flatten -> interp
+;; in -> frontend -> sm -> escape -> frontend -> eval
+;;                -> eval
+;;
 
 ;; Compiler output is converted back to Scheme and interpreted.  The
 ;; evaluation result is compared with the result of interpreting the
 ;; original Scheme code.
 
 ;; The trace function is used to abort execution after a fixed number
-;; of calls.
-
+;; of calls for testing the head of infinite loops.
 
 
 
@@ -20,8 +21,12 @@
        (rv (f 1)))
   rv)
 
-
-
+;; Simplest infinite loop
+(letrec
+    ((x (lambda ()
+          (trace)
+          (x))))
+  (x))
 
 ;; Infinite single rec
 (let loop ((n 0))
@@ -29,15 +34,6 @@
   (if (> n 3)
       (loop 0)
       (loop (+ n 1))))
-
-
-
-;; Simplest infinite loop
-(letrec
-    ((x (lambda ()
-          (trace)
-          (x))))
-  (x))
 
 
 ;; Finite mutual rec loop
