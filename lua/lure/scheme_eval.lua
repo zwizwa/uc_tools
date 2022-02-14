@@ -214,7 +214,6 @@ function class.eval(s, top_expr)
    -- Primitive value: literal or variable referenece.
    local function lit_or_ref(thing)
       trace("REF",l(thing,s.env))
-
       local typ = type(thing)
       if typ ~= 'table' then return thing end
 
@@ -247,7 +246,8 @@ function class.eval(s, top_expr)
                 rv = lit_or_ref(m.rv)
             end},
             {"(if ,cond ,iftrue ,iffalse)", function(m)
-                s.expr = ifte(lit_or_ref(m.cond), m.iftrue, m.iffalse)
+                local cond = lit_or_ref(m.cond)
+                s.expr = ifte(cond, m.iftrue, m.iffalse)
             end},
             {"(block (_ ,expr))", function(m)
                 s.expr = m.expr
@@ -295,7 +295,7 @@ function class.eval(s, top_expr)
                    error('bad form')
                 else
                    local v = lit_or_ref(m.other)
-                   assert(v)
+                   assert(v ~= nil)
                    s:ret(v)
                 end
             end},

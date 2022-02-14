@@ -24,7 +24,7 @@
 ;; Simplest infinite loop
 (letrec
     ((x (lambda ()
-          (trace 'tick)
+          (trace)
           (x))))
   (x))
 
@@ -42,9 +42,14 @@
 
 ;; Test if contination
 (if #t 1 2)
-(if #t 1 (if #f 2 3))
+(if #f 1 (if #f 2 3))
 (let ((a (if #t 1 2)))
   a)
+
+(assert (= 1 (if #t 1 2)))
+(assert (= 3 (if #f 1 (if #f 2 3))))
+(assert (= 1 (let ((a (if #t 1 2))) a)))
+
 
 ;; The 'blockval' problem: convert binding to void binding + set! cont.
 (let ((a

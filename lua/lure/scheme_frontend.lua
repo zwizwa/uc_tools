@@ -41,7 +41,7 @@ local class = {
 
 local void = {
    class = "void",
-   iolist = '#<scheme_frontend:void>'
+   iolist = '#<void>'
 }
 class.void = void
 
@@ -91,9 +91,6 @@ class.expander = {
    ['prim']   = s_id,
    ['expr']   = s_id,
    ['var']    = s_id,
-   --['var']    = function(s, expr)
-   --   return l('ref',expr)
-   --end,
    ['pair']   = function(s, expr)
       local car, cdr = unpack(expr)
       local m = s.macro[car]
@@ -109,7 +106,10 @@ function class.expand_step(s, expr)
    trace("STEP",expr)
    local typ = se.expr_type(expr)
    local f = s.expander[typ]
-   if f == nil then error('expand: bad type ' .. typ) end
+   if f == nil then
+      log_se_n(expr, "BAD_EXPAND:")
+      error('expand: bad type ' .. typ)
+   end
    return f(s, expr)
 end
 
@@ -297,7 +297,10 @@ function class.comp(s, expr0)
    trace("COMPILE",expr)
    local typ = se.expr_type(expr)
    local f = s.compiler[typ]
-   if f == nil then error('compile: bad type ' .. typ) end
+   if f == nil then
+      log_se_n(l(expr,expr0),"BAD_COMP:")
+      error('compile: bad type ' .. typ)
+   end
    return f(s, expr)
 end
 
@@ -359,7 +362,7 @@ end
 -- Renames definitions and references.
 function var_iolist(var)
    assert(var.unique)
-   local orig = {":",var.var}
+   local orig = {".",var.var}
    if nil == var.var then orig = "" end
    return {var.unique,orig}
 end
@@ -367,14 +370,12 @@ class.var_iolist = var_iolist
 
 function class.make_var(unique, name)
    assert(unique)
-
-   -- If the input already contains variables (e.g. some other
-   -- compiler output), we will rename in-place.
-   if type(name) == 'table' and name.class == 'var' then
-      name.unique = unique
-      return name
+   -- No longer support variables in the input: if IR is fed into the
+   -- frontend, strip all vars first.
+   if name ~= nil and type(name) ~= 'string' then
+      log_se_n(name, "BAD_VAR_NAME:")
+      error('source var name not a string')
    end
-
    return { var = name, unique = unique, class = 'var', iolist = var_iolist }
 end
 

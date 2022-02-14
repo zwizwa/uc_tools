@@ -40,7 +40,7 @@ local function make_trace(abort)
    local events = {}
    return function(...)
       ins(events, a2l({...}))
-      if #events > 10 then
+      if #events > 30 then
          return abort(a2l(events))
       else
          return event
@@ -91,7 +91,7 @@ function mod.run()
       -- form, so we don't need to remap to 'block@' and 'if@' using
       -- scheme_escape.
       local ir_tx = re_scheme():compile(out)
-      -- log("IR_TX:") ; pretty.log_pp(ir_tx)
+      log("IR_TX:") ; pretty.log_pp(ir_tx)
 
       local output_ir_val = make_interp():eval(ir_tx)
 

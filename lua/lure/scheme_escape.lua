@@ -1,6 +1,6 @@
--- Escap primtive forms.  The output can then be fed back into
--- the Scheme frontend to create an interpretation of a particular IR.
-
+-- Escape primtive forms + remove var objects such that the output can
+-- then be fed back into the Scheme frontend to create an
+-- interpretation of a particular IR.
 
 local se        = require('lure.se')
 local se_match  = require('lure.se_match')
@@ -16,8 +16,29 @@ class.parameterize = lure_comp.parameterize
 class.indented     = lure_comp.indented
 class.tab          = lure_comp.tab
 
+
+local function strip_vars(expr)
+   local typ = type(expr)
+   if typ ~= 'table' then
+      return expr
+   elseif nil == expr.class then
+      -- Pair
+      return {strip_vars(expr[1]), strip_vars(expr[2])}
+   elseif 'var' == expr.class then
+      -- Create a source name from var's unique name + prev source tag.
+      local name = expr.unique
+      if expr.var then
+         name = name .. "." .. expr.var
+      end
+      return name
+   else
+      return expr
+   end
+end
+
+
 function class.compile(s,expr)
-   return s:comp(expr)
+   return s:comp(strip_vars(expr))
 end
 
 function class.comp_bindings(s, bindings)

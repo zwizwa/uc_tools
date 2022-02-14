@@ -386,9 +386,9 @@ function class.comp_bindings(s, bindings_in)
                if not s.cont.fun then
                   if var ~= '_' then
                      -- Define undefined variable and install the set! continuation.
-                     local var1 = var
+                     local cont_var = var  -- var is muted, so deref before capture
                      ins_subexpr(void)
-                     s.cont.fun = function (val) return l('set!',var1,val) end
+                     s.cont.fun = function (val) return l('set!',cont_var,val) end
                   else
                      -- The subexpression value is ignored. Just recurse.
                   end
@@ -411,7 +411,7 @@ function class.comp_bindings(s, bindings_in)
                      { cont = parent_cont },
                      function()
                         return s:comp(cont_expr)
-                  end)
+                     end)
             end
 
             -- Hints contain information that was present in the
@@ -425,7 +425,7 @@ function class.comp_bindings(s, bindings_in)
             -- letrec macro insert the hint, since it has this
             -- information centralized before it gets spread out.
             function hint.letrec(closures)
-               log_se_n(closures,"HINT_LETREC:")
+               -- log_se_n(closures,"HINT_LETREC:")
                for closure in se.elements(closures) do
                   closure.letrec = closures
                end
@@ -496,8 +496,11 @@ function class.comp_bindings(s, bindings_in)
                          -- is given a symbol and returns a prim.
                          local vals = se.map(lit_or_ref, m.args)
                          local rv = fun(unpack(l2a(vals)))
-                         -- Only ephemeral.
                          s:def(var, rv)
+                         local typ = se.expr_type(rv)
+                         if not ephemeral[typ] then
+                            ins_prim(rv)
+                         end
                       else
                          assert(fun.class)
                          if fun.class == 'prim' then
@@ -581,6 +584,10 @@ function class.make_cont(s, name, fun)
    }
 end
 
+class.special = {
+   ['true']  = { class = 'expr', expr = true,  iolist = '#t' },
+   ['false'] = { class = 'expr', expr = false, iolist = '#f' },
+}
 
 function class.compile(s,expr)
    -- Prefix needs to be different from what is used in the frontend,
@@ -594,7 +601,13 @@ function class.compile(s,expr)
    s.env = se.empty
 
    -- Top continuation
-   s.cont = s:make_cont('ret', function(val) return l('return',val) end)
+   s.cont = s:make_cont(
+      'ret',
+      function(expr)
+         -- local ret_var = {class = 'var', iolist = 'ret_var'}
+         -- return l('block', l(ret_var, expr), l('_', l('return', ret_var)))
+         return l('return', expr)
+      end)
 
    -- Tracks the maximum of arg-ref
    s.nb_args = -1
@@ -612,11 +625,20 @@ function class.compile(s,expr)
            -- function, which gets passed the names of all the free
            -- variables in the original scheme code.
            local function lib_ref(name)
-              return {
+              local special = s.special[name.expr]
+              local val
+              if special ~= nil then
+                 -- log_se_n(special,"SPECIAL:")
+                 val = special
+              else
+                 val = {
                  class = 'prim',
                  name = name.expr,
                  iolist = {"prim:",name.expr}
-              }
+                 }
+              end
+              -- log_se_n(l(name,val), "LIB_REF:")
+              return val
            end
            s:def(m.lib_ref, lib_ref)
 
