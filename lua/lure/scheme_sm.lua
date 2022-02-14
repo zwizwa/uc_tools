@@ -330,21 +330,22 @@ function class.comp_bindings(s, bindings_in)
             -- the parent continuation and the position in the
             -- bindings form.
 
-            -- A contination starts out without a .fun field, which
-            -- represents primitive binding.  This default is modified
-            -- where necessary by setting s.cont.fun to implement
-            -- e.g. goto, set! continations.
+            -- A contination starts out with fun == false, indicating
+            -- a primitive binding.  This default is modified where
+            -- necessary by setting s.cont.fun to a function that
+            -- takes a primitive expression, to implement e.g. goto,
+            -- set!  continations.
             if tail then
                assert(var == '_')
                s.cont = parent_cont
             elseif var ~= '_' then
                assert(var and var.class == 'var')
-               s.cont = s:make_cont(var.var)
+               s.cont = s:make_cont(var.var, false)
             else
-               s.cont = s:make_cont('_')
+               s.cont = s:make_cont('_', false)
             end
 
-            trace("CONT",l(tail, var, s.cont, s.cont.fun ~= nil))
+            trace("CONT",l(tail, var, s.cont, s.cont.fun))
 
             -- Consistency check: if there is a custom continuation
             -- handler, the binding here is meaningless and should be
@@ -572,6 +573,7 @@ function class.comp(s, expr)
 end
 
 function class.make_cont(s, name, fun)
+   assert(fun ~= nil)
    return {
       class = 'cont',
       name = name,
