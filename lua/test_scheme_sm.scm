@@ -10,6 +10,32 @@
 ;; The trace function is used to abort execution after a fixed number
 ;; of calls.
 
+
+;; Non-recursive function inline path.
+(let* ((f (lambda (x) (+ x 1)))
+       (rv (f 1)))
+  rv)
+
+
+
+;; Constructed to trigger old scope issue.
+;; FIXME: Currently fails
+(begin
+  (define (loop1 n)
+    (let* ((a 1)
+           (add1 (lambda (x) (+ a x))))
+      
+      (if (> n 3) 3
+          (loop1 (add1 n)))))
+              
+  (define (loop2 n)
+    (if n
+        (loop1 (+ n 1))
+        (loop1 (+ n 2))))
+  (loop2 0))
+
+
+
 123
 
 ;; Infinite single rec
@@ -121,23 +147,6 @@
 (begin
   (define (loop1 n)
     (if (> n 3) 3 (loop1 (+ n 1))))
-              
-  (define (loop2 n)
-    (if n
-        (loop1 (+ n 1))
-        (loop1 (+ n 2))))
-  (loop2 0))
-
-
-;; Constructed to trigger old scope issue.
-;; FIXME: Currently fails
-(begin
-  (define (loop1 n)
-    (let* ((a 1)
-           (add1 (lambda (x) (+ a x))))
-      
-      (if (> n 3) 3
-          (loop1 (add1 n)))))
               
   (define (loop2 n)
     (if n

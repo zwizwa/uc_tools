@@ -139,19 +139,21 @@ function comp:def(var, val)
 end
 -- Reference and assigment operate on the chained environment.  One
 -- table per function activation, linked by 'parent' member.
-function comp:find_cell(var)
+function comp:find_cell(var, allow_undef)
    local unique = var.unique
    assert(self.env)
    for pair in se.elements(self.env) do
       local v, rest = unpack(pair)
       if v.unique == unique then return se.car(rest) end
    end
+   if allow_undef then return end
    local mangled = iolist.to_string(se.iolist(var))
    log_se_n(self.env,"ENV:")
    error("undefined variable '" .. mangled .. "'")
 end
 function comp:ref(var)
-   return self:find_cell(var).val
+   local cell = self:find_cell(var)
+   return cell.val
 end
 function comp:set(var, val)
    local cell = self:find_cell(var)

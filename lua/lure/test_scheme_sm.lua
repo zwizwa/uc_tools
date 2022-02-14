@@ -69,7 +69,7 @@ function mod.run()
       local c = c_new()
       local ir = c:compile(expr)
 
-      -- log("INPUT_IR:") ; pretty.log_pp(ir)
+      log("INPUT_IR:") ; pretty.log_pp(ir)
       local input_ir_val = make_interp():eval(ir)
       log("EVAL_INPUT_IR:") ; log_se_n(input_ir_val)
 
@@ -100,15 +100,6 @@ function mod.run()
          log("EVAL_OUTPUT_IR:") ; log_se_n(output_ir_val)
          error('eval-difference')
       end
-
-      -- FIXME: Re-interpretation of ir fails for some reason giving
-      -- bizarre error.  There is some lingering state somehwere,
-      -- maybe an accidental global variable?.  It's as if the
-      -- evaluation here uses some other environment.
-      --
-      --local input_ir_val = make_interp():eval(ir)
-      --log("EVAL_INPUT_IR:") ; log_se_n(input_ir_val)
-      -- I think that smc is modifying the ir in-place.
 
    end
 end

@@ -91,12 +91,7 @@ end
 
 function class.compile_fun(s, fun)
    return s:parameterize(
-      {
-         -- Expression is in tail position.
-         tail = true,
-         -- Don't touch the continuation.  It is hard-coded such that
-         -- function return maps to a goto.
-      },
+      { tail = true },
       function()
          return
             s:comp(
@@ -110,6 +105,23 @@ function class.compile_fun(s, fun)
       end)
 end
 
+-- Non-recursive functions can be inlined.
+function class.inline_fun(s, fun, args)
+   return s:parameterize(
+      { env = s.env },
+      function()
+         se.zip(
+            function(var, arg)
+               -- This performs variable-to-variable association,
+               -- which will need to be flattened in ref()
+               log_se_n(l(var,arg),"INLINE_DEF:")
+               s:def(var, arg)
+            end,
+            fun.args,
+            args)
+         return s:comp(fun.body)
+      end)
+end
 
 -- goto / label fallthrough with arguments.
 function wrap_set_args(goto_or_label_expr, args)
@@ -217,6 +229,7 @@ function class.compile_app(s, fun, args, compiled_cont)
       -- Tail call
       --
       if not already_compiled then
+
          -- If the function is not yet compiled for the current
          -- contination, we need to insert a labels form to host
          -- (potential) mutually recursive functions.
@@ -285,13 +298,33 @@ function class.compile_app(s, fun, args, compiled_cont)
    end
 end
 
+local function is_var(var)
+   return se.expr_type(var) == 'var'
+end
 
 function class.comp_bindings(s, bindings_in)
 
+   -- FIXME: Frontend should use explict boxing for all mutable
+   -- variables so this has proper semantics.  Currently inlining
+   -- likely doesn't behave properly if the variable is mutable.
+   local function var_follow(var)
+      assert(is_var(var))
+      log_se_n(var,"FOLLOW1:")
+      local cell = s:find_cell(var, true)
+      if not cell or not is_var(cell.val) then return var end
+      log_se_n(l(var,cell.val),"FOLLOW:")
+      return var_follow(cell.val)
+   end
+
    local function lit_or_ref(thing)
       local typ = se.expr_type(thing)
-      if typ == 'var' then return s:ref(thing)
-      else return thing end
+      if typ == 'var' then
+         local var = var_follow(thing)
+         local val = s:ref(var)
+         return val
+      else
+         return thing
+      end
    end
 
    return s:parameterize(
@@ -344,6 +377,8 @@ function class.comp_bindings(s, bindings_in)
             else
                s.cont = s:make_cont('_', false)
             end
+
+
 
             trace("CONT",l(tail, var, s.cont, s.cont.fun))
 
@@ -489,12 +524,12 @@ function class.comp_bindings(s, bindings_in)
                   {"(app ,fun . ,args)", function(m)
                       local i=0
                       local fun = s:ref(m.fun)
+                      local vals = se.map(lit_or_ref, m.args)
                       trace("APP",l(m.fun, fun))
                       if type(fun) == 'function' then
                          -- Ephemeral functions are evaluated.  This
                          -- is currently only used for lib-ref, which
                          -- is given a symbol and returns a prim.
-                         local vals = se.map(lit_or_ref, m.args)
                          local rv = fun(unpack(l2a(vals)))
                          s:def(var, rv)
                          local typ = se.expr_type(rv)
@@ -508,7 +543,7 @@ function class.comp_bindings(s, bindings_in)
                                -- Hints are encoded as regular
                                -- function calls such that they do not
                                -- have any syntactic significance.
-                               local hint_name, hint_args = unpack(m.args)
+                               local hint_name, hint_args = unpack(vals)
                                local hint_fun = hint[hint_name.expr]
                                if hint_fun then
                                   hint_fun(se.map(lit_or_ref, hint_args))
@@ -517,21 +552,32 @@ function class.comp_bindings(s, bindings_in)
                                end
                             else
                                -- Primitives are compiled
-                               ins_prim({fun, m.args})
+                               ins_prim({fun, vals})
                             end
                          elseif fun.class == 'closure' then
-                            -- Closures are compiled in CPS form.
-                            local compiled_cont = nil
-                            if not tail then
-                               -- Compile the continuation = remainder
-                               -- of the bindings form.
-                               compiled_cont = compile_cont()
+
+                            -- Not recursive?  No need to jump around.
+                            local already_compiled = fun.compiled[s.cont] ~= nil
+                            if not already_compiled and not fun.letrec then
+                               local inlined = s:inline_fun(fun, vals)
+                               ins_subexpr(inlined)
+                            else
+
+                               -- (potentially) recursive closures are
+                               -- compiled in CPS form.
+
+                               local compiled_cont = nil
+                               if not tail then
+                                  -- Compile the continuation = remainder
+                                  -- of the bindings form.
+                                  compiled_cont = compile_cont()
+                               end
+                               -- Compile the call as a goto + insert
+                               -- compiled function bodies, contination
+                               -- as needed.
+                               local app = s:compile_app(fun, vals, compiled_cont)
+                               ins_subexpr(app)
                             end
-                            -- Compile the call as a goto + insert
-                            -- compiled function bodies, contination
-                            -- as needed.
-                            local app = s:compile_app(fun, m.args, compiled_cont)
-                            ins_subexpr(app)
                          else
                             error("bad fun class '" .. fun.class .. "'")
                          end
