@@ -258,13 +258,13 @@ function class.compile_app(s, fun, args, compiled_cont)
 
       -- Change the current value continuation into a goto that jumps
       -- to the contination body we will insert into the labels form.
-      local cont_label = s:make_var(s.cont.var)
+      local cont_label = s:make_var(s.cont.name)
       assert(s.cont and (not s.cont.fun))
       s.cont.fun =
          function(val)
             local goto_cont = l('goto', cont_label)
             -- Optimize: don't set args when they will be ignored.
-            if s.cont.var ~= '_' then
+            if s.cont.name ~= '_' then
                return wrap_set_args(goto_cont, l(val))
             else
                return goto_cont
@@ -330,22 +330,18 @@ function class.comp_bindings(s, bindings_in)
             -- the parent continuation and the position in the
             -- bindings form.
 
-            -- The receiver of s.cont is are the primitive value and
-            -- primitive application expressions.  Note that there are
-            -- two types of continuations: ordinary variables,
-            -- introduced by the bindings form, and modified
-            -- continuations that have an extra .fun field to
-            -- implement the continuation in terms of arbitrary
-            -- expressions (e.g. set!, goto, ...)
-
+            -- A contination starts out without a .fun field, which
+            -- represents primitive binding.  This default is modified
+            -- where necessary by setting s.cont.fun to implement
+            -- e.g. goto, set! continations.
             if tail then
                assert(var == '_')
                s.cont = parent_cont
             elseif var ~= '_' then
                assert(var and var.class == 'var')
-               s.cont = var
+               s.cont = s:make_cont(var.var)
             else
-               s.cont = s:make_var("_")
+               s.cont = s:make_cont('_')
             end
 
             trace("CONT",l(tail, var, s.cont, s.cont.fun ~= nil))
@@ -569,6 +565,14 @@ function class.comp(s, expr)
    })
 end
 
+function class.make_cont(s, name, fun)
+   return {
+      class = 'cont',
+      name = name,
+      fun = fun,
+   }
+end
+
 
 function class.compile(s,expr)
    -- Prefix needs to be different from what is used in the frontend,
@@ -582,14 +586,7 @@ function class.compile(s,expr)
    s.env = se.empty
 
    -- Top continuation
-   local ret = s:make_var()
-   ret.fun = function(val) return l('return',val) end
-
-   -- The 'var' parameter contains the continuation, which is a
-   -- variable that will receive the value of the computation.  If
-   -- s.cont.fun is defined, it encodes other behavior such as 'set!',
-   -- 'goto' or 'return'.
-   s.cont = ret
+   s.cont = s:make_cont('ret', function(val) l('return',ret_var) end)
 
    -- Tracks the maximum of arg-ref
    s.nb_args = -1
