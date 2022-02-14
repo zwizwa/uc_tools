@@ -11,11 +11,12 @@
 ;; of calls.
 
 
-;; Non-recursive function inline path.
-(let* ((f (lambda (x) (+ x 1)))
-       (rv (f 1)))
-  rv)
-
+;; Constructed to trigger bug in if continuation.
+(begin
+  (define (loop1 n)
+    (trace)
+    (loop1 (if #t (+ n 1) 0)))
+  (loop1 0))
 
 
 ;; Constructed to trigger old scope issue.
@@ -37,6 +38,14 @@
 
 
 123
+
+;; Non-recursive function inline path.
+(let* ((f (lambda (x) (+ x 1)))
+       (rv (f 1)))
+  rv)
+
+
+
 
 ;; Infinite single rec
 (let loop ((n 0))

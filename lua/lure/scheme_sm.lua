@@ -25,8 +25,11 @@ local class = {}
 class.parameterize = comp.parameterize
 local void = frontend.void
 
+local function _trace(tag, expr)
+   log_se_n(expr, tag .. ":")
+end
 local function trace(tag, expr)
-   -- log_se_n(expr, tag .. ":")
+   _trace(tag, expr)
 end
 
 class.def       = comp.def
@@ -102,24 +105,6 @@ function class.compile_fun(s, fun)
                   end,
                   fun.args,
                   l(_(fun.body))))
-      end)
-end
-
--- Non-recursive functions can be inlined.
-function class.inline_fun(s, fun, args)
-   return s:parameterize(
-      { env = s.env },
-      function()
-         se.zip(
-            function(var, arg)
-               -- This performs variable-to-variable association,
-               -- which will need to be flattened in ref()
-               log_se_n(l(var,arg),"INLINE_DEF:")
-               s:def(var, arg)
-            end,
-            fun.args,
-            args)
-         return s:comp(fun.body)
       end)
 end
 
@@ -304,23 +289,10 @@ end
 
 function class.comp_bindings(s, bindings_in)
 
-   -- FIXME: Frontend should use explict boxing for all mutable
-   -- variables so this has proper semantics.  Currently inlining
-   -- likely doesn't behave properly if the variable is mutable.
-   local function var_follow(var)
-      assert(is_var(var))
-      log_se_n(var,"FOLLOW1:")
-      local cell = s:find_cell(var, true)
-      if not cell or not is_var(cell.val) then return var end
-      log_se_n(l(var,cell.val),"FOLLOW:")
-      return var_follow(cell.val)
-   end
-
    local function lit_or_ref(thing)
       local typ = se.expr_type(thing)
       if typ == 'var' then
-         local var = var_follow(thing)
-         local val = s:ref(var)
+         local val = s:ref(thing)
          return val
       else
          return thing
@@ -387,7 +359,7 @@ function class.comp_bindings(s, bindings_in)
             -- ignored.
             local function check_cont(var, dbg)
                if s.cont.fun and var ~= '_' then
-                  log_se_n(l(var, dbg or l()), "VAR:")
+                  trace("VAR",l(var, dbg or l()))
                   error('s.cont.fun and var')
                end
             end
@@ -556,16 +528,20 @@ function class.comp_bindings(s, bindings_in)
                             end
                          elseif fun.class == 'closure' then
 
-                            -- Not recursive?  No need to jump around.
+                            -- Not recursive?  No need to mess with
+                            -- continuations.  Inline it as a block.
                             local already_compiled = fun.compiled[s.cont] ~= nil
                             if not already_compiled and not fun.letrec then
-                               local inlined = s:inline_fun(fun, vals)
-                               ins_subexpr(inlined)
+                               local inlined_bindings =
+                                  se.append(se.zip(l, fun.args, vals), l(_(fun.body)))
+                               _trace("INLINED_BINDINGS", inlined_bindings)
+                               ins_retval_subexpr(
+                                  function()
+                                     return s:comp_bindings(inlined_bindings)
+                                  end)
                             else
-
                                -- (potentially) recursive closures are
                                -- compiled in CPS form.
-
                                local compiled_cont = nil
                                if not tail then
                                   -- Compile the continuation = remainder
