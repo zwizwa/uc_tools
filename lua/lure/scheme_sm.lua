@@ -56,6 +56,9 @@ local function closure_iolist(c)
    end
 end
 
+
+
+
 local ephemeral = {
    ['closure'] = true,
    ['prim'] = true,
@@ -469,6 +472,9 @@ function class.comp_bindings(s, bindings_in)
 
                   -- Primitive Expressions
                   {"(set! ,var ,val)", function(m)
+                      -- Deref for ephemeral use + check that
+                      -- variables obey scoping rules
+                      local val_var = s:ref(m.var)
                       local val = s:ref(m.val)
                       s:set(m.var, val)
                       s:set_debug_name(m.var, val)
@@ -509,6 +515,12 @@ function class.comp_bindings(s, bindings_in)
                   {"(app ,fun . ,args)", function(m)
                       local i=0
                       local fun = s:ref(m.fun)
+                      -- Deref for possible ephemeral use.  This also
+                      -- checks that the references obey normal
+                      -- scoping rules.
+                      local val = lit_or_ref(m.primval)
+                      -- trace('PRIMVAL_DEFINED', val)
+
                       local vals = se.map(lit_or_ref, m.args)
                       trace("APP",l(m.fun, fun))
                       if type(fun) == 'function' then
@@ -559,19 +571,27 @@ function class.comp_bindings(s, bindings_in)
                                ins_subexpr(app)
                             end
                          else
-                            error("bad fun class '" .. fun.class .. "'")
+                            _trace("BAD_FUN", m.fun)
+                            if fun.class == 'defined' then
+                               -- This happens when a function value is
+                               -- not ephemeral.
+                               error("function not ephemeral")
+                            else
+                               error("bad fun class '" .. fun.class .. "'")
+                            end
                          end
                       end
                   end},
 
                   -- Primitive value: return to continuation.
                   {",primval", function(m)
-                      -- FIXME: Check all references.  We are inlining
-                      -- closures assuming their closed variables are
-                      -- bound.
+                      -- Check that the reference obeys normal scoping
+                      -- rules.
+                      local val = lit_or_ref(m.primval)
+                      -- _trace('PRIMVAL_DEFINED', val)
                       local typ = se.expr_type(m.primval)
                       if not ephemeral[typ] then
-                         ins_prim( m.primval)
+                         ins_prim(m.primval)
                       else
                          s:def(var, m.primval)
                       end

@@ -537,5 +537,27 @@ function se.constructor(thing)
    return cons
 end
 
+
+-- Map over a particular data type contained in an s-expression.
+-- I.e. turn an s-expression into a functor.
+function fmap(class, fun, expr)
+   local function map(expr)
+      local typ = type(expr)
+      if typ ~= 'table' then
+         return expr
+      elseif nil == expr.class then
+         -- Pair
+         return {map(expr[1]), map(expr[2])}
+      elseif class == expr.class then
+         return fun(expr)
+      else
+         return expr
+      end
+   end
+   return map(expr)
+end
+se.fmap = fmap
+
+
 return se
 

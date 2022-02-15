@@ -175,6 +175,47 @@
     (fib2 1)))
 
 
+;; It's a surprise that 'state' is in scope when the lambda is
+;; inlined.  Can this mechanism be exploited further?  Note that in
+;; the Scheme frontent, state _is_ private and cannot be accessed
+;; inside loop.
+(begin
+  (let ((counter
+         (let ((state 0))
+           (lambda ()
+             (set! state (+ state 1))
+             state))))
+    (let loop ()
+      (trace (counter))
+      (loop))))
+
+;; Construct an example that does fail.  Here the compile time value
+;; of counter is #<defined>, i.e. it points to the variable that comes
+;; out of the if.
+;; (begin
+;;   (let ((counter
+;;          (if #f 0
+;;              (let ((state 0))
+;;                (lambda ()
+;;                  (set! state (+ state 1))
+;;                  state)))))
+;;     (let loop ()
+;;       (trace (counter))
+;;       (loop)))
+;; There must be more ways to move things around.
 
 
-
+;; How to make this one work?
+'(begin
+  (let*
+      ((make-counter
+        (lambda ()
+          (let ((state 0))
+            (lambda ()
+              (set! state (+ state 1))
+              state))))
+       (counter1 (make-counter))
+       (counter2 (make-counter)))
+    (let loop ()
+      (trace (counter1) (counter2))
+      (loop))))

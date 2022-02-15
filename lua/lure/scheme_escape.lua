@@ -18,22 +18,15 @@ class.tab          = lure_comp.tab
 
 
 local function strip_vars(expr)
-   local typ = type(expr)
-   if typ ~= 'table' then
-      return expr
-   elseif nil == expr.class then
-      -- Pair
-      return {strip_vars(expr[1]), strip_vars(expr[2])}
-   elseif 'var' == expr.class then
+   local function var2string(expr)
       -- Create a source name from var's unique name + prev source tag.
       local name = expr.unique
       if expr.var then
          name = name .. "." .. expr.var
       end
       return name
-   else
-      return expr
    end
+   return se.fmap('var', var2string, expr)
 end
 
 

@@ -69,7 +69,7 @@ function mod.run()
       local c = c_new()
       local ir = c:compile(expr)
 
-      -- log("INPUT_IR:") ; pretty.log_pp(ir)
+      log("INPUT_IR:") ; pretty.log_pp(ir)
       local input_ir_val = make_interp():eval(ir)
       -- log("EVAL_INPUT_IR:") ; log_se_n(input_ir_val)
 
