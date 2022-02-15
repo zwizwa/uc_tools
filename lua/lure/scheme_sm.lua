@@ -6,8 +6,9 @@
 --
 -- 2. Downward closures are allowed.
 --
--- FIXME: This can produce useful output for plain mutual recursion,
--- but still has some scoping issues for corner cases.
+
+-- FIXME: Make sure that variables that show up in code are not
+-- ephemeral.  E.g. don't just drop things to void.
 
 
 local se       = require('lure.se')
@@ -100,7 +101,7 @@ function class.compile_fun(s, fun)
    return s:parameterize(
       { tail = true },
       function()
-         return
+         local body =
             s:comp(
                block_enter(
                   function(i, arg)
@@ -109,6 +110,7 @@ function class.compile_fun(s, fun)
                   end,
                   fun.args,
                   l(_(fun.body))))
+         return body
       end)
 end
 
@@ -155,8 +157,8 @@ function class.rename_closure(s, fun)
       se.fmap('var',rename,fun.args),
       se.fmap('var',rename,fun.body),
       fun.env)
-   _trace("RENAME_OLD:", l(fun.args, fun.body))
-   _trace("RENAME_NEW:", l(fun1.args, fun1.body))
+   trace("RENAME_OLD:", l(fun.args, fun.body))
+   trace("RENAME_NEW:", l(fun1.args, fun1.body))
    return fun1
 end
 
@@ -332,8 +334,8 @@ end
 
 -- The compile-time ephemeral environment only needs to indicate that
 -- variables that are in the output are in scope.
-local defined = {class = 'defined'}
-class.defined = defined
+local runtime = {class = 'runtime'}
+class.runtime = runtime
 
 function class.comp_bindings(s, bindings_in)
 
@@ -422,7 +424,7 @@ function class.comp_bindings(s, bindings_in)
                end
                ins(bindings_out_arr, l(var, val))
                if var ~= '_' then
-                  s:def(var, defined)
+                  s:def(var, runtime)
                end
                var = '_'
             end
@@ -434,7 +436,7 @@ function class.comp_bindings(s, bindings_in)
                check_cont(var, l('subexpr',val))
                ins(bindings_out_arr, l(var, val))
                if var ~= '_' then
-                  s:def(var,defined)
+                  s:def(var,runtime)
                end
                var = '_'
             end
@@ -443,13 +445,16 @@ function class.comp_bindings(s, bindings_in)
             -- This is for block forms that cannot be implemented as
             -- expressions, and need an explicit set (if they don't
             -- have some other continuation handler already).
-            local function ins_retval_subexpr(recurse)
+            local function ins_retval_subexpr(recurse, dbg)
                if not s.cont.fun then
                   if var ~= '_' then
                      -- Define undefined variable and install the set! continuation.
                      local cont_var = var  -- var is muted, so deref before capture
                      ins_subexpr(void)
-                     s.cont.fun = function (val) return l('set!',cont_var,val) end
+                     s.cont.fun = function (val)
+                        if dbg then dbg(val) end
+                        return l('set!',cont_var,val)
+                     end
                   else
                      -- The subexpression value is ignored. Just recurse.
                   end
@@ -528,11 +533,6 @@ function class.comp_bindings(s, bindings_in)
                          local typ = se.expr_type(val)
                          if not ephemeral[typ] then
                             ins_prim(l('set!', m.var, m.val))
-                         else
-                            -- FIXME: Shadowing is probably not a good
-                            -- idea....  Can the environment be muted
-                            -- instead?
-                            -- s:def(var, val)
                          end
                       end
                   end},
@@ -590,6 +590,13 @@ function class.comp_bindings(s, bindings_in)
 
                             local already_compiled = fun.compiled[s.cont] ~= nil
 
+                            -- Support for partial evaluation
+                            if not already_compiled then
+                               -- Try partial evaluation, see if it
+                               -- produces another closure.  If so
+                               -- then bind as ephemeral value.
+                            end
+
                             -- Not recursive? Can be inlined.
                             if not already_compiled and not fun.letrec then
                                local inlined_bindings =
@@ -598,7 +605,11 @@ function class.comp_bindings(s, bindings_in)
                                ins_retval_subexpr(
                                   function()
                                      return s:comp_bindings(inlined_bindings)
-                                  end)
+                                  end,
+                                  function(rv)
+                                     _trace("INLINED_RV", rv)
+                                  end
+                               )
                             else
                                -- Closures defined by letrec are potentially recursive.
                                local compiled_cont = (not tail) and compile_cont()
@@ -607,7 +618,7 @@ function class.comp_bindings(s, bindings_in)
                             end
                          else
                             _trace("BAD_FUN", m.fun)
-                            if fun.class == 'defined' then
+                            if fun.class == 'runtime' then
                                -- This happens when a function value is
                                -- not ephemeral.
                                error("function not ephemeral")

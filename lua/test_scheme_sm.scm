@@ -190,7 +190,7 @@
       (loop))))
 
 ;; Construct an example that does fail.  Here the compile time value
-;; of counter is #<defined>, i.e. it points to the variable that comes
+;; of counter is #<runtime>, i.e. it points to the variable that comes
 ;; out of the if.
 ;; (begin
 ;;   (let ((counter
@@ -219,3 +219,12 @@
     (let loop ()
       (trace (counter1) (counter2))
       (loop))))
+
+;; This doesn't compile properly due to dropping of ephemerals.  Maybe
+;; leave the ephemerals in the output for debugging?  In a correct
+;; program they are all unused varibles.
+'(let ((a
+       (lambda ()
+         (let ((b (lambda () 123)))
+           b))))
+  (a))
