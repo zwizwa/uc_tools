@@ -20,6 +20,9 @@ local l2a = se.list_to_array
 local a2l = se.array_to_list
 local l = se.list
 
+local car = se.car
+
+
 local class = {}
 
 class.parameterize = comp.parameterize
@@ -58,7 +61,6 @@ end
 
 
 
-
 local ephemeral = {
    ['closure'] = true,
    ['prim'] = true,
@@ -94,6 +96,7 @@ end
 -- Scheme macros higher up the abstraction chain.
 
 function class.compile_fun(s, fun)
+   fun = s:rename_closure(fun)
    return s:parameterize(
       { tail = true },
       function()
@@ -130,6 +133,45 @@ function class.make_var(s, src_name)
    }
 end
 
+
+-- Create a new closure with renamed variables.  This does more than
+-- alpha conversion: it also renames new variables introduced in the
+-- body to prepare it for inlining.
+function class.rename_closure(s, fun)
+   local env_map = {}
+   local renamed = {}
+   for binding in se.elements(fun.env) do
+      env_map[car(binding)] = true
+   end
+   local function rename(var)
+      if env_map[var] then return var end
+      local var1 = renamed[var]
+      if var1 ~= nil then return var1 end
+      var1 = s:make_var(var.name)
+      renamed[var] = var1
+      return var1
+   end
+   local fun1 = s:make_closure(
+      se.fmap('var',rename,fun.args),
+      se.fmap('var',rename,fun.body),
+      fun.env)
+   _trace("RENAME_OLD:", l(fun.args, fun.body))
+   _trace("RENAME_NEW:", l(fun1.args, fun1.body))
+   return fun1
+end
+
+function class.make_closure(s, args, body, env)
+   env = env or s.env
+   return {
+      class = 'closure',
+      args = args,
+      body = body,
+      env = env,
+      compiled = {},
+      iolist = closure_iolist
+   }
+end
+
 -- For debugging, closures have names determined from the initial
 -- binding or the last assigment.  This is a hack but works for letrec
 -- output.
@@ -143,7 +185,7 @@ end
 function class.push_to_current_labels(s, label, body_expr)
    -- FIXME: This is currently a stack.  Is that really necessary?
    assert(s.labels)
-   local current_labels = se.car(s.labels)
+   local current_labels = car(s.labels)
    se.push_cdr(l(label, body_expr), current_labels)
 end
 
@@ -498,15 +540,8 @@ function class.comp_bindings(s, bindings_in)
                       -- Definitions are ephemeral and do not show up
                       -- in output code.  Bodies will be compiled when
                       -- they are referenced by 'app'.
-                      local fun = {
-                         class = 'closure',
-                         args = m.args,
-                         body = m.body,
-                         env = s.env,
-                         compiled = {},
-                         iolist = closure_iolist,
-                      }
-                      s:set_debug_name(s.cont, fun)
+                      local fun = s:make_closure(m.args, m.body, s.env)
+                      s:set_debug_name(var, fun)
                       s:def(var, fun)
                       -- FIXME: Insert a labels form here as well?
                   end},
