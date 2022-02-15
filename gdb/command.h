@@ -20,8 +20,8 @@ struct command {
     const char *name;
     command_fn run;
 };
-extern const struct command const *_command_start;
-extern const struct command const *_command_endx;
+extern const struct command * const _command_start;
+extern const struct command * const _command_endx;
 
 static inline uintptr_t command_index(const struct command * const* cmd) {
     return cmd - &_command_start;
