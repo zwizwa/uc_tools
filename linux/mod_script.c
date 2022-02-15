@@ -110,7 +110,10 @@ void interpret_enter(struct interpreter *env, FILE *f, const char *name) {
     frame->next = env->rs;
     frame->thread = f;
     frame->name = NULL;
-    if (name) { asprintf(&frame->name, "%s", name); }
+    if (name) {
+        int rv = asprintf(&frame->name, "%s", name);
+        (void)rv;
+    }
     env->rs = frame;
 }
 void interpret_leave(struct interpreter *env) {
@@ -235,7 +238,8 @@ int interpret_script_command(struct interpreter *env, const char *cmd) {
     const char *dir = getenv("SCRIPT_DIR");
     if (!dir) return 0;
     char *file = NULL;
-    asprintf(&file, "%s/%s", dir, cmd);
+    int rv = asprintf(&file, "%s/%s", dir, cmd);
+    (void)rv;
     ASSERT(file);
     FILE *f = fopen(file, "r");
     free(file);
