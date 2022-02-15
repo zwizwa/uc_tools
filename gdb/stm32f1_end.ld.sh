@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # Postable used for firmware images.
 # Do not use this in the bootloader.

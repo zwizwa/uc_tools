@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # Variant of x8, for use with dual-partition firmware on 128k Flash STM32F103
 #

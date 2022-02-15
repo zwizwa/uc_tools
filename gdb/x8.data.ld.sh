@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # Generate the linker script for binary data storage.  The main reason
 # to do it programatically is that INCLUDE doesn't work with

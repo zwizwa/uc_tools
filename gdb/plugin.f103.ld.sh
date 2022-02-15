@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # Dervied from flash_plugin.link.sh
 # FIXME: Remove old .do files once makefile gen works properly.
