@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 [ -z "$CONFIG" ] && CONFIG=0x8002800
 

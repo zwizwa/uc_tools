@@ -13,6 +13,9 @@ CFLAGS_ERROR=-Werror
 # -std=c99
 
 
+# Keep optimization enabled by default.  Also, nix complains:
+# warning _FORTIFY_SOURCE requires compiling with optimization (-O)
+
 
 CFLAGS="$CFLAGS \
 -std=gnu99 \
@@ -30,7 +33,7 @@ CFLAGS="$CFLAGS \
 -Wno-multichar \
 -Wunused-result \
 -g \
--O0 \
+-O3 \
 -fPIC \
 $CFLAGS_ERROR \
 "
