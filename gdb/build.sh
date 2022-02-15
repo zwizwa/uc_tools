@@ -198,6 +198,8 @@ case "$TYPE" in
         assert_vars ARCH ELF FW BIN2FW
         dump_closure_to_file ${FW}.build
         . $UC_TOOLS/gdb/env.$ARCH.sh
+        # ls -l $BIN2FW
+        # ls -l $UC_TOOLS/gdb/elf2fw.sh
         $UC_TOOLS/gdb/elf2fw.sh $ELF $FW $ELF_SHA1_DIR
         ;;
     data)

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # This is hopefully the end of a long winding road: how to add
 # checksums to ELF files without creating a huge mess?
@@ -50,6 +50,7 @@
 # - Bless the file by renaming .fw.tmp to .fw
 
 set -e
+# set -x
 
 [ -z "$1" ] && echo "usage: $0 <elf> [<fw>]" && exit
 ELF="$1"
@@ -92,7 +93,7 @@ cleanup
 "$OBJCOPY" -O binary "$ELF" "$BIN"
 "$BIN2FW" "$BIN" "$FW_BIN" "$CONTROL" "$ELF_SHA1"
 
-hd "$CONTROL" >&2
+hexdump -C "$CONTROL" >&2
 
 cp -a "$ELF" "$FW_TMP"
 
