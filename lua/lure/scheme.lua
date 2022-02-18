@@ -97,6 +97,10 @@ form['set!'] = function(self, s)
    s.expr = '#<void>'
 end
 
+form['hint'] = function(self, s)
+   s.expr = '#<void>'
+end
+
 form['block'] = function(self, s)
    local _, bindings, body = se.unpack(s.expr, { n = 2, tail = true })
    for binding in se.elements(bindings) do

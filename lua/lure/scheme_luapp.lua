@@ -297,6 +297,8 @@ function class.comp(s,expr)
                 s:w(iol_atom(m.fun),"(",s:commalist(m.args),")")
              end
          end},
+         {"(hint ,tag . ,args)", function(m)
+         end},
          --{"(ref ,var)", function(m)
          --    assert(m.var.class == 'var')
          --    s:w_atom(m.var)
