@@ -170,6 +170,10 @@ class.form = {
       local _, datum = se.unpack(expr, {n = 2})
       return { class = 'expr', expr = datum, iolist = quote_to_iolist }
    end,
+   ['hint'] = function(s, expr)
+      -- Same evaluation as function call, but tagged differently.
+      return {'hint', se.cdr(s:apply(se.cdr(expr)))}
+   end,
 
 }
 
@@ -245,7 +249,7 @@ function class.anf(s, exprs, fn)
    end
 end
 
-local function apply(s, expr)
+function class.apply(s, expr)
    local fun, args = unpack(expr)
    -- Expand to expose lambda expressions.
    fun = s:expand(fun)
@@ -288,7 +292,7 @@ class.compiler = {
       if f ~= nil then
          return f(s, expr)
       else
-         return apply(s, expr)
+         return s:apply(expr)
       end
    end
 }

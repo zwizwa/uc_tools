@@ -290,6 +290,9 @@ function class.eval(s, top_expr)
                    error("bad fun type '" .. type(fun) .. "'")
                 end
             end},
+            {"(hint ,fun . ,args)", function(m)
+                s:advance()
+            end},
             {",other", function(m)
                 if is_pair(m.other) then
                    error('bad form')

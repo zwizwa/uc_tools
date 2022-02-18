@@ -519,7 +519,7 @@ function smc:compile_tasks(module_closure)
    -- Primitives available during the evaluation of 'start'.  Note
    -- that thesee are not available, or not the same, as what is
    -- available during compilation of the C code.
-   local prim = {}
+   local prim = { }
 
    -- Some data constructors.
    self.registries = {

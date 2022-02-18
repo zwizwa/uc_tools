@@ -6,7 +6,7 @@ cd $(dirname $0)
 # It doesn't seem possible to install
 # arbitrary assets, so bundle them up in a lua module.
 
-(
+( cd lure
 echo "# -*- scheme -*-"
 echo "return {"
 for file in *.sm *.scm; do
@@ -15,7 +15,7 @@ for file in *.sm *.scm; do
     echo "]],"
 done
 echo "}"
-) >lure/asset_scm.lua
+) >asset_scm.lua
 
 # 2. Generate the lure/meta.lua file
 META=lure/meta.lua

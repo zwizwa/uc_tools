@@ -33,7 +33,7 @@ local function _trace(tag, expr)
    log_se_n(expr, tag .. ":")
 end
 local function trace(tag, expr)
-   -- _trace(tag, expr)
+   _trace(tag, expr)
 end
 
 class.def       = comp.def
@@ -492,7 +492,7 @@ function class.comp_bindings(s, bindings_in)
             -- letrec macro insert the hint, since it has this
             -- information centralized before it gets spread out.
             function hint.letrec(closures)
-               -- log_se_n(closures,"HINT_LETREC:")
+               _trace("HINT_LETREC",closures)
                for closure in se.elements(closures) do
                   closure.letrec = closures
                end
@@ -545,7 +545,16 @@ function class.comp_bindings(s, bindings_in)
                       s:def(var, fun)
                       -- FIXME: Insert a labels form here as well?
                   end},
-
+                  {"(hint ,name . ,args)", function(m)
+                      local vals = se.map(lit_or_ref, m.args)
+                      local hint_fun = hint[m.name.expr]
+                      _trace("HINT",l(m.name, vals))
+                      if hint_fun then
+                         hint_fun(se.map(lit_or_ref, vals))
+                      else
+                         log("WARNING: unknown hint " .. hint_name)
+                      end
+                  end},
                   -- Application (ephemeral, hint, primitive, closure)
                   {"(app ,fun . ,args)", function(m)
                       local i=0
@@ -558,6 +567,7 @@ function class.comp_bindings(s, bindings_in)
 
                       local vals = se.map(lit_or_ref, m.args)
                       trace("APP",l(m.fun, fun))
+
                       if type(fun) == 'function' then
                          -- Ephemeral functions are evaluated.  This
                          -- is currently only used for lib-ref, which
@@ -571,21 +581,9 @@ function class.comp_bindings(s, bindings_in)
                       else
                          assert(fun.class)
                          if fun.class == 'prim' then
-                            if fun.name == 'hint' then
-                               -- Hints are encoded as regular
-                               -- function calls such that they do not
-                               -- have any syntactic significance.
-                               local hint_name, hint_args = unpack(vals)
-                               local hint_fun = hint[hint_name.expr]
-                               if hint_fun then
-                                  hint_fun(se.map(lit_or_ref, hint_args))
-                               else
-                                  log("WARNING: unknown hint " .. hint_name)
-                               end
-                            else
-                               -- Primitives are compiled
-                               ins_prim({fun, m.args})
-                            end
+                            -- Primitives are compiled
+                            ins_prim({fun, m.args})
+
                          elseif fun.class == 'closure' then
 
                             local already_compiled = fun.compiled[s.cont] ~= nil
