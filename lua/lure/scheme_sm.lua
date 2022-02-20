@@ -60,6 +60,16 @@ local function closure_iolist(c)
    end
 end
 
+local function make_prim(name)
+   return {
+      class = 'prim',
+      name = name,
+      iolist = {"prim:",name}
+   }
+end
+local function prim_app(fn_name, ...)
+   return {'app', {make_prim(fn_name), a2l({...})}}
+end
 
 
 local ephemeral = {
@@ -106,7 +116,7 @@ function class.compile_fun(s, fun)
                block_enter(
                   function(i, arg)
                      s:track_max("nb_args", i)
-                     return l(arg, l('arg-ref', i))
+                     return l(arg, prim_app('vector-ref', s.arg, i))
                   end,
                   fun.args,
                   l(_(fun.body))))
@@ -115,11 +125,11 @@ function class.compile_fun(s, fun)
 end
 
 -- goto / label fallthrough with arguments.
-function wrap_set_args(goto_or_label_expr, args)
+function wrap_set_args(s, goto_or_label_expr, args)
    local expr =
       block_enter(
          function(i, arg)
-            return _(l('set-arg!', i, arg))
+            return _(prim_app('vector-set!', s.arg, i, arg))
          end,
          args,
          l(_(goto_or_label_expr)))
@@ -252,7 +262,7 @@ function class.compile_app(s, fun, args, compiled_cont)
 
    -- If everything is compiled in the proper context, the call
    -- amounts to a goto + setting of argument registers.
-   local app = wrap_set_args(l('goto',label), args)
+   local app = wrap_set_args(s, l('goto',label), args)
 
 
    if not compiled_cont then
@@ -308,7 +318,7 @@ function class.compile_app(s, fun, args, compiled_cont)
             local goto_cont = l('goto', cont_label)
             -- Optimize: don't set args when they will be ignored.
             if s.cont.name ~= '_' then
-               return wrap_set_args(goto_cont, l(val))
+               return wrap_set_args(s, goto_cont, l(val))
             else
                return goto_cont
             end
@@ -469,7 +479,11 @@ function class.comp_bindings(s, bindings_in)
             -- that can be installed in a labels form.  This is passed
             -- to compile_app.
             local function compile_cont()
-               local cont_expr = {'block',{l(var,l('arg-ref', 0)),bindings_in}}
+               local cont_expr = {
+                  'block',
+                  {l(var,prim_app('vector-ref', s.arg, 0)),
+                   bindings_in}
+               }
                var = '_'
                bindings_in = se.empty
                trace("COMPILE_CONT", cont_expr)
@@ -558,7 +572,7 @@ function class.comp_bindings(s, bindings_in)
                   -- Application (ephemeral, hint, primitive, closure)
                   {"(app ,fun . ,args)", function(m)
                       local i=0
-                      local fun = s:ref(m.fun)
+                      local fun = lit_or_ref(m.fun)
                       -- Deref for possible ephemeral use.  This also
                       -- checks that the references obey normal
                       -- scoping rules.
@@ -582,7 +596,7 @@ function class.comp_bindings(s, bindings_in)
                          assert(fun.class)
                          if fun.class == 'prim' then
                             -- Primitives are compiled
-                            ins_prim({fun, m.args})
+                            ins_prim({'app', {fun, m.args}})
 
                          elseif fun.class == 'closure' then
 
@@ -722,23 +736,21 @@ function class.compile(s,expr)
                  -- log_se_n(special,"SPECIAL:")
                  val = special
               else
-                 val = {
-                 class = 'prim',
-                 name = name.expr,
-                 iolist = {"prim:",name.expr}
-                 }
+                 val = make_prim(name.expr)
               end
               -- log_se_n(l(name,val), "LIB_REF:")
               return val
            end
            s:def(m.lib_ref, lib_ref)
+           s.arg = s:make_var('arg')
+           s:def(s.arg, runtime)
 
            local c_body = s:comp(m.body)
 
            -- se.push_cdr(l('_', c_body), labels)
 
            return l('block',
-                    _(l('alloc_args', 1 + s.nb_args)),
+                    l(s.arg, prim_app('make-vector', 1 + s.nb_args)),
                     -- _(labels)
                     _(c_body)
                     )

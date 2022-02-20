@@ -1,5 +1,6 @@
 return { modules = {
   'asset_scm',
+  'backend_c',
   'backend_lua',
   'comp',
   'index',
@@ -34,6 +35,7 @@ return { modules = {
   'smc',
   'string_dsl',
   'tab',
+  'test_backend_c',
   'test_backend_lua',
   'test_hoas_match',
   'test',

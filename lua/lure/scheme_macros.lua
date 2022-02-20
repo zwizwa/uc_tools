@@ -382,6 +382,7 @@ macro["block*"] = mcase(
 -- Labels are implemented as thunks.
 macro["if@"]    = mcase({"(,c ,t ,f)","(if ,c ,t ,f)"})
 macro['goto']   = mcase({"(,label)","(,label)"})
+macro['app']    = mcase({"(,fun . ,args)","(,fun . ,args)"})
 
 macro["block@"] = mcase(
    {"()",              "(begin)"},
