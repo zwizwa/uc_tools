@@ -112,6 +112,11 @@ end
 
 rt['vector'] = function(...)
    local v = {...}
+   -- Vectors need to be tagged so they can be distinguished from
+   -- pairs, which are not tagged.  Still not sure if this is the
+   -- right way to go.  Maybe better to tag the cons pairs instead and
+   -- reserve the basic Lua array datastructure to be primitive?  In
+   -- any case, {a,b} is used everywhere to represent pairs.
    v.class = 'vector'
    v.iolist = vector_iolist
    return v

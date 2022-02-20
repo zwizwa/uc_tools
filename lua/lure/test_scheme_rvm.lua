@@ -21,7 +21,13 @@ local str = asset[filename]
 
 function mod.run()
 
-   local input = 'test_rvm.scm'
+   -- Full Scheme interpretation
+   -- local input = 'test_rvm.scm'
+
+   -- Hollowing out in progress, replacing Scheme with Lua primitives.
+   local input = 'test_rvm_prim.scm'
+
+
    local str = asset[input]
    assert(str)
 
@@ -37,8 +43,11 @@ function mod.run()
    -- log("IR:") ; scheme_pretty.log_pp(ir)
 
    local prim = require('lure.slc_runtime')
+   
+
+
    local e = scheme_eval.new(prim)
-   local rv = e:eval(ir)
+   -- local rv = e:eval(ir)
    log_se_n(rv, "EVAL:")
    log("\n")
 end

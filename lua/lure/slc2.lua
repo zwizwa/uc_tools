@@ -23,7 +23,7 @@ mod.new =
          'lure.scheme_frontend',
          'lure.scheme_flatten',
          'lure.scheme_blockval',
-         'lure.scheme_luapp',
+         'lure.backend_lua',
       })
 
 mod.default_config = {
