@@ -66,6 +66,7 @@ local function iol_cons(a,d)
 end
 
 local function iol_atom(a)
+   assert(a ~= nil)
    if type(a) == 'table' and a.class == 'var' then
       return mangle(a)
    elseif type(a) == 'number' then
@@ -85,7 +86,7 @@ local function iol_atom(a)
          error('bad expr_type = ' .. et)
       end
    else
-      log_desc({bad_atom = var})
+      log_desc({bad_atom = a})
       log_se_n(a,"BAD_ATOM: ")
       error("syntax error")
       -- return "<BADATOM>"
@@ -106,21 +107,22 @@ end
 
 -- Special syntax is implemented using another layer of special forms.
 local form = {}
-form['table-set!'] = function(s, args)
+form['vector-set!'] = function(s, args)
    s.match(
       args,
-      {{"(,tab ,key, ,val)", function(m)
-           s:w(iol_atom(m.tab), "[", iol_atom(m.key),"] = ",iol_atom(m.val))
+      {{"(,vec ,idx ,val)", function(m)
+           s:w(iol_atom(m.vec), "[",
+               iol_atom(m.idx),"] = ",
+               iol_atom(m.val), ";")
         end}})
 end
-form['table-ref'] = function(s, args)
+form['vector-ref'] = function(s, args)
    s.match(
       args,
-      {{"(,tab ,key)", function(m)
-           s:w(iol_atom(m.tab), "[", iol_atom(m.key),"]")
+      {{"(,vec ,idx)", function(m)
+           s:w(iol_atom(m.vec), "[", iol_atom(m.idx),"]")
         end}})
 end
-
 
 -- Lua infix functions
 local infix = {
@@ -269,6 +271,7 @@ function class.comp(s,expr)
              s:w(s:tab(),"}\n")
          end},
          {"(labels . ,bindings)", function(m)
+             -- FIXME: labels
              s:w(s:tab(),"{\n")
              s:w_bindings(m.bindings)
              s:w(s:tab(),"}\n")
@@ -303,12 +306,20 @@ function class.comp(s,expr)
              s:i_comp(m.expr)
          end},
          {"(app ,fun . ,args)", function(m)
-             local w_f = m.fun.var and form[m.fun.var]
+             -- Note that in C, we require all function applications
+             -- to be top level functions, represented by the 'prim'
+             -- data type.  Any flattening needs to happen in a
+             -- previous pass.
+             assert(m.fun.class == 'prim')
+             local w_f = m.fun.name and form[m.fun.name]
              if w_f then
                 w_f(s, m.args)
              else
-                s:w(iol_atom(m.fun),"(",s:commalist(m.args),");")
+                s:w(m.fun.name,"(",s:commalist(m.args),");")
              end
+         end},
+         {"(goto ,label)", function(m)
+             s:w("goto ", iol_atom(m.label), ":")
          end},
          {"(hint ,tag . ,args)", function(m)
          end},
