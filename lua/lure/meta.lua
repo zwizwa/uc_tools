@@ -39,6 +39,7 @@ return { modules = {
   'test_scheme_luapp',
   'test_scheme_macros',
   'test_scheme_pass',
+  'test_scheme_rvm',
   'test_scheme_sm',
   'test_scm',
   'test_se_match',

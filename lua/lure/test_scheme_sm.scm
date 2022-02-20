@@ -223,7 +223,7 @@
 ;; This doesn't compile properly due to dropping of ephemerals.  Maybe
 ;; leave the ephemerals in the output for debugging?  In a correct
 ;; program they are all unused varibles.
-'(let ((a
+(let ((a
        (lambda ()
          (let ((b (lambda () 123)))
            b))))

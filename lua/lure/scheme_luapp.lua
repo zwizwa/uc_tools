@@ -299,10 +299,6 @@ function class.comp(s,expr)
          end},
          {"(hint ,tag . ,args)", function(m)
          end},
-         --{"(ref ,var)", function(m)
-         --    assert(m.var.class == 'var')
-         --    s:w_atom(m.var)
-         --end},
          {"(,form . ,args)", function(m)
              error("form '" .. m.form .. "' not supported")
          end},

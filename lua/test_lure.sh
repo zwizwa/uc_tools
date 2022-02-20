@@ -15,7 +15,8 @@ for file in *.sm *.scm; do
     echo "]],"
 done
 echo "}"
-) >asset_scm.lua
+) >lure/asset_scm.lua
+
 
 # 2. Generate the lure/meta.lua file
 META=lure/meta.lua

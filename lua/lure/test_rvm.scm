@@ -81,7 +81,7 @@
   (define (build-symtbl)
 
     (define (add-symbol chars symtbl)
-      ;; (desc symtbl)
+      ;; (log-se-n chars)
       (_cons (_string->uninterned-symbol (_list->string chars))
              symtbl))
 
@@ -157,8 +157,10 @@
 
       main-proc)))
 
+
 (define (trace-instruction name opnd stack)
-  (desc (vector name opnd stack))
+  ;; (log-se-n (vector name opnd stack))
+  ;; (log-se-n name)
   0)
 
 (define (run1 pc stack)
@@ -175,7 +177,7 @@
   (define (set-var opnd val)
     (_field0-set! (if (_rib? opnd) opnd (_list-tail stack opnd)) val))
 
-  (desc (_field0 pc))
+  ;; (log-se-n (_field0 pc))
 
   (let ((instr (_field0 pc))
         (opnd (_field1 pc))

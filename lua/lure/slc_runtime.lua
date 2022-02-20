@@ -105,10 +105,20 @@ rt['letrec-trampoline'] = function(init, ...)
    return init(unpack(starts))()
 end
 
-
-function rt.vector(...)
-   return {...}
+local function vector_iolist(v)
+   local l = a2l(v)
+   return {'#', se.iolist(l)}
 end
+
+rt['vector'] = function(...)
+   local v = {...}
+   v.class = 'vector'
+   v.iolist = vector_iolist
+   return v
+end
+
+-- FIXME: Char is represented by number
+
 rt['string-ref'] = function(str, i)
    local b = str:byte(i+1)
    -- log_desc({b=b})
@@ -120,6 +130,14 @@ end
 rt['integer->char'] = function(char)
    return char
 end
+rt['char?'] = function(char)
+   return type(char) == 'number'
+end
+rt['string-length'] = function(str)
+   return #str
+end
+
+
 rt['vector-ref'] = function(vec, i)
    return vec[i+1]
 end
@@ -139,10 +157,11 @@ rt['vector?'] = function(a)
    return type(a) == 'table'
 end
 rt['read-char'] = function()
-   return io.stdin:read(1)
+   local c = io.stdin:read(1)
+   return c:byte(1)
 end
 rt['write-char'] = function(c)
-   return io.stdout:write(c)
+   return io.stdout:write(string.char(c))
 end
 rt['table-ref'] = function(tab, key)
    return tab[key]
@@ -187,6 +206,9 @@ rt['-'] = function(a,b) return a - b end
 rt['*'] = function(a,b) return a * b end
 rt['/'] = function(a,b) return a / b end
 rt['>'] = function(a,b) return a > b end
+rt['<'] = function(a,b) return a < b end
+rt['quotient'] = function(a,b) return math.floor(a / b) end -- FIXME: verify this
+rt['not'] = function(a) return not a end
 
 -- (define p (make-parameter 'init_val))
 -- (p) -> 'init_val
