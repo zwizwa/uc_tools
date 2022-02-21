@@ -240,13 +240,20 @@ function class.w_bindings(s, bindings)
                 s:w(iol_atom(m.var), " = ")
                 w_prim_eval(m.prim_eval)
             end},
+            {"(,var (app ,fun . ,args))", function(m)
+                assert(m.fun.class == 'prim')
+                if (m.fun.name == 'make-vector') then
+                   assert(m.var ~= '_')
+                   assert(se.length(m.args) == 1)
+                   s:w("T ", iol_atom(m.var), "[", iol_atom(se.car(m.args)), "] = {};")
+                else
+                   maybe_assign(m.var)
+                   w_prim_eval({'app',{m.fun,m.args}})
+                end
+            end},
             {"(,var ,prim_eval)", function(m)
                 maybe_assign(m.var)
                 w_prim_eval(m.prim_eval)
-            end},
-            {",other", function(m)
-                _trace("BINDING", binding)
-                error("bad binding form")
             end}
       })
       s:w("\n")
