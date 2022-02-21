@@ -709,8 +709,8 @@ function class.compile(s,expr)
    s.cont = s:make_cont(
       'ret',
       function(expr)
-         -- local ret_var = {class = 'var', iolist = 'ret_var'}
-         -- return l('block', l(ret_var, expr), l('_', l('return', ret_var)))
+         --local ret_var = s:make_var('ret_var')
+         --return l('block', l(ret_var, expr), l('_', l('return', ret_var)))
          return l('return', expr)
       end)
 

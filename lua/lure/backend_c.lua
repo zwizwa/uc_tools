@@ -11,6 +11,11 @@ local l = se.list
 local ins = table.insert
 local pprint = scheme_pretty.new()
 
+
+local function _trace(tag, expr)
+   log_se_n(expr, tag .. ": ")
+end
+
 local class = {}
 
 -- Cherry-pick some methods (micro-mixin?)
@@ -120,7 +125,7 @@ form['vector-ref'] = function(s, args)
    s.match(
       args,
       {{"(,vec ,idx)", function(m)
-           s:w(iol_atom(m.vec), "[", iol_atom(m.idx),"]")
+           s:w(iol_atom(m.vec), "[", iol_atom(m.idx),"];")
         end}})
 end
 
@@ -142,21 +147,50 @@ end
 
 
 
-
+-- FIXME: Needs re-org to allow for
+-- (a (make-vector 3 0)) to be mapped to
+-- T a[3] = {0,0,0};
 function class.w_bindings(s, bindings)
+   local function maybe_assign(var)
+      if var ~= '_' then
+         s:w("T ", iol_atom(var), " = ")
+      end
+   end
+
+   local function w_prim_eval(expr)
+      s.match(
+         expr,
+         {
+            {"(app ,fun . ,args)",
+             function(m)
+                -- Note that in C, we require all function
+                -- applications to be top level functions, represented
+                -- by the 'prim' data type.  Any flattening needs to
+                -- happen in a previous pass.
+                assert(m.fun.class == 'prim')
+                local w_f = m.fun.name and form[m.fun.name]
+                if w_f then
+                   w_f(s, m.args)
+                else
+                   s:w(m.fun.name,"(",s:commalist(m.args),");")
+                end
+            end},
+            {"(,form . ,args)", function(m)
+                _trace("EXPR", binding)
+                error("bad expression form")
+            end},
+            {",atom", function(m)
+                s:w_atom(m.atom)
+            end}
+         })
+   end
+
    for binding in se.elements(bindings) do
       s:w(s:tab())
       s.match(
          binding,
          {
-            -- Statements
-            {"(_ ,expr)", function(b)
-                if se.expr_type(b.expr) ~= 'pair' then
-                   s:w("-- ")
-                end
-                s:i_comp(b.expr)
-            end},
-            -- Special case the function definitions
+            -- These are only allowed in the top level bindings form.
             {"(,var (lambda ,args ,expr))", function(b)
                 s:indented(
                    function()
@@ -165,14 +199,55 @@ function class.w_bindings(s, bindings)
                       s:w(s:tab(),"}")
                    end)
             end},
-            -- Other variable definitions
-            {"(,var ,expr)", function(b)
-                -- Lua does not allow naked values to appear in a
-                -- statement position.  Replace them with a comment.
-                s:w("T ", iol_atom(b.var), " = ")
-                s:i_comp(b.expr)
-                -- FIXME: print orig var name in comment
+            {"(_ (block . ,bindings))", function(m)
+                s:w(s:tab(),"{\n")
+                s:w_bindings(m.bindings)
+                s:w(s:tab(),"}")
             end},
+            {"(_ (labels . ,bindings))", function(m)
+                for binding in se.elements(m.bindings) do
+                   local n, e = se.unpack(binding, {n = 2})
+                   if n == '_' then
+                      s:w("/* labels: entry */\n",s:tab())
+                   else
+                      s:w(iol_atom(n),":\n",s:tab())
+                   end
+                   s:i_comp(e)
+                   s:w("\n",s:tab())
+                end
+            end},
+            {"(_ (if ,cond ,etrue, efalse))", function(m)
+                s:w("if (", iol_atom(m.cond), ") {\n")
+                s:indented(
+                   function()
+                      s:w_body(m.etrue)
+                      s:w(s:tab(), "} else {\n")
+                      s:w_body(m.efalse)
+                      s:w(s:tab(), "}")
+                   end,
+                   -1)
+            end},
+            {"(_ (goto ,label))", function(m)
+                s:w("goto ", iol_atom(m.label), ":")
+            end},
+            {"(_ (hint ,tag . ,args))", function(m)
+            end},
+            {"(_ (return ,prim_eval))", function(m)
+                s:w("return ")
+                w_prim_eval(m.prim_eval)
+            end},
+            {"(_ (set! ,var ,expr))", function(m)
+                s:w(iol_atom(m.var), " = ")
+                w_prim_eval(m.prim_eval)
+            end},
+            {"(,var ,prim_eval)", function(m)
+                maybe_assign(m.var)
+                w_prim_eval(m.prim_eval)
+            end},
+            {",other", function(m)
+                _trace("BINDING", binding)
+                error("bad binding form")
+            end}
       })
       s:w("\n")
    end
@@ -268,67 +343,11 @@ function class.comp(s,expr)
          {"(block . ,bindings)", function(m)
              s:w(s:tab(),"{\n")
              s:w_bindings(m.bindings)
-             s:w(s:tab(),"}\n")
+             s:w(s:tab(),"}")
          end},
-         {"(labels . ,bindings)", function(m)
-             -- FIXME: labels
-             s:w(s:tab(),"{\n")
-             s:w_bindings(m.bindings)
-             s:w(s:tab(),"}\n")
+         {",other", function(m)
+             s:w_bindings(l(l('_', m.other)))
          end},
-         {"(lambda ,vars ,expr)", function(m)
-             s:w("function(",s:commalist(m.vars),") {\n")
-             s:indented(
-                function()
-                   s:w_body(m.expr)
-                   s:w(s:tab(),"}")
-                end,
-                0)
-         end},
-         {"(if ,cond ,etrue, efalse)", function(m)
-             s:w("if (", iol_atom(m.cond), ") {\n")
-             s:indented(
-                function()
-                   s:w_body(m.etrue)
-                   s:w(s:tab(), "} else {\n")
-                   s:w_body(m.efalse)
-                   s:w(s:tab(), "}")
-                end,
-                -1)
-         end},
-         {"(set! ,var ,expr)", function(m)
-             s:w(iol_atom(m.var), " = ")
-             s:i_comp(m.expr)
-             s:w(";")
-         end},
-         {"(return ,expr)", function(m)
-             s:w("return ")
-             s:i_comp(m.expr)
-         end},
-         {"(app ,fun . ,args)", function(m)
-             -- Note that in C, we require all function applications
-             -- to be top level functions, represented by the 'prim'
-             -- data type.  Any flattening needs to happen in a
-             -- previous pass.
-             assert(m.fun.class == 'prim')
-             local w_f = m.fun.name and form[m.fun.name]
-             if w_f then
-                w_f(s, m.args)
-             else
-                s:w(m.fun.name,"(",s:commalist(m.args),");")
-             end
-         end},
-         {"(goto ,label)", function(m)
-             s:w("goto ", iol_atom(m.label), ":")
-         end},
-         {"(hint ,tag . ,args)", function(m)
-         end},
-         {"(,form . ,args)", function(m)
-             error("form '" .. m.form .. "' not supported")
-         end},
-         {",atom", function(m)
-             s:w_atom(m.atom)
-         end}
       }
    )
 end
