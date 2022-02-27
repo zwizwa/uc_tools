@@ -13,8 +13,11 @@ local se       = require('lure.se')
 local se_match = require('lure.se_match')
 local comp     = require('lure.comp')
 
+local function _trace(tag, expr)
+   log_se_n(expr, tag .. ":")
+end
 local function trace(tag, expr)
-   -- log_se_n(expr, tag .. ":")
+   -- _trace(tag,expr)
 end
 
 
@@ -162,13 +165,13 @@ function class.callcc(s, args)
    s:app_closure(fun, l(k_fun))
 end
 
-function class.reset(s)
+function class.reset(s, init_env)
 
    -- Machine state is stored in s to allow reuse and extension.
 
    -- The lexical environment is implemented as a flat list.  Slow but
    -- convenient.  Stored as s.env to allow def, ref, set methods.
-   s.env = empty
+   s.env = init_env or empty
 
    -- The variable that takes the value of the current expression.
    s.var = '_'
@@ -197,30 +200,40 @@ end
 
 
 function class.eval(s, top_expr)
-
    -- Top level expression coming out of scheme_frontend is a lambda
    -- that defines the linker for all free variables present in the
    -- original source.  We evaluate this lambda expression manually to
    -- insert that binding.
-   s.match(
+   return s.match(
       top_expr,
       {{'(lambda (,base_ref) ,expr)',
         function(m)
            assert(m.base_ref.class == 'var')
            s:def(m.base_ref, function(sym) return s:base_ref(sym) end)
-           s.expr = m.expr
-   end}})
+           return s:eval_expr(m.expr)
+        end}})
+end
+
+function class.eval_expr(s, expr, maybe_env)
+   assert(expr ~= nil)
+   s.expr = expr
+   if nil ~= maybe_env then
+      s.env = maybe_env
+   end
 
    -- Primitive value: literal or variable referenece.
    local function lit_or_ref(thing)
-      trace("REF",l(thing,s.env))
+      -- trace("LIT_OR_REF",l(thing,s.env))
       local typ = type(thing)
       if typ ~= 'table' then return thing end
 
       local class = thing.class
       assert(class)
       if 'var' == class then
-         return s:ref(thing)
+         local val = s:ref(thing)
+         assert(nil ~= val)
+         trace("REF",l(thing,s.env), val)
+         return val
       elseif 'expr' == class then
          return thing.expr
       elseif 'void' == class then
@@ -237,13 +250,16 @@ function class.eval(s, top_expr)
    -- Main loop
    local rv
    while rv == nil do
+      assert(s.expr ~= nil)
       trace("EVAL", s.expr)
 
       s.match(
          s.expr,
          {
             {"(halt ,rv)", function(m)
+                trace("HALT",m.rv)
                 rv = lit_or_ref(m.rv)
+                assert(rv ~= nil)
             end},
             {"(if ,cond ,iftrue ,iffalse)", function(m)
                 local cond = lit_or_ref(m.cond)
@@ -282,6 +298,9 @@ function class.eval(s, top_expr)
                 elseif type(fun) == 'table' then
                    local class = fun.class  -- closure, mop
                    local app = s.app[class]
+                   if nil == app then
+                      error("bad app type '" .. class .."'")
+                   end
                    s.expr = nil
                    app(s, fun, vals)
                 else
@@ -304,6 +323,7 @@ function class.eval(s, top_expr)
             end},
          })
    end
+   -- log_desc({eval_rv = rv})
 
    return rv
 
@@ -314,7 +334,7 @@ end
 
 function class.new(prim_base)
    local prim = { }
-   setmetatable(prim, {__index = prim_base})
+   setmetatable(prim, {__index = prim_base or {}})
    local s = { match = se_match.new(), prim = prim }
    setmetatable(s, {__index = class})
    -- call-with-current-continuation, implemented as a mop

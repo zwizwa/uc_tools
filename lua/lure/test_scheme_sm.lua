@@ -78,7 +78,8 @@ function mod.run()
       local i = 1
 
       local out = smc:compile(ir)
-      -- log("OUTPUT_NONFLAT:") ; pretty.log_pp(out)
+      log_se_n(out)
+      log("OUTPUT_NONFLAT:") ; pretty.log_pp(out)
 
       -- Flatten before pp
       local f = flat.new() ; out = f:compile(out)

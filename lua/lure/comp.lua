@@ -82,11 +82,11 @@ function comp:parameterize(bindings_tab, inner_fun)
       saved[key] = self[key]
       self[key] = val
    end
-   local rv = inner_fun()
+   local rvs = {inner_fun()}
    for key,_ in pairs(bindings_tab) do
       self[key] = saved[key];
    end
-   return rv
+   return unpack(rvs)
 end
 
 
@@ -130,11 +130,14 @@ end
 
 -- Environment maps variables to lists.
 -- Create binding
+local function cell_iolist(cell)
+   return {'#<cell:',se.iolist(cell.val),'>'}
+end
 function comp:def(var, val)
    assert(self.env)
    assert(val ~= nil)
    -- trace("DEF", l(var,val))
-   local cell = {class = 'cell', val = val}
+   local cell = {class = 'cell', val = val, iolist = cell_iolist}
    self.env = {l(var,cell), self.env}
 end
 -- Reference and assigment operate on the chained environment.  One
@@ -144,7 +147,13 @@ function comp:find_cell(var, allow_undef)
    assert(self.env)
    for pair in se.elements(self.env) do
       local v, rest = unpack(pair)
-      if v.unique == unique then return se.car(rest) end
+      if v.unique == unique then
+         -- log_desc({match={v.unique,unique}})
+         local val = se.car(rest)
+         assert(val)
+         return val
+      end
+      -- log_desc({mismatch={v.unique,unique}})
    end
    if allow_undef then return end
    local mangled = iolist.to_string(se.iolist(var))

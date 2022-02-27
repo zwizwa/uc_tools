@@ -13,6 +13,7 @@
 
 local se       = require('lure.se')
 local comp     = require('lure.comp')
+local eval     = require('lure.scheme_eval')
 local se_match = require('lure.se_match')
 local frontend = require('lure.scheme_frontend')
 
@@ -33,7 +34,7 @@ local function _trace(tag, expr)
    log_se_n(expr, tag .. ":")
 end
 local function trace(tag, expr)
-   _trace(tag, expr)
+   -- _trace(tag, expr)
 end
 
 class.def       = comp.def
@@ -69,6 +70,11 @@ local function make_prim(name)
 end
 local function prim_app(fn_name, ...)
    return {'app', {make_prim(fn_name), a2l({...})}}
+end
+
+local function make_eval()
+   local e = eval.new()
+   return e
 end
 
 
@@ -120,7 +126,7 @@ function class.compile_fun(s, fun)
                   end,
                   fun.args,
                   l(_(fun.body))))
-         return body
+         return body, s.nb_args
       end)
 end
 
@@ -195,6 +201,8 @@ function class.set_debug_name(s, var, val)
 end
 
 function class.push_to_current_labels(s, label, body_expr)
+   assert(label ~= nil)
+   assert(body_expr ~= nil)
    -- FIXME: This is currently a stack.  Is that really necessary?
    assert(s.labels)
    local current_labels = car(s.labels)
@@ -602,26 +610,39 @@ function class.comp_bindings(s, bindings_in)
 
                             local already_compiled = fun.compiled[s.cont] ~= nil
 
-                            -- Support for partial evaluation
-                            if not already_compiled then
-                               -- Try partial evaluation, see if it
-                               -- produces another closure.  If so
-                               -- then bind as ephemeral value.
-                            end
-
                             -- Not recursive? Can be inlined.
                             if not already_compiled and not fun.letrec then
-                               local inlined_bindings =
-                                  se.append(se.zip(l, fun.args, m.args), l(_(fun.body)))
-                               trace("INLINED_BINDINGS", inlined_bindings)
-                               ins_retval_subexpr(
+
+                               -- FIXME: Eval doesn't always work.
+                               -- E.g. 'prim' is not known.
+                               -- Interpreter needs to be extended to
+                               -- allow abstract interpretation of
+                               -- 'runtime' values.
+                               local e = make_eval()
+                               local ok, eval_vexpr = pcall(
                                   function()
-                                     return s:comp_bindings(inlined_bindings)
-                                  end,
-                                  function(rv)
-                                     _trace("INLINED_RV", rv)
-                                  end
-                               )
+                                     return e:eval_expr(vexpr, s.env)
+                                  end)
+                               if ok and se.expr_type(eval_vexpr) == 'closure' then
+                                  -- If it evaluates to a closure, we
+                                  -- bind it as ephemeral
+                                  -- FIXME: These closures are not compatible yet!
+                                  _trace("APP_PE_CLOSURE", eval_vexpr.body)
+                                  s:def(var, eval_vexpr)
+                               else
+                                  -- Concrete code is inlined
+                                  local inlined_bindings =
+                                     se.append(se.zip(l, fun.args, m.args), l(_(fun.body)))
+                                  trace("INLINED_BINDINGS", inlined_bindings)
+                                  ins_retval_subexpr(
+                                     function()
+                                        return s:comp_bindings(inlined_bindings)
+                                     end,
+                                     function(rv)
+                                        _trace("INLINED_RV", rv)
+                                     end
+                                  )
+                               end
                             else
                                -- Closures defined by letrec are potentially recursive.
                                local compiled_cont = (not tail) and compile_cont()
@@ -757,8 +778,9 @@ function class.compile(s,expr)
       end}})
 end
 
+
 function class.new()
-   local s = { match = se_match.new()  }
+   local s = { match = se_match.new() }
    setmetatable(s, {__index = class})
    return s
 end
