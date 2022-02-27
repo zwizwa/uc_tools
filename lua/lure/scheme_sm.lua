@@ -619,16 +619,15 @@ function class.comp_bindings(s, bindings_in)
                                -- allow abstract interpretation of
                                -- 'runtime' values.
                                local e = make_eval()
-                               local ok, eval_vexpr = pcall(
+                               local ok, cl = pcall(
                                   function()
                                      return e:eval_expr(vexpr, s.env)
                                   end)
-                               if ok and se.expr_type(eval_vexpr) == 'closure' then
+                               if ok and se.expr_type(cl) == 'closure' then
                                   -- If it evaluates to a closure, we
-                                  -- bind it as ephemeral
-                                  -- FIXME: These closures are not compatible yet!
-                                  _trace("APP_PE_CLOSURE", eval_vexpr.body)
-                                  s:def(var, eval_vexpr)
+                                  -- bind it as ephemeral after converting rep.
+                                  trace("APP_PE_CLOSURE", l(cl.args, cl.body))
+                                  s:def(var, s:make_closure(cl.args, cl.body, cl.env))
                                else
                                   -- Concrete code is inlined
                                   local inlined_bindings =

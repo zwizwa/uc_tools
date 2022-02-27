@@ -15,7 +15,7 @@
 
 ;; FIXME: Almost there.  Closures need to be translated to a form that
 ;; can be applied.
-'(let* ((a (lambda () (lambda () 123)))
+(let* ((a (lambda () (lambda () 123)))
        (b (a)))
   (b))
 
