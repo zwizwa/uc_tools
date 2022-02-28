@@ -638,7 +638,7 @@ function class.comp_bindings(s, bindings_in)
                                         return s:comp_bindings(inlined_bindings)
                                      end,
                                      function(rv)
-                                        _trace("INLINED_RV", rv)
+                                        trace("INLINED_RV", rv)
                                      end
                                   )
                                end

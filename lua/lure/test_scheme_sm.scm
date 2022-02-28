@@ -15,12 +15,6 @@
 
 ;; FIXME: Almost there.  Closures need to be translated to a form that
 ;; can be applied.
-(let* ((a (lambda () (lambda () 123)))
-       (b (a)))
-  (b))
-
-
-
 
 123
 
@@ -213,6 +207,16 @@
 ;; There must be more ways to move things around.
 
 
+
+;; Partial application: applications that produce lambdas.
+(assert
+ (= 123
+    (let* ((a (lambda () (lambda () 123)))
+           (b (a)))
+      (b))))
+
+
+
 ;; How to make this one work?
 '(begin
   (let*
@@ -236,3 +240,7 @@
          (let ((b (lambda () 123)))
            b))))
   (a))
+
+
+
+
