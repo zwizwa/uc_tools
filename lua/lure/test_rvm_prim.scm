@@ -62,11 +62,20 @@
 
 (define pos 0)
 
+;(define (get-byte)
+;  (let ((x (char->integer (string-ref input pos))))
+;    (set! pos (+ pos 1))
+;    (log-se-n (list pos x))
+;    x))
+
+; FIXME: The prim 18 switches from git-byte to read-char based on pos,
+; so keep track of pos.
 (define (get-byte)
-  (let ((x (char->integer (string-ref input pos))))
+  (let ((x (get-input-byte)))
     (set! pos (+ pos 1))
-    ;; (desc x)
+    ;; (log-se-n (list pos x))
     x))
+
 
 (define (decode)
 

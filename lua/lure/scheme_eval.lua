@@ -332,9 +332,9 @@ end
 
 
 
-function class.new(prim_base)
+function class.new(prim_base_index)
    local prim = { }
-   setmetatable(prim, {__index = prim_base or {}})
+   setmetatable(prim, {__index = prim_base_index or {}})
    local s = { match = se_match.new(), prim = prim }
    setmetatable(s, {__index = class})
    -- call-with-current-continuation, implemented as a mop

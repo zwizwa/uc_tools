@@ -43,10 +43,12 @@ local debug = false
 --  pos+=1
 --  return ord(input[pos])
 
-local pos=-1
+local pos=0
 local function get_byte()
    pos = pos+1
-   return input:byte(pos+base)
+   local int = input:byte(pos) or 0
+   -- log_desc({'get_byte',pos,int})
+   return int
 end
 
 -- VM
@@ -365,5 +367,9 @@ end
 
 
 return {
-   primitives = primitives
+   primitives = primitives,
+   input = input,
+   putchar = putchar,
+   getchar = getchar,
+   ['get-input-byte'] = get_byte,
 }

@@ -43,11 +43,15 @@ function mod.run()
    -- log("IR:") ; scheme_pretty.log_pp(ir)
 
    local prim = require('lure.slc_runtime')
-   
+   local rvm = require('lure.rvm')
+   local function prim_index(o,k)
+      local v
+      v = rvm[k]  ; if v~=nil then return v end
+      v = prim[k] ; if v~=nil then return v end
+   end
 
-
-   local e = scheme_eval.new(prim)
-   -- local rv = e:eval(ir)
+   local e = scheme_eval.new(prim_index)
+   local rv = e:eval(ir)
    log_se_n(rv, "EVAL:")
    log("\n")
 end
