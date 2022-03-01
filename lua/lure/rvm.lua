@@ -47,7 +47,7 @@ local pos=0
 local function get_byte()
    pos = pos+1
    local int = input:byte(pos) or 0
-   -- log_desc({'get_byte',pos,int})
+   log_desc({'get_byte',pos,int})
    return int
 end
 
@@ -56,9 +56,17 @@ end
 --FALSE=[0,0,5]
 --TRUE=[0,0,5]
 --NIL=[0,0,5]
-FALSE={0,0,5}
-TRUE={0,0,5}
-NIL={0,0,5}
+local function rib(a,b,c)
+   return {
+      class = 'rib', -- FIXME: bootstrap
+      [1]=a,[2]=b,[3]=c
+   }
+end
+
+
+local FALSE=rib(0,0,5)
+local TRUE=rib(0,0,5)
+local NIL=rib(0,0,5)
 
 --to_bool=lambda x:TRUE if x else FALSE
 --is_rib=lambda x:type(x) is list
@@ -72,7 +80,7 @@ local stack=0
 -- global stack
 -- stack=[x,stack,0]
 push = function(x)
-   stack = {x,stack,0}
+   stack = rib(x,stack,0)
 end
 
 --def pop():
@@ -102,7 +110,7 @@ local function prim3(f) return function() local a=pop();local b=pop(); local c=p
 --def f2s(y,x):x[2]=y;return y
 
 local function arg2() local x = pop(); pop(); push(x) end
-local function close() push({pop()[0+base],stack,1}) end
+local function close() push(rib(op()[0+base],stack,1)) end
 local function f0s(y,x) x[0+base]=y; return y; end
 local function f1s(y,x) x[1+base]=y; return y; end
 local function f2s(y,x) x[2+base]=y; return y; end
@@ -183,25 +191,13 @@ end
 
 -- build the initial symbol table
 
---symtbl=NIL
---n=get_int(0)
---while n>0:
--- n-=1
--- symtbl=[[0,[NIL,0,3],2],symtbl,0]
+-- symtbl=NIL
+-- n=get_int(0)
+-- while n>0:
+--  n-=1
+--  symtbl=[[0,[NIL,0,3],2],symtbl,0]
 
-
-local function run()
-
-local n -- used a couple of times below
-
-local symtbl = NIL
-n = get_int(0)
-while n>0 do
-   n = n - 1
-   symtbl = {{0,{NIL,0,3},2},symtbl,0}
-end
-
--- accum = NIL
+-- accum=NIL
 -- n=0
 -- while 1:
 --  c=get_byte()
@@ -212,18 +208,54 @@ end
 --   accum=[c,accum,0]
 --   n+=1
 
-local accum = NIL
-n=0
-while true do
-   local c = get_byte()
-   if c == 44 then
-      symtbl={{0,{accum,n,3},2},symtbl,0}; accum=NIL; n=0
-   else
-      if c==59 then break end
-      accum={c,accum,0}
-      n = n + 1
+-- symtbl=[[0,[accum,n,3],2],symtbl,0]
+
+
+local n -- used a couple of times below
+
+local symtbl
+
+
+local function build_symtbl()
+   symtbl = NIL
+   n = get_int(0)
+   while n>0 do
+      n = n - 1
+      -- log_desc({n=n,pos=pos})
+      symtbl = rib(rib(0,rib(NIL,0,3),2),symtbl,0)
    end
+
+   local accum = NIL
+   n=0
+   while true do
+      local c = get_byte()
+      if c == 44 then
+         symtbl=rib(rib(0,rib(accum,n,3),2),symtbl,0)
+         accum=NIL
+         n=0
+      else
+         if c == 59 then break end
+         accum=rib(c,accum,0)
+         n = n + 1
+      end
+   end
+
+   log("end build_symtbl\n")
+   return symtbl
 end
+
+
+
+-- make_symboltbl()
+
+
+
+local function run()
+
+
+
+
+log_desc('symtbl')
 
 --symtbl=[[0,[accum,n,3],2],symtbl,0]
 --symbol_ref=lambda n: list_tail(symtbl,n)[0]
@@ -372,4 +404,8 @@ return {
    putchar = putchar,
    getchar = getchar,
    ['get-input-byte'] = get_byte,
+   ['_false'] = FALSE,
+   ['_true'] = TRUE,
+   ['_nil'] = NIL,
+   ['build-symtbl-lua'] = build_symtbl
 }

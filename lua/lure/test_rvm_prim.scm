@@ -46,9 +46,9 @@
 
 (define (_string->uninterned-symbol str) (_rib _false str symbol-type))
 
-(define _false (_rib 0 0 singleton-type))
-(define _true  (_rib 0 0 singleton-type))
-(define _nil   (_rib 0 0 singleton-type))
+;(define _false (_rib 0 0 singleton-type))
+;(define _true  (_rib 0 0 singleton-type))
+;(define _nil   (_rib 0 0 singleton-type))
 
 (define (_list-tail lst i)
   (if (< 0 i)
@@ -110,7 +110,13 @@
                     (if (= x 59) ;; #\; terminates symbol list
                         (add-symbol chars symtbl)
                         (loop3 (_cons x chars))))))))))
-  (let ((symtbl (build-symtbl)))
+  (let ((symtbl
+         (begin
+           (set! pos 456)
+           ;(log-se-n (list 'pos pos))
+           ;(build-symtbl) ;; for get-byte side-effect
+           ;(log-se-n (list 'pos pos))
+           (build-symtbl-lua))))
 
     (define (decode-loop stack)
 
@@ -281,7 +287,7 @@
 (define (boolean x)
   (if x _true _false))
 
-(define primitives
+(define primitives'
   (vector (prim3 _rib)             ;; 0
           (prim1 (lambda (x) x))   ;; 1
           _cdr                     ;; 2
