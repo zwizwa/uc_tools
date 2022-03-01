@@ -108,24 +108,12 @@
   ;;                       (add-symbol chars symtbl)
   ;;                       (loop3 (_cons x chars))))))))))
 
-  (let ((symtbl
-         (begin
-           (log-se-n 'symtbl-begin)
-           ;; (set! pos 456)
-           
-           ;(build-symtbl) ;; for get-byte side-effect
-           ;(log-se-n (list 'pos pos))
-           (let ((s
-                  (build-symtbl-lua)
-                  ;; (build-symtbl)
-                  ))
-             (log-se-n 'symtbl-end)
-             s))))
+  (let ((symtbl (build-symtbl-lua)))
 
     (define (decode-loop stack)
 
-      (define (sym n)
-        (_car (_list-tail symtbl n)))
+;      (define (sym n)
+;        (_car (_list-tail symtbl n)))
 
       (define (add-instruction op opnd stack)
 ;;        (pp (list (vector-ref '#(jump/call set get const if) op) opnd))

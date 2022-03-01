@@ -190,6 +190,8 @@ local function list_tail(lst, i)
    end
 end
 
+
+
 -- build the initial symbol table
 
 -- symtbl=NIL
@@ -250,6 +252,14 @@ local function build_symtbl()
    symtbl={{0,{accum,n,3},2},symtbl,0}
 
    return symtbl
+end
+
+local function car(pair)
+   return pair[1]
+end
+
+local function sym(n)
+   return car(list_tail(symtbl,n))
 end
 
 
@@ -445,15 +455,15 @@ local function get_byte_or_read_char()
    end
 end
 
-local function get_int(n)
-   local x = get_code()
-   local y = n * 46
-   if x < 46 then
-      return y + x
-   else
-      return get_int(y + (x - 46))
-   end
-end
+-- local function get_int(n)
+--    local x = get_code()
+--    local y = n * 46
+--    if x < 46 then
+--       return y + x
+--    else
+--       return get_int(y + (x - 46))
+--    end
+-- end
 
 return {
    ['primitives-lua'] = primitives,
@@ -469,5 +479,6 @@ return {
    ['get-byte-or-read-char'] = get_byte_or_read_char,
    ['get-code'] = get_code,
    ['get-int'] = get_int,
+   ['sym'] = sym,
 
 }
