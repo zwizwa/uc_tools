@@ -151,6 +151,7 @@ local primitives = {
 }
 
 
+
 --def get_code():
 -- x=get_byte()-35
 -- return 57 if x<0 else x
@@ -444,6 +445,15 @@ local function get_byte_or_read_char()
    end
 end
 
+local function get_int(n)
+   local x = get_code()
+   local y = n * 46
+   if x < 46 then
+      return y + x
+   else
+      return get_int(y + (x - 46))
+   end
+end
 
 return {
    ['primitives-lua'] = primitives,
@@ -456,6 +466,8 @@ return {
    ['_nil'] = NIL,
    ['build-symtbl-lua'] = build_symtbl,
    ['_rib'] = rib,
-   ['get-byte-or-read-char'] = get_byte_or_read_char
+   ['get-byte-or-read-char'] = get_byte_or_read_char,
+   ['get-code'] = get_code,
+   ['get-int'] = get_int,
 
 }

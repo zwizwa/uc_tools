@@ -68,30 +68,26 @@
 ;    (log-se-n (list pos x))
 ;    x))
 
-; FIXME: The prim 18 switches from git-byte to read-char based on pos,
-; so keep track of pos.
-(define (get-byte)
-  (let ((x (get-input-byte)))
-    ;; (set! pos (+ pos 1))
-    ;; (log-se-n (list pos x))
-    x))
+;; ; FIXME: The prim 18 switches from git-byte to read-char based on pos,
+;; ; so keep track of pos.
+;; (define (get-byte)
+;;   (let ((x (get-input-byte)))
+;;     ;; (set! pos (+ pos 1))
+;;     ;; (log-se-n (list pos x))
+;;     x))
 
-
-(define (get-code)
-  (let ((x (- (get-byte) 35)))
-    (if (< x 0) 57 x)))
 
 (define (decode)
 
-  (define eb/2 46) ;; half of encoding base (92)
+; (define eb/2 46) ;; half of encoding base (92)
 
 
-  (define (get-int n)
-    (let ((x (get-code))
-          (y (* n eb/2)))
-      (if (< x eb/2)
-          (+ y x)
-          (get-int (+ y (- x eb/2))))))
+;  (define (get-int n)
+;    (let ((x (get-code))
+;          (y (* n eb/2)))
+;      (if (< x eb/2)
+;          (+ y x)
+;          (get-int (+ y (- x eb/2))))))
 
   ;; (define (build-symtbl)
 
