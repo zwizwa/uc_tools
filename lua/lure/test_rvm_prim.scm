@@ -25,7 +25,7 @@
 (define singleton-type 5)
 
 (define (_rib? x) (vector? x))
-(define (_rib x y z) (vector x y z))
+;; (define (_rib x y z) (vector x y z))
 (define (_field0 x) (vector-ref x 0))
 (define (_field1 x) (vector-ref x 1))
 (define (_field2 x) (vector-ref x 2))
@@ -112,11 +112,17 @@
                         (loop3 (_cons x chars))))))))))
   (let ((symtbl
          (begin
+           (log-se-n 'symtbl-begin)
            (set! pos 456)
-           ;(log-se-n (list 'pos pos))
+           
            ;(build-symtbl) ;; for get-byte side-effect
            ;(log-se-n (list 'pos pos))
-           (build-symtbl-lua))))
+           (let ((s
+                  (build-symtbl-lua)
+                  ;; (build-symtbl)
+                  ))
+             (log-se-n 'symtbl-end)
+             s))))
 
     (define (decode-loop stack)
 
@@ -287,7 +293,7 @@
 (define (boolean x)
   (if x _true _false))
 
-(define primitives'
+(define primitives
   (vector (prim3 _rib)             ;; 0
           (prim1 (lambda (x) x))   ;; 1
           _cdr                     ;; 2
@@ -321,6 +327,7 @@
                    (write-char (integer->char x))
                    x))))
 
+;; (vector-set! primitives 0 (vector-ref primitives-lua 0))
 
 (let ((x (decode)))
   ;; (desc x)

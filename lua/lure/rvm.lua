@@ -47,7 +47,7 @@ local pos=0
 local function get_byte()
    pos = pos+1
    local int = input:byte(pos) or 0
-   log_desc({'get_byte',pos,int})
+   -- log_desc({'get_byte',pos,int})
    return int
 end
 
@@ -117,7 +117,7 @@ local function f2s(y,x) x[2+base]=y; return y; end
 
 local primitives = {
    -- prim3(lambda z,y,x:[x,y,z]),
-   prim3(function(z,y,x) return {x,y,z} end),
+   rib,
    -- prim1(lambda x:x),
    prim1(function(x) return x end),
    pop,
@@ -216,6 +216,12 @@ local n -- used a couple of times below
 local symtbl
 
 
+-- { "get_byte", 456, 59,  }
+-- end build_symtbl
+-- symtbl-end
+-- { "get_byte", 457, 56,  }
+
+
 local function build_symtbl()
    symtbl = NIL
    n = get_int(0)
@@ -230,17 +236,18 @@ local function build_symtbl()
    while true do
       local c = get_byte()
       if c == 44 then
-         symtbl=rib(rib(0,rib(accum,n,3),2),symtbl,0)
-         accum=NIL
-         n=0
+         symtbl = rib(rib(0,rib(accum,n,3),2),symtbl,0)
+         accum = NIL
+         n = 0
       else
          if c == 59 then break end
-         accum=rib(c,accum,0)
+         accum = rib(c, accum, 0)
          n = n + 1
       end
    end
 
-   log("end build_symtbl\n")
+   symtbl={{0,{accum,n,3},2},symtbl,0}
+
    return symtbl
 end
 
@@ -252,15 +259,9 @@ end
 
 local function run()
 
-
-
-
-log_desc('symtbl')
-
 --symtbl=[[0,[accum,n,3],2],symtbl,0]
 --symbol_ref=lambda n: list_tail(symtbl,n)[0]
 
-local symtbl={{0,{accum,n,3},2},symtbl,0}
 local function symbol_ref(n)
    return list_tail(symtbl,n)[0]
 end
@@ -399,7 +400,7 @@ end
 
 
 return {
-   primitives = primitives,
+   ['primitives-lua'] = primitives,
    input = input,
    putchar = putchar,
    getchar = getchar,
@@ -407,5 +408,7 @@ return {
    ['_false'] = FALSE,
    ['_true'] = TRUE,
    ['_nil'] = NIL,
-   ['build-symtbl-lua'] = build_symtbl
+   ['build-symtbl-lua'] = build_symtbl,
+   ['_rib'] = rib,
+
 }

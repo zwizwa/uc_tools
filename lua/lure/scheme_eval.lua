@@ -305,7 +305,7 @@ function class.eval_expr(s, expr, maybe_env)
                    app(s, fun, vals)
                 else
                    -- log_se_n(s.env,  "ENV:")
-                   -- log_se_n(s.expr, "EXPR:")
+                   log_se_n(s.expr, "EXPR:")
                    error("bad fun type '" .. type(fun) .. "'")
                 end
             end},
