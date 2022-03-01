@@ -60,7 +60,7 @@
       (+ 1 (_length (_cdr lst)))
       0))
 
-(define pos 0)
+;; (define pos 0)
 
 ;(define (get-byte)
 ;  (let ((x (char->integer (string-ref input pos))))
@@ -72,18 +72,19 @@
 ; so keep track of pos.
 (define (get-byte)
   (let ((x (get-input-byte)))
-    (set! pos (+ pos 1))
+    ;; (set! pos (+ pos 1))
     ;; (log-se-n (list pos x))
     x))
 
+
+(define (get-code)
+  (let ((x (- (get-byte) 35)))
+    (if (< x 0) 57 x)))
 
 (define (decode)
 
   (define eb/2 46) ;; half of encoding base (92)
 
-  (define (get-code)
-    (let ((x (- (get-byte) 35)))
-      (if (< x 0) 57 x)))
 
   (define (get-int n)
     (let ((x (get-code))
@@ -92,28 +93,29 @@
           (+ y x)
           (get-int (+ y (- x eb/2))))))
 
-  (define (build-symtbl)
+  ;; (define (build-symtbl)
 
-    (define (add-symbol chars symtbl)
-      ;; (log-se-n chars)
-      (_cons (_string->uninterned-symbol (_list->string chars))
-             symtbl))
+  ;;   (define (add-symbol chars symtbl)
+  ;;     ;; (log-se-n chars)
+  ;;     (_cons (_string->uninterned-symbol (_list->string chars))
+  ;;            symtbl))
 
-    (let loop1 ((n (get-int 0)) (symtbl _nil))
-      (if (< 0 n)
-          (loop1 (- n 1) (add-symbol _nil symtbl))
-          (let loop2 ((symtbl symtbl))
-            (let loop3 ((chars _nil))
-              (let ((x (get-byte)))
-                (if (= x 44) ;; #\, separates symbols
-                    (loop2 (add-symbol chars symtbl))
-                    (if (= x 59) ;; #\; terminates symbol list
-                        (add-symbol chars symtbl)
-                        (loop3 (_cons x chars))))))))))
+  ;;   (let loop1 ((n (get-int 0)) (symtbl _nil))
+  ;;     (if (< 0 n)
+  ;;         (loop1 (- n 1) (add-symbol _nil symtbl))
+  ;;         (let loop2 ((symtbl symtbl))
+  ;;           (let loop3 ((chars _nil))
+  ;;             (let ((x (get-byte)))
+  ;;               (if (= x 44) ;; #\, separates symbols
+  ;;                   (loop2 (add-symbol chars symtbl))
+  ;;                   (if (= x 59) ;; #\; terminates symbol list
+  ;;                       (add-symbol chars symtbl)
+  ;;                       (loop3 (_cons x chars))))))))))
+
   (let ((symtbl
          (begin
            (log-se-n 'symtbl-begin)
-           (set! pos 456)
+           ;; (set! pos 456)
            
            ;(build-symtbl) ;; for get-byte side-effect
            ;(log-se-n (list 'pos pos))
@@ -135,6 +137,7 @@
         (decode-loop stack))
 
       (let ((x (get-code)))
+        ;; (log-se-n (list 'get-code x))
         (let loop ((op 0) (n x))
           (let ((d (vector-ref (vector 20 30 0 10 11 4) op)))
             (if (< (+ 2 d) n)
@@ -317,11 +320,7 @@
           (prim2 (lambda (x y) (* x y))) ;; 16
           (prim2 quotient) ;; 17
 
-          (prim0 (lambda () ;; 18
-                   (if (< pos (string-length input))
-                       (get-byte)
-                       (let ((c (read-char)))
-                         (if (char? c) (char->integer c) -1)))))
+          (prim0 get-byte-or-read-char) ;; 18
 
           (prim1 (lambda (x) ;; 19
                    (write-char (integer->char x))

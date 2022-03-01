@@ -262,13 +262,8 @@ local function run()
 --symtbl=[[0,[accum,n,3],2],symtbl,0]
 --symbol_ref=lambda n: list_tail(symtbl,n)[0]
 
-local function symbol_ref(n)
-   return list_tail(symtbl,n)[0]
-end
-
 
 end
--- decode the RVM instructions
 
 -- while 1:
 --  x=get_code()
@@ -284,46 +279,6 @@ end
 --  else:
 --   if op==0:stack=[0,stack,0];op+=1
 --   n = get_int(0)if n==d else symbol_ref(get_int(n-d-1))if n>=d else symbol_ref(n)if op<3 else n
---   if 4<op:
---    n=[[n,0,pop()],0,1]
---    if not stack:break
---    op=4
---  stack[0]=[op-1,n,stack[0]]
-
-
-
-
--- NEXT
-
-
-
--- while true do
---    local x = get_code()
---    local n = x
---    local d = 0
---    local op = 0
---    while true do
---       d={20,30,0,10,11,4}[op+base]
---       if n<=2+d then break end
---       n = n - d+3
---       op = op + 1
---    end
---    if x >90 then
---       n=pop()
---    else
---       if op==0 then
---          stack={0,stack,0}
---          op = op + 1
---       end
---       if n == d then
---          n = get_int(0)
---       elseif n>=d then
---          n = symbol_ref(get_int(n-d-1))
---       elseif op<3 then
---          n = symbol_ref(n)if op<3
---       end
-
--- -- NEXT
 --   if 4<op:
 --    n=[[n,0,pop()],0,1]
 --    if not stack:break
@@ -350,6 +305,88 @@ end
 -- set_global(NIL)
 
 -- stack=[0,0,[5,0,0]] # primordial continuation (executes halt instr.)
+
+local function symbol_ref(n)
+   return list_tail(symtbl,n)[0]
+end
+
+local pc
+
+local function decode(n)
+
+while true do
+   local x = get_code()
+   log_desc({get_code = x})
+   local n = x
+   local d = 0
+   local op = 0
+   while true do
+      local lookup = {20,30,0,10,11,4}
+      d=lookup[op+base]
+      if n<=2+d then break end
+      n = n - d+3
+      op = op + 1
+   end
+   if x >90 then
+      n=pop()
+   else
+      if op==0 then
+         stack={0,stack,0}
+         op = op + 1
+      end
+      if n == d then
+         n = get_int(0)
+      elseif n>=d then
+         n = symbol_ref(get_int(n-d-1))
+      elseif op<3 then
+         if op<3 then
+            n = symbol_ref(n)
+         end
+      end
+      if 4<op then
+         n=rib(rib(n,0,pop()),0,1)
+         if not stack then break end
+         op=4
+      end
+   end
+
+   stack[0+base]=rib(op-1,n,stack[1])
+
+end
+
+end
+
+   -- pc = n[0+base][2+base]  ???
+
+
+
+local get_opnd = function(o)
+   if is_rib(o) then return o else return list_tail(stack,o) end
+end
+
+local function get_cont()
+   local s = stack
+   while not s[2+base] do
+      s = s[1+base]
+   end
+   return s
+end
+
+local function set_global(val)
+   symtbl[0+base][0+base]=val
+   symtbl=symtbl[1+base]
+end
+
+local function init()
+
+   set_global(rib(0,symtbl,1)) -- primitive 0
+   set_global(FALSE)
+   set_global(TRUE)
+   set_global(NIL)
+
+   stack=rib(0,0,rib(5,0,0)) -- primordial continuation (executes halt instr.)
+end
+
 
 -- while 1:
 --  o=pc[1]
@@ -398,6 +435,15 @@ end
 --  else: # halt
 --   break
 
+local function get_byte_or_read_char()
+   if pos < #input then
+      return get_byte()
+   else
+      local c = io.stdin:read(1)
+      return c:byte(1) or -1
+   end
+end
+
 
 return {
    ['primitives-lua'] = primitives,
@@ -410,5 +456,6 @@ return {
    ['_nil'] = NIL,
    ['build-symtbl-lua'] = build_symtbl,
    ['_rib'] = rib,
+   ['get-byte-or-read-char'] = get_byte_or_read_char
 
 }
