@@ -121,7 +121,7 @@
         (decode-loop stack))
 
       (let ((x (get-code)))
-        ;; (log-se-n (list 'get-code x))
+        (log-se-n (list 'get-code x))
         (let loop ((op 0) (n x))
           (let ((d (vector-ref (vector 20 30 0 10 11 4) op)))
             (if (< (+ 2 d) n)
@@ -153,7 +153,10 @@
                                            opnd
                                            stack)))))))))
 
-    (let ((main-proc (decode-loop 0)))
+    (let ((main-proc
+           ;; (decode-loop 0)
+           (decode-lua)
+           ))
 
       ;; set predefined globals (always 4 first in the symbol table)
 
@@ -173,7 +176,7 @@
 
 (define (trace-instruction name opnd stack)
   ;; (log-se-n (vector name opnd stack))
-  ;; (log-se-n name)
+  (log-se-n name)
   0)
 
 (define (run1 pc stack)

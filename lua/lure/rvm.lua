@@ -71,7 +71,7 @@ local NIL=rib(0,0,5)
 --to_bool=lambda x:TRUE if x else FALSE
 --is_rib=lambda x:type(x) is list
 local function to_bool(x) if x then return TRUE else return FALSE end end
-local function is_rib(x)  return typeof(x) == 'table' end
+local function is_rib(x)  return type(x) == 'table' end
 
 -- stack=0
 local stack=0
@@ -254,9 +254,10 @@ local function build_symtbl()
    return symtbl
 end
 
-local function car(pair)
-   return pair[1]
-end
+local function car(p) return p[1] end
+local function cdr(p) return p[2] end
+local function cons(a,d) return rib(a,d,0) end -- pair-type
+local function set_car(p,v) p[1] = v end
 
 local function sym(n)
    return car(list_tail(symtbl,n))
@@ -321,51 +322,161 @@ local function symbol_ref(n)
    return list_tail(symtbl,n)[0]
 end
 
-local pc
-
-local function decode(n)
-
+function decode1()
 while true do
-   local x = get_code()
-   log_desc({get_code = x})
-   local n = x
-   local d = 0
-   local op = 0
-   while true do
-      local lookup = {20,30,0,10,11,4}
-      d=lookup[op+base]
-      if n<=2+d then break end
-      n = n - d+3
-      op = op + 1
+ local x=get_code()
+ log_desc({get_code=x})
+ local n=x
+ local d=0
+ local op=0
+ while true do
+  local ds={20,30,0,10,11,4}
+  d=ds[op+base]
+  if n<=2+d then break end
+  n=n-(d+3) ; op=op+1
+ end
+ if x>90 then
+  n=pop()
+ else
+  if op==0 then
+     stack=rib(0,stack,0);
+     op = op + 1
+  end
+  if n==d then
+     n = get_int(0)
+  elseif n>= d then
+     n = symbol_ref(get_int(n-d-1))
+  elseif op<3 then
+     n = symbol_ref(n)
+  end
+  if 4<op then
+   n=rib(rib(n,0,pop()),0,1)
+   if not is_rib(stack) then
+      return n
    end
-   if x >90 then
-      n=pop()
-   else
-      if op==0 then
-         stack={0,stack,0}
-         op = op + 1
-      end
-      if n == d then
-         n = get_int(0)
-      elseif n>=d then
-         n = symbol_ref(get_int(n-d-1))
-      elseif op<3 then
-         if op<3 then
-            n = symbol_ref(n)
-         end
-      end
-      if 4<op then
-         n=rib(rib(n,0,pop()),0,1)
-         if not stack then break end
-         op=4
-      end
-   end
-
-   stack[0+base]=rib(op-1,n,stack[1])
-
+   op=4
+  end
+ end
+ stack[0+base]=rib(op-1,n,stack[0+base])
 end
 
 end
+
+-- function decode()
+--    local stack = 0
+--    build_symtbl()
+
+--    local function add_instruction(op, opnd, stack)
+--       set_car(stack, rib(op, opnd, car(stack)))
+--    end
+
+--    while true do
+--       local x = get_code()
+
+--       local n = x
+--       local d = 0
+--       local op = 0
+--       -- This part is taken from Python code.  Scheme code uses mixed
+--       -- tail call loops that can't be expressed in Lua.
+--       while true do
+--          log_desc({op=op})
+--          local t = {20,30,0,10,11,4}
+--          d=t[op+base]
+--          assert(d)
+--          if n<=2+d then break end
+--          n = n - (d+3)
+--          op = op + 1
+--       end
+--       -- This part is transliteration of Scheme code, with non-local
+--       -- return.
+--       if 90 < x then
+--          add_instruction(4, car(stack), cdr(stack)) -- if
+--       else
+--          if op == 0 then
+--             stack = cons(0,stack)
+--          end
+--          local opnd
+--          if (n < d) then
+--             if op < 3 then
+--                opnd = sym(n)
+--                opnd = n
+--             else
+--                if (n == d) then
+--                   opnd = get_int(0)
+--                else
+--                   opnd = sym(get_int(n - d - 1))
+--                end
+--             end
+--          end
+--          if 4 < op then
+--             local proc = rib(rib(opnd,0,car(stack)),
+--                              NIL,1) -- procedure-type
+--             stack = cdr(stack)
+--             if is_rib(stack) then
+--                add_instruction(3, -- const-proc
+--                                proc,
+--                                stack)
+--             else
+--                return proc
+--             end
+--          else
+--             local ins
+--             if 0 < op then
+--                ins = op - 1
+--             else
+--                ins = 0
+--             end
+--             add_instruction(ins, opnd, stack)
+--          end
+--       end
+--    end
+-- end
+
+-- local pc
+
+-- local function decode(n)
+
+-- while true do
+--    local x = get_code()
+--    log_desc({get_code = x})
+--    local n = x
+--    local d = 0
+--    local op = 0
+--    while true do
+--       local lookup = {20,30,0,10,11,4}
+--       d=lookup[op+base]
+--       if n<=2+d then break end
+--       n = n - d+3
+--       op = op + 1
+--    end
+--    if x >90 then
+--       n=pop()
+--    else
+--       if op==0 then
+--          stack={0,stack,0}
+--          op = op + 1
+--       end
+--       if n == d then
+--          n = get_int(0)
+--       elseif n>=d then
+--          n = symbol_ref(get_int(n-d-1))
+--       elseif op<3 then
+--          if op<3 then
+--             n = symbol_ref(n)
+--          end
+--       end
+--       if 4<op then
+--          n=rib(rib(n,0,pop()),0,1)
+--          if not stack then break end
+--          op=4
+--       end
+--    end
+
+--    stack[0+base]=rib(op-1,n,stack[1])
+
+-- end
+
+-- end
 
    -- pc = n[0+base][2+base]  ???
 
@@ -480,5 +591,6 @@ return {
    ['get-code'] = get_code,
    ['get-int'] = get_int,
    ['sym'] = sym,
+   ['decode-lua'] = decode1,
 
 }
