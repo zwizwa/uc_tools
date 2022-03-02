@@ -142,6 +142,16 @@ end
 rt['integer->char'] = function(char)
    return char
 end
+rt['list->string'] = function(lst)
+   local arr = {}
+   for el in se.elements(lst) do
+      table.insert(arr, string.char(el))
+   end
+   return table.concat(arr)
+end
+rt['string->symbol'] = function(str)
+   return str
+end
 rt['char?'] = function(char)
    return type(char) == 'number'
 end

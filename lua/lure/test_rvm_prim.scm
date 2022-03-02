@@ -174,12 +174,8 @@
 ;;       main-proc)))
 
 
-(define (trace-instruction name opnd stack)
-  ;; (log-se-n (vector name opnd stack))
-  ;; (log-se-n name)
-  0)
-
 (define (run1 pc stack)
+  (define count 0)
 
   (let run ((pc pc) (stack stack))
 
@@ -198,6 +194,8 @@
   (let ((instr (_field0 pc))
         (opnd (_field1 pc))
         (next (_field2 pc)))
+    (set! count (+ count 1))
+    ;; (log-se-n (list count instr))
 
     (case instr
 
@@ -229,6 +227,7 @@
 
              ;; calling a primitive
              (let ((stack ((vector-ref primitives code) stack)))
+               ;; (log-se-n (list 'prim code))
                (run (if (_rib? next) ;; non-tail call?
                         next
                         (let ((cont (get-cont stack)))
@@ -313,11 +312,16 @@
                    (write-char (integer->char x))
                    x))))
 
+;; This doesn't work. API is different.
 ;; (vector-set! primitives 0 (vector-ref primitives-lua 0))
 
-;; (let ((x (decode-lua)))
-;;   ;; (desc x)
-;;   (run1 (_field2 (_field0 x)) ;; instruction stream of main procedure
-;;         (_rib 0 0 (_rib 5 0 0)))) ;; primordial continuation = halt
 
-(run-lua)
+(define (run)
+  (let ((x (decode-lua)))
+    ;; (desc x)
+    (run1 (_field2 (_field0 x)) ;; instruction stream of main procedure
+          (_rib 0 0 (_rib 5 0 0)))) ;; primordial continuation = halt
+  )
+
+(run)
+;; (run-lua)

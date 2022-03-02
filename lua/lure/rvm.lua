@@ -25,25 +25,32 @@ local function getchar()
 end
 
 -- -- debug = False #debug#
-local debug = false  --debug--
+local debug = true  --debug--
 
--- local function chars2str(s) if is==NIL then return "" else return chr(s[0+base]) .. chars2str(s[1+base]) end --debug--
--- local function sym2str(s) return chars2str(s[1+base][0+base]) end --debug--
+local function chars2str(s) if is==NIL then return "" else return chr(s[0+base]) .. chars2str(s[1+base]) end end --debug--
+local function sym2str(s) return chars2str(s[1+base][0+base]) end --debug--
+local function str(o) return "" .. o end --debug--
 
--- local function show_opnd(o)        --debug--
---    if is_rib(o) then               --debug--
---       return 'sym ' .. sym2str(o)  --debug--
---    else                            --debug--
---       return 'int ' .. str(o)      --debug--
---    end
--- end
+local function is_rib(x)  return type(x) == 'table' and x.class == 'rib' end  -- FIXME
 
 
--- def show_stack(): #debug#
---  s = stack #debug#
---  r = [] #debug#
---  while not s[2]: r.append(s[0]); s=s[1] #debug#
---  print(r) #debug#
+local function show_opnd(o)        --debug--
+   if is_rib(o) then               --debug--
+      return 'sym ' .. sym2str(o)  --debug--
+   else                            --debug--
+      return 'int ' .. str(o)      --debug--
+   end
+end
+
+-- stack=0
+local stack=0
+
+local function show_stack() --debug--
+   -- local s = stack --debug--
+   -- local r = {} -- debug --
+   -- while is_rib(s[2+base]) do table.insert(r, s[0+base]); s = s[1+base]; end --debug--
+   -- log_desc(r) --debug-
+end
 
 -- pos=-1
 -- def get_byte():
@@ -65,6 +72,9 @@ end
 --TRUE=[0,0,5]
 --NIL=[0,0,5]
 local function rib(a,b,c)
+   assert(a)
+   assert(b)
+   assert(c)
    return {
       class = 'rib', -- FIXME: bootstrap
       [1]=a,[2]=b,[3]=c
@@ -79,10 +89,7 @@ local NIL=rib(0,0,5)
 --to_bool=lambda x:TRUE if x else FALSE
 --is_rib=lambda x:type(x) is list
 local function to_bool(x) if x then return TRUE else return FALSE end end
-local function is_rib(x)  return type(x) == 'table' end
 
--- stack=0
-local stack=0
 
 --def push(x):
 -- global stack
@@ -99,6 +106,7 @@ end
 local function pop(x)
    local x = stack[0+base]
    stack = stack[1+base]
+   assert(x)
    return x
 end
 
@@ -257,13 +265,13 @@ local function build_symtbl()
       end
    end
 
-   symtbl={{0,{accum,n,3},2},symtbl,0}
+   symtbl=rib(rib(0,rib(accum,n,3),2),symtbl,0)
 
    return symtbl
 end
 
 local function car(p) return p[1] end
--- local function cdr(p) return p[2] end
+local function cdr(p) return p[2] end
 -- local function cons(a,d) return rib(a,d,0) end -- pair-type
 -- local function set_car(p,v) p[1] = v end
 
@@ -326,6 +334,82 @@ end
 
 -- stack=[0,0,[5,0,0]] # primordial continuation (executes halt instr.)
 
+local rt = require('lure.slc_runtime')
+
+local pair_type = 0
+local procedure_type = 1
+local symbol_type = 2
+local string_type = 3
+local vector_type = 4
+local singleton_type = 5
+
+local se = require('lure.se')
+function convert(obj)
+   if obj == FALSE then
+      return false
+   elseif obj == TRUE then
+      return true
+   elseif obj == NIL then
+      return se.empty
+   elseif not is_rib(obj) then
+      -- log_desc({obj=obj})
+      return obj
+   else
+      local typ = obj[2+base]
+      -- log_desc({typ=typ})
+      if typ == pair_type then
+         -- return '#<pair>'
+         return se.cons(convert(car(obj)), convert(cdr(obj)))
+      elseif typ == procedure_type then
+         return "<procedure>"
+      elseif typ == symbol_type then
+         -- return "<symbol>"
+         -- return rt['string->symbol'](convert(obj[1+base]))
+         return convert(obj[1+base])
+      elseif typ == string_type then
+         return rt['list->string'](se.map(rt['integer->char'],convert(obj[0+base])))
+         -- return convert(obj[0+base])
+      elseif typ == vector_type then
+         return se.list('vector', convert(obj[0+base]))
+      else
+         return "<unknown>"
+      end
+   end
+end
+
+local function trace_instruction(name, opnd, stack)
+   -- if true then return end
+
+
+   function show_stack(stack)
+
+   -- (define (show-stack stack)
+   --   (if (_pair? stack)
+   --       (cons (convert (_car stack))
+   --             (show-stack (_cdr stack)))
+   --       (if (eqv? 0 stack)
+   --           (list)
+   --           (list 'stack: (show-stack (_field0 stack))
+   --                 'pc: (convert (_field2 stack))))))
+      return ""
+   end
+
+
+   log(": ")
+   log(name)
+   log(",")
+   --if opnd then -- FIXME, if?
+      log_w(se.iolist(convert(opnd)))
+      log(",")
+   --end
+   log(show_stack(stack))
+   log("\n")
+
+end
+
+
+
+
 local function symbol_ref(n)
    return list_tail(symtbl,n)[0+base]
 end
@@ -357,6 +441,7 @@ while true do
   elseif op<3 then
      n = symbol_ref(n)
   end
+  -- log_se_n(convert(n))
   if 4<op then
    n=rib(rib(n,0,pop()),0,1)
    if not is_rib(stack) then
@@ -491,14 +576,15 @@ end
 local get_opnd = function(o)
    if is_rib(o) then
       return o
-   else return
-      list_tail(stack,o)
+   else
+      return list_tail(stack,o)
    end
 end
 
 local function get_cont()
+   log_desc({'get_cont'})
    local s = stack
-   while not s[2+base] do
+   while not is_rib(s[2+base]) do
       s = s[1+base]
    end
    return s
@@ -527,6 +613,7 @@ end
 
 -- pc = n[0+base][2+base]  ???
 
+
 local function run()
    local count = 0
    local n = decode()
@@ -537,7 +624,7 @@ local function run()
       count = count + 1
       local o=pc[1+base]
       local i=pc[0+base]
-      log_desc({i=i, count=count})
+      log_desc({count,i})
       if i<1 then -- jump/call
          -- if debug then
          --    if is_rib(pc[2+base]) then
@@ -551,8 +638,8 @@ local function run()
          o=get_opnd(o)[0+base]
          c=o[0+base]
          if is_rib(c) then
-            c2=rib(0,o,0)
-            s2=c2
+            local c2=rib(0,o,0)
+            local s2=c2
             nargs=c[0+base]
             while nargs > 0 do
                s2=rib(pop(),s2,0)
@@ -569,7 +656,7 @@ local function run()
             stack=s2
 
          else
-            log_desc({prim=c})
+            log_desc({'prim',c})
             primitives[c+base]()
             if is_rib(pc[2+base]) then -- call
                c=pc
@@ -592,7 +679,7 @@ local function run()
          pc=pc[2+base]
 
       elseif i<4 then -- const
-         --if debug: print("--- const " + str(o)); show_stack() #debug#
+         if debug then log("--- const " .. str(o) .. "\n"); show_stack() end --debug--
          push(o)
          pc=pc[2+base]
 
@@ -649,5 +736,6 @@ return {
    ['sym'] = sym,
    ['decode-lua'] = decode,
    ['run-lua'] = run,
+   ['trace-instruction'] = trace_instruction,
 
 }
