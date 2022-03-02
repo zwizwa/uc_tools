@@ -322,7 +322,7 @@ local function symbol_ref(n)
    return list_tail(symtbl,n)[0+base]
 end
 
-function decode1()
+function decode_loop()
 while true do
  local x=get_code()
  -- log_desc({get_code=x})
@@ -362,7 +362,7 @@ end
 
 end
 
--- function decode()
+-- function decode1()
 --    local stack = 0
 --    build_symtbl()
 
@@ -478,8 +478,6 @@ end
 
 -- end
 
-   -- pc = n[0+base][2+base]  ???
-
 
 
 local get_opnd = function(o)
@@ -499,15 +497,27 @@ local function set_global(val)
    symtbl=symtbl[1+base]
 end
 
-local function init()
 
-   set_global(rib(0,symtbl,1)) -- primitive 0
+
+local function decode()
+   build_symtbl()
+   local main_proc = decode_loop()
+
+   set_global(rib(0,symtbl,1)) -- procedure type, primitive 0
    set_global(FALSE)
    set_global(TRUE)
    set_global(NIL)
 
-   stack=rib(0,0,rib(5,0,0)) -- primordial continuation (executes halt instr.)
+   return main_proc
 end
+
+-- stack=rib(0,0,rib(5,0,0)) -- primordial continuation (executes halt instr.)
+
+-- pc = n[0+base][2+base]  ???
+
+
+   
+
 
 
 -- while 1:
@@ -591,6 +601,6 @@ return {
    ['get-code'] = get_code,
    ['get-int'] = get_int,
    ['sym'] = sym,
-   ['decode-lua'] = decode1,
+   ['decode-lua'] = decode,
 
 }

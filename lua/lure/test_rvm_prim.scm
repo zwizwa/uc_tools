@@ -77,101 +77,101 @@
 ;;     x))
 
 
-(define (decode)
+;; (define (decode)
 
-; (define eb/2 46) ;; half of encoding base (92)
+;; ; (define eb/2 46) ;; half of encoding base (92)
 
 
-;  (define (get-int n)
-;    (let ((x (get-code))
-;          (y (* n eb/2)))
-;      (if (< x eb/2)
-;          (+ y x)
-;          (get-int (+ y (- x eb/2))))))
+;; ;  (define (get-int n)
+;; ;    (let ((x (get-code))
+;; ;          (y (* n eb/2)))
+;; ;      (if (< x eb/2)
+;; ;          (+ y x)
+;; ;          (get-int (+ y (- x eb/2))))))
 
-  ;; (define (build-symtbl)
+;;   ;; (define (build-symtbl)
 
-  ;;   (define (add-symbol chars symtbl)
-  ;;     ;; (log-se-n chars)
-  ;;     (_cons (_string->uninterned-symbol (_list->string chars))
-  ;;            symtbl))
+;;   ;;   (define (add-symbol chars symtbl)
+;;   ;;     ;; (log-se-n chars)
+;;   ;;     (_cons (_string->uninterned-symbol (_list->string chars))
+;;   ;;            symtbl))
 
-  ;;   (let loop1 ((n (get-int 0)) (symtbl _nil))
-  ;;     (if (< 0 n)
-  ;;         (loop1 (- n 1) (add-symbol _nil symtbl))
-  ;;         (let loop2 ((symtbl symtbl))
-  ;;           (let loop3 ((chars _nil))
-  ;;             (let ((x (get-byte)))
-  ;;               (if (= x 44) ;; #\, separates symbols
-  ;;                   (loop2 (add-symbol chars symtbl))
-  ;;                   (if (= x 59) ;; #\; terminates symbol list
-  ;;                       (add-symbol chars symtbl)
-  ;;                       (loop3 (_cons x chars))))))))))
+;;   ;;   (let loop1 ((n (get-int 0)) (symtbl _nil))
+;;   ;;     (if (< 0 n)
+;;   ;;         (loop1 (- n 1) (add-symbol _nil symtbl))
+;;   ;;         (let loop2 ((symtbl symtbl))
+;;   ;;           (let loop3 ((chars _nil))
+;;   ;;             (let ((x (get-byte)))
+;;   ;;               (if (= x 44) ;; #\, separates symbols
+;;   ;;                   (loop2 (add-symbol chars symtbl))
+;;   ;;                   (if (= x 59) ;; #\; terminates symbol list
+;;   ;;                       (add-symbol chars symtbl)
+;;   ;;                       (loop3 (_cons x chars))))))))))
 
-  (let ((symtbl (build-symtbl-lua)))
+;;   (let ((symtbl (build-symtbl-lua)))
 
-    (define (decode-loop stack)
+;; ;;     (define (decode-loop stack)
 
-;      (define (sym n)
-;        (_car (_list-tail symtbl n)))
+;; ;; ;      (define (sym n)
+;; ;; ;        (_car (_list-tail symtbl n)))
 
-      (define (add-instruction op opnd stack)
-;;        (pp (list (vector-ref '#(jump/call set get const if) op) opnd))
-        (_set-car! stack (_rib op opnd (_car stack)))
-        (decode-loop stack))
+;; ;;       (define (add-instruction op opnd stack)
+;; ;; ;;        (pp (list (vector-ref '#(jump/call set get const if) op) opnd))
+;; ;;         (_set-car! stack (_rib op opnd (_car stack)))
+;; ;;         (decode-loop stack))
 
-      (let ((x (get-code)))
-        (log-se-n (list 'get-code x))
-        (let loop ((op 0) (n x))
-          (let ((d (vector-ref (vector 20 30 0 10 11 4) op)))
-            (if (< (+ 2 d) n)
-                (loop (+ op 1) (- n (+ d 3)))
-                (if (< 90 x)
-                    (add-instruction 4 ;; if
-                                     (_car stack)
-                                     (_cdr stack))
-                    (let ((stack (if (= op 0) (_cons 0 stack) stack))
-                          (opnd (if (< n d)
-                                    (if (< op 3)
-                                        (sym n)
-                                        n)
-                                    (if (= n d)
-                                        (get-int 0)
-                                        (sym (get-int (- (- n d) 1)))))))
-                      (if (< 4 op)
-                          (let ((proc (_rib
-                                       (_rib opnd 0 (_car stack))
-                                       _nil
-                                       procedure-type))
-                                (stack (_cdr stack)))
-                            (if (_rib? stack)
-                                (add-instruction 3 ;; const-proc
-                                                 proc
-                                                 stack)
-                                proc))
-                          (add-instruction (if (< 0 op) (- op 1) 0)
-                                           opnd
-                                           stack)))))))))
+;; ;;       (let ((x (get-code)))
+;; ;;         (log-se-n (list 'get-code x))
+;; ;;         (let loop ((op 0) (n x))
+;; ;;           (let ((d (vector-ref (vector 20 30 0 10 11 4) op)))
+;; ;;             (if (< (+ 2 d) n)
+;; ;;                 (loop (+ op 1) (- n (+ d 3)))
+;; ;;                 (if (< 90 x)
+;; ;;                     (add-instruction 4 ;; if
+;; ;;                                      (_car stack)
+;; ;;                                      (_cdr stack))
+;; ;;                     (let ((stack (if (= op 0) (_cons 0 stack) stack))
+;; ;;                           (opnd (if (< n d)
+;; ;;                                     (if (< op 3)
+;; ;;                                         (sym n)
+;; ;;                                         n)
+;; ;;                                     (if (= n d)
+;; ;;                                         (get-int 0)
+;; ;;                                         (sym (get-int (- (- n d) 1)))))))
+;; ;;                       (if (< 4 op)
+;; ;;                           (let ((proc (_rib
+;; ;;                                        (_rib opnd 0 (_car stack))
+;; ;;                                        _nil
+;; ;;                                        procedure-type))
+;; ;;                                 (stack (_cdr stack)))
+;; ;;                             (if (_rib? stack)
+;; ;;                                 (add-instruction 3 ;; const-proc
+;; ;;                                                  proc
+;; ;;                                                  stack)
+;; ;;                                 proc))
+;; ;;                           (add-instruction (if (< 0 op) (- op 1) 0)
+;; ;;                                            opnd
+;; ;;                                            stack)))))))))
 
-    (let ((main-proc
-           ;; (decode-loop 0)
-           (decode-lua)
-           ))
+;;     (let ((main-proc
+;;            ;; (decode-loop 0)
+;;            (decode-lua)
+;;            ))
 
-      ;; set predefined globals (always 4 first in the symbol table)
+;;       ;; set predefined globals (always 4 first in the symbol table)
 
-      (define (set-global val)
-        (_field0-set! (_car symtbl) val)
-        (set! symtbl (_cdr symtbl)))
-;;(pp (list 'pos= pos))
-;;(pp (list 'symtbl= (convert symtbl)))
+;;       (define (set-global val)
+;;         (_field0-set! (_car symtbl) val)
+;;         (set! symtbl (_cdr symtbl)))
+;; ;;(pp (list 'pos= pos))
+;; ;;(pp (list 'symtbl= (convert symtbl)))
 
-      (set-global (_rib 0 symtbl procedure-type)) ;; rib  = primitive 0
-      (set-global _false) ;; false  = #f
-      (set-global _true)  ;; true   = #t
-      (set-global _nil)   ;; nil    = ()
+;;       (set-global (_rib 0 symtbl procedure-type)) ;; rib  = primitive 0
+;;       (set-global _false) ;; false  = #f
+;;       (set-global _true)  ;; true   = #t
+;;       (set-global _nil)   ;; nil    = ()
 
-      main-proc)))
+;;       main-proc)))
 
 
 (define (trace-instruction name opnd stack)
@@ -315,7 +315,7 @@
 
 ;; (vector-set! primitives 0 (vector-ref primitives-lua 0))
 
-(let ((x (decode)))
+(let ((x (decode-lua)))
   ;; (desc x)
   (run1 (_field2 (_field0 x)) ;; instruction stream of main procedure
         (_rib 0 0 (_rib 5 0 0)))) ;; primordial continuation = halt
