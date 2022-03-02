@@ -31,7 +31,8 @@ local function chars2str(s) if is==NIL then return "" else return chr(s[0+base])
 local function sym2str(s) return chars2str(s[1+base][0+base]) end --debug--
 local function str(o) return "" .. o end --debug--
 
-local function is_rib(x)  return type(x) == 'table' and x.class == 'rib' end  -- FIXME
+-- local function is_rib(x)  return type(x) == 'table' and x.class == 'rib' end  -- FIXME
+local function is_rib(x)  return type(x) == 'table' end  -- FIXME
 
 local pair_type = 0
 local procedure_type = 1
@@ -102,7 +103,13 @@ local NIL=rib(0,0,5)
 
 --to_bool=lambda x:TRUE if x else FALSE
 --is_rib=lambda x:type(x) is list
-local function to_bool(x) if x then return TRUE else return FALSE end end
+local function to_bool(x)
+   if x then
+      return TRUE
+   else
+      return FALSE
+   end
+end
 
 
 --def push(x):
@@ -117,7 +124,7 @@ end
 -- x=stack[0]
 -- stack=stack[1]
 -- return x
-local function pop(x)
+local function pop()
    local x = stack[0+base]
    stack = stack[1+base]
    assert(x)
@@ -151,12 +158,12 @@ local primitives = {
    prim2(f0s), -- 9
    prim2(f1s), -- 10
    prim2(f2s), -- 11
-   prim2(function(x,y) return to_bool(y == x) end), -- 12
+   prim2(function(x,y) return to_bool(x == y) end), -- 12
    prim2(function(x,y) return to_bool(x<y) end), -- 13
    prim2(function(x,y) return x + y end), -- 14
    prim2(function(x,y) return x - y end), -- 15
    prim2(function(x,y) return x * y end), -- 16
-   prim2(function(x,y) return x / y end),  -- 17  -- FIXME
+   prim2(function(x,y) return math.floor(x / y) end),  -- 17  -- FIXME
    getchar, -- 18
    prim1(putchar) -- 19
 }
@@ -671,7 +678,7 @@ local function run()
          else
             index = 1
          end
-         pc=pc[index+1]
+         pc=pc[index+base]
 
       else -- halt
          break
