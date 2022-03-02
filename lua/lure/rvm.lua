@@ -24,12 +24,20 @@ local function getchar()
    push(io.stdin:read(1):byte(base) or -1)
 end
 
--- debug = False #debug#
-local debug = false
+-- -- debug = False #debug#
+local debug = false  --debug--
 
--- sym2str = lambda s:chars2str(s[1][0]) #debug#
--- chars2str = lambda s:"" if s is NIL else chr(s[0])+chars2str(s[1]) #debug#
--- show_opnd = lambda o:"sym "+sym2str(o) if is_rib(o) else "int "+str(o) #debug#
+-- local function chars2str(s) if is==NIL then return "" else return chr(s[0+base]) .. chars2str(s[1+base]) end --debug--
+-- local function sym2str(s) return chars2str(s[1+base][0+base]) end --debug--
+
+-- local function show_opnd(o)        --debug--
+--    if is_rib(o) then               --debug--
+--       return 'sym ' .. sym2str(o)  --debug--
+--    else                            --debug--
+--       return 'int ' .. str(o)      --debug--
+--    end
+-- end
+
 
 -- def show_stack(): #debug#
 --  s = stack #debug#
@@ -117,7 +125,7 @@ local function f2s(y,x) x[2+base]=y; return y; end
 
 local primitives = {
    -- prim3(lambda z,y,x:[x,y,z]),
-   rib,
+   prim3(rib),
    -- prim1(lambda x:x),
    prim1(function(x) return x end),
    pop,
@@ -481,7 +489,11 @@ end
 
 
 local get_opnd = function(o)
-   if is_rib(o) then return o else return list_tail(stack,o) end
+   if is_rib(o) then
+      return o
+   else return
+      list_tail(stack,o)
+   end
 end
 
 local function get_cont()
@@ -515,57 +527,91 @@ end
 
 -- pc = n[0+base][2+base]  ???
 
+local function run()
+   local count = 0
+   local n = decode()
+   local pc = n[0+base][2+base]
+   stack=rib(0,0,rib(5,0,0)) -- primordial continuation (executes halt instr.)
 
-   
+   while true do
+      count = count + 1
+      local o=pc[1+base]
+      local i=pc[0+base]
+      log_desc({i=i, count=count})
+      if i<1 then -- jump/call
+         -- if debug then
+         --    if is_rib(pc[2+base]) then
+         --       log("--- call ")
+         --    else
+         --       log("--- jump ")
+         --    end
+         --    log(show_opnd(o))
+         --    -- show_stack
+         -- end
+         o=get_opnd(o)[0+base]
+         c=o[0+base]
+         if is_rib(c) then
+            c2=rib(0,o,0)
+            s2=c2
+            nargs=c[0+base]
+            while nargs > 0 do
+               s2=rib(pop(),s2,0)
+               nargs=nargs-1
+            end
+            if is_rib(pc[2+base]) then -- call
+               c2[0+base]=stack
+               c2[2+base]=pc[2+base]
+            else -- jump
+               k=get_cont()
+               c2[0+base]=k[0+base]
+               c2[2+base]=k[2+base]
+            end
+            stack=s2
 
+         else
+            log_desc({prim=c})
+            primitives[c+base]()
+            if is_rib(pc[2+base]) then -- call
+               c=pc
+            else --  jump
+               c=get_cont()
+               stack[1+base]=c[0+base]
+            end
+         end
+         pc=c[2+base]
 
+      elseif i<2 then -- set
+         --if debug: print("--- set " + show_opnd(o)); show_stack() #debug#
+         x=pop()
+         get_opnd(o)[0+base]=x
+         pc=pc[2+base]
 
--- while 1:
---  o=pc[1]
---  i=pc[0]
---  if i<1: # jump/call
---   if debug: print(("--- call " if is_rib(pc[2]) else "--- jump ") + show_opnd(o)); show_stack() #debug#
---   o=get_opnd(o)[0]
---   c=o[0]
---   if is_rib(c):
---    c2=[0,o,0]
---    s2=c2
---    nargs=c[0]
---    while nargs:s2=[pop(),s2,0];nargs-=1
---    if is_rib(pc[2]): # call
---     c2[0]=stack
---     c2[2]=pc[2]
---    else: # jump
---     k=get_cont()
---     c2[0]=k[0]
---     c2[2]=k[2]
---    stack=s2
---   else:
---    primitives[c]()
---    if is_rib(pc[2]): # call
---     c=pc
---    else: # jump
---     c=get_cont()
---     stack[1]=c[0]
---   pc=c[2]
---  elif i<2: # set
---   if debug: print("--- set " + show_opnd(o)); show_stack() #debug#
---   x=pop()
---   get_opnd(o)[0]=x
---   pc=pc[2]
---  elif i<3: # get
---   if debug: print("--- get " + show_opnd(o)); show_stack() #debug#
---   push(get_opnd(o)[0])
---   pc=pc[2]
---  elif i<4: # const
---   if debug: print("--- const " + str(o)); show_stack() #debug#
---   push(o)
---   pc=pc[2]
---  elif i<5: # if
---   if debug: print("--- if"); show_stack() #debug#
---   pc=pc[2 if pop()is FALSE else 1]
---  else: # halt
---   break
+      elseif i<3 then -- get
+         --if debug: print("--- get " + show_opnd(o)); show_stack() #debug#
+         push(get_opnd(o)[0+base])
+         pc=pc[2+base]
+
+      elseif i<4 then -- const
+         --if debug: print("--- const " + str(o)); show_stack() #debug#
+         push(o)
+         pc=pc[2+base]
+
+      elseif i<5 then -- if
+         --if debug: print("--- if"); show_stack() #debug#
+         local index
+         if pop() == FALSE then
+            index = 2
+         else
+            index = 1
+         end
+         pc=pc[index+1]
+
+      else -- halt
+         break
+      end
+   end
+
+end
 
 local function get_byte_or_read_char()
    if pos < #input then
@@ -602,5 +648,6 @@ return {
    ['get-int'] = get_int,
    ['sym'] = sym,
    ['decode-lua'] = decode,
+   ['run-lua'] = run,
 
 }

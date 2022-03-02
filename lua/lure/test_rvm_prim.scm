@@ -315,7 +315,9 @@
 
 ;; (vector-set! primitives 0 (vector-ref primitives-lua 0))
 
-(let ((x (decode-lua)))
-  ;; (desc x)
-  (run1 (_field2 (_field0 x)) ;; instruction stream of main procedure
-        (_rib 0 0 (_rib 5 0 0)))) ;; primordial continuation = halt
+;; (let ((x (decode-lua)))
+;;   ;; (desc x)
+;;   (run1 (_field2 (_field0 x)) ;; instruction stream of main procedure
+;;         (_rib 0 0 (_rib 5 0 0)))) ;; primordial continuation = halt
+
+(run-lua)
