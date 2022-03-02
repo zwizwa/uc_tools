@@ -1,33 +1,24 @@
 input = "Detouq,htgnel-gnirts,fer-gnirts,fi,!rdc-tes,tsil>-rotcev,!tes-gnirts,enifed,!tes-rotcev,?rotcev,=,cc/llac,!tes,adbmal,rddc,gnirts-ekam,fer-rotcev,htgnel-rotcev,rotcev-ekam,lobmys>-gnirts,gnirts>-lobmys,?erudecorp,!rac-tes,tneitouq,enilwen,ton,lave,fer-tsil,rdddac,*,?tcejbo-foe,?lobmys,lper,?gnirts,rotcev>-tsil,+,etirw,rahc-keep,yalpsid,tsil>-gnirts,daer,gnirts>-tsil,?lauqe,,,,?llun,htgnel,,,,,rddac,rdac,-,,,<,,rac,?riap,,rahc-daer,rdc,,snoc,,?vqe,,,,,;8K!K8K@Z%@YGZ#^'i$~YM^YC@PvCvR3y]#7#YS*^z!S*9Bi&:EiS/ai&kkz!S/:kw'k]@'_*Z@aC_G^~F^{!>'^8>YHlbC`^'`~?_G_~F_|]D9C`^Uka_CaG`.ZDdCbAai$G`^~F_|!S+#`kn3^~i$#`kn3^~i$#`kn3^~i$#`kn3^~RJ^~?w)B^~?kH^~R^z]K#YS+a_l{]C#a_k#k_k~?iS/_{!.#b`n9DAd`Ca_#ZCex>#d~TbZBi&:EiS/NeZ@AAfi$i$akS_nM`~?x0^.:EgYOecEfNdboMa_~?x:^.ZKdUlbMbNa_~O?x6_9DAd`Ca_#ZCex>#d~TbZBi&:EiS/NeZ@AAfi$i$akS_nM`~?x0^.:EgYOecEfNdboMa_~?x:^.ZKdUlbMbNa_~O^~^?x1^#cMan~?x=^G_~F_#bUk``m~YL_|!94_@K^{]%4uy]?'i$9?C_@K^G^~F^z]I'i$'i$9IC^@YGG^~F^@KvC~F^z!E8EYS(^89vS7vF~Z(^9?YD^~YJ^8EZ)^~YL^4vL@ZIC^@YGG^@KvK~F^89vLvK~T^89vS;vF~?i%^89vS-vF~Z$^z!G8E^4vE@Z?i%YD^@KvE~YJ^z]O9O8@~?u^'^~Ik^Dy!@8@@D'^9O~?vR0^~I_vC'iS0~YM^YFy!?*V^@D'i&~OOIvD`*V^@D'i&~OO^~^?vL_*V^@D'i&~O^~^?vK^YFy]M*ZM^YC'i&@D~?vL^Wy!C9*`'^~^^YS%^YBAV^@D*Ai&YCx=@D~?vJ^8IYC'i%@D~?vS;^'i$@D~?vS-^YF@D~?vF^9M@D~?vK^'^~Ik^Wy!F'^!S-^Dy]H'^!S-iS.'^~?iS0^!S-^z!-9H^9HYS#~?iS.^'^~?iS0^iS-y!S-iS.!M(iS0^z]27%Z>'_@YS&Jc^@YS'Hc^BBZ>i$zBBZ>i$z]B#l`^{](Ql]+8IZLk^z]59Nb`H^|]-8P`H^{],i+]8i1!I#oS_^z]4Qo].8BZLvC^z]79Nb`H^|];8P`H^{]<i+!Di1!B#nS_^z!JQn]F'_'i$'i$9FLLvR%`YNbuC_~IvR/^~I_vR$G^~F^{]G9Fk^'i$~T^z!S%'i$5_k~^ZG^9GC^~?vPG^'i$~T^YD^z]E'^9E_`~IakAb^YHLYNu``vR%Z&u^{!S(8BZEi&^8BAZEi&L`kvP~Ik^z]3i(@YS)ki#!S,Bi#]P'^!S,AiS,^YS$^9PBa_'^~YA`B^H_~F_{]*9PiS,^z])i+!S$#m_i$z!LQm]J'`9JAca`Ll^~I_k|]L9Ji&`^{]A'^9ALl`C^~I`k{]N9'aZA`^|!P0ZA`^{!<'k8HSC_l~F^z!=(i&^z!O87B^z!76B^z]/+B^z!61B^z]9iS)]'iS'!,i+!0i1!*#k`^{!/Qk!A'i$'i$'i$'i$8AHaH_~YABaB_~YAJaJ_~R`'i$~?pJ_~R_'^~^?`^{]$(i$^z!:9>'i$(bJ^~R^zz!S.Lmk!S0Llk!':lkl!):lkm!8:lkn]>:lko!;:lkp!1:lkq!+:lkr!3:lks!S':lkt!S):lku!S&:lkv.!(:lkv/!2:lkv0!H:lkv1!5:lkv2!N:lkv3]&:lkv4!S#:lkv5!4:lkv6y"
 
 
-
--- import sys
-
--- stdo=sys.stdout
 local stdo = io.stdout
 
--- putchar=lambda c:[stdo.write(chr(c)),stdo.flush(),c][2]
 local function putchar(c) stdo:write(string.char(c)); stdo:flush(); return c end
 
 local push
 
--- def getchar():
---  c=sys.stdin.read(1)
---  push(ord(c) if len(c) else -1)
 local function getchar()
    push(io.stdin:read(1):byte(1) or -1)
 end
 
--- -- debug = False #debug#
 local debug = false  --debug--
 
 local function chars2str(s) if is==NIL then return "" else return chr(s[1]) .. chars2str(s[2]) end end --debug--
 local function sym2str(s) return chars2str(s[2][1]) end --debug--
 local function str(o) return "" .. o end --debug--
 
--- local function is_rib(x)  return type(x) == 'table' and x.class == 'rib' end  -- FIXME
-local function is_rib(x)  return type(x) == 'table' end  -- FIXME
+local function is_rib(x)  return type(x) == 'table' and x.class == 'rib' end  -- FIXME
+-- local function is_rib(x)  return type(x) == 'table' end  -- FIXME
 
 local pair_type = 0
 local procedure_type = 1
@@ -44,60 +35,28 @@ end
 local is_pair = instance(pair_type)
 
 
-local function show_opnd(o)        --debug--
-   if is_rib(o) then               --debug--
-      return 'sym ' .. sym2str(o)  --debug--
-   else                            --debug--
-      return 'int ' .. str(o)      --debug--
-   end
-end
-
--- stack=0
 local stack=0
 
-local function show_stack() --debug--
-   -- local s = stack --debug--
-   -- local r = {} -- debug --
-   -- while is_rib(s[3]) do table.insert(r, s[1]); s = s[2]; end --debug--
-   -- log_desc(r) --debug-
-end
-
--- pos=-1
--- def get_byte():
---  global pos
---  pos+=1
---  return ord(input[pos])
 
 local pos=0
 local function get_byte()
    pos = pos+1
    local int = input:byte(pos) or 0
-   -- log_desc({'get_byte',pos,int})
    return int
 end
 
--- VM
-
---FALSE=[0,0,5]
---TRUE=[0,0,5]
---NIL=[0,0,5]
 local function rib(a,b,c)
-   assert(a)
-   assert(b)
-   assert(c)
+   assert(a and b and c) --debug--
    return {
-      class = 'rib', -- FIXME: bootstrap
+      class = 'rib', --debug--
       [1]=a,[2]=b,[3]=c
    }
 end
-
 
 local FALSE=rib(0,0,5)
 local TRUE=rib(0,0,5)
 local NIL=rib(0,0,5)
 
---to_bool=lambda x:TRUE if x else FALSE
---is_rib=lambda x:type(x) is list
 local function to_bool(x)
    if x then
       return TRUE
@@ -106,19 +65,10 @@ local function to_bool(x)
    end
 end
 
-
---def push(x):
--- global stack
--- stack=[x,stack,0]
 push = function(x)
    stack = rib(x,stack,0)
 end
 
---def pop():
--- global stack
--- x=stack[0]
--- stack=stack[1]
--- return x
 local function pop()
    local x = stack[1]
    stack = stack[2]
@@ -164,11 +114,6 @@ local primitives = {
 }
 
 
-
---def get_code():
--- x=get_byte()-35
--- return 57 if x<0 else x
-
 local function get_code()
    local x = get_byte() - 35
    if x<0 then
@@ -177,11 +122,6 @@ local function get_code()
       return x
    end
 end
-
---def get_int(n):
--- x=get_code()
--- n*=46
--- return n+x if x<46 else get_int(n+x-46)
 
 local function get_int(n)
    local x = get_code()
@@ -193,8 +133,6 @@ local function get_int(n)
    end
 end
 
-
--- list_tail=lambda lst,i:lst if i==0 else list_tail(lst[1],i-1)
 local function list_tail(lst, i)
    if i==0 then
       return lst
@@ -203,39 +141,9 @@ local function list_tail(lst, i)
    end
 end
 
-
-
--- build the initial symbol table
-
--- symtbl=NIL
--- n=get_int(0)
--- while n>0:
---  n-=1
---  symtbl=[[0,[NIL,0,3],2],symtbl,0]
-
--- accum=NIL
--- n=0
--- while 1:
---  c=get_byte()
---  if c==44:
---   symtbl=[[0,[accum,n,3],2],symtbl,0]; accum=NIL; n=0
---  else:
---   if c==59: break
---   accum=[c,accum,0]
---   n+=1
-
--- symtbl=[[0,[accum,n,3],2],symtbl,0]
-
-
 local n -- used a couple of times below
 
 local symtbl
-
-
--- { "get_byte", 456, 59,  }
--- end build_symtbl
--- symtbl-end
--- { "get_byte", 457, 56,  }
 
 
 local function build_symtbl()
@@ -278,58 +186,6 @@ end
 
 
 
--- make_symboltbl()
-
-
-
-local function run()
-
---symtbl=[[0,[accum,n,3],2],symtbl,0]
---symbol_ref=lambda n: list_tail(symtbl,n)[0]
-
-
-end
-
--- while 1:
---  x=get_code()
---  n=x
---  d=0
---  op=0
---  while 1:
---   d=[20,30,0,10,11,4][op]
---   if n<=2+d:break
---   n-=d+3;op+=1
---  if x>90:
---   n=pop()
---  else:
---   if op==0:stack=[0,stack,0];op+=1
---   n = get_int(0)if n==d else symbol_ref(get_int(n-d-1))if n>=d else symbol_ref(n)if op<3 else n
---   if 4<op:
---    n=[[n,0,pop()],0,1]
---    if not stack:break
---    op=4
---  stack[0]=[op-1,n,stack[0]]
-
--- pc = n[0][2]
-
--- get_opnd=lambda o:(o if is_rib(o) else list_tail(stack,o))
-
--- def get_cont():
---  s=stack
---  while not s[2]:s=s[1]
---  return s
-
--- def set_global(val):
---  global symtbl
---  symtbl[0][0]=val
---  symtbl=symtbl[1]
-
--- set_global([0,symtbl,1]) # primitive 0
--- set_global(FALSE)
--- set_global(TRUE)
--- set_global(NIL)
-
--- stack=[0,0,[5,0,0]] # primordial continuation (executes halt instr.)
 
 local rt = require('lure.slc_runtime')
 
@@ -445,122 +301,6 @@ end
 
 end
 
--- function decode1()
---    local stack = 0
---    build_symtbl()
-
---    local function add_instruction(op, opnd, stack)
---       set_car(stack, rib(op, opnd, car(stack)))
---    end
-
---    while true do
---       local x = get_code()
-
---       local n = x
---       local d = 0
---       local op = 0
---       -- This part is taken from Python code.  Scheme code uses mixed
---       -- tail call loops that can't be expressed in Lua.
---       while true do
---          log_desc({op=op})
---          local t = {20,30,0,10,11,4}
---          d=t[op+1]
---          assert(d)
---          if n<=2+d then break end
---          n = n - (d+3)
---          op = op + 1
---       end
---       -- This part is transliteration of Scheme code, with non-local
---       -- return.
---       if 90 < x then
---          add_instruction(4, car(stack), cdr(stack)) -- if
---       else
---          if op == 0 then
---             stack = cons(0,stack)
---          end
---          local opnd
---          if (n < d) then
---             if op < 3 then
---                opnd = sym(n)
---                opnd = n
---             else
---                if (n == d) then
---                   opnd = get_int(0)
---                else
---                   opnd = sym(get_int(n - d - 1))
---                end
---             end
---          end
---          if 4 < op then
---             local proc = rib(rib(opnd,0,car(stack)),
---                              NIL,1) -- procedure-type
---             stack = cdr(stack)
---             if is_rib(stack) then
---                add_instruction(3, -- const-proc
---                                proc,
---                                stack)
---             else
---                return proc
---             end
---          else
---             local ins
---             if 0 < op then
---                ins = op - 1
---             else
---                ins = 0
---             end
---             add_instruction(ins, opnd, stack)
---          end
---       end
---    end
--- end
-
--- local pc
-
--- local function decode(n)
-
--- while true do
---    local x = get_code()
---    log_desc({get_code = x})
---    local n = x
---    local d = 0
---    local op = 0
---    while true do
---       local lookup = {20,30,0,10,11,4}
---       d=lookup[op+1]
---       if n<=2+d then break end
---       n = n - d+3
---       op = op + 1
---    end
---    if x >90 then
---       n=pop()
---    else
---       if op==0 then
---          stack={0,stack,0}
---          op = op + 1
---       end
---       if n == d then
---          n = get_int(0)
---       elseif n>=d then
---          n = symbol_ref(get_int(n-d-1))
---       elseif op<3 then
---          if op<3 then
---             n = symbol_ref(n)
---          end
---       end
---       if 4<op then
---          n=rib(rib(n,0,pop()),0,1)
---          if not stack then break end
---          op=4
---       end
---    end
-
---    stack[1]=rib(op-1,n,stack[1])
-
--- end
-
--- end
-
 
 
 local get_opnd = function(o)
@@ -598,10 +338,6 @@ local function decode()
 
    return main_proc
 end
-
--- stack=rib(0,0,rib(5,0,0)) -- primordial continuation (executes halt instr.)
-
--- pc = n[1][3]  ???
 
 
 local function run()
@@ -691,15 +427,7 @@ local function get_byte_or_read_char()
    end
 end
 
--- local function get_int(n)
---    local x = get_code()
---    local y = n * 46
---    if x < 46 then
---       return y + x
---    else
---       return get_int(y + (x - 46))
---    end
--- end
+
 
 run()
 
