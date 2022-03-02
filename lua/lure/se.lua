@@ -285,7 +285,34 @@ function se:read_atom()
    end
 end
 
-function se.iolist(expr)
+-- We assume the following: Cons pair's are "naked".  This allows
+-- usinging Lua's {,} constructor.  To distiguish these from other
+-- objects represented as tables, we require those to have .class
+-- variable defined.
+local function expr_type(e)
+   local typ = type(e)
+   if typ == 'table' then
+      if e[1] ~= nil and e[2] ~= nil then
+         return 'pair'
+      else
+         if e.class then
+            return e.class
+         else
+            log_desc(e)
+            error('bad table')
+         end
+      end
+   end
+   return typ
+end
+se.expr_type = expr_type
+local function is_pair(e)
+   return 'pair' == se.expr_type(e)
+end
+se.is_pair = is_pair
+
+
+local function iolist(expr)
    local typ = type(expr)
    if typ == 'function' then
       return '#<function>'
@@ -302,18 +329,39 @@ function se.iolist(expr)
          return {'#<',expr.class,'>'}
       end
    else
+      -- The rest, we assume this is a proper or improper list.
       local iol = {"("}
-      for el, rest in elements(expr) do
-         table.insert(iol, se.iolist(el))
-         if not is_empty(rest) then
+      local e = expr
+      if not is_empty(e) then
+         while true do
+            if not is_pair(e) then
+               log_desc(e)
+               error('iolist error')
+            end
+            table.insert(iol, iolist(car(e)))
+            e = cdr(e)
+            if is_empty(e) then break end
             table.insert(iol, " ")
+            if not is_pair(e) then
+               table.insert(iol, ". ")
+               table.insert(iol, iolist(e))
+               break
+            end
          end
       end
+
+      -- for el, rest in elements(expr) do
+      --    table.insert(iol, se.iolist(el))
+      --    if not is_empty(rest) then
+      --       table.insert(iol, " ")
+      --    end
+      -- end
+
       table.insert(iol, ")")
       return iol
    end
 end
-
+se.iolist = iolist
 
 
 -- It might be simpler to do something like se.unpack to fit better in
@@ -425,30 +473,6 @@ function se.string_to_stream(str)
       end
    end
    return obj
-end
-
--- We assume the following: Cons pair's are "naked".  This allows
--- usinging Lua's {,} constructor.  To distiguish these from other
--- objects represented as tables, we require those to have .class
--- variable defined.
-function se.expr_type(e)
-   local typ = type(e)
-   if typ == 'table' then
-      if e[1] ~= nil and e[2] ~= nil then
-         return 'pair'
-      else
-         if e.class then
-            return e.class
-         else
-            log_desc(e)
-            error('bad table')
-         end
-      end
-   end
-   return typ
-end
-function se.is_pair(e)
-   return 'pair' == se.expr_type(e)
 end
 
 function se.new(stream)

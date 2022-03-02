@@ -33,6 +33,20 @@ local function str(o) return "" .. o end --debug--
 
 local function is_rib(x)  return type(x) == 'table' and x.class == 'rib' end  -- FIXME
 
+local pair_type = 0
+local procedure_type = 1
+local symbol_type = 2
+local string_type = 3
+local vector_type = 4
+local singleton_type = 5
+
+local function instance(typ)
+   return function(x)
+      return is_rib(x) and typ == x[2+base]
+   end
+end
+local is_pair = instance(pair_type)
+
 
 local function show_opnd(o)        --debug--
    if is_rib(o) then               --debug--
@@ -336,13 +350,6 @@ end
 
 local rt = require('lure.slc_runtime')
 
-local pair_type = 0
-local procedure_type = 1
-local symbol_type = 2
-local string_type = 3
-local vector_type = 4
-local singleton_type = 5
-
 local se = require('lure.se')
 function convert(obj)
    if obj == FALSE then
@@ -382,18 +389,19 @@ local function trace_instruction(name, opnd, stack)
 
 
    function show_stack(stack)
-
-   -- (define (show-stack stack)
-   --   (if (_pair? stack)
-   --       (cons (convert (_car stack))
-   --             (show-stack (_cdr stack)))
-   --       (if (eqv? 0 stack)
-   --           (list)
-   --           (list 'stack: (show-stack (_field0 stack))
-   --                 'pc: (convert (_field2 stack))))))
-      return ""
+      if is_pair(stack) then
+         return se.cons(convert(car(stack)),
+                        show_stack(cdr(stack)))
+      else
+         if stack == 0 then
+            return se.empty
+         else
+            return se.list(
+               'stack:', show_stack(stack[0+base]),
+               'pc: ', convert(stack[2+base]))
+         end
+      end
    end
-
 
    log(": ")
    log(name)
@@ -402,7 +410,7 @@ local function trace_instruction(name, opnd, stack)
       log_w(se.iolist(convert(opnd)))
       log(",")
    --end
-   log(show_stack(stack))
+   log_w(se.iolist(show_stack(stack)))
    log("\n")
 
 end
@@ -582,7 +590,7 @@ local get_opnd = function(o)
 end
 
 local function get_cont()
-   log_desc({'get_cont'})
+   -- log_desc({'get_cont'})
    local s = stack
    while not is_rib(s[2+base]) do
       s = s[1+base]
@@ -624,17 +632,9 @@ local function run()
       count = count + 1
       local o=pc[1+base]
       local i=pc[0+base]
-      log_desc({count,i})
+      -- log_desc({count,i})
       if i<1 then -- jump/call
-         -- if debug then
-         --    if is_rib(pc[2+base]) then
-         --       log("--- call ")
-         --    else
-         --       log("--- jump ")
-         --    end
-         --    log(show_opnd(o))
-         --    -- show_stack
-         -- end
+         trace_instruction("jump/call",o,stack)
          o=get_opnd(o)[0+base]
          c=o[0+base]
          if is_rib(c) then
@@ -656,7 +656,7 @@ local function run()
             stack=s2
 
          else
-            log_desc({'prim',c})
+            -- log_desc({'prim',c})
             primitives[c+base]()
             if is_rib(pc[2+base]) then -- call
                c=pc
@@ -668,7 +668,7 @@ local function run()
          pc=c[2+base]
 
       elseif i<2 then -- set
-         --if debug: print("--- set " + show_opnd(o)); show_stack() #debug#
+         trace_instruction("set",o,stack)
          x=pop()
          get_opnd(o)[0+base]=x
          pc=pc[2+base]
@@ -679,7 +679,7 @@ local function run()
          pc=pc[2+base]
 
       elseif i<4 then -- const
-         if debug then log("--- const " .. str(o) .. "\n"); show_stack() end --debug--
+         -- if debug then log("--- const " .. str(o) .. "\n"); show_stack() end --debug--
          push(o)
          pc=pc[2+base]
 
@@ -737,5 +737,4 @@ return {
    ['decode-lua'] = decode,
    ['run-lua'] = run,
    ['trace-instruction'] = trace_instruction,
-
 }
