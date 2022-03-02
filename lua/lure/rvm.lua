@@ -255,9 +255,9 @@ local function build_symtbl()
 end
 
 local function car(p) return p[1] end
-local function cdr(p) return p[2] end
-local function cons(a,d) return rib(a,d,0) end -- pair-type
-local function set_car(p,v) p[1] = v end
+-- local function cdr(p) return p[2] end
+-- local function cons(a,d) return rib(a,d,0) end -- pair-type
+-- local function set_car(p,v) p[1] = v end
 
 local function sym(n)
    return car(list_tail(symtbl,n))
@@ -319,13 +319,13 @@ end
 -- stack=[0,0,[5,0,0]] # primordial continuation (executes halt instr.)
 
 local function symbol_ref(n)
-   return list_tail(symtbl,n)[0]
+   return list_tail(symtbl,n)[0+base]
 end
 
 function decode1()
 while true do
  local x=get_code()
- log_desc({get_code=x})
+ -- log_desc({get_code=x})
  local n=x
  local d=0
  local op=0

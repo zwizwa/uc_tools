@@ -176,7 +176,7 @@
 
 (define (trace-instruction name opnd stack)
   ;; (log-se-n (vector name opnd stack))
-  (log-se-n name)
+  ;; (log-se-n name)
   0)
 
 (define (run1 pc stack)

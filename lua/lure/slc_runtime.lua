@@ -237,6 +237,8 @@ end
 rt['false'] = false
 rt['true']  = true
 
+rt['void'] = function() end
+
 rt['mark'] = function(tag, ...)
    log_se_n({tag,a2l({...})},"MARK:")
 end
