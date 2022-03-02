@@ -343,6 +343,7 @@ local function iolist(expr)
             if is_empty(e) then break end
             table.insert(iol, " ")
             if not is_pair(e) then
+               -- Improper tail
                table.insert(iol, ". ")
                table.insert(iol, iolist(e))
                break

@@ -25,7 +25,7 @@ local function getchar()
 end
 
 -- -- debug = False #debug#
-local debug = true  --debug--
+local debug = false  --debug--
 
 local function chars2str(s) if is==NIL then return "" else return chr(s[0+base]) .. chars2str(s[1+base]) end end --debug--
 local function sym2str(s) return chars2str(s[1+base][0+base]) end --debug--
@@ -124,60 +124,41 @@ local function pop(x)
    return x
 end
 
---prim1=lambda f:lambda:push(f(pop()))
---prim2=lambda f:lambda:push(f(pop(),pop()))
---prim3=lambda f:lambda:push(f(pop(),pop(),pop()))
--- arument evaluation order is undefined in lua, vs. python left-to-right
+-- Agrument evaluation order is undefined in Lua, vs. Python left-to-right.
+-- Since we need to be explicit anyway, we use normal argument order for f,
+-- as opposed to Python RVM which has them reversed.
 local function prim1(f) return function() local a=pop(); push(f(a)) end end
-local function prim2(f) return function() local a=pop();local b=pop(); push(f(a,b)) end end
-local function prim3(f) return function() local a=pop();local b=pop(); local c=pop(); push(f(a,b,c)) end end
+local function prim2(f) return function() local b=pop();local a=pop(); push(f(a,b)) end end
+local function prim3(f) return function() local c=pop();local b=pop(); local a=pop(); push(f(a,b,c)) end end
 
-
---def arg2():x = pop();pop();push(x)
---def close():push([pop()[0],stack,1])
---def f0s(y,x):x[0]=y;return y
---def f1s(y,x):x[1]=y;return y
---def f2s(y,x):x[2]=y;return y
 
 local function arg2() local x = pop(); pop(); push(x) end
-local function close() push(rib(op()[0+base],stack,1)) end
-local function f0s(y,x) x[0+base]=y; return y; end
-local function f1s(y,x) x[1+base]=y; return y; end
-local function f2s(y,x) x[2+base]=y; return y; end
+local function close() push(rib(pop()[0+base],stack,1)) end
+local function f0s(x,y) x[0+base]=y; return y; end
+local function f1s(x,y) x[1+base]=y; return y; end
+local function f2s(x,y) x[2+base]=y; return y; end
 
 local primitives = {
-   -- prim3(lambda z,y,x:[x,y,z]),
-   prim3(rib),
-   -- prim1(lambda x:x),
-   prim1(function(x) return x end),
-   pop,
-   arg2,
-   close,
-   -- prim1(lambda x:to_bool(is_rib(x))),
-   prim1(function(x) return to_bool(is_rib(x)) end),
-   --prim1(lambda x:x[0]),
-   --prim1(lambda x:x[1]),
-   --prim1(lambda x:x[2]),
-   prim1(function(x) return x[0+base] end),
-   prim1(function(x) return x[1+base] end),
-   prim1(function(x) return x[2+base] end),
-   prim2(f0s),
-   prim2(f1s),
-   prim2(f2s),
-   --prim2(lambda y,x:to_bool(x is y if is_rib(x) or is_rib(y) else x==y)),
-   prim2(function(y,x) return y == x end), -- FIXME check this
-   -- prim2(lambda y,x:to_bool(x<y)),
-   prim2(function(y,x) return to_bool(x<y) end),
-   -- prim2(lambda y,x:x+y),
-   -- prim2(lambda y,x:x-y),
-   -- prim2(lambda y,x:x*y),
-   -- prim2(lambda y,x:x//y),
-   prim2(function(y,x) return x + y end),
-   prim2(function(y,x) return x - y end),
-   prim2(function(y,x) return x * y end),
-   prim2(function(y,x) return x / y end),  -- FIXME: integer division?
-   getchar,
-   prim1(putchar)
+   prim3(rib), -- 0
+   prim1(function(x) return x end), -- 1
+   pop, -- 2
+   arg2, -- 3
+   close, -- 4
+   prim1(function(x) return to_bool(is_rib(x)) end), -- 5
+   prim1(function(x) return x[0+base] end), -- 6
+   prim1(function(x) return x[1+base] end), -- 7
+   prim1(function(x) return x[2+base] end), -- 8
+   prim2(f0s), -- 9
+   prim2(f1s), -- 10
+   prim2(f2s), -- 11
+   prim2(function(x,y) return to_bool(y == x) end), -- 12
+   prim2(function(x,y) return to_bool(x<y) end), -- 13
+   prim2(function(x,y) return x + y end), -- 14
+   prim2(function(x,y) return x - y end), -- 15
+   prim2(function(x,y) return x * y end), -- 16
+   prim2(function(x,y) return x / y end),  -- 17  -- FIXME
+   getchar, -- 18
+   prim1(putchar) -- 19
 }
 
 
@@ -385,8 +366,7 @@ function convert(obj)
 end
 
 local function trace_instruction(name, opnd, stack)
-   -- if true then return end
-
+   if not debug then return end
 
    function show_stack(stack)
       if is_pair(stack) then
@@ -674,17 +654,17 @@ local function run()
          pc=pc[2+base]
 
       elseif i<3 then -- get
-         --if debug: print("--- get " + show_opnd(o)); show_stack() #debug#
+         trace_instruction("get",o,stack)
          push(get_opnd(o)[0+base])
          pc=pc[2+base]
 
       elseif i<4 then -- const
-         -- if debug then log("--- const " .. str(o) .. "\n"); show_stack() end --debug--
+         trace_instruction("const",o,stack)
          push(o)
          pc=pc[2+base]
 
       elseif i<5 then -- if
-         --if debug: print("--- if"); show_stack() #debug#
+         trace_instruction("if",o,stack)
          local index
          if pop() == FALSE then
             index = 2

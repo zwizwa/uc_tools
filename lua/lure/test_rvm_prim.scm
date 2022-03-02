@@ -323,5 +323,5 @@
           (_rib 0 0 (_rib 5 0 0)))) ;; primordial continuation = halt
   )
 
-(run)
-;; (run-lua)
+;; (run)
+(run-lua)
