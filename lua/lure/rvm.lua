@@ -22,8 +22,8 @@ local trace_instruction = dbg.trace_instruction --debug--
 
 local function putchar(c)
    local o=io.stdout
-   o:write(string.char(c));
-   o:flush();
+   o:write(string.char(c))
+   o:flush()
    return c
 end
 
@@ -32,7 +32,9 @@ local function push(x)
    stack = rib(x,stack,0)
 end
 local function getchar()
-   push(io.stdin:read(1):byte(1) or -1)
+   local c = io.stdin:read(1)
+   if not c then c=-1 else c=c:byte(1) end
+   push(c)
 end
 
 local pos=0
@@ -60,9 +62,27 @@ end
 -- Argument evaluation order is undefined in Lua, vs. Python left-to-right.
 -- Since we need to be explicit anyway, we use normal argument order for f,
 -- as opposed to Python RVM which has them reversed.
-local function prim1(f) return function() local a=pop(); push(f(a)) end end
-local function prim2(f) return function() local b=pop();local a=pop(); push(f(a,b)) end end
-local function prim3(f) return function() local c=pop();local b=pop(); local a=pop(); push(f(a,b,c)) end end
+local function prim1(f)
+   return function()
+      local a=pop()
+      push(f(a))
+   end
+end
+local function prim2(f)
+   return function()
+      local b=pop()
+      local a=pop()
+      push(f(a,b))
+   end
+end
+local function prim3(f)
+   return function()
+      local c=pop()
+      local b=pop()
+      local a=pop()
+      push(f(a,b,c))
+   end
+end
 
 local function arg2() local x = pop(); pop(); push(x) end
 local function close() push(rib(pop()[1],stack,1)) end
@@ -121,89 +141,85 @@ local function list_tail(lst, i)
 end
 
 local symtbl
-local function build_symtbl()
-   symtbl = NIL
-   local n = get_int(0)
-   while n>0 do
-      n = n - 1
-      symtbl = rib(rib(0,rib(NIL,0,3),2),symtbl,0)
-   end
-   local accum = NIL
-   n=0
-   while true do
-      local c = get_byte()
-      if c == 44 then
-         symtbl = rib(rib(0,rib(accum,n,3),2),symtbl,0)
-         accum = NIL
-         n = 0
-      else
-         if c == 59 then break end
-         accum = rib(c, accum, 0)
-         n = n + 1
-      end
-   end
-   symtbl=rib(rib(0,rib(accum,n,3),2),symtbl,0)
-   return symtbl
-end
+
 
 local function symbol_ref(n)
    return list_tail(symtbl,n)[1]
 end
 
-function decode_loop()
-   while true do
-      local x=get_code()
-      local n=x
-      local d=0
-      local op=0
-      while true do
-         local ds={20,30,0,10,11,4}
-         d=ds[op+1]
-         if n<=2+d then break end
-         n=n-(d+3) ; op=op+1
-      end
-      if x>90 then
-         n=pop()
-      else
-         if op==0 then
-            stack=rib(0,stack,0);
-            op = op + 1
-         end
-         if n==d then
-            n = get_int(0)
-         elseif n>= d then
-            n = symbol_ref(get_int(n-d-1))
-         elseif op<3 then
-            n = symbol_ref(n)
-         end
-         if 4<op then
-            n=rib(rib(n,0,pop()),0,1)
-            if not is_rib(stack) then
-               return n
-            end
-            op=4
-         end
-      end
-      stack[1]=rib(op-1,n,stack[1])
-   end
-end
 
 local function set_global(val)
    symtbl[1][1]=val
    symtbl=symtbl[2]
 end
 
-local function decode()
-   build_symtbl()
-   local main_proc = decode_loop()
+-- This variable is used for a number of things, similar to the Python code.
+local n
 
-   set_global(rib(0,symtbl,1)) -- procedure type, primitive 0
-   set_global(FALSE)
-   set_global(TRUE)
-   set_global(NIL)
-
-   return main_proc
+-- build symtbl
+symtbl = NIL
+n = get_int(0)
+while n>0 do
+   n = n - 1
+   symtbl = rib(rib(0,rib(NIL,0,3),2),symtbl,0)
 end
+local accum = NIL
+n=0
+while true do
+   local c = get_byte()
+   if c == 44 then
+      symtbl = rib(rib(0,rib(accum,n,3),2),symtbl,0)
+      accum = NIL
+      n = 0
+   else
+      if c == 59 then break end
+      accum = rib(c, accum, 0)
+      n = n + 1
+   end
+end
+symtbl=rib(rib(0,rib(accum,n,3),2),symtbl,0)
+
+-- decode
+while true do
+   local x=get_code()
+   n=x
+   local d=0
+   local op=0
+   while true do
+      local ds={20,30,0,10,11,4}
+      d=ds[op+1]
+      if n<=2+d then break end
+      n=n-(d+3) ; op=op+1
+   end
+   if x>90 then
+      n=pop()
+   else
+      if op==0 then
+         stack=rib(0,stack,0);
+         op = op + 1
+      end
+      if n==d then
+         n = get_int(0)
+      elseif n>= d then
+         n = symbol_ref(get_int(n-d-1))
+      elseif op<3 then
+         n = symbol_ref(n)
+      end
+      if 4<op then
+         n=rib(rib(n,0,pop()),0,1)
+         if not is_rib(stack) then
+            break
+         end
+         op=4
+      end
+   end
+   stack[1]=rib(op-1,n,stack[1])
+end
+
+set_global(rib(0,symtbl,1)) -- procedure type, primitive 0
+set_global(FALSE)
+set_global(TRUE)
+set_global(NIL)
 
 local get_opnd = function(o)
    if is_rib(o) then return o
@@ -216,81 +232,77 @@ local function get_cont()
    return s
 end
 
-local function run()
-   local count = 0
-   local n = decode()
-   local pc = n[1][3]
-   stack=rib(0,0,rib(5,0,0)) -- primordial continuation (executes halt instr.)
+local count = 0
+local pc = n[1][3]
+stack=rib(0,0,rib(5,0,0)) -- primordial continuation (executes halt instr.)
 
-   while true do
-      count = count + 1
-      local o=pc[2]
-      local i=pc[1]
-      if i<1 then -- jump/call
-         trace_instruction("jump/call",o,stack)
-         o=get_opnd(o)[1]
-         local c=o[1]
-         if is_rib(c) then
-            local c2=rib(0,o,0)
-            local s2=c2
-            nargs=c[1]
-            while nargs > 0 do
-               s2=rib(pop(),s2,0)
-               nargs=nargs-1
-            end
-            if is_rib(pc[3]) then -- call
-               c2[1]=stack
-               c2[3]=pc[3]
-            else -- jump
-               k=get_cont()
-               c2[1]=k[1]
-               c2[3]=k[3]
-            end
-            stack=s2
-
-         else
-            primitives[c+1]()
-            if is_rib(pc[3]) then -- call
-               c=pc
-            else --  jump
-               c=get_cont()
-               stack[2]=c[1]
-            end
+-- run
+while true do
+   count = count + 1
+   local o=pc[2]
+   local i=pc[1]
+   if i<1 then -- jump/call
+      trace_instruction("jump/call",o,stack) --debug--
+      o=get_opnd(o)[1]
+      local c=o[1]
+      if is_rib(c) then
+         local c2=rib(0,o,0)
+         local s2=c2
+         nargs=c[1]
+         while nargs > 0 do
+            s2=rib(pop(),s2,0)
+            nargs=nargs-1
          end
-         pc=c[3]
-
-      elseif i<2 then -- set
-         trace_instruction("set",o,stack)
-         x=pop()
-         get_opnd(o)[1]=x
-         pc=pc[3]
-
-      elseif i<3 then -- get
-         trace_instruction("get",o,stack)
-         push(get_opnd(o)[1])
-         pc=pc[3]
-
-      elseif i<4 then -- const
-         trace_instruction("const",o,stack)
-         push(o)
-         pc=pc[3]
-
-      elseif i<5 then -- if
-         trace_instruction("if",o,stack)
-         if pop() == FALSE then
-            pc=pc[3]
-         else
-            pc=pc[2]
+         if is_rib(pc[3]) then -- call
+            c2[1]=stack
+            c2[3]=pc[3]
+         else -- jump
+            k=get_cont()
+            c2[1]=k[1]
+            c2[3]=k[3]
          end
+         stack=s2
 
-      else -- halt
-         break
+      else
+         primitives[c+1]()
+         if is_rib(pc[3]) then -- call
+            c=pc
+         else --  jump
+            c=get_cont()
+            stack[2]=c[1]
+         end
       end
-   end
+      pc=c[3]
 
+   elseif i<2 then -- set
+      trace_instruction("set",o,stack) --debug--
+      x=pop()
+      get_opnd(o)[1]=x
+      pc=pc[3]
+
+   elseif i<3 then -- get
+      trace_instruction("get",o,stack) --debug--
+      push(get_opnd(o)[1])
+      pc=pc[3]
+
+   elseif i<4 then -- const
+      trace_instruction("const",o,stack) --debug--
+      push(o)
+      pc=pc[3]
+
+   elseif i<5 then -- if
+      trace_instruction("if",o,stack) --debug--
+      if pop() == FALSE then
+         pc=pc[3]
+      else
+         pc=pc[2]
+      end
+
+   else -- halt
+      break
+   end
 end
 
-run()
 
 end --debug--
 return { test = test, is_rib = is_rib, rib = rib, FALSE = FALSE, TRUE = TRUE, NIL = NIL } --debug--
