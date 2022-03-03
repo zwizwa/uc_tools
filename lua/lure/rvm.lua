@@ -1,41 +1,40 @@
-input = "Detouq,htgnel-gnirts,fer-gnirts,fi,!rdc-tes,tsil>-rotcev,!tes-gnirts,enifed,!tes-rotcev,?rotcev,=,cc/llac,!tes,adbmal,rddc,gnirts-ekam,fer-rotcev,htgnel-rotcev,rotcev-ekam,lobmys>-gnirts,gnirts>-lobmys,?erudecorp,!rac-tes,tneitouq,enilwen,ton,lave,fer-tsil,rdddac,*,?tcejbo-foe,?lobmys,lper,?gnirts,rotcev>-tsil,+,etirw,rahc-keep,yalpsid,tsil>-gnirts,daer,gnirts>-tsil,?lauqe,,,,?llun,htgnel,,,,,rddac,rdac,-,,,<,,rac,?riap,,rahc-daer,rdc,,snoc,,?vqe,,,,,;8K!K8K@Z%@YGZ#^'i$~YM^YC@PvCvR3y]#7#YS*^z!S*9Bi&:EiS/ai&kkz!S/:kw'k]@'_*Z@aC_G^~F^{!>'^8>YHlbC`^'`~?_G_~F_|]D9C`^Uka_CaG`.ZDdCbAai$G`^~F_|!S+#`kn3^~i$#`kn3^~i$#`kn3^~i$#`kn3^~RJ^~?w)B^~?kH^~R^z]K#YS+a_l{]C#a_k#k_k~?iS/_{!.#b`n9DAd`Ca_#ZCex>#d~TbZBi&:EiS/NeZ@AAfi$i$akS_nM`~?x0^.:EgYOecEfNdboMa_~?x:^.ZKdUlbMbNa_~O?x6_9DAd`Ca_#ZCex>#d~TbZBi&:EiS/NeZ@AAfi$i$akS_nM`~?x0^.:EgYOecEfNdboMa_~?x:^.ZKdUlbMbNa_~O^~^?x1^#cMan~?x=^G_~F_#bUk``m~YL_|!94_@K^{]%4uy]?'i$9?C_@K^G^~F^z]I'i$'i$9IC^@YGG^~F^@KvC~F^z!E8EYS(^89vS7vF~Z(^9?YD^~YJ^8EZ)^~YL^4vL@ZIC^@YGG^@KvK~F^89vLvK~T^89vS;vF~?i%^89vS-vF~Z$^z!G8E^4vE@Z?i%YD^@KvE~YJ^z]O9O8@~?u^'^~Ik^Dy!@8@@D'^9O~?vR0^~I_vC'iS0~YM^YFy!?*V^@D'i&~OOIvD`*V^@D'i&~OO^~^?vL_*V^@D'i&~O^~^?vK^YFy]M*ZM^YC'i&@D~?vL^Wy!C9*`'^~^^YS%^YBAV^@D*Ai&YCx=@D~?vJ^8IYC'i%@D~?vS;^'i$@D~?vS-^YF@D~?vF^9M@D~?vK^'^~Ik^Wy!F'^!S-^Dy]H'^!S-iS.'^~?iS0^!S-^z!-9H^9HYS#~?iS.^'^~?iS0^iS-y!S-iS.!M(iS0^z]27%Z>'_@YS&Jc^@YS'Hc^BBZ>i$zBBZ>i$z]B#l`^{](Ql]+8IZLk^z]59Nb`H^|]-8P`H^{],i+]8i1!I#oS_^z]4Qo].8BZLvC^z]79Nb`H^|];8P`H^{]<i+!Di1!B#nS_^z!JQn]F'_'i$'i$9FLLvR%`YNbuC_~IvR/^~I_vR$G^~F^{]G9Fk^'i$~T^z!S%'i$5_k~^ZG^9GC^~?vPG^'i$~T^YD^z]E'^9E_`~IakAb^YHLYNu``vR%Z&u^{!S(8BZEi&^8BAZEi&L`kvP~Ik^z]3i(@YS)ki#!S,Bi#]P'^!S,AiS,^YS$^9PBa_'^~YA`B^H_~F_{]*9PiS,^z])i+!S$#m_i$z!LQm]J'`9JAca`Ll^~I_k|]L9Ji&`^{]A'^9ALl`C^~I`k{]N9'aZA`^|!P0ZA`^{!<'k8HSC_l~F^z!=(i&^z!O87B^z!76B^z]/+B^z!61B^z]9iS)]'iS'!,i+!0i1!*#k`^{!/Qk!A'i$'i$'i$'i$8AHaH_~YABaB_~YAJaJ_~R`'i$~?pJ_~R_'^~^?`^{]$(i$^z!:9>'i$(bJ^~R^zz!S.Lmk!S0Llk!':lkl!):lkm!8:lkn]>:lko!;:lkp!1:lkq!+:lkr!3:lks!S':lkt!S):lku!S&:lkv.!(:lkv/!2:lkv0!H:lkv1!5:lkv2!N:lkv3]&:lkv4!S#:lkv5!4:lkv6y"
+-- Lua module containing RVM compiler.
+--
 
-
-local stdo = io.stdout
-
-local function putchar(c) stdo:write(string.char(c)); stdo:flush(); return c end
-
-local push
-
-local function getchar()
-   push(io.stdin:read(1):byte(1) or -1)
+-- Functionality exposed to test wrapper.
+local function rib(a,b,c)
+   assert(a and b and c) --debug--
+   return {
+      class = 'rib', --debug--
+      [1]=a,[2]=b,[3]=c
+   }
 end
-
-local debug = false  --debug--
-
-local function chars2str(s) if is==NIL then return "" else return chr(s[1]) .. chars2str(s[2]) end end --debug--
-local function sym2str(s) return chars2str(s[2][1]) end --debug--
-local function str(o) return "" .. o end --debug--
-
+local FALSE=rib(0,0,5)
+local TRUE=rib(0,0,5)
+local NIL=rib(0,0,5)
 local function is_rib(x)  return type(x) == 'table' and x.class == 'rib' end  -- FIXME
 -- local function is_rib(x)  return type(x) == 'table' end  -- FIXME
 
-local pair_type = 0
-local procedure_type = 1
-local symbol_type = 2
-local string_type = 3
-local vector_type = 4
-local singleton_type = 5
+-- Called from test wrapper, or fall-through in normal use.
+local function test(input, dbg)  --debug--
 
-local function instance(typ)
-   return function(x)
-      return is_rib(x) and typ == x[3]
-   end
+local trace_instruction = dbg.trace_instruction --debug--
+
+local function putchar(c)
+   local o=io.stdout
+   o:write(string.char(c));
+   o:flush();
+   return c
 end
-local is_pair = instance(pair_type)
 
 
 local stack=0
+local function push(x)
+   stack = rib(x,stack,0)
+end
+local function getchar()
+   push(io.stdin:read(1):byte(1) or -1)
+end
 
 
 local pos=0
@@ -45,18 +44,6 @@ local function get_byte()
    return int
 end
 
-local function rib(a,b,c)
-   assert(a and b and c) --debug--
-   return {
-      class = 'rib', --debug--
-      [1]=a,[2]=b,[3]=c
-   }
-end
-
-local FALSE=rib(0,0,5)
-local TRUE=rib(0,0,5)
-local NIL=rib(0,0,5)
-
 local function to_bool(x)
    if x then
       return TRUE
@@ -65,18 +52,14 @@ local function to_bool(x)
    end
 end
 
-push = function(x)
-   stack = rib(x,stack,0)
-end
-
 local function pop()
    local x = stack[1]
    stack = stack[2]
-   assert(x)
+   assert(x) --debug--
    return x
 end
 
--- Agrument evaluation order is undefined in Lua, vs. Python left-to-right.
+-- Argument evaluation order is undefined in Lua, vs. Python left-to-right.
 -- Since we need to be explicit anyway, we use normal argument order for f,
 -- as opposed to Python RVM which has them reversed.
 local function prim1(f) return function() local a=pop(); push(f(a)) end end
@@ -141,20 +124,14 @@ local function list_tail(lst, i)
    end
 end
 
-local n -- used a couple of times below
-
 local symtbl
-
-
 local function build_symtbl()
    symtbl = NIL
-   n = get_int(0)
+   local n = get_int(0)
    while n>0 do
       n = n - 1
-      -- log_desc({n=n,pos=pos})
       symtbl = rib(rib(0,rib(NIL,0,3),2),symtbl,0)
    end
-
    local accum = NIL
    n=0
    while true do
@@ -169,92 +146,9 @@ local function build_symtbl()
          n = n + 1
       end
    end
-
    symtbl=rib(rib(0,rib(accum,n,3),2),symtbl,0)
-
    return symtbl
 end
-
-local function car(p) return p[1] end
-local function cdr(p) return p[2] end
--- local function cons(a,d) return rib(a,d,0) end -- pair-type
--- local function set_car(p,v) p[1] = v end
-
-local function sym(n)
-   return car(list_tail(symtbl,n))
-end
-
-
-
-
-local rt = require('lure.slc_runtime')
-
-local se = require('lure.se')
-function convert(obj)
-   if obj == FALSE then
-      return false
-   elseif obj == TRUE then
-      return true
-   elseif obj == NIL then
-      return se.empty
-   elseif not is_rib(obj) then
-      -- log_desc({obj=obj})
-      return obj
-   else
-      local typ = obj[3]
-      -- log_desc({typ=typ})
-      if typ == pair_type then
-         -- return '#<pair>'
-         return se.cons(convert(car(obj)), convert(cdr(obj)))
-      elseif typ == procedure_type then
-         return "<procedure>"
-      elseif typ == symbol_type then
-         -- return "<symbol>"
-         -- return rt['string->symbol'](convert(obj[2]))
-         return convert(obj[2])
-      elseif typ == string_type then
-         return rt['list->string'](se.map(rt['integer->char'],convert(obj[1])))
-         -- return convert(obj[1])
-      elseif typ == vector_type then
-         return se.list('vector', convert(obj[1]))
-      else
-         return "<unknown>"
-      end
-   end
-end
-
-local function trace_instruction(name, opnd, stack)
-   if not debug then return end
-
-   function show_stack(stack)
-      if is_pair(stack) then
-         return se.cons(convert(car(stack)),
-                        show_stack(cdr(stack)))
-      else
-         if stack == 0 then
-            return se.empty
-         else
-            return se.list(
-               'stack:', show_stack(stack[1]),
-               'pc: ', convert(stack[3]))
-         end
-      end
-   end
-
-   log(": ")
-   log(name)
-   log(",")
-   --if opnd then -- FIXME, if?
-      log_w(se.iolist(convert(opnd)))
-      log(",")
-   --end
-   log_w(se.iolist(show_stack(stack)))
-   log("\n")
-
-end
-
-
-
 
 local function symbol_ref(n)
    return list_tail(symtbl,n)[1]
@@ -427,26 +321,9 @@ local function get_byte_or_read_char()
    end
 end
 
-
-
 run()
 
-return {
-   ['primitives-lua'] = primitives,
-   input = input,
-   putchar = putchar,
-   getchar = getchar,
-   ['get-input-byte'] = get_byte,
-   ['_false'] = FALSE,
-   ['_true'] = TRUE,
-   ['_nil'] = NIL,
-   ['build-symtbl-lua'] = build_symtbl,
-   ['_rib'] = rib,
-   ['get-byte-or-read-char'] = get_byte_or_read_char,
-   ['get-code'] = get_code,
-   ['get-int'] = get_int,
-   ['sym'] = sym,
-   ['decode-lua'] = decode,
-   ['run-lua'] = run,
-   ['trace-instruction'] = trace_instruction,
-}
+end -- test
+return { test = test, is_rib = is_rib, rib = rib, FALSE = FALSE, TRUE = TRUE, NIL = NIL } --debug
+
+
