@@ -35,6 +35,7 @@ build = {
     ['lure.log_se'] = 'log_se.lua',
     ['lure.match'] = 'match.lua',
     ['lure.meta'] = 'meta.lua',
+    ['lure.rvm_debug'] = 'rvm_debug.lua',
     ['lure.rvm'] = 'rvm.lua',
     ['lure.scheme_blockval'] = 'scheme_blockval.lua',
     ['lure.scheme_escape'] = 'scheme_escape.lua',

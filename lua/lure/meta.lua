@@ -12,6 +12,7 @@ return { modules = {
   'log_se',
   'match',
   'meta',
+  'rvm_debug',
   'rvm',
   'scheme_blockval',
   'scheme_escape',

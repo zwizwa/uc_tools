@@ -1,3 +1,10 @@
+-- This test runs the Ribbit VM implemented in Scheme
+-- (lure/test_rvm.scm) inside the Lure Scheme interpreter as a test
+-- for the Lure Scheme interpreter.
+
+-- This is unrelated to lure/rvm.lua and lure/rvm_debug.lua, the Lua
+-- implementations of Ribbit VM + test routines.
+
 local se              = require('lure.se')
 local comp            = require('lure.comp')
 local asset           = require('lure.asset_scm')
@@ -22,11 +29,7 @@ local str = asset[filename]
 function mod.run()
 
    -- Full Scheme interpretation
-   -- local input = 'test_rvm.scm'
-
-   -- Hollowing out in progress, replacing Scheme with Lua primitives.
-   local input = 'test_rvm_prim.scm'
-
+   local input = 'test_rvm.scm'
 
    local str = asset[input]
    assert(str)
@@ -44,10 +47,15 @@ function mod.run()
 
    local prim = require('lure.slc_runtime')
    local rvm = require('lure.rvm')
+
+   -- This is for 'input' variable containing byte code.
+   local rvm_debug = require('lure.rvm_debug')
+
    local function prim_index(o,k)
       local v
-      v = rvm[k]  ; if v~=nil then return v end
-      v = prim[k] ; if v~=nil then return v end
+      v = rvm_debug[k] ; if v~=nil then return v end
+      v = rvm[k]       ; if v~=nil then return v end
+      v = prim[k]      ; if v~=nil then return v end
    end
 
    local e = scheme_eval.new(prim_index)
