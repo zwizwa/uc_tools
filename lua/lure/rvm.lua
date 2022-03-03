@@ -32,16 +32,16 @@ local function push(x)
    stack = rib(x,stack,0)
 end
 local function getchar()
-   local c = io.stdin:read(1)
+   local c=io.stdin:read(1)
    if not c then c=-1 else c=c:byte(1) end
    push(c)
 end
 
 local pos=0
 local function get_byte()
-   pos = pos+1
-   local int = input:byte(pos) or 0
-   return int
+   pos=pos+1
+   local i=input:byte(pos) or 0
+   return i
 end
 
 local function to_bool(x)
@@ -53,8 +53,8 @@ local function to_bool(x)
 end
 
 local function pop()
-   local x = stack[1]
-   stack = stack[2]
+   local x=stack[1]
+   stack=stack[2]
    assert(x) --debug--
    return x
 end
