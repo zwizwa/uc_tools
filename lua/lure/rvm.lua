@@ -1,6 +1,3 @@
--- Lua module containing RVM compiler.
---
-
 -- Functionality exposed to test wrapper.
 local function rib(a,b,c) return {a,b,c} end
 local function rib(a,b,c) --debug--
@@ -303,8 +300,5 @@ while true do
    end
 end
 
-
 end --debug--
 return { test = test, is_rib = is_rib, rib = rib, FALSE = FALSE, TRUE = TRUE, NIL = NIL } --debug--
-
-
