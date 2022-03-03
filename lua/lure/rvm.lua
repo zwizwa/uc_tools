@@ -2,20 +2,20 @@
 --
 
 -- Functionality exposed to test wrapper.
-local function rib(a,b,c)
+local function rib(a,b,c) return {a,b,c} end
+local function rib(a,b,c) --debug--
    assert(a and b and c) --debug--
-   return {
-      class = 'rib', --debug--
-      [1]=a,[2]=b,[3]=c
-   }
-end
+   return { class = 'rib', [1]=a, [2]=b, [3]=c } --debug--
+end --debug--
+
 local FALSE=rib(0,0,5)
 local TRUE=rib(0,0,5)
 local NIL=rib(0,0,5)
-local function is_rib(x)  return type(x) == 'table' and x.class == 'rib' end  -- FIXME
--- local function is_rib(x)  return type(x) == 'table' end  -- FIXME
+local function is_rib(x) return type(x) == 'table' end
+-- local function is_rib(x) return type(x) == 'table' and x.class == 'rib' end --debug--
 
--- Called from test wrapper, or fall-through in normal use.
+-- Called from test wrapper.  In normal use, this code falls into the
+-- interpreter, and expects input to be defined.
 local function test(input, dbg)  --debug--
 
 local trace_instruction = dbg.trace_instruction --debug--
@@ -27,7 +27,6 @@ local function putchar(c)
    return c
 end
 
-
 local stack=0
 local function push(x)
    stack = rib(x,stack,0)
@@ -35,7 +34,6 @@ end
 local function getchar()
    push(io.stdin:read(1):byte(1) or -1)
 end
-
 
 local pos=0
 local function get_byte()
@@ -66,7 +64,6 @@ local function prim1(f) return function() local a=pop(); push(f(a)) end end
 local function prim2(f) return function() local b=pop();local a=pop(); push(f(a,b)) end end
 local function prim3(f) return function() local c=pop();local b=pop(); local a=pop(); push(f(a,b,c)) end end
 
-
 local function arg2() local x = pop(); pop(); push(x) end
 local function close() push(rib(pop()[1],stack,1)) end
 local function f0s(x,y) x[1]=y; return y; end
@@ -95,7 +92,6 @@ local primitives = {
    getchar, -- 18
    prim1(putchar) -- 19
 }
-
 
 local function get_code()
    local x = get_byte() - 35
@@ -155,71 +151,47 @@ local function symbol_ref(n)
 end
 
 function decode_loop()
-while true do
- local x=get_code()
- -- log_desc({get_code=x})
- local n=x
- local d=0
- local op=0
- while true do
-  local ds={20,30,0,10,11,4}
-  d=ds[op+1]
-  if n<=2+d then break end
-  n=n-(d+3) ; op=op+1
- end
- if x>90 then
-  n=pop()
- else
-  if op==0 then
-     stack=rib(0,stack,0);
-     op = op + 1
-  end
-  if n==d then
-     n = get_int(0)
-  elseif n>= d then
-     n = symbol_ref(get_int(n-d-1))
-  elseif op<3 then
-     n = symbol_ref(n)
-  end
-  -- log_se_n(convert(n))
-  if 4<op then
-   n=rib(rib(n,0,pop()),0,1)
-   if not is_rib(stack) then
-      return n
+   while true do
+      local x=get_code()
+      local n=x
+      local d=0
+      local op=0
+      while true do
+         local ds={20,30,0,10,11,4}
+         d=ds[op+1]
+         if n<=2+d then break end
+         n=n-(d+3) ; op=op+1
+      end
+      if x>90 then
+         n=pop()
+      else
+         if op==0 then
+            stack=rib(0,stack,0);
+            op = op + 1
+         end
+         if n==d then
+            n = get_int(0)
+         elseif n>= d then
+            n = symbol_ref(get_int(n-d-1))
+         elseif op<3 then
+            n = symbol_ref(n)
+         end
+         if 4<op then
+            n=rib(rib(n,0,pop()),0,1)
+            if not is_rib(stack) then
+               return n
+            end
+            op=4
+         end
+      end
+      stack[1]=rib(op-1,n,stack[1])
    end
-   op=4
-  end
- end
- stack[1]=rib(op-1,n,stack[1])
-end
-
-end
-
-
-
-local get_opnd = function(o)
-   if is_rib(o) then
-      return o
-   else
-      return list_tail(stack,o)
-   end
-end
-
-local function get_cont()
-   -- log_desc({'get_cont'})
-   local s = stack
-   while not is_rib(s[3]) do
-      s = s[2]
-   end
-   return s
 end
 
 local function set_global(val)
    symtbl[1][1]=val
    symtbl=symtbl[2]
 end
-
-
 
 local function decode()
    build_symtbl()
@@ -233,6 +205,16 @@ local function decode()
    return main_proc
 end
 
+local get_opnd = function(o)
+   if is_rib(o) then return o
+   else return list_tail(stack,o) end
+end
+
+local function get_cont()
+   local s = stack
+   while not is_rib(s[3]) do s = s[2] end
+   return s
+end
 
 local function run()
    local count = 0
@@ -244,11 +226,10 @@ local function run()
       count = count + 1
       local o=pc[2]
       local i=pc[1]
-      -- log_desc({count,i})
       if i<1 then -- jump/call
          trace_instruction("jump/call",o,stack)
          o=get_opnd(o)[1]
-         c=o[1]
+         local c=o[1]
          if is_rib(c) then
             local c2=rib(0,o,0)
             local s2=c2
@@ -268,7 +249,6 @@ local function run()
             stack=s2
 
          else
-            -- log_desc({'prim',c})
             primitives[c+1]()
             if is_rib(pc[3]) then -- call
                c=pc
@@ -297,13 +277,11 @@ local function run()
 
       elseif i<5 then -- if
          trace_instruction("if",o,stack)
-         local index
          if pop() == FALSE then
-            index = 2
+            pc=pc[3]
          else
-            index = 1
+            pc=pc[2]
          end
-         pc=pc[index+1]
 
       else -- halt
          break
@@ -312,18 +290,9 @@ local function run()
 
 end
 
-local function get_byte_or_read_char()
-   if pos < #input then
-      return get_byte()
-   else
-      local c = io.stdin:read(1)
-      return c:byte(1) or -1
-   end
-end
-
 run()
 
-end -- test
-return { test = test, is_rib = is_rib, rib = rib, FALSE = FALSE, TRUE = TRUE, NIL = NIL } --debug
+end --debug--
+return { test = test, is_rib = is_rib, rib = rib, FALSE = FALSE, TRUE = TRUE, NIL = NIL } --debug--
 
 

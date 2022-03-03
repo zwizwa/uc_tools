@@ -10,7 +10,7 @@ local FALSE  = rvm.FALSE
 local TRUE   = rvm.TRUE
 local NIL    = rvm.NIL
 
-local debug = true
+local debug = false
 
 local pair_type = 0
 local procedure_type = 1
