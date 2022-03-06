@@ -42,7 +42,9 @@ struct map_rcc {
     REG ahbenr;
     REG apb2enr;
     REG apb1enr;
-    uint8_t _res[0x400 - 8*4];
+    REG bdcr;
+    REG csr;
+    uint8_t _res[0x400 - 10*4];
 };
 ASSERT_SIZE(map_rcc,0x400);
 
