@@ -380,9 +380,10 @@ macro["block*"] = mcase(
 
 -- Interpret SM language by mapping it back to scheme.
 -- Labels are implemented as thunks.
-macro["if@"]    = mcase({"(,c ,t ,f)","(if ,c ,t ,f)"})
-macro['goto']   = mcase({"(,label)","(,label)"})
-macro['app']    = mcase({"(,fun . ,args)","(,fun . ,args)"})
+macro["if@"]     = mcase({"(,c ,t ,f)","(if ,c ,t ,f)"})
+macro['goto']    = mcase({"(,label)","(,label)"})
+macro['app']     = mcase({"(,fun . ,args)","(,fun . ,args)"})
+macro['lambda@'] = mcase({"(,args . ,body)", "(lambda ,args . ,body)"})
 
 macro["block@"] = mcase(
    {"()",              "(begin)"},
@@ -401,8 +402,8 @@ macro['labels'] = function(expr, c)
    bindings = {{start, se.cdar(bindings)}, se.cdr(bindings)}
    -- Generate letrec form
    function make_binding(binding)
-      local label, body = se.unpack(binding, {n = 2})
-      return l(label, l('lambda',l(),body))
+      -- FIXME: Check maybe that this is a lambda form?
+      return binding
    end
    return l('letrec', se.map(make_binding, bindings), l(start))
 end

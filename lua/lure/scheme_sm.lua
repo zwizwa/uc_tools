@@ -206,7 +206,7 @@ function class.push_to_current_labels(s, label, body_expr)
    -- FIXME: This is currently a stack.  Is that really necessary?
    assert(s.labels)
    local current_labels = car(s.labels)
-   se.push_cdr(l(label, body_expr), current_labels)
+   se.push_cdr(l(label, l('lambda', l(), body_expr)), current_labels)
 end
 
 
