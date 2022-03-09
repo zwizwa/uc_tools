@@ -35,15 +35,20 @@ local function _trace(tag,expr)
    log_se_n(expr, tag .. ":")
 end
 
+function capitalize(iol)
+   local str = iolist.to_string(iol)
+   local byte = str:byte(1) - 32 -- FIXME: sloppy
+   return {string.char(byte), str:sub(2)}
+end
 
 function class.mangle(s, var)
-   local prefix = 'V'
-   if s.mod_fun[var] then prefix = '' end
+   local prefix = capitalize
+   if s.mod_fun[var] then prefix = function(x) return x end end
 
    assert(var and var.unique)
    local name = var.var
-   name = nil -- FIXME: temporary, to make output form easier to read
-   if not name then return {prefix,var.unique} end
+   -- name = nil -- FIXME: temporary, to make output form easier to read
+   if not name then return prefix(var.unique) end
 
    -- Do some exact matches first
    local alias = {
@@ -66,7 +71,7 @@ function class.mangle(s, var)
    for from,to in pairs(subst) do
       name = string.gsub(name,from,to)
    end
-   return var_prefix({var.unique,"_",name})
+   return prefix({var.unique,"_",name})
 end
 
 -- FIXME: Go over tree once to collect the reverse mappings:
@@ -163,7 +168,6 @@ function class.w_bindings(s, bindings)
    for binding, rest in se.elements(bindings) do
       _trace("BINDING", binding)
 
-      s:w(s:tab())
       s.match(
          binding,
          {
@@ -173,7 +177,7 @@ function class.w_bindings(s, bindings)
                 s:indented(
                    function()
                       s:w_maybe_assign(m.var)
-                      s:w("fun(", s:commalist(m.args),")"," ->\n")
+                      s:w("fun(", s:commalist(m.args),")"," ->\n",s:tab())
                       s:comp(m.expr)
                       s:w(s:tab(),"end")
                    end)
@@ -181,15 +185,16 @@ function class.w_bindings(s, bindings)
             {"(,var (if ,cond ,etrue, efalse))", function(m)  -- FIXME var
                 _trace("IF",binding)
                 s:w_maybe_assign(m.var)
-                s:w("case ", s:iol_atom(m.cond), " of true -> ")
                 s:indented(
                    function()
+                      s:w("case ", s:iol_atom(m.cond), " of\n")
+                      s:w(s:tab(-1), "true ->\n", s:tab())
                       s:comp(m.etrue)
-                      s:w(s:tab(), "; false -> ")
+                      s:w(";\n", s:tab(-1), "false ->\n",s:tab())
                       s:comp(m.efalse)
-                      s:w(s:tab(), "end")
+                      s:w("\n",s:tab(-2), "end")
                    end,
-                      -1)
+                   2)
             end},
             -- FIXME: Erlang doesn't have mutation.  This is going to be an issue.
             {"(,rvar (set! ,var ,expr))", function(m) 
@@ -232,9 +237,8 @@ function class.w_bindings(s, bindings)
          }
       )
       if not se.is_empty(rest) then
-         s:w(",")
+         s:w(",\n",s:tab())
       end
-      s:w("\n")
    end
 end
 
@@ -298,11 +302,11 @@ function class.compile(s,expr)
             {{"(,var (lambda ,args ,body))", function(b)
                  local var = (b.var == '_' and main) or b.var
                  s:w(s:iol_atom(var))
-                 s:w("(", s:commalist(b.args),")"," ->\n")
+                 s:w("(", s:commalist(b.args),")"," ->\n",s:tab(1))
                  s:indented(
                     function()
                        s:comp(b.body)
-                       s:w(s:tab(),".\n")
+                       s:w(".\n")
                     end)
          end}})
       end

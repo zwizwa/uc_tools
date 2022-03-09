@@ -12,12 +12,35 @@
       (if a 1 2)))
   (void))
 
-;; FIXME: Mutual recursion is possible, but only at the top level of a
-;; module.  This is fairly limiting...
 (begin
   (define (f x) (g (+ x 1)))
   (define (g x) (f x))
   (f 0))
+
+(begin
+  (define (f)
+    (let ((a 1)
+          (b 2))
+      (+ a b)))
+  (void))
+
+(begin
+  (define (f x)
+    (let ((a 1)
+          (b 2))
+      (f (+ x (+ a b)))))
+  (f 0))
+
+
+(begin
+  (define (f x)
+    (let ((a 1)
+          (b 2))
+      (if x x
+          (f (+ x (+ a b))))))
+  (f 0))
+
+
 
 
  

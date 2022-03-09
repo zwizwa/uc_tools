@@ -33,9 +33,10 @@ function comp:write(str)
    io.stdout:write(str)
 end
 
-function comp:tab()
+function comp:tab(offset)
+   offset = offset or 0
    local strs = {}
-   for i=1,self.indent do
+   for i=1,self.indent+offset do
       table.insert(strs,"  ")
    end
    return strs
