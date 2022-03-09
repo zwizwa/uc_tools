@@ -101,20 +101,26 @@ macro['letrec@'] = function(expr, c)
 end
 
 
--- FIXME: I'd like to create a pass that can take a letrec, inspect
--- it, and if it doesn't contain any mutual recursion to compile it to
--- let* instead.  That would produce much simpler block output + make
--- it possible to insert a hint for mutual recursion.
-
--- Implement letrec on top of let and set!
 macro['letrec'] = function(expr, c)
    c = c or {}
 
+   -- Use letrec trampoline
    if c.letrec_loop then
       return macro['letrec@'](expr, c)
    end
 
    local _, bindings, exprs = se.unpack(expr, {n = 2, tail = true})
+
+   -- Use primitive letrec form if supported.  This preserves
+   -- recursive as opposed to implementing it using assignment.  It
+   -- seems best to support both versions.
+   if c.primitive_letrec then
+      return l(c.primitive_letrec, bindings,
+               {'begin', exprs})
+   end
+
+   -- Default: implement letrec on top of let and set!
+
    if se.is_empty(bindings) then
       -- Base case is needed to avoid letrec->begin->letrec loop.
       return {c.let or 'begin',exprs}
@@ -141,7 +147,6 @@ macro['letrec'] = function(expr, c)
                {hint,
                 exprs}}}}
 end
-
 
 local function need_gensym(config, name)
    if not (config and config.state and config.state.gensym) then
@@ -405,6 +410,8 @@ macro['labels'] = function(expr, c)
       -- FIXME: Check maybe that this is a lambda form?
       return binding
    end
-   return l('letrec', se.map(make_binding, bindings), l(start))
+   local out = l('letrec', se.map(make_binding, bindings), l(start))
+   -- log(se.iolist(out))
+   return out
 end
 return macro

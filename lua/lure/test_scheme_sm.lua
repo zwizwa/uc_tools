@@ -66,13 +66,17 @@ function mod.run()
    for expr in se.elements(exprs) do
 
       log_se_n(expr, "INPUT:")
+
       local c = c_new()
       local ir = c:compile(expr)
-
       log("INPUT_IR:") ; pretty.log_pp(ir)
+
+      -- First evaluate the input scheme.  Note that the scheme
+      --interpreter does not support the 'labels' form.
       local input_ir_val = make_interp():eval(ir)
       -- log("EVAL_INPUT_IR:") ; log_se_n(input_ir_val)
 
+      -- Feed that into the SM compiler
       local smc = scheme_sm.new()
       smc.prim = require('lure.slc_runtime')
       local i = 1
@@ -91,7 +95,7 @@ function mod.run()
       -- form, so we don't need to remap to 'block@' and 'if@' using
       -- scheme_escape.
       local ir_tx = re_scheme():compile(out)
-      -- log("IR_TX:") ; pretty.log_pp(ir_tx)
+      log("IR_TX:") ; pretty.log_pp(ir_tx)
 
       local output_ir_val = make_interp():eval(ir_tx)
 

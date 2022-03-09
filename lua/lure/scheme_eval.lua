@@ -314,6 +314,7 @@ function class.eval_expr(s, expr, maybe_env)
             end},
             {",other", function(m)
                 if is_pair(m.other) then
+                   _trace("BAD", m.other)
                    error('bad form')
                 else
                    local v = lit_or_ref(m.other)

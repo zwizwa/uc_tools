@@ -1,9 +1,8 @@
 -- FIXME: Early WIP.  ISSUES
 -- . Erlang doesn't have assignment
 -- . The IF construct is special
+-- . Module level and function level bindings are completely different
 
--- Lua code pretty-printer from lambda, block, if, set!
--- Based on se_match
 
 local se        = require('lure.se')
 local se_match  = require('lure.se_match')
@@ -37,15 +36,14 @@ local function _trace(tag,expr)
 end
 
 
-local function var_prefix(name)
-   return {'V',name}
-end
+function class.mangle(s, var)
+   local prefix = 'V'
+   if s.mod_fun[var] then prefix = '' end
 
-local function mangle(var)
    assert(var and var.unique)
    local name = var.var
    name = nil -- FIXME: temporary, to make output form easier to read
-   if not name then return var_prefix(var.unique) end
+   if not name then return {prefix,var.unique} end
 
    -- Do some exact matches first
    local alias = {
@@ -79,9 +77,9 @@ local function iol_cons(a,d)
    return {"{",a,",",d,"}"}
 end
 
-local function iol_atom(a)
+function class.iol_atom(s, a)
    if type(a) == 'table' and a.class == 'var' then
-      return mangle(a)
+      return s:mangle(a)
    elseif type(a) == 'number' then
       return a
    elseif type(a) == 'string' then
@@ -92,9 +90,9 @@ local function iol_atom(a)
       -- All tables are abstract types wrapped in the style of se.lua
       local et = se.expr_type(a)
       if et == 'expr' then
-         return iol_atom(a.expr)
+         return s:iol_atom(a.expr)
       elseif et == 'pair' then
-         return iol_cons(iol_atom(a[1]), iol_atom(a[2]))
+         return iol_cons(s:iol_atom(a[1]), s:iol_atom(a[2]))
       else
          error('bad expr_type = ' .. et)
       end
@@ -109,7 +107,7 @@ end
 function class.commalist(s,lst)
    local iol = {}
    for el, last in se.elements(lst) do
-      ins(iol, iol_atom(el))
+      ins(iol, s:iol_atom(el))
       if not se.is_empty(last) then
          ins(iol, ", ")
       end
@@ -124,14 +122,14 @@ form['table-set!'] = function(s, args)
    s.match(
       args,
       {{"(,tab ,key, ,val)", function(m)
-           s:w(iol_atom(m.tab), "[", iol_atom(m.key),"] = ",iol_atom(m.val))
+           s:w(s:iol_atom(m.tab), "[", s:iol_atom(m.key),"] = ",s:iol_atom(m.val))
         end}})
 end
 form['table-ref'] = function(s, args)
    s.match(
       args,
       {{"(,tab ,key)", function(m)
-           s:w(iol_atom(m.tab), "[", iol_atom(m.key),"]")
+           s:w(s:iol_atom(m.tab), "[", s:iol_atom(m.key),"]")
         end}})
 end
 
@@ -148,21 +146,21 @@ local infix = {
 for scm,op in pairs(infix) do
    form[scm] = function(s, args)
       local a, b = se.unpack(args, {n=2})
-      s:w(iol_atom(a)," ",op," ",iol_atom(b))
+      s:w(s:iol_atom(a)," ",op," ",s:iol_atom(b))
    end
 end
 
 
 function class.w_maybe_assign(s, var)
    if var ~= '_' then
-      s:w(iol_atom(var), " = ")
+      s:w(s:iol_atom(var), " = ")
    end
 end
 
 
 function class.w_bindings(s, bindings)
    -- _trace("BINDINGS", bindings)
-   for binding in se.elements(bindings) do
+   for binding, rest in se.elements(bindings) do
       _trace("BINDING", binding)
 
       s:w(s:tab())
@@ -177,13 +175,13 @@ function class.w_bindings(s, bindings)
                       s:w_maybe_assign(m.var)
                       s:w("fun(", s:commalist(m.args),")"," ->\n")
                       s:comp(m.expr)
-                      s:w(s:tab(),".")
+                      s:w(s:tab(),"end")
                    end)
             end},
             {"(,var (if ,cond ,etrue, efalse))", function(m)  -- FIXME var
                 _trace("IF",binding)
                 s:w_maybe_assign(m.var)
-                s:w("case ", iol_atom(m.cond), " of true -> ")
+                s:w("case ", s:iol_atom(m.cond), " of true -> ")
                 s:indented(
                    function()
                       s:comp(m.etrue)
@@ -203,13 +201,16 @@ function class.w_bindings(s, bindings)
             {"(,var (app ,fun . ,args))", function(m)
                 _trace("APP",binding)
                 s:w_maybe_assign(m.var)
+                -- FIXME: use s.lib_ref instead.
                 local w_f = m.fun.var and form[m.fun.var]
                 if w_f then
                    w_f(s, m.args)
                 else
-                   s:w(iol_atom(m.fun),"(",s:commalist(m.args),")")
+                   s:w(s:iol_atom(m.fun),"(",s:commalist(m.args),")")
                 end
-                s:w(",")
+            end},
+            {"(,var (labels . ,bindings))", function(m)
+                error('labels_toplevel_only')
             end},
             {"(,var (hint ,tag . ,args))", function(m)
                 _trace("HINT",binding)
@@ -222,7 +223,7 @@ function class.w_bindings(s, bindings)
             {"(,var ,atom)", function(m)
                 assert(se.expr_type(m.atom) ~= 'expr')
                 s:w_maybe_assign(m.var)
-                s:w(iol_atom(m.atom))
+                s:w(s:iol_atom(m.atom))
             end},
             {",other", function(m)
                 _trace("MISMATCH", m.other)
@@ -230,6 +231,9 @@ function class.w_bindings(s, bindings)
             end}
          }
       )
+      if not se.is_empty(rest) then
+         s:w(",")
+      end
       s:w("\n")
    end
 end
@@ -264,31 +268,82 @@ end
 -- Top level entry point
 function class.compile(s,expr)
 
-   -- The IR expr is a single lambda expression, parameterized by
-   -- 'lib_ref', a function that performs library symbol lookup for
-   -- all free variables that were found by scheme_frontend.
-   local mod_body = {}
-   s:parameterize(
-      {out = mod_body},
-      function()
-         s:comp(expr)
-         s:w("\n")
-      end)
-   local mod = {
-      "mod_body() -> ",mod_body,"\n",
+   -- For Erlang, the output is always a module.  The top level
+   -- expression has a specific form:
+   -- 1. Outer lambda with lib_ref
+   -- 2. A block form with lib_ref dereferences
+   -- 3. Inner labels form with module bindings.
 
-      -- Emit code that binds this function to the library.  The
-      -- library 'module-register!' will record definitions in the
-      -- 'mod' table.
-      "local mod = {}\n",
-      "local lib_ref = require('lure.slc_runtime').new(mod)\n",
-      "mod_body(lib_ref)\n",
-      "return mod\n"
-   }
-   if s.config.debug_lua_output then
-      iolist.write_to_file(s.config.debug_lua_output, mod)
+   -- The inner labels fallthrough case is named 'main'.
+   local main = { class='var', unique='main' }
+   s.mod_fun = { [main] = true }
+
+   s.out = {}
+   s.lib_ref = {}
+
+   function compile_labels(bindings)
+      assert(bindings)
+      -- First pass: collect module-level function names so they can
+      -- be distinguished from local variables.
+      for binding in se.elements(bindings) do
+         local var = se.car(binding)
+         if var ~= '_' then
+            s.mod_fun[var] = true
+         end
+      end
+      -- Second pass: emit definitions.
+      for binding in se.elements(bindings) do
+         s.match(
+            binding,
+            {{"(,var (lambda ,args ,body))", function(b)
+                 local var = (b.var == '_' and main) or b.var
+                 s:w(s:iol_atom(var))
+                 s:w("(", s:commalist(b.args),")"," ->\n")
+                 s:indented(
+                    function()
+                       s:comp(b.body)
+                       s:w(s:tab(),".\n")
+                    end)
+         end}})
+      end
    end
+
+   s.match(
+      expr,
+      {{"(lambda (,lib_ref) (block . ,bindings))", function(m)
+           -- Assumptions:
+           -- . Last binding is a labels form
+           -- . All other bindings are lib_ref
+
+           for binding, rest in se.elements(m.bindings) do
+              if not se.is_empty(rest) then
+                 -- Collect binding
+                 s.match(
+                    binding,
+                    {{"(,var (app ,lib_ref ,sym))", function(b)
+                         assert(m.lib_ref == b.lib_ref)
+                         s.lib_ref[b.var] = b.sym
+                     end}})
+              else
+                 -- Compile top-level functions
+                 s.match(
+                    binding,
+                    {
+                       {"(_ (labels . ,bindings))", function(l)
+                           compile_labels(l.bindings)
+                       end},
+                       {",other", function(b)
+                           _trace("BAD",b.other)
+                           error("bad_binding")
+                       end}
+                    })
+              end
+           end
+       end}})
+
+   local mod = { s.out }
    return { class = "iolist", iolist = mod }
+
 end
 
 function class.i_comp(s, expr)
@@ -296,7 +351,7 @@ function class.i_comp(s, expr)
 end
 
 function class.w_atom(s, a)
-   s:w(iol_atom(a))
+   s:w(s:iol_atom(a))
 end
 
 -- FIXME: Also do 'quote' or 'lit'

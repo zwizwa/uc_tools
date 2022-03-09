@@ -142,6 +142,32 @@ class.form = {
       end
       return {'block',se.map(tx_form, forms)}
    end,
+   -- Optional: uses the 'labels' form to postpone the fixed point
+   -- operation until later.  Initially added to anticipate Erlang,
+   -- which lacks assigment but supports module-level mutual
+   -- recursion.
+   ['primitive-letrec'] = function(s, expr)
+      local _, bindings, expr = se.unpack(expr, {n = 3})
+      local vars = se.map(
+         function(binding)
+            return s:var_def(se.car(binding))
+         end,
+         bindings)
+      local vexprs = se.map(se.cadr, bindings)
+
+      return s:with_extend(
+         vars,
+         function()
+            local exprs = se.map(se.cadr, bindings)
+            return {'labels',
+                    se.cons(
+                       -- Quirky representation...
+                       l('_', s:comp(l('lambda',l(),expr))),
+                       se.zip(
+                          function(v,e) return l(v, s:comp(e)) end,
+                          vars, vexprs))}
+         end)
+   end,
    ['set!'] = function(s, expr)
       local _, var, vexpr = se.unpack(expr, {n = 3})
       return s:anf(
@@ -178,17 +204,18 @@ class.form = {
 }
 
 -- Compile in extended environment
-function class.comp_extend(s, expr, vars)
+function class.with_extend(s, vars, thunk)
    local new_env = s.env
    for var in se.elements(vars) do
       new_env = {var, new_env}
    end
    return s:parameterize(
       {env = new_env},
-      function()
-         -- log_se_n(expr, "COMPILE_EXTEND:")
-         return s:comp(expr)
-      end)
+      thunk)
+end
+
+function class.comp_extend(s, expr, vars)
+   return s:with_extend(vars, function() return s:comp(expr) end)
 end
 
 function is_var(var)

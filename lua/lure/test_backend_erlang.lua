@@ -25,7 +25,7 @@ local function run()
    -- Run the pp separately on each expression
    for expr in se.elements(exprs) do
       log_se_n(expr, "INPUT:")
-      local c = c_new()
+      local c = c_new({primitive_letrec = 'primitive-letrec'})
       local ir = c:compile(expr)
       log("IR:") ; pretty.log_pp(ir)
       -- log_se_n(ir, "IR:")
