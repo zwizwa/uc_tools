@@ -31,13 +31,30 @@
       (f (+ x (+ a b)))))
   (f 0))
 
-
 (begin
   (define (f x)
     (let ((a 1)
           (b 2))
       (if x x
           (f (+ x (+ a b))))))
+  (f 0))
+
+(begin
+  (define (f x)
+    (let ((a (lambda (x) (+ x 1)))
+          (b (lambda (x) (+ x 2))))
+      (f (a (b x)))))
+  (f 0))
+
+(begin
+  (define (f x)
+    (let ((a (lambda (x)
+               (let ((c 1))
+                 (+ x c))))
+          (b (lambda (x)
+               (let ((c 2))
+                 (+ x c)))))
+      (f (a (b x)))))
   (f 0))
 
 

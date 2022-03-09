@@ -34,6 +34,9 @@ local lib = require('lure.slc_runtime')
 local function _trace(tag,expr)
    log_se_n(expr, tag .. ":")
 end
+local function trace(tag,expr)
+   -- _trace(tag,expr)
+end
 
 function capitalize(iol)
    local str = iolist.to_string(iol)
@@ -164,26 +167,23 @@ end
 
 
 function class.w_bindings(s, bindings)
-   -- _trace("BINDINGS", bindings)
+   -- trace("BINDINGS", bindings)
    for binding, rest in se.elements(bindings) do
-      _trace("BINDING", binding)
+      trace("BINDING", binding)
 
       s.match(
          binding,
          {
             -- Special case the function definitions
             {"(,var (lambda ,args ,expr))", function(m)
-                _trace("LAMBDA",binding)
-                s:indented(
-                   function()
-                      s:w_maybe_assign(m.var)
-                      s:w("fun(", s:commalist(m.args),")"," ->\n",s:tab())
-                      s:comp(m.expr)
-                      s:w(s:tab(),"end")
-                   end)
+                trace("LAMBDA",binding)
+                s:w_maybe_assign(m.var)
+                s:w("fun")
+                s:w_lambda(m.args, m.expr)
+                s:w("\n",s:tab(),"end")
             end},
             {"(,var (if ,cond ,etrue, efalse))", function(m)  -- FIXME var
-                _trace("IF",binding)
+                trace("IF",binding)
                 s:w_maybe_assign(m.var)
                 s:indented(
                    function()
@@ -196,15 +196,12 @@ function class.w_bindings(s, bindings)
                    end,
                    2)
             end},
-            -- FIXME: Erlang doesn't have mutation.  This is going to be an issue.
             {"(,rvar (set! ,var ,expr))", function(m) 
-                -- assert(m.rvar == '_') -- FIXME: why does this give a var in the example?
                 _trace("SET",binding)
-                s:w_maybe_assign(m.var)
-                s:i_comp(m.expr)
+                error("assingnment_not_supported")
             end},
             {"(,var (app ,fun . ,args))", function(m)
-                _trace("APP",binding)
+                trace("APP",binding)
                 s:w_maybe_assign(m.var)
                 -- FIXME: use s.lib_ref instead.
                 local w_f = m.fun.var and form[m.fun.var]
@@ -218,7 +215,7 @@ function class.w_bindings(s, bindings)
                 error('labels_toplevel_only')
             end},
             {"(,var (hint ,tag . ,args))", function(m)
-                _trace("HINT",binding)
+                trace("HINT",binding)
                 -- Ignore hints
             end},
             {"(,var (,form . ,args))", function(m)
@@ -231,7 +228,7 @@ function class.w_bindings(s, bindings)
                 s:w(s:iol_atom(m.atom))
             end},
             {",other", function(m)
-                _trace("MISMATCH", m.other)
+                trace("MISMATCH", m.other)
                 error('mismatch')
             end}
          }
@@ -269,6 +266,16 @@ function class.w(s, ...)
    ins(out, {...})
 end
 
+-- Prefix this with function name or 'fun', and postfix with '.' or
+-- 'end'.
+function class.w_lambda(s,args,body)
+   s:indented(
+      function()
+         s:w("(", s:commalist(args),")"," ->\n",s:tab())
+         s:comp(body)
+      end)
+end
+
 -- Top level entry point
 function class.compile(s,expr)
 
@@ -302,12 +309,8 @@ function class.compile(s,expr)
             {{"(,var (lambda ,args ,body))", function(b)
                  local var = (b.var == '_' and main) or b.var
                  s:w(s:iol_atom(var))
-                 s:w("(", s:commalist(b.args),")"," ->\n",s:tab(1))
-                 s:indented(
-                    function()
-                       s:comp(b.body)
-                       s:w(".\n")
-                    end)
+                 s:w_lambda(b.args, b.body)
+                 s:w(".\n")
          end}})
       end
    end
