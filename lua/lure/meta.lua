@@ -21,6 +21,7 @@ return { modules = {
   'scheme_eval',
   'scheme_flatten',
   'scheme_frontend',
+  'scheme_liveness',
   'scheme',
   'scheme_macros',
   'scheme_match',

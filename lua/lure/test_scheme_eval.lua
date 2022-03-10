@@ -14,6 +14,7 @@ local c_new =
       {
          'lure.scheme_frontend',
          'lure.scheme_flatten',
+         'lure.scheme_liveness',
       })
 local filename = 'test_scheme_eval.scm'
 local str = asset[filename]

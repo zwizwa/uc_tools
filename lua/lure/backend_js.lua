@@ -72,7 +72,7 @@ local function iol_atom(a)
    elseif type(a) == 'string' then
       return {"'",a,"'"} -- FIXME: string quoting
    elseif a == scheme_frontend.void then
-      return 'nil'
+      return 'undefined'
    elseif type(a) == 'table' then
       -- All tables are abstract types wrapped in the style of se.lua
       local et = se.expr_type(a)
@@ -225,15 +225,6 @@ function class.w_atom(s, a)
    s:w(iol_atom(a))
 end
 
--- FIXME: Also do 'quote' or 'lit'
-
--- Undo the form tags.  Those have been added to make matching easier.
--- The values themselves are also tagged via the 'class' attribute,
--- which is what we use for dispatch.
---function class.unref(s,e)
---   local a = function(m) return m.a end
---   return s.match({{"(ref ,a)", a}, {",a", a}})
---end
 function class.map(s,method,lst)
    return se.map(function(e) return s[method](s,e) end, lst)
 end
@@ -273,18 +264,17 @@ function class.w_bindings(s, bindings)
                 s:w_maybe_assign(m.var)
                 s:indented(
                    function()
-                      s:w("case ", iol_atom(m.cond), " of\n")
-                      s:w(s:tab(-1), "true ->\n", s:tab())
+                      s:w("if (", iol_atom(m.cond), ") {\n", s:tab())
                       s:comp(m.etrue)
-                      s:w(";\n", s:tab(-1), "false ->\n",s:tab())
+                      s:w("\n", s:tab(-1), "} else {\n", s:tab())
                       s:comp(m.efalse)
-                      s:w("\n",s:tab(-2), "end")
+                      s:w("\n", s:tab(-1), "}")
                    end,
-                   2)
+                   1)
             end},
-            {"(,rvar (set! ,var ,expr))", function(m) 
-                _trace("SET",binding)
-                error("assingnment_not_supported")
+            {"(_ (set! ,var ,expr))", function(m)
+                s:w(iol_atom(m.var), " = ")
+                s:comp(m.expr)
             end},
             {"(,var (app ,fun . ,args))", function(m)
                 trace("APP",binding)
@@ -307,6 +297,7 @@ function class.w_bindings(s, bindings)
             end},
             {"(,var (hint ,tag . ,args))", function(m)
                 trace("HINT",binding)
+                s:w("// ", se.iolist(se.cadr(binding)))
                 -- Ignore hints
             end},
             {"(,var (,form . ,args))", function(m)
@@ -325,7 +316,7 @@ function class.w_bindings(s, bindings)
          }
       )
       if not se.is_empty(rest) then
-         s:w(",\n",s:tab())
+         s:w("\n",s:tab())
       end
    end
 end
