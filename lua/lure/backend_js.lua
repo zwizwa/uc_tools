@@ -1,8 +1,3 @@
--- Erlang backend.
--- Restrictions:
--- . Top level form needs to be a labels (letrec) form, mapping to modules.
--- . The inner expression maps to the 'main' function, e.g. for scripts.
-
 local se        = require('lure.se')
 local se_match  = require('lure.se_match')
 local iolist    = require('lure.iolist')
@@ -13,7 +8,15 @@ local l = se.list
 local ins = table.insert
 local pprint = scheme_pretty.new()
 
+local function _trace(tag,expr)
+   log_se_n(expr, tag .. ":")
+end
+local function trace(tag,expr)
+   -- _trace(tag,expr)
+end
+
 local class = {}
+
 
 -- Cherry-pick some methods (micro-mixin?)
 class.parameterize = lure_comp.parameterize
@@ -26,27 +29,12 @@ class.tab          = lure_comp.tab
 -- Expressions are always compiled in binding position, are already at
 -- indented position and should not print newline.
 
-local function _trace(tag,expr)
-   log_se_n(expr, tag .. ":")
-end
-local function trace(tag,expr)
-   -- _trace(tag,expr)
-end
+local lib = require('lure.slc_runtime')
 
-function capitalize(iol)
-   local str = iolist.to_string(iol)
-   local byte = str:byte(1) - 32 -- FIXME: sloppy
-   return {string.char(byte), str:sub(2)}
-end
-
-function class.mangle(s, var)
-   local prefix = capitalize
-   if s.mod_fun[var] then prefix = function(x) return x end end
-
+local function mangle(var)
    assert(var and var.unique)
    local name = var.var
-   -- name = nil -- FIXME: temporary, to make output form easier to read
-   if not name then return prefix(var.unique) end
+   if not name then return var.unique end
 
    -- Do some exact matches first
    local alias = {
@@ -69,16 +57,16 @@ function class.mangle(s, var)
    for from,to in pairs(subst) do
       name = string.gsub(name,from,to)
    end
-   return prefix({var.unique,"_",name})
+   return {var.unique,"_",name}
 end
 
 local function iol_cons(a,d)
    return {"{",a,",",d,"}"}
 end
 
-function class.iol_atom(s, a)
+local function iol_atom(a)
    if type(a) == 'table' and a.class == 'var' then
-      return s:mangle(a)
+      return mangle(a)
    elseif type(a) == 'number' then
       return a
    elseif type(a) == 'string' then
@@ -89,9 +77,9 @@ function class.iol_atom(s, a)
       -- All tables are abstract types wrapped in the style of se.lua
       local et = se.expr_type(a)
       if et == 'expr' then
-         return s:iol_atom(a.expr)
+         return iol_atom(a.expr)
       elseif et == 'pair' then
-         return iol_cons(s:iol_atom(a[1]), s:iol_atom(a[2]))
+         return iol_cons(iol_atom(a[1]), iol_atom(a[2]))
       else
          error('bad expr_type = ' .. et)
       end
@@ -106,7 +94,7 @@ end
 function class.commalist(s,lst)
    local iol = {}
    for el, last in se.elements(lst) do
-      ins(iol, s:iol_atom(el))
+      ins(iol, iol_atom(el))
       if not se.is_empty(last) then
          ins(iol, ", ")
       end
@@ -114,6 +102,26 @@ function class.commalist(s,lst)
    return iol
 end
 
+
+-- Special syntax is implemented using another layer of special forms.
+local form = {}
+form['table-set!'] = function(s, args)
+   s.match(
+      args,
+      {{"(,tab ,key, ,val)", function(m)
+           s:w(iol_atom(m.tab), "[", iol_atom(m.key),"] = ",iol_atom(m.val))
+        end}})
+end
+form['table-ref'] = function(s, args)
+   s.match(
+      args,
+      {{"(,tab ,key)", function(m)
+           s:w(iol_atom(m.tab), "[", iol_atom(m.key),"]")
+        end}})
+end
+
+
+-- infix functions
 local infix = {
    ['+']  = '+',
    ['-']  = '-',
@@ -122,22 +130,130 @@ local infix = {
    ['>']  = '>',
    ['<']  = '<',
 }
-local form = {}
 for scm,op in pairs(infix) do
    form[scm] = function(s, args)
       local a, b = se.unpack(args, {n=2})
-      s:w(s:iol_atom(a)," ",op," ",s:iol_atom(b))
+      s:w(iol_atom(a)," ",op," ",iol_atom(b))
    end
 end
 
+
+
+
+function class.w_bindings(s, bindings)
+   for binding in se.elements(bindings) do
+      s:w(s:tab())
+      s.match(
+         binding,
+         {
+            -- Statements
+            {"(_ ,expr)", function(b)
+                if se.expr_type(b.expr) ~= 'pair' then
+                   s:w("-- ")
+                end
+                s:i_comp(b.expr)
+            end},
+            -- Special case the function definitions
+            {"(,var (lambda ,args ,expr))", function(b)
+                s:indented(
+                   function()
+                      s:w("local function ", iol_atom(b.var), "(", s:commalist(b.args),")","\n")
+                      s:w_body(b.expr)
+                      s:w(s:tab(),"end")
+                   end)
+            end},
+            -- Other variable definitions
+            {"(,var ,expr)", function(b)
+                -- Lua does not allow naked values to appear in a
+                -- statement position.  Replace them with a comment.
+                s:w("local ", iol_atom(b.var), " = ")
+                s:i_comp(b.expr)
+                -- FIXME: print orig var name in comment
+            end},
+      })
+      s:w("\n")
+   end
+end
+
+function class.w_indented_bindings(s, bindings)
+   s:indented(function() s:w_bindings(bindings) end)
+end
+
+function class.w_body(s, expr)
+   s.match(
+      expr,
+      -- The do .. end block can be omitted in a function body.
+      {{"(block . ,bindings)", function(m)
+           s:w_indented_bindings(m.bindings)
+       end},
+       {",body", function(m)
+           s:i_comp(m.body)
+      end}})
+end
+
+function class.w(s, ...)
+   local out = s.out
+   assert(out)
+   ins(out, {...})
+end
+
+-- Top level entry point
+function class.compile(s,expr)
+
+   -- The IR expr is a single lambda expression, parameterized by
+   -- 'lib_ref', a function that performs library symbol lookup for
+   -- all free variables that were found by scheme_frontend.
+   local mod_body = {}
+   s:parameterize(
+      {out = mod_body},
+      function()
+         s:comp(expr)
+         s:w("\n")
+      end)
+   local mod = { mod_body }
+   if s.config.debug_lua_output then
+      iolist.write_to_file(s.config.debug_lua_output, mod)
+   end
+   return { class = "iolist", iolist = mod }
+end
+
+function class.i_comp(s, expr)
+   s:indented(function() s:comp(expr) end)
+end
+
+function class.w_atom(s, a)
+   s:w(iol_atom(a))
+end
+
+-- FIXME: Also do 'quote' or 'lit'
+
+-- Undo the form tags.  Those have been added to make matching easier.
+-- The values themselves are also tagged via the 'class' attribute,
+-- which is what we use for dispatch.
+--function class.unref(s,e)
+--   local a = function(m) return m.a end
+--   return s.match({{"(ref ,a)", a}, {",a", a}})
+--end
+function class.map(s,method,lst)
+   return se.map(function(e) return s[method](s,e) end, lst)
+end
 
 function class.w_maybe_assign(s, var)
    if var ~= '_' then
-      s:w(s:iol_atom(var), " = ")
+      s:w("var ", iol_atom(var), " = ")
    end
 end
 
+function class.w_lambda(s,args,body)
+   s:indented(
+      function()
+         s:w("(", s:commalist(args),")"," {\n",s:tab())
+         s:comp(body)
+         s:w("\n",s:tab(-1),"}")
+      end)
+end
 
+-- Compiler is centered around 'block', compiling a sequence of binding forms.
 function class.w_bindings(s, bindings)
    -- trace("BINDINGS", bindings)
    for binding, rest in se.elements(bindings) do
@@ -149,16 +265,15 @@ function class.w_bindings(s, bindings)
             {"(,var (lambda ,args ,expr))", function(m)
                 trace("LAMBDA",binding)
                 s:w_maybe_assign(m.var)
-                s:w("fun")
+                s:w("function")
                 s:w_lambda(m.args, m.expr)
-                s:w("\n",s:tab(),"end")
             end},
             {"(,var (if ,cond ,etrue, efalse))", function(m)  -- FIXME var
                 trace("IF",binding)
                 s:w_maybe_assign(m.var)
                 s:indented(
                    function()
-                      s:w("case ", s:iol_atom(m.cond), " of\n")
+                      s:w("case ", iol_atom(m.cond), " of\n")
                       s:w(s:tab(-1), "true ->\n", s:tab())
                       s:comp(m.etrue)
                       s:w(";\n", s:tab(-1), "false ->\n",s:tab())
@@ -179,11 +294,16 @@ function class.w_bindings(s, bindings)
                 if w_f then
                    w_f(s, m.args)
                 else
-                   s:w(s:iol_atom(m.fun),"(",s:commalist(m.args),")")
+                   s:w(iol_atom(m.fun),"(",s:commalist(m.args),")")
                 end
             end},
             {"(,var (labels . ,bindings))", function(m)
                 error('labels_toplevel_only')
+            end},
+            -- requires scheme_blockval pass on input IR
+            {"(_ (return ,expr))", function(m)
+                s:w("return ")
+                s:comp(m.expr)
             end},
             {"(,var (hint ,tag . ,args))", function(m)
                 trace("HINT",binding)
@@ -196,7 +316,7 @@ function class.w_bindings(s, bindings)
             {"(,var ,atom)", function(m)
                 assert(se.expr_type(m.atom) ~= 'expr')
                 s:w_maybe_assign(m.var)
-                s:w(s:iol_atom(m.atom))
+                s:w(iol_atom(m.atom))
             end},
             {",other", function(m)
                 trace("MISMATCH", m.other)
@@ -210,7 +330,6 @@ function class.w_bindings(s, bindings)
    end
 end
 
-
 -- Bounce it back to w_bindings.
 function class.comp(s,expr)
    s.match(
@@ -223,116 +342,6 @@ function class.comp(s,expr)
              s:w_bindings(l(l('_',m.other)))
          end}
       })
-end
-
-
-function class.w_indented_bindings(s, bindings)
-   s:indented(function() s:w_bindings(bindings) end)
-end
-
-
-function class.w(s, ...)
-   local out = s.out
-   assert(out)
-   ins(out, {...})
-end
-
--- Prefix this with name or 'fun', and postfix with '.' or 'end'.
-function class.w_lambda(s,args,body)
-   s:indented(
-      function()
-         s:w("(", s:commalist(args),")"," ->\n",s:tab())
-         s:comp(body)
-      end)
-end
-
--- Top level entry point
-function class.compile(s,expr)
-
-   -- The output is a module.
-   -- The input expression has a specific form:
-   -- 1. Outer lambda with lib_ref
-   -- 2. A block form with lib_ref dereferences
-   -- 3. Inner labels form with module bindings.
-
-   -- The inner labels fallthrough case is named 'main'.
-   local main = { class='var', unique='main' }
-   s.mod_fun = { [main] = true }
-
-   s.out = {}
-   s.lib_ref = {}
-
-   function compile_labels(bindings)
-      assert(bindings)
-      -- First pass: collect module-level function names so they can
-      -- be distinguished from local variables.
-      for binding in se.elements(bindings) do
-         local var = se.car(binding)
-         if var ~= '_' then
-            s.mod_fun[var] = true
-         end
-      end
-      -- Second pass: emit definitions.
-      for binding in se.elements(bindings) do
-         s.match(
-            binding,
-            {{"(,var (lambda ,args ,body))", function(b)
-                 local var = (b.var == '_' and main) or b.var
-                 s:w(s:iol_atom(var))
-                 s:w_lambda(b.args, b.body)
-                 s:w(".\n")
-         end}})
-      end
-   end
-
-   s.match(
-      expr,
-      {{"(lambda (,lib_ref) (block . ,bindings))", function(m)
-           -- Assumptions:
-           -- . Last binding is a labels form
-           -- . All other bindings are lib_ref
-
-           for binding, rest in se.elements(m.bindings) do
-              if not se.is_empty(rest) then
-                 -- Collect binding
-                 s.match(
-                    binding,
-                    {{"(,var (app ,lib_ref ,sym))", function(b)
-                         assert(m.lib_ref == b.lib_ref)
-                         s.lib_ref[b.var] = b.sym
-                     end}})
-              else
-                 -- Compile top-level functions
-                 s.match(
-                    binding,
-                    {
-                       {"(_ (labels . ,bindings))", function(l)
-                           compile_labels(l.bindings)
-                       end},
-                       {",other", function(b)
-                           _trace("BAD",b.other)
-                           error("bad_binding")
-                       end}
-                    })
-              end
-           end
-       end}})
-
-   local mod = { s.out }
-   return { class = "iolist", iolist = mod }
-
-end
-
-function class.i_comp(s, expr)
-   s:indented(function() s:comp(expr) end)
-end
-
-function class.w_atom(s, a)
-   s:w(s:iol_atom(a))
-end
-
-function class.map(s,method,lst)
-   return se.map(function(e) return s[method](s,e) end, lst)
 end
 
 local function new(config)
