@@ -132,6 +132,10 @@ local prim_out_forms = {'block','set!','if','lambda'}
 local function quote_to_iolist(q)
    return {"'", se.iolist(q.expr)}
 end
+local function quote(datum)
+   return { class = 'expr', expr = datum, iolist = quote_to_iolist }
+end
+class.quote = quote
 
 class.form = {
    -- This is like 'begin', but without support for local definitons.
@@ -194,7 +198,7 @@ class.form = {
    end,
    ['quote'] = function(s, expr)
       local _, datum = se.unpack(expr, {n = 2})
-      return { class = 'expr', expr = datum, iolist = quote_to_iolist }
+      return quote(datum)
    end,
    ['hint'] = function(s, expr)
       -- Same evaluation as function call, but tagged differently.
