@@ -75,18 +75,22 @@ function class.need_block(s,expr)
       })
 end
 
+local function hint(...)
+   return l('_',se.append(l('hint'),a2l({...})))
+end
+local function ins_hint(bs, ...)
+   ins(bs, hint({...}))
+end
+
 function class.comp_bindings(s,bindings)
    local bs = {}
-   local function hint(...)
-      ins(bs, l('_',se.append(l('hint'),a2l({...}))))
-   end
    for binding in se.elements(bindings) do
       local var, vexpr = se.unpack(binding, {n=2})
       -- In second pass, reference count information will be available
       -- from first pass.
       if s.rc_max and var ~= '_' then
          -- FIXME: This is maybe not that useful?  The 'last' hint is enough.
-         hint(q('rc'),q(var),s.rc_max[var])
+         ins_hint(bs, q('rc'),q(var),s.rc_max[var])
       end
 
       -- Rebuild refcount information.  In pass 1 this builds the RC
@@ -102,7 +106,7 @@ function class.comp_bindings(s,bindings)
       -- The hint is called 'last' to indicate that the next binding
       -- has the last reference to this variable.
       if #s.free ~= 0 then
-         hint(q('last'),q(a2l(s.free)))
+         ins_hint(bs, q('last'),q(a2l(s.free)))
          s.free = {}
       end
 
@@ -139,50 +143,63 @@ end
 --
 -- "(if ,cond ,etrue ,efalse)"
 function class.comp_if(s, expr, m)
+   print(expr)
 
    -- Visit cond before forking
    local cond = s:comp(m.cond)
 
-   -- The two branches have separate refcounts.  These are attached to
-   -- the 'if' node in the syntax tree through the rc_if table.
-   local rc_t, rc_f = s.rc_if[expr]
-
    -- Visit branches and produce final expression.
-   local function fork()
-      local function branch(rc, expr)
-         return s:parameterize(
-            {rc = rc},
-            function()
-               -- FIXME: With rc struct switched, it is possible that
-               -- some variables have reached their max refcount in
-               -- this branch, so iterate over all to insert 'free'
-               -- hints.
-               return s:comp(s:need_block(expr))
-         end)
-      end
-      local etrue  = branch(rc_t, m.etrue)
-      local efalse = branch(rc_f, m.efalse)
+   local function branch(rc, rc_max, expr)
+      return s:parameterize(
+         {rc = rc, rc_max = rc_max},
+         function()
+            local free = {}
+            if rc_max then
+               for var, var_rc in pairs(rc) do
+                  if rc[var] == rc_max[var] then
+                     ins(free, var)
+                  end
+               end
+               if #free > 0 then
+                  expr = {'block',
+                          l(hint(q('free'),q(a2l(free))),
+                            l('_',expr))}
+               end
+            end
+            -- FIXME: With rc struct switched, it is possible that
+            -- some variables have reached their max refcount in this
+            -- branch, so iterate over all to insert 'free' hints.
+            return s:comp(s:need_block(expr))
+      end)
+   end
+   local function fork(rc_t, rc_f, rc_t_max, rc_f_max)
+      local etrue  = branch(rc_t, rc_t_max, m.etrue)
+      local efalse = branch(rc_f, rc_f_max, m.efalse)
       return l('if', cond, etrue, efalse)
    end
 
-   -- Pass 1 and 2 are different.
-   if rc_t and rc_f then
-      -- Second pass uses RC structs built in first pass.
-      _trace("IF2", expr)
-      return fork()
-   else
-      _trace("IF1", expr)
-      -- First pass: snapshot parent rc for t/f branches
-      rc_t = tab.copy(s.rc)
-      rc_f = tab.copy(s.rc)
+   -- The running refcount structs are always a fork of the parent.
+   local rc_t = tab.copy(s.rc)
+   local rc_f = tab.copy(s.rc)
+
+   -- The rc_max is recovered from the previous pass. These are
+   -- attached to the 'if' syntax node via rc_if table.
+   local rcs = s.rc_if[expr]
+   if not rcs then
+      trace("IF1", expr)
       -- Store branch copies for subsequent traversal.
       s.rc_if[expr] = {rc_t, rc_f}
-      local expr1 = fork()
+      local expr1 = fork(rc_t, rc_f, nil, nil)
       -- Increment ref count for existing variables.
       for k,v in pairs(s.rc) do
          s.rc[k] = max(rc_t[k], rc_f[k])
       end
       return expr1
+   else
+      -- Second pass uses RC structs built in first pass.
+      trace("IF2", expr)
+      local rc_t_max, rc_f_max = unpack(rcs)
+      return fork(rc_t, rc_f, rc_t_max, rc_f_max)
    end
 end
 

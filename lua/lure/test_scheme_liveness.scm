@@ -17,9 +17,17 @@
 ;; counts split.  What needs to be verified here:
 ;;
 ;; - Lifetime of a is different in the two branches
-;; - The initial rc of a is the max of the two
-;; - The branch that doesn't use a has a free hint on entry
+;; - The initial rc of a is the max of the two, not the sum of the branches
 
+(let ((a 1))
+  (if #t
+      a
+      (+ 1 (+ a a))))
+
+;; Similar, but this has a branch that doesn't use a at all, check
+;; that:
+;;
+;; - The branch that doesn't use a has a free hint on entry
 (let ((a 1))
   (if #t
       123
