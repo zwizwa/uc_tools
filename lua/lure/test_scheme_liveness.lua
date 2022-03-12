@@ -29,7 +29,11 @@ function mod.run()
 
    for expr in se.elements(exprs) do
       log_se_n(expr, "INPUT:")
-      local c = c_new()
+      local config = {
+         hint_imbalance = true,
+         hint_fanout    = true,
+      }
+      local c = c_new(config)
       local ir = c:compile(expr)
       -- log_se_n(ir, "IR:")
       log("IR:") ; scheme_pretty.log_pp(ir)

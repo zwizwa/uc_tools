@@ -34,3 +34,11 @@
       (+ a a)))
 
 
+;; Test for balance hints
+(let ((a 1)
+      (b 2))
+  (if #t
+      a
+      b))
+  
+

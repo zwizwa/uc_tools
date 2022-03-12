@@ -222,13 +222,17 @@ function class.eval_expr(s, expr, maybe_env)
    end
 
    -- Primitive value: literal or variable referenece.
-   local function lit_or_ref(thing)
+   local function lit_or_ref_(thing)
+
       -- trace("LIT_OR_REF",l(thing,s.env))
       local typ = type(thing)
       if typ ~= 'table' then return thing end
 
       local class = thing.class
-      assert(class)
+      if not class then
+         _trace("BAD", thing)
+         error("bad_ref")
+      end
       if 'var' == class then
          local val = s:ref(thing)
          assert(nil ~= val)
@@ -245,6 +249,19 @@ function class.eval_expr(s, expr, maybe_env)
       else
          error("lit_or_ref, bad class '" .. class .. "'")
       end
+   end
+
+   local function lit_or_ref(thing)
+      return s.match(
+         thing,
+         {
+            {"(tag ,expr ,tag)", function(m)
+                return lit_or_ref(m.expr)
+            end},
+            {",_", function(m)
+                return lit_or_ref_(thing)
+            end}
+      })
    end
 
    -- Main loop
@@ -311,6 +328,9 @@ function class.eval_expr(s, expr, maybe_env)
             end},
             {"(hint ,fun . ,args)", function(m)
                 s:advance()
+            end},
+            {"(tag ,expr ,tag)", function(m)
+                s.expr = m.expr
             end},
             {",other", function(m)
                 if is_pair(m.other) then

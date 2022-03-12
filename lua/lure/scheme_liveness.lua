@@ -1,10 +1,28 @@
+-- FIXME: The lambda form is not handled correctly.  A function call
+-- should count as a reference to all closed-ver variables.  Not clear
+-- yet how to express this.
+
+
 -- Liveness analysis
 --
--- Constructs a reference count for each variable, which provides
--- enough information to produce hints for rc init and markers for
--- last use.
+-- Using reference count (RC) tracking it is possible to insert
+-- liveness markers:
 --
--- FIXME: This is not correct for conditionals.
+-- . (tag <var> 'last) to indicate last variable reference
+-- . (hint 'free '(<var> ...) explicit free at start of if branch for unused variables
+-- . (hint 'fanout '(<var> <rc>)) variable usage count, emitted before definition
+-- . (hint 'imbalance '((<var> <rc> <rc_max> <rc_max_other>) ...) marks if branch variable use imbalance
+
+-- Only the first two are necessary in subsequent processing.  The
+-- others are likely only useful for debugging so are disabled by
+-- default.
+
+-- TODO: As a test, add functionality to scheme_eval to mark freed
+-- variables to ensure that they are never referenced again.
+
+-- The implementation uses a stateful walk & track approach that seems
+-- to be reasonably effective in producing relatively simple code, but
+-- it does require some ad-hoc state juggling.
 
 local se        = require('lure.se')
 local se_match  = require('lure.se_match')
@@ -38,24 +56,25 @@ function q(expr)
 end
 
 function class.compile(s,expr)
-   s.free = {}
-   s.rc_if = {}
 
    -- First pass collects s.rc
-   s.rc = {}
-   s:comp(expr)
-   s.rc_max = s.rc
+   s.rc = {}     -- Current "straight line" rc
+   s.rc_if = {}  -- Branches need to save inidividual counts
 
-   -- Second pass inserts hints for rc init and variable free.
+   s:comp(expr)
+
+   -- Save for toplevel.  The 'if' will set up rc_max as a parameter
+   -- for subsequent branches based on what is stored in rc_if.
+   s.rc_max = s.rc
    s.rc = {}
+
+   -- Second pass inserts tags and hints based on RCs collected in
+   -- first pass.
    local rv = s:comp(expr)
 
    return rv
 end
 
-function ifte(a,b,c)
-   if a then return b else return c end
-end
 function max(a,b)
    if a>b then return a else return b end
 end
@@ -86,31 +105,20 @@ function class.comp_bindings(s,bindings)
    local bs = {}
    for binding in se.elements(bindings) do
       local var, vexpr = se.unpack(binding, {n=2})
+
       -- In second pass, reference count information will be available
-      -- from first pass.
+      -- from first pass.  Use it for optional fanout annotation.
       if s.rc_max and var ~= '_' then
-         -- FIXME: This is maybe not that useful?  The 'last' hint is enough.
-         ins_hint(bs, q('rc'), q(var), s.rc_max[var])
+         if s.config.hint_fanout then
+            ins_hint(bs, q('fanout'), q(var), s.rc_max[var])
+         end
       end
 
-      -- Rebuild refcount information.  In pass 1 this builds the RC
-      -- table.  In pass 2 this does the same to find the point where
-      -- RC=RC_MAX.
+      -- Init refcount table.
       if var ~= '_' then s:def(var) end
 
       -- Compilation will update reference counting state.
-      local vexpr1 = s:comp(vexpr)
-
-      -- Insert free hints.  These need to go _before_ the binding, to
-      -- not mess up the last expression == return value property.
-      -- The hint is called 'last' to indicate that the next binding
-      -- has the last reference to this variable.
-      if #s.free ~= 0 then
-         ins_hint(bs, q('last'), q(a2l(s.free)))
-         s.free = {}
-      end
-
-      ins(bs, l(var, vexpr1))
+      ins(bs, l(var, s:comp(vexpr)))
 
    end
    return a2l(bs)
@@ -132,42 +140,55 @@ function class.ref(s,var)
    end
    rc = rc + 1
    s.rc[var] = rc
+
    if s.rc_max and s.rc_max[var] == rc then
-      _trace("FREE",var)
-      assert(s.free)
-      ins(s.free, var)
+      return l('tag',var,q('last'))
+   else
+      return var
    end
+
+   return var
 end
 
 -- The clause for if expressions.  Each branch has its own reference
--- count tracking.  The code got a little quirky.
+-- count tracking.
 --
 -- "(if ,cond ,etrue ,efalse)"
 function class.comp_if(s, expr, m)
    print(expr)
 
-   -- Visit cond before forking
+   -- Visit cond before forking, which updates s.rc
    local cond = s:comp(m.cond)
 
-   -- Produce a balance hint, exposing the difference between the two
-   -- branches.  This can be used to free variables not used in this
+   -- At branch entry in second pass, check the rc differences between
+   -- the two branches to expose variables that can be freed in this
    -- branch.
-   local function balance(rc_max, rc_max_other, expr)
-      local diffs = {}
-      for var, var_rc in pairs(rc_max) do
-         local var_rc_other = rc_max_other[var]
-         if var_rc_other ~= nil and var_rc_other > var_rc then
-            local diff = var_rc_other - var_rc
-            ins(diffs, l(var, diff))
+   local function free_unused(rc, rc_max, rc_max_other, expr)
+      local free = {}
+      local imbalance = {}
+      for var, max in pairs(rc_max) do
+         local other = rc_max_other[var] or 0
+         if other > max then
+            -- This branch has less references to var.
+            local cur = rc[var]
+            ins(imbalance, l(var, cur, max, other))
+            if cur == max then
+               -- The case where it has no more references needs to be
+               -- handled explicitly.
+               ins(free, var)
+            else
+               -- If there are still refences to come, a 'last' tag
+               -- will be inserted.
+            end
          end
       end
-      if #diffs > 0 then
-         return {'block',
-                 l(hint(q('balance'),q(a2l(diffs))),
-                   l('_',expr))}
-      else
-         return expr
+      local bs = {}
+      if s.config.hint_imbalance then
+         ins(bs, hint(q('imbalance'),q(a2l(imbalance))))
       end
+      ins(bs, hint(q('free'),q(a2l(free))))
+      ins(bs, l('_',expr))
+      return {'block', a2l(bs)}
    end
 
    -- Visit branches and produce final expression.
@@ -176,7 +197,7 @@ function class.comp_if(s, expr, m)
          {rc = rc, rc_max = rc_max},
          function()
             if rc_max then
-               expr = balance(rc_max, rc_max_other, expr)
+               expr = free_unused(rc, rc_max, rc_max_other, expr)
             end
             return s:comp(s:need_block(expr))
       end)
@@ -245,16 +266,15 @@ function class.comp(s,expr)
              if (se.expr_type(m.other) ~= 'var') then
                 return expr
              else
-                s:ref(m.other)
-                return expr
+                return s:ref(m.other)
              end
          end}
       }
    )
 end
 
-local function new()
-   local obj = { match = se_match.new(), indent = 0 }
+local function new(config)
+   local obj = { match = se_match.new(), indent = 0, config = config or {} }
    setmetatable(obj, { __index = class })
    return obj
 end

@@ -46,7 +46,6 @@ return { modules = {
   'test_hoas_match',
   'test',
   'test_scheme_eval',
-  '.#test_scheme_liveness',
   'test_scheme_liveness',
   'test_scheme_macros',
   'test_scheme_pass',
