@@ -10,6 +10,7 @@ local se        = require('lure.se')
 local se_match  = require('lure.se_match')
 local iolist    = require('lure.iolist')
 local lure_comp = require('lure.comp')
+local tab       = require('lure.tab')
 local l = se.list
 local a2l = se.array_to_list
 local ins = table.insert
@@ -38,6 +39,7 @@ end
 
 function class.compile(s,expr)
    s.free = {}
+   s.rc_if = {}
 
    -- First pass collects s.rc
    s.rc = {}
@@ -53,6 +55,9 @@ end
 
 function ifte(a,b,c)
    if a then return b else return c end
+end
+function max(a,b)
+   if a>b then return a else return b end
 end
 
 -- There needs to be room to insert the hints, so "naked" expressions
@@ -129,6 +134,58 @@ function class.ref(s,var)
    end
 end
 
+-- The clause for if expressions.  Each branch has its own reference
+-- count tracking.
+--
+-- "(if ,cond ,etrue ,efalse)"
+function class.comp_if(s, expr, m)
+
+   -- Visit cond before forking
+   local cond = s:comp(m.cond)
+
+   -- The two branches have separate refcounts.  These are attached to
+   -- the 'if' node in the syntax tree through the rc_if table.
+   local rc_t, rc_f = s.rc_if[expr]
+
+   -- Visit branches and produce final expression.
+   local function fork()
+      local function branch(rc, expr)
+         return s:parameterize(
+            {rc = rc},
+            function()
+               -- FIXME: With rc struct switched, it is possible that
+               -- some variables have reached their max refcount in
+               -- this branch, so iterate over all to insert 'free'
+               -- hints.
+               return s:comp(s:need_block(expr))
+         end)
+      end
+      local etrue  = branch(rc_t, m.etrue)
+      local efalse = branch(rc_f, m.efalse)
+      return l('if', cond, etrue, efalse)
+   end
+
+   -- Pass 1 and 2 are different.
+   if rc_t and rc_f then
+      -- Second pass uses RC structs built in first pass.
+      _trace("IF2", expr)
+      return fork()
+   else
+      _trace("IF1", expr)
+      -- First pass: snapshot parent rc for t/f branches
+      rc_t = tab.copy(s.rc)
+      rc_f = tab.copy(s.rc)
+      -- Store branch copies for subsequent traversal.
+      s.rc_if[expr] = {rc_t, rc_f}
+      local expr1 = fork()
+      -- Increment ref count for existing variables.
+      for k,v in pairs(s.rc) do
+         s.rc[k] = max(rc_t[k], rc_f[k])
+      end
+      return expr1
+   end
+end
+
 function class.comp(s,expr)
    return s.match(
       expr,
@@ -145,11 +202,7 @@ function class.comp(s,expr)
              return l('lambda', m.vars, s:comp(s:need_block(m.expr)))
          end},
          {"(if ,cond ,etrue ,efalse)", function(m)
-             trace("IF", expr)
-             return l('if',
-                      s:comp(m.cond),
-                      s:comp(s:need_block(m.etrue)),
-                      s:comp(s:need_block(m.efalse)))
+             return s:comp_if(expr, m)
          end},
          {"(app ,fun . ,args)", function(m)
              trace("APP", expr)

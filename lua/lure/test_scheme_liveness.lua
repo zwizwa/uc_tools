@@ -14,9 +14,9 @@ local c_new =
       {
          'lure.scheme_frontend',
          'lure.scheme_flatten',
-         -- 'lure.scheme_liveness',
+         'lure.scheme_liveness',
       })
-local filename = 'test_scheme_eval.scm'
+local filename = 'test_scheme_liveness.scm'
 local str = asset[filename]
 
 function mod.run()

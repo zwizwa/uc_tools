@@ -1,4 +1,4 @@
-;; Each expression is evaluated separately in test_scheme2.lua
+;; Each expression is evaluated separately in test_scheme_eval.lua
 
 
 
