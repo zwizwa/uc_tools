@@ -8,7 +8,7 @@
 -- Using reference count (RC) tracking it is possible to insert
 -- liveness markers:
 --
--- . (tag <var> 'last) to indicate last variable reference
+-- . (ref <var> 'last) to indicate last variable reference
 -- . (hint 'free '(<var> ...) explicit free at start of if branch for unused variables
 -- . (hint 'fanout '(<var> <rc>)) variable usage count, emitted before definition
 -- . (hint 'imbalance '((<var> <rc> <rc_max> <rc_max_other>) ...) marks if branch variable use imbalance
@@ -59,12 +59,12 @@ function class.compile(s,expr)
 
    -- First pass collects s.rc
    s.rc = {}     -- Current "straight line" rc
-   s.rc_if = {}  -- Branches need to save inidividual counts
+   s.rc_max_if = {}  -- Branches need to save inidividual counts
 
    s:comp(expr)
 
    -- Save for toplevel.  The 'if' will set up rc_max as a parameter
-   -- for subsequent branches based on what is stored in rc_if.
+   -- for subsequent branches based on what is stored in rc_max_if.
    s.rc_max = s.rc
    s.rc = {}
 
@@ -141,10 +141,11 @@ function class.ref(s,var)
    rc = rc + 1
    s.rc[var] = rc
 
+   -- Introduce explicit (ref <var> . <annotation>) form.
    if s.rc_max and s.rc_max[var] == rc then
-      return l('tag',var,q('last'))
+      return l('ref',var,q('last'))
    else
-      return var
+      return l('ref',var)
    end
 
    return var
@@ -155,11 +156,6 @@ end
 --
 -- "(if ,cond ,etrue ,efalse)"
 function class.comp_if(s, expr, m)
-   print(expr)
-
-   -- Visit cond before forking, which updates s.rc
-   local cond = s:comp(m.cond)
-
    -- At branch entry in second pass, check the rc differences between
    -- the two branches to expose variables that can be freed in this
    -- branch.
@@ -203,6 +199,9 @@ function class.comp_if(s, expr, m)
       end)
    end
 
+   -- Visit cond before forking, which updates s.rc
+   local cond = s:comp(m.cond)
+
    -- Compile both branches, producing new expression.
    local function comp_fork(rc_t, rc_f, rc_t_max, rc_f_max)
       local etrue  = comp_branch(rc_t, rc_t_max, rc_f_max, m.etrue)
@@ -214,19 +213,19 @@ function class.comp_if(s, expr, m)
       return l('if', cond, etrue, efalse)
    end
 
-   -- The running refcount structs are always a fork of the running
-   -- parent refcount.
+   -- Fork the parent running refcount.
    local rc_t = tab.copy(s.rc)
    local rc_f = tab.copy(s.rc)
 
    -- The rc_max is recovered from the previous pass. These are
-   -- attached to the 'if' syntax node via rc_if table.
-   local rcs = s.rc_if[expr]
+   -- attached to the 'if' syntax node via rc_max_if table.
+   local rcs = s.rc_max_if[expr]
    if not rcs then
       trace("IF1", expr)
+      local expr1 = comp_fork(rc_t, rc_f, nil, nil)
       -- Store branch copies for subsequent traversal.
-      s.rc_if[expr] = {rc_t, rc_f}
-      return comp_fork(rc_t, rc_f, nil, nil)
+      s.rc_max_if[expr] = {rc_t, rc_f}
+      return expr1
    else
       -- Second pass uses RC structs built in first pass.
       trace("IF2", expr)

@@ -255,7 +255,7 @@ function class.eval_expr(s, expr, maybe_env)
       return s.match(
          thing,
          {
-            {"(tag ,expr ,tag)", function(m)
+            {"(ref ,expr . ,annotation)", function(m)
                 return lit_or_ref(m.expr)
             end},
             {",_", function(m)
@@ -329,7 +329,7 @@ function class.eval_expr(s, expr, maybe_env)
             {"(hint ,fun . ,args)", function(m)
                 s:advance()
             end},
-            {"(tag ,expr ,tag)", function(m)
+            {"(ref ,expr . ,annotation)", function(m)
                 s.expr = m.expr
             end},
             {",other", function(m)
