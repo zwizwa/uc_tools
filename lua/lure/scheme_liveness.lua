@@ -76,10 +76,10 @@ function class.need_block(s,expr)
 end
 
 local function hint(...)
-   return l('_',se.append(l('hint'),a2l({...})))
+   return l('_',{'hint',a2l({...})})
 end
 local function ins_hint(bs, ...)
-   ins(bs, hint({...}))
+   ins(bs, hint(...))
 end
 
 function class.comp_bindings(s,bindings)
@@ -90,7 +90,7 @@ function class.comp_bindings(s,bindings)
       -- from first pass.
       if s.rc_max and var ~= '_' then
          -- FIXME: This is maybe not that useful?  The 'last' hint is enough.
-         ins_hint(bs, q('rc'),q(var),s.rc_max[var])
+         ins_hint(bs, q('rc'), q(var), s.rc_max[var])
       end
 
       -- Rebuild refcount information.  In pass 1 this builds the RC
@@ -106,7 +106,7 @@ function class.comp_bindings(s,bindings)
       -- The hint is called 'last' to indicate that the next binding
       -- has the last reference to this variable.
       if #s.free ~= 0 then
-         ins_hint(bs, q('last'),q(a2l(s.free)))
+         ins_hint(bs, q('last'), q(a2l(s.free)))
          s.free = {}
       end
 
@@ -133,13 +133,14 @@ function class.ref(s,var)
    rc = rc + 1
    s.rc[var] = rc
    if s.rc_max and s.rc_max[var] == rc then
+      _trace("FREE",var)
       assert(s.free)
       ins(s.free, var)
    end
 end
 
 -- The clause for if expressions.  Each branch has its own reference
--- count tracking.
+-- count tracking.  The code got a little quirky.
 --
 -- "(if ,cond ,etrue ,efalse)"
 function class.comp_if(s, expr, m)
@@ -148,37 +149,52 @@ function class.comp_if(s, expr, m)
    -- Visit cond before forking
    local cond = s:comp(m.cond)
 
+   -- Produce a balance hint, exposing the difference between the two
+   -- branches.  This can be used to free variables not used in this
+   -- branch.
+   local function balance(rc_max, rc_max_other, expr)
+      local diffs = {}
+      for var, var_rc in pairs(rc_max) do
+         local var_rc_other = rc_max_other[var]
+         if var_rc_other ~= nil and var_rc_other > var_rc then
+            local diff = var_rc_other - var_rc
+            ins(diffs, l(var, diff))
+         end
+      end
+      if #diffs > 0 then
+         return {'block',
+                 l(hint(q('balance'),q(a2l(diffs))),
+                   l('_',expr))}
+      else
+         return expr
+      end
+   end
+
    -- Visit branches and produce final expression.
-   local function branch(rc, rc_max, expr)
+   local function comp_branch(rc, rc_max, rc_max_other, expr)
       return s:parameterize(
          {rc = rc, rc_max = rc_max},
          function()
-            local free = {}
             if rc_max then
-               for var, var_rc in pairs(rc) do
-                  if rc[var] == rc_max[var] then
-                     ins(free, var)
-                  end
-               end
-               if #free > 0 then
-                  expr = {'block',
-                          l(hint(q('free'),q(a2l(free))),
-                            l('_',expr))}
-               end
+               expr = balance(rc_max, rc_max_other, expr)
             end
-            -- FIXME: With rc struct switched, it is possible that
-            -- some variables have reached their max refcount in this
-            -- branch, so iterate over all to insert 'free' hints.
             return s:comp(s:need_block(expr))
       end)
    end
-   local function fork(rc_t, rc_f, rc_t_max, rc_f_max)
-      local etrue  = branch(rc_t, rc_t_max, m.etrue)
-      local efalse = branch(rc_f, rc_f_max, m.efalse)
+
+   -- Compile both branches, producing new expression.
+   local function comp_fork(rc_t, rc_f, rc_t_max, rc_f_max)
+      local etrue  = comp_branch(rc_t, rc_t_max, rc_f_max, m.etrue)
+      local efalse = comp_branch(rc_f, rc_f_max, rc_t_max, m.efalse)
+      -- Update parent ref count as max of the branches.
+      for k,v in pairs(s.rc) do
+         s.rc[k] = max(rc_t[k], rc_f[k])
+      end
       return l('if', cond, etrue, efalse)
    end
 
-   -- The running refcount structs are always a fork of the parent.
+   -- The running refcount structs are always a fork of the running
+   -- parent refcount.
    local rc_t = tab.copy(s.rc)
    local rc_f = tab.copy(s.rc)
 
@@ -189,17 +205,12 @@ function class.comp_if(s, expr, m)
       trace("IF1", expr)
       -- Store branch copies for subsequent traversal.
       s.rc_if[expr] = {rc_t, rc_f}
-      local expr1 = fork(rc_t, rc_f, nil, nil)
-      -- Increment ref count for existing variables.
-      for k,v in pairs(s.rc) do
-         s.rc[k] = max(rc_t[k], rc_f[k])
-      end
-      return expr1
+      return comp_fork(rc_t, rc_f, nil, nil)
    else
       -- Second pass uses RC structs built in first pass.
       trace("IF2", expr)
       local rc_t_max, rc_f_max = unpack(rcs)
-      return fork(rc_t, rc_f, rc_t_max, rc_f_max)
+      return comp_fork(rc_t, rc_f, rc_t_max, rc_f_max)
    end
 end
 
