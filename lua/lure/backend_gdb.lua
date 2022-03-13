@@ -1,14 +1,21 @@
--- FIXME: Just a stub.  Not sure if this is actually useful.  So why?
--- I need a little nudge, a little excursion to see if I can use plain
--- GDB to be a better uc_tools SMOS host.
-
 -- Compile to gdb command sequence.
 --
+-- FIXME: Just a stub.  Not sure if this is actually useful.  So why?
+-- I need a little nudge, a little excursion to see if I can use plain
+-- GDB to be a better uc_tools SMOS host.  And I need some exercise in
+-- compiling to weird substrates.
+
 -- Note the the GDB language is quite limited, so focus is on inlining
 -- + mapping single-clause letrec to while loops.
 --
 -- Top level structure is a labels form.  Beyond that all other
 -- functions are inlined.
+
+-- Some notes on the GDB command language:
+
+-- . There is no concept of return value, but GDB uses call-by-name,
+--   so it is possible to parameterize a return value parameter:
+--   https://stackoverflow.com/questions/12572631/return-a-value-via-a-gdb-user-defined-command
 
 local se        = require('lure.se')
 local se_match  = require('lure.se_match')
@@ -17,6 +24,7 @@ local lure_comp = require('lure.comp')
 local scheme_frontend = require('lure.scheme_frontend')
 local scheme_pretty   = require('lure.scheme_pretty')
 local l = se.list
+local l2a = se.list_to_array
 local ins = table.insert
 local pprint = scheme_pretty.new()
 
@@ -44,10 +52,22 @@ local function trace(tag,expr)
    -- _trace(tag,expr)
 end
 
-function class.mangle(s, var)
-   local prefix = function(v)
-      return {'$',v}
+function id(x) return x end
+
+function class.mangle_fun(s, var)
+   return s:mangle(var, id)
+end
+
+function class.mangle(s, var, prefix)
+
+   local ref = s:ref(var, true)
+   if ref then
+      assert(ref.class == 'subst')
+      assert(ref.var)
+      return class.mangle(s, ref.var, prefix)
    end
+
+   prefix = prefix or function(v) return {'$',v} end
 
    assert(var and var.unique)
    local name = var.var
@@ -114,7 +134,7 @@ function class.arglist(s,lst)
    for el, last in se.elements(lst) do
       ins(iol, s:iol_atom(el))
       if not se.is_empty(last) then
-         ins(iol, ", ")
+         ins(iol, " ")
       end
    end
    return iol
@@ -138,7 +158,9 @@ end
 
 
 function class.w_maybe_assign(s, var)
-   if var ~= '_' then
+   if s.tail and s.rv then
+      s:w("set ", s:iol_atom(s.rv), " = ")
+   elseif var ~= '_' then
       s:w("set ", s:iol_atom(var), " = ")
    end
 end
@@ -146,9 +168,8 @@ end
 
 function class.w_bindings(s, bindings)
    -- trace("BINDINGS", bindings)
-   for binding, rest in se.elements(bindings) do
-      trace("BINDING", binding)
 
+   function match_binding(binding, rest)
       s.match(
          binding,
          {
@@ -161,19 +182,19 @@ function class.w_bindings(s, bindings)
             end},
             {"(,var (if ,cond ,etrue, efalse))", function(m)  -- FIXME var
                 trace("IF",binding)
-                s:w_maybe_assign(m.var)
-                s:indented(
+                local rv = ((m.var == '_') and s.rv) or m.var
+                s:parameterize(
+                   {rv = rv, indent = s.indent + 1},
                    function()
-                      s:w("case ", s:iol_atom(m.cond), " of\n")
-                      s:w(s:tab(-1), "true ->\n", s:tab())
+                      s:w("if ", s:iol_atom(m.cond), "\n",s:tab())
                       s:comp(m.etrue)
-                      s:w(";\n", s:tab(-1), "false ->\n",s:tab())
+                      s:w("\n", s:tab(-1), "else\n",s:tab())
                       s:comp(m.efalse)
-                      s:w("\n",s:tab(-2), "end")
+                      s:w("\n",s:tab(-1), "end")
                    end,
                    2)
             end},
-            {"(,rvar (set! ,var ,expr))", function(m) 
+            {"(,rvar (set! ,var ,expr))", function(m)
                 _trace("SET",binding)
                 error("assingnment_not_supported")
             end},
@@ -182,15 +203,18 @@ function class.w_bindings(s, bindings)
                 if m.fun == s.lib_ref then
                    s:def(m.var, se.car(m.args))
                 else
-                   local fun = s:ref(m.fun)
-                   s:w_maybe_assign(m.var)
-                   -- FIXME: use s.lib_ref instead.
+                   local fun = s:ref(m.fun, true)
+                   local fun_name = (fun and fun.expr) or s:mangle_fun(m.fun)
+                   -- FIXME: use fun instead.
                    local w_f = m.fun.var and form[m.fun.var]
                    if w_f then
+                      -- Result of primitive can be assigned
+                      s:w_maybe_assign(m.var)
                       w_f(s, m.args)
                    else
-                      assert(fun.class == 'expr')
-                      s:w(fun.expr," ",s:arglist(m.args))
+                      -- Return variable is the last argument
+                      local maybe_k_arg = (s.rv and (l(s.rv))) or l()
+                      s:w(fun_name," ",s:arglist(se.append(m.args,maybe_k_arg)))
                    end
                 end
             end},
@@ -220,6 +244,17 @@ function class.w_bindings(s, bindings)
          s:w("\n",s:tab())
       end
    end
+
+   s:parameterize(
+      { tail = s.tail },
+      function()
+         for binding, rest in se.elements(bindings) do
+            trace("BINDING", binding)
+            s.tail = se.is_empty(rest)
+            match_binding(binding, rest)
+         end
+      end)
+
 end
 
 
@@ -249,25 +284,64 @@ function class.w(s, ...)
    ins(out, {...})
 end
 
+local function var(unique)
+   return { class = 'var', unique = unique }
+end
+local function arg(i)
+   return var("arg" .. i)
+end
+
+
 -- Prefix this with name or 'fun', and postfix with '.' or 'end'.
 function class.w_lambda(s,args,body)
    s:indented(
       function()
-         s:w("(", s:arglist(args),")"," ->\n",s:tab())
-         s:comp(body)
+         local args_a = l2a(args)
+         for i, a in ipairs(args_a) do
+            s:def(a, { class = 'subst', var = arg(i-1) })
+         end
+         s:w("\n",s:tab())
+         s:parameterize(
+            { rv = arg(#args_a) },
+            function()
+               s:comp(body)
+            end)
       end)
 end
 
 -- Top level entry point
 function class.compile(s,expr)
    s.env = se.empty
+   s.rv = var("rv")
    s.out = {}
    s.match(
       expr,
-      {{"(lambda (,lib_ref) ,expr)", function(m)
+      {{"(lambda (,lib_ref) (block . ,bindings))", function(m)
            s.lib_ref = m.lib_ref
-           s:comp(m.expr)
-       end}})
+           -- Last expression contains the labels form.  The rest are
+           -- assumed to be top level lib_ref bindings.
+           local rbindings = se.reverse(m.bindings)
+           local lib_refs = se.reverse(se.cdr(rbindings))
+           local labels = se.car(rbindings)
+           s:w_bindings(lib_refs)
+           s.match(
+              labels,
+              {{"(_ (labels (_ (lambda () ,main)) . ,bindings))))", function(m)
+                   for binding in se.elements(m.bindings) do
+                      s.match(
+                         binding,
+                         {
+                            {"(,var (lambda ,args ,expr))", function(m)
+                                trace("LAMBDA",binding)
+                                s:w("define ", s:mangle_fun(m.var, id))
+                                s:w_lambda(m.args, m.expr)
+                                s:w("\n",s:tab(),"end\n")
+                            end},
+                      })
+                   end
+                   s:comp(m.main)
+              end}})
+      end}})
    local mod = { s.out }
    return { class = "iolist", iolist = mod }
 

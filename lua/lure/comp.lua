@@ -161,9 +161,9 @@ function comp:find_cell(var, allow_undef)
    log_se_n(self.env,"ENV:")
    error("undefined variable '" .. mangled .. "'")
 end
-function comp:ref(var)
-   local cell = self:find_cell(var)
-   return cell.val
+function comp:ref(var, allow_undef)
+   local cell = self:find_cell(var, allow_undef)
+   return (cell ~= nil) and cell.val
 end
 function comp:set(var, val)
    local cell = self:find_cell(var)
