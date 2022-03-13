@@ -15,6 +15,7 @@ local c_new =
          'lure.scheme_frontend',
          'lure.scheme_flatten',
          'lure.scheme_liveness',
+         'lure.scheme_flatten',
       })
 local filename = 'test_scheme_liveness.scm'
 local str = asset[filename]
@@ -30,8 +31,8 @@ function mod.run()
    for expr in se.elements(exprs) do
       log_se_n(expr, "INPUT:")
       local config = {
-         hint_imbalance = true,
-         hint_fanout    = true,
+         -- hint_imbalance = true,
+         -- hint_fanout    = true,
       }
       local c = c_new(config)
       local ir = c:compile(expr)

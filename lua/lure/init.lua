@@ -2,12 +2,14 @@
 --
 -- Example module body:
 --
--- return require('lure').slc2([[
+-- return require('lure').slc([[ ;; -*- scheme -*-
 -- (define (f x) x)
 -- (define (g x) (f (f x)))
 -- ]])
 --
 -- Adding {verbose = true} config argument prints out IR of the compiler passes.
+--
+-- Use
 
 local function trace(ir, pass, config)
    local s = io.stderr
@@ -38,6 +40,15 @@ function compile_module_slc2(str, config)
    return slc2.eval(lua)
 end
 
+function compile_module_file_slc2(name, config)
+   -- For luarocks bundling all SCM files are contained as strings
+   -- inside the asset_scm module.
+   local str = require('lure.asset_scm')[name]
+   assert(str)
+   return compile_module_slc2(str, config)
+end
+
 return {
-   slc = compile_module_slc2
+   slc = compile_module_slc2,
+   slc_file = compile_module_file_slc2,
 }

@@ -42,5 +42,14 @@
     (if #t
         a
         b)))
-  
+
+;; Test for lambda
+(begin
+  (define (f x)
+    (if (< x 10)
+        (f (+ x 1))
+        x))
+  (f 0))
+
+    
 
