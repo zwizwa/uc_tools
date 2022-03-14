@@ -173,13 +173,6 @@ function class.w_bindings(s, bindings)
       s.match(
          binding,
          {
-            {"(,var (lambda ,args ,expr))", function(m)
-                trace("LAMBDA",binding)
-                s:w_maybe_assign(m.var)
-                s:w(s:iol_atom(m.var))
-                s:w_lambda(m.args, m.expr)
-                s:w("\n",s:tab(),"end")
-            end},
             {"(,var (if ,cond ,etrue, efalse))", function(m)  -- FIXME var
                 trace("IF",binding)
                 local rv = ((m.var == '_') and s.rv) or m.var
@@ -195,8 +188,8 @@ function class.w_bindings(s, bindings)
                    2)
             end},
             {"(,rvar (set! ,var ,expr))", function(m)
-                _trace("SET",binding)
-                error("assingnment_not_supported")
+                s:maybe_assign(m.var)
+                s:comp(m.expr)
             end},
             {"(,var (app ,fun . ,args))", function(m)
                 trace("APP",binding)
@@ -217,6 +210,9 @@ function class.w_bindings(s, bindings)
                       s:w(fun_name," ",s:arglist(se.append(m.args,maybe_k_arg)))
                    end
                 end
+            end},
+            {"(,var (lambda ,args ,expr))", function(m)
+                error('lambda_toplevel_only')
             end},
             {"(,var (labels . ,bindings))", function(m)
                 error('labels_toplevel_only')
