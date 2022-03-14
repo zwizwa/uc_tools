@@ -43,28 +43,44 @@ function class.comp_bindings(s, bindings)
                {{"(,var ,expr)",
                  function(m)
                     return l(m.var, s:comp(m.expr))
-            end}})
+                 end}})
          end,
          bindings)
 end
 
 function class.comp(s,expr)
+   local function comp(e) return s:comp(e) end
    return s.match(
       expr,
       {
-        {"(block . ,bindings)", function(m)
+         {"(block . ,bindings)", function(m)
              return {'block@', s:comp_bindings(m.bindings)}
          end},
-        {"(labels . ,bindings)", function(m)
-             return {'labels', s:comp_bindings(m.bindings)}
+         {"(labels ,bindings ,inner)", function(m)
+             return l('labels@', s:comp_bindings(m.bindings), s:comp(m.inner))
          end},
          {"(lambda ,vars ,expr)", function(m)
              return l('lambda@', m.vars, s:comp(m.expr))
          end},
          {"(if ,cond ,etrue ,efalse)", function(m)
-             return l('if@', m.cond,
+             return l('if@',
+                      s:comp(m.cond),
                       s:comp(m.etrue),
                       s:comp(m.efalse))
+         end},
+         {"(set! ,var ,val)", function(m)
+             return l("set!@", m.var, s:comp(m.val))
+         end},
+         {"(return ,expr)", function(m)
+             -- Note that expr is not necessarily a variable, so
+             -- recursion is necessary.
+             return l("return@", s:comp(m.expr))
+         end},
+         {"(goto ,expr)", function(m)
+             return l("goto@", s:comp(m.expr))
+         end},
+         {"(app . ,fun_and_args)", function(m)
+             return {'app@', se.map(comp, m.fun_and_args)}
          end},
          {",other", function(m)
              return m.other

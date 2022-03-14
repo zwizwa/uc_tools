@@ -96,19 +96,19 @@ local compile_form = {
       return l('if',var,s:compile(etrue),s:compile(efalse))
    end,
    ['labels'] = function(s, expr)
-      local _, clauses = se.unpack(expr, {n=1, tail=true})
-      if se.length(clauses) == 1 then
-         local name, expr1 = se.unpack(se.car(clauses), {n=2})
-         -- Get rid of single clause fallthrough labels forms.
-         -- These are inserted a lot.
-         if name == '_' then return s:compile(expr1) end
+      local _, clauses, inner = se.unpack(expr, {n=3})
+      if se.length(clauses) == 0 then
+         return s:compile(inner)
       end
-      return {'labels', se.map(
-                 function(clause)
-                    local name, body = se.unpack(clause, {n=2})
-                    return l(name, s:compile(body))
-                 end,
-                 clauses)}
+      return l('labels',
+               se.map(
+                  function(clause)
+                     local name, body = se.unpack(clause, {n=2})
+                     return l(name, s:compile(body))
+                  end,
+                  clauses),
+               s:compile(inner))
+
    end,
 }
 local function default(s, expr)

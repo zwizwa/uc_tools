@@ -16,9 +16,13 @@ local cdr = se.cdr
 
 
 
-local function trace(tag, expr)
+local function _trace(tag, expr)
    log('\n')
    log_se_n(expr, tag .. ": ")
+end
+
+local function trace(tag, expr)
+   _trace(tag, expr)
 end
 
 local function w_se(s, expr)
@@ -75,8 +79,8 @@ local pprint_form = {
          end)
    end,
    ['labels'] = function(s, expr)
-      local _, clauses = se.unpack(expr, {n=1, tail=true})
-      s:w("(labels ")
+      local _, clauses, inner = se.unpack(expr, {n=3})
+      s:w("(labels (")
       for clause in se.elements(clauses) do
          local name, body = se.unpack(clause, {n=2})
          s:indented(
@@ -89,9 +93,13 @@ local pprint_form = {
                s:w(")")
             end)
       end
+      s:pprint(")")
+      s:indented(
+         function()
+            s:pprint(inner)
+         end)
       s:w(")")
    end,
-
 }
 local function pp_app(s, expr)
    s:w(se.iolist(expr))

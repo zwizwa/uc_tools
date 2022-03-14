@@ -206,7 +206,7 @@ function class.push_to_current_labels(s, label, body_expr)
    -- FIXME: This is currently a stack.  Is that really necessary?
    assert(s.labels)
    local current_labels = car(s.labels)
-   se.push_cdr(l(label, l('lambda', l(), body_expr)), current_labels)
+   ins(current_labels, l(label, l('lambda', l(), body_expr)))
 end
 
 
@@ -263,7 +263,7 @@ function class.compile_app(s, fun, args, compiled_cont)
    end
 
    local function insert_labels()
-      local labels = l('labels')
+      local labels = {}
       s.labels = {labels, s.labels}
       return labels
    end
@@ -287,8 +287,7 @@ function class.compile_app(s, fun, args, compiled_cont)
          -- label, i.e. nobody will push to this lables form after
          -- this app.  This should be true beacuse all the compilation
          -- and pushing happened before.
-         s:push_to_current_labels('_', app)
-         return labels
+         return l('labels', a2l(labels), app)
       else
          -- Already compiled, this is a call inside the network which
          -- is just a goto.
@@ -337,11 +336,8 @@ function class.compile_app(s, fun, args, compiled_cont)
       -- everything that is relative to this call.
       compile()
 
-      -- The fallthrough part of the labels form is the code that
-      -- performs the application.  This is just a goto.
-      s:push_to_current_labels('_',app)
-
-      return labels
+      -- And add the fallthrough code.
+      return l('labels', a2l(labels), app)
 
    end
 end

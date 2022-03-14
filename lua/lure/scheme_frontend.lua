@@ -31,8 +31,12 @@ local ins = table.insert
 local a2l = se.array_to_list
 local l = se.list
 
+local function _trace(tag, expr)
+   log('\n') ; log_se_n(expr, tag .. ": ")
+end
+
 local function trace(tag, expr)
-   -- log('\n') ; log_se_n(expr, tag .. ": ")
+   -- _trace(tag, expr)
 end
 
 local class = {
@@ -95,6 +99,7 @@ class.expander = {
       local car, cdr = unpack(expr)
       local m = s.macro[car]
       if m ~= nil then
+         trace("EXP",expr)
          return m(s, expr), 'again'
       else
          return expr

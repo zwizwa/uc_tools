@@ -95,7 +95,7 @@ function mod.run()
       -- form, so we don't need to remap to 'block@' and 'if@' using
       -- scheme_escape.
       local ir_tx = re_scheme():compile(out)
-      log("IR_TX:") ; pretty.log_pp(ir_tx)
+      log("RE_SCHEME:") ; pretty.log_pp(ir_tx)
 
       local output_ir_val = make_interp():eval(ir_tx)
 

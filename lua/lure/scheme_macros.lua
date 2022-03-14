@@ -384,34 +384,22 @@ macro["block*"] = mcase(
 )
 
 -- Interpret SM language by mapping it back to scheme.
--- Labels are implemented as thunks.
-macro["if@"]     = mcase({"(,c ,t ,f)","(if ,c ,t ,f)"})
-macro['goto']    = mcase({"(,label)","(,label)"})
-macro['app']     = mcase({"(,fun . ,args)","(,fun . ,args)"})
-macro['lambda@'] = mcase({"(,args . ,body)", "(lambda ,args . ,body)"})
-
-macro["block@"] = mcase(
+-- The mapping is performed by scheme_escape pass, which appends '@' suffix.
+macro["if@"]     = mcase({"(,c ,t ,f)",         "(if ,c ,t ,f)"})
+macro['app@']    = mcase({"(,fun . ,args)",     "(,fun . ,args)"})
+macro['set!@']   = mcase({"(,var ,val)",        "(set! ,var ,val)"})
+macro['lambda@'] = mcase({"(,args . ,body)",    "(lambda ,args . ,body)"})
+macro['labels@'] = mcase({"(,bindings ,inner)", "(letrec ,bindings ,inner)"})
+macro["block@"]  = mcase(
    {"()",              "(begin)"},
    {"((_  ,e))",       ",e"},
    {"((,v ,e))",       function() error("block@ bad form") end},
-   {"((_ , s) . ,bs)", "(begin ,s      (block@ . ,bs))"},
-   {"((,v ,e) . ,bs)", "(let ((,v ,e)) (block@ . ,bs))"}
+   {"((_ , s) . ,bs)", "(begin ,s        (block@ . ,bs))"},
+   {"((,v ,e) . ,bs)", "(let   ((,v ,e)) (block@ . ,bs))"}
 )
 
-macro['labels'] = function(expr, c)
-   need_gensym(c)
-   local _, bindings = se.unpack(expr, {n = 1, tail = true})
-   if se.length(bindings) == 0 then return l(c.begin or 'begin') end
-   -- Change the name of the entry point.
-   local start = c.state:gensym("start")
-   bindings = {{start, se.cdar(bindings)}, se.cdr(bindings)}
-   -- Generate letrec form
-   function make_binding(binding)
-      -- FIXME: Check maybe that this is a lambda form?
-      return binding
-   end
-   local out = l('letrec', se.map(make_binding, bindings), l(start))
-   -- log(se.iolist(out))
-   return out
-end
+-- Labels are implemented as thunks.
+macro['goto@']   = mcase({"(,label)","(,label)"})
+macro['return@'] = mcase({"(,val)",",val"})
+
 return macro

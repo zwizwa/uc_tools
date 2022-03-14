@@ -12,9 +12,9 @@
 ;; The trace function is used to abort execution after a fixed number
 ;; of calls for testing the head of infinite loops.
 
-
 ;; FIXME: Almost there.  Closures need to be translated to a form that
 ;; can be applied.
+
 
 123
 
