@@ -44,7 +44,7 @@
 #   show proper error messages on misconfiguration.
 
 set -e
-set -x
+# set -x
 
 . $(dirname $0)/../build_lib.sh
 

@@ -40,6 +40,7 @@ void ensure_started(struct gdbstub_ctrl *stub_ctrl);
 #if GDBSTUB_RSP_ENABLED
 BOOTLOADER_DEFAULT_SERVICE()
 #else
+struct gdbstub_ctrl bootloader_stub_ctrl;
 uint32_t null_read(uint8_t *buf, uint32_t size) {
     return 0;
 }
