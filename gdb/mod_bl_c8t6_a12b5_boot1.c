@@ -3,9 +3,9 @@
 #error NEED GDBSTUB_BOOT1_START
 #endif
 
-#include "hw_bootloader.h"
 #include "gdbstub.h"
 #include "gdbstub_api.h"
+#include "hw_bootloader.h"
 
 const char gdbstub_memory_map[] = GDBSTUB_MEMORY_MAP_STM32F103C8;
 const uint32_t flash_page_size_log = 10; // 1k
@@ -98,4 +98,22 @@ int main(void) {
     return 0;
 }
 
+#ifndef GDBSTUB_RSP_ENABLED
+#define GDBSTUB_RSP_ENABLED 1
+#endif
+
+extern uint8_t _ebss;
+extern uint8_t _stack;
+
+uint32_t null_read(uint8_t *buf, uint32_t size) {
+    return 0;
+}
+void null_write(const uint8_t *buf, uint32_t size) {
+}
+
+#if GDBSTUB_RSP_ENABLED
+BOOTLOADER_DEFAULT_SERVICE()
+#else
+BOOTLOADER_SERVICE(null_read, null_write, NULL)
+#endif
 

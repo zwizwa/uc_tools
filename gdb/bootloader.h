@@ -1,6 +1,7 @@
 #ifndef BOARD_H
 #define BOARD_H
 #include "generic.h"
+#include "gdbstub_api.h"
 
 
 //usbd_device *bootloader_init(void);
@@ -16,6 +17,30 @@ static inline void bootloader_loop(void) {
         bootloader_poll();
     }
 }
+void bootloader_poll_add (gdbstub_fn_poll fn);
+void bootloader_poll_reset (void);
+
+void bootloader_io_reset(void);
+
+extern uint8_t _ebss;
+extern uint8_t _stack;
+extern struct gdbstub bootloader_stub;
+
+// Instantiate the service struct.  This pulls in all dependencies.
+#define BOOTLOADER_SERVICE(bl_read, bl_write, bl_stub) \
+const struct gdbstub_service service SERVICE_SECTION = { \
+    .add   = bootloader_poll_add, \
+    .reset = bootloader_poll_reset, \
+    .rsp_io = { .read = bl_read, .write = bl_write }, \
+    .io = &io, \
+    .stub = bl_stub, \
+    .stack_lo = &_ebss, \
+    .stack_hi = &_stack, \
+};
+
+#define BOOTLOADER_DEFAULT_SERVICE() \
+    BOOTLOADER_SERVICE(bootloader_read, bootloader_write, &bootloader_stub)
+
 
 
 #endif // BOARD_H

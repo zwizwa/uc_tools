@@ -2,6 +2,8 @@
 #include "gdbstub.h"
 #include "gdbstub_api.h"
 
+BOOTLOADER_DEFAULT_SERVICE()
+
 #ifndef GDBSTUB_MEMORY_MAP
 #define GDBSTUB_MEMORY_MAP GDBSTUB_MEMORY_MAP_STM32F103C8
 #endif

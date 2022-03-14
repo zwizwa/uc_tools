@@ -56,15 +56,11 @@ static void data_rx_cb(usbd_device *usbd_dev, uint8_t ep) {
     poll_data_tx();
 }
 
-
-static void usb_reset(void) {
-    io = &service.rsp_io;
-}
-
+void bootloader_io_reset(void); // FIXME: is this necessary?
 static void cdcacm_set_config(usbd_device *usbd_dev, uint16_t wValue) {
     (void)wValue;
     cdcacm_set_config_with_callbacks(usbd_dev, data_rx_cb, data_tx_cb);
-    usbd_register_reset_callback(usbd_dev, usb_reset);
+    usbd_register_reset_callback(usbd_dev, bootloader_io_reset);
 }
 
 char serial_hex[25];

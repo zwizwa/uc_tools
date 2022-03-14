@@ -35,12 +35,12 @@
 
 static gdbstub_fn_poll poll_table[GDBSTUB_SERVICE_NB_POLL];
 static uint32_t poll_used = 0;
-static void poll_add (gdbstub_fn_poll fn) {
+void bootloader_poll_add (gdbstub_fn_poll fn) {
     if (poll_used < GDBSTUB_SERVICE_NB_POLL) {
         poll_table[poll_used++] = fn;
     }
 }
-static void poll_reset (void) {
+void bootloader_poll_reset (void) {
     poll_used = 0;
 }
 
@@ -56,23 +56,16 @@ void bootloader_write(const uint8_t *buf, uint32_t size) {
 }
 
 /* Stored in Flash, fixed location.  See stm32f1.ld */
-extern uint8_t _ebss;
-extern uint8_t _stack;
-const struct gdbstub_service service SERVICE_SECTION = {
-    .add   = poll_add,
-    .reset = poll_reset,
-    .rsp_io = {
-        .read   = bootloader_read,
-        .write  = bootloader_write,
-    },
-    .io = &io,
-    .stub = &bootloader_stub,
-    .stack_lo = &_ebss,
-    .stack_hi = &_stack,
-};
+extern const struct gdbstub_service service;
+// BOOTLOADER_DEFAULT_SERVICE()
 
 /* Connect serial port to the GDB RSP state machine. */
 const struct gdbstub_io *io = &service.rsp_io;
+void bootloader_io_reset(void) {
+    //FIXME: linker dep issues
+    //io = &service.rsp_io;
+}
+
 
 
 
@@ -94,7 +87,7 @@ void hw_bootloader_usb_poll(void);
 
 void bootloader_init(void) {
     hw_bootloader_usb_init();
-    poll_reset();
+    bootloader_poll_reset();
 }
 void bootloader_poll(void) {
     hw_bootloader_usb_poll();

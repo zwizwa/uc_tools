@@ -2,6 +2,8 @@
 #include "gdbstub.h"
 #include "gdbstub_api.h"
 
+BOOTLOADER_DEFAULT_SERVICE()
+
 const char gdbstub_memory_map[] = GDBSTUB_MEMORY_MAP_STM32F103C8;
 const uint32_t flash_page_size_log = 10; // 1k
 
