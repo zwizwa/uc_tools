@@ -57,6 +57,10 @@ function iolist.write_to_file(filename, iol)
    f:close()
 end
 
-
+function iolist.write_to_stream(f, iol)
+   local w = io_writer(f)
+   w(iol)
+   f:flush()
+end
 
 return iolist

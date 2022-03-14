@@ -48,7 +48,24 @@ function compile_module_file_slc2(name, config)
    return compile_module_slc2(str, config)
 end
 
+function compile_file_gdb(filename, stream)
+   local se     = require('lure.se')
+   local comp   = require('lure.comp')
+   local exprs  = se.read_file_multi(filename)
+   local expr   = {'begin',exprs}
+   local c_new  = comp.make_multipass_new(
+      {
+         'lure.scheme_frontend',
+         'lure.scheme_flatten',
+         'lure.backend_gdb',
+      })
+   local c = c_new({primitive_letrec = 'primitive-letrec'})
+   local out = c:compile(expr)
+   se.write(out, stream)
+end
+
 return {
    slc = compile_module_slc2,
-   slc_file = compile_module_file_slc2,
+   slc_file = compile_module_file_slc2,  -- FIXME: rename to asset
+   gdb = compile_file_gdb,
 }

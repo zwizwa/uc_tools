@@ -206,8 +206,13 @@ function class.w_bindings(s, bindings)
                       w_f(s, m.args)
                    else
                       -- Return variable is the last argument
-                      local maybe_k_arg = (s.rv and (l(s.rv))) or l()
-                      s:w(fun_name," ",s:arglist(se.append(m.args,maybe_k_arg)))
+                      local k_arg = l()
+                      if s.tail then
+                         if s.rv then k_arg = l(s.rv) end
+                      else
+                         if m.var ~= '_' then k_arg = l(m.var) end
+                      end
+                      s:w(fun_name," ",s:arglist(se.append(m.args, k_arg)))
                    end
                 end
             end},
@@ -339,7 +344,7 @@ function class.compile(s,expr)
               end}})
       end}})
    local mod = { s.out }
-   return { class = "iolist", iolist = mod }
+   return { class = "iolist", iolist = {mod,"\n"} }
 
 end
 

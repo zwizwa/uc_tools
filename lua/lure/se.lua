@@ -364,6 +364,12 @@ local function iolist(expr)
 end
 se.iolist = iolist
 
+function se.write(e, f)
+   f = f or io.stdout
+   local iol = iolist(e)
+   local iolist = require('lure.iolist')
+   iolist.write_to_stream(f, iol)
+end
 
 -- It might be simpler to do something like se.unpack to fit better in
 -- the language.  Functions are a little annoying.
