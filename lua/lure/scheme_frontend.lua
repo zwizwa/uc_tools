@@ -168,13 +168,12 @@ class.form = {
          vars,
          function()
             local exprs = se.map(se.cadr, bindings)
-            return {'labels',
-                    se.cons(
-                       -- Quirky representation...
-                       l('_', s:comp(l('lambda',l(),expr))),
-                       se.zip(
-                          function(v,e) return l(v, s:comp(e)) end,
-                          vars, vexprs))}
+            return l('labels',
+                     se.zip(
+                        function(v,e) return l(v, s:comp(e)) end,
+                        vars, vexprs),
+                     s:comp(expr))
+
          end)
    end,
    ['set!'] = function(s, expr)

@@ -262,27 +262,29 @@ function class.compile(s,expr)
    s.out = {}
    s.lib_ref = {}
 
-   function compile_labels(bindings)
+   function compile_labels(bindings, inner)
       assert(bindings)
       -- First pass: collect module-level function names so they can
       -- be distinguished from local variables.
       for binding in se.elements(bindings) do
          local var = se.car(binding)
-         if var ~= '_' then
-            s.mod_fun[var] = true
-         end
+         s.mod_fun[var] = true
       end
       -- Second pass: emit definitions.
+      local function top_fun(b)
+         local var = (b.var == '_' and main) or b.var
+         s:w(s:iol_atom(var))
+         s:w_lambda(b.args, b.body)
+         s:w(".\n")
+      end
       for binding in se.elements(bindings) do
          s.match(
             binding,
-            {{"(,var (lambda ,args ,body))", function(b)
-                 local var = (b.var == '_' and main) or b.var
-                 s:w(s:iol_atom(var))
-                 s:w_lambda(b.args, b.body)
-                 s:w(".\n")
-         end}})
+            {{"(,var (lambda ,args ,body))", top_fun}})
       end
+      -- The inner expression is wrapped in a function as Erlang does
+      -- not have naked expressions.
+      top_fun({var = main, args=l(), body=inner})
    end
 
    s.match(
@@ -306,8 +308,8 @@ function class.compile(s,expr)
                  s.match(
                     binding,
                     {
-                       {"(_ (labels . ,bindings))", function(l)
-                           compile_labels(l.bindings)
+                       {"(_ (labels ,bindings ,inner))", function(l)
+                           compile_labels(l.bindings, l.inner)
                        end},
                        {",other", function(b)
                            _trace("BAD",b.other)

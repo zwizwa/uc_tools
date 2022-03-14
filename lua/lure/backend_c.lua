@@ -204,16 +204,19 @@ function class.w_bindings(s, bindings)
                 s:w_bindings(m.bindings)
                 s:w(s:tab(),"}")
             end},
-            {"(_ (labels . ,bindings))", function(m)
+            {"(_ (labels ,bindings ,entry))", function(m)
+                s:w("/* labels: entry */\n",s:tab())
+                s:i_comp(m.entry)
+                s:w("\n",s:tab())
+                s:w("/* labels: clauses */\n",s:tab())
                 for binding in se.elements(m.bindings) do
-                   local n, e = se.unpack(binding, {n = 2})
-                   if n == '_' then
-                      s:w("/* labels: entry */\n",s:tab())
-                   else
-                      s:w(iol_atom(n),":\n",s:tab())
-                   end
-                   s:i_comp(e)
-                   s:w("\n",s:tab())
+                   s.match(
+                      binding,
+                      {{"(,name (lambda () ,expr))", function(b)
+                           s:w(iol_atom(b.name),":\n",s:tab())
+                           s:i_comp(b.expr)
+                           s:w("\n",s:tab())
+                      end}})
                 end
             end},
             {"(_ (if ,cond ,etrue, efalse))", function(m)

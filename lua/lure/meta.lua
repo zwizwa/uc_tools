@@ -50,7 +50,6 @@ return { modules = {
   'test',
   'test_mon',
   'test_scheme_eval',
-  '.#test_scheme_liveness',
   'test_scheme_liveness',
   'test_scheme_macros',
   'test_scheme_pass',

@@ -214,7 +214,7 @@ function class.w_bindings(s, bindings)
             {"(,var (lambda ,args ,expr))", function(m)
                 error('lambda_toplevel_only')
             end},
-            {"(,var (labels . ,bindings))", function(m)
+            {"(,var (labels ,bindings ,inner))", function(m)
                 error('labels_toplevel_only')
             end},
             {"(,var (hint ,tag . ,args))", function(m)
@@ -322,7 +322,7 @@ function class.compile(s,expr)
            s:w_bindings(lib_refs)
            s.match(
               labels,
-              {{"(_ (labels (_ (lambda () ,main)) . ,bindings))))", function(m)
+              {{"(_ (labels ,bindings ,main))))", function(m)
                    for binding in se.elements(m.bindings) do
                       s.match(
                          binding,
