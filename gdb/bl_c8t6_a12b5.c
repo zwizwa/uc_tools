@@ -72,8 +72,8 @@ int main(void) {
          * is useful for running USB in ISR.  This mechanism is
          * separate from start() because start() is executed from the
          * main loop already, and needs to return. */
-        if ((bootloader_stub.flags & GDBSTUB_FLAG_STARTED) && (_config.loop)) {
-            bootloader_stub.flags |= GDBSTUB_FLAG_LOOP;
+        if ((bootloader_stub_ctrl.flags & GDBSTUB_FLAG_STARTED) && (_config.loop)) {
+            bootloader_stub_ctrl.flags |= GDBSTUB_FLAG_LOOP;
             _config.loop(&bootloader_tick);
             // NOT REACHED
         }

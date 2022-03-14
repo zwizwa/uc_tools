@@ -64,9 +64,6 @@ struct gdbstub_io {
     gdbstub_fn_write write;
 };
 
-
-
-
 struct gdbstub_service {
     gdbstub_fn_add             add;        // add a poll fuction
     gdbstub_fn_reset           reset;      // reset all callbacks
@@ -248,7 +245,7 @@ struct gdbstub_control {
 static inline void gdbstub_service_stop(const struct gdbstub_service *s) {
     s->reset();
     *(s->io) = &(s->rsp_io);
-    s->stub->flags &= (~GDBSTUB_FLAG_STARTED);
+    s->stub->ctrl->flags &= (~GDBSTUB_FLAG_STARTED);
 }
 
 /* Non-volatile configuration header and data go in a separate linker

@@ -28,8 +28,28 @@ struct gdbstub_config _config_default __attribute__ ((section (".config_header")
 
 // EDIT: Also works on narrower bare-bones boards.
 
-extern struct gdbstub bootloader_stub;
-void ensure_started(struct gdbstub *stub);
+void ensure_started(struct gdbstub_ctrl *stub_ctrl);
+
+
+#ifndef GDBSTUB_RSP_ENABLED
+#define GDBSTUB_RSP_ENABLED 1
+#endif
+
+
+
+#if GDBSTUB_RSP_ENABLED
+BOOTLOADER_DEFAULT_SERVICE()
+#else
+uint32_t null_read(uint8_t *buf, uint32_t size) {
+    return 0;
+}
+void null_write(const uint8_t *buf, uint32_t size) {
+}
+BOOTLOADER_SERVICE(null_read, null_write, NULL)
+#endif
+
+
+
 
 #define LED GPIOC,13
 static uint32_t counter = 0;
@@ -63,7 +83,7 @@ int main(void) {
     /* FIXME: Find out why this is not 100% reliable. */
     uint32_t boot1 = hw_gpio_read(GPIOB,2);
     if (GDBSTUB_BOOT1_START(boot1) && !flash_null(_config.start)) {
-        ensure_started(&bootloader_stub);
+        ensure_started(&bootloader_stub_ctrl);
     }
 
 
@@ -85,8 +105,8 @@ int main(void) {
          * is useful for running USB in ISR.  This mechanism is
          * separate from start() because start() is executed from the
          * main loop already, and needs to return. */
-        if ((bootloader_stub.flags & GDBSTUB_FLAG_STARTED) && (_config.loop)) {
-            bootloader_stub.flags |= GDBSTUB_FLAG_LOOP;
+        if ((bootloader_stub_ctrl.flags & GDBSTUB_FLAG_STARTED) && (_config.loop)) {
+            bootloader_stub_ctrl.flags |= GDBSTUB_FLAG_LOOP;
             _config.loop(&bootloader_tick);
             /* If .loop() is implemented correctly this should not
                return.  However, in case it does, we fall through to
@@ -97,23 +117,3 @@ int main(void) {
     }
     return 0;
 }
-
-#ifndef GDBSTUB_RSP_ENABLED
-#define GDBSTUB_RSP_ENABLED 1
-#endif
-
-extern uint8_t _ebss;
-extern uint8_t _stack;
-
-uint32_t null_read(uint8_t *buf, uint32_t size) {
-    return 0;
-}
-void null_write(const uint8_t *buf, uint32_t size) {
-}
-
-#if GDBSTUB_RSP_ENABLED
-BOOTLOADER_DEFAULT_SERVICE()
-#else
-BOOTLOADER_SERVICE(null_read, null_write, NULL)
-#endif
-

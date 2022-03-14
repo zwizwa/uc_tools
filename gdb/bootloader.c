@@ -47,7 +47,7 @@ void bootloader_poll_reset (void) {
 /* Table of services provided by bootloader to application. */
 
 /* Instantiate gdbstub state and bind it to bootloader io */
-GDBSTUB_INSTANCE(bootloader_stub, gdbstub_default_commands);
+//GDBSTUB_INSTANCE(bootloader_stub, gdbstub_default_commands);
 uint32_t bootloader_read(uint8_t *buf, uint32_t size) {
     return gdbstub_read(&bootloader_stub, buf, size);
 }

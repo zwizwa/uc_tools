@@ -52,30 +52,30 @@
 
 // Limits are set by PacketSize= in qSupported reply.
 
-static inline int started(struct gdbstub *stub) {
-    return !!(stub->flags & GDBSTUB_FLAG_STARTED);
+static inline int started(struct gdbstub_ctrl *stub_ctrl) {
+    return !!(stub_ctrl->flags & GDBSTUB_FLAG_STARTED);
 }
-static inline void set_started(struct gdbstub *stub, int started) {
+static inline void set_started(struct gdbstub_ctrl *stub_ctrl, int started) {
     if (started) {
-        stub->flags |= GDBSTUB_FLAG_STARTED;
+        stub_ctrl->flags |= GDBSTUB_FLAG_STARTED;
     }
     else {
-        stub->flags &= ~GDBSTUB_FLAG_STARTED;
+        stub_ctrl->flags &= ~GDBSTUB_FLAG_STARTED;
     }
 }
 
-void ensure_started(struct gdbstub *stub) {
-    if (started(stub)) return; // idempotent
+void ensure_started(struct gdbstub_ctrl *stub_ctrl) {
+    if (started(stub_ctrl)) return; // idempotent
     _config.start();
-    set_started(stub, 1);
+    set_started(stub_ctrl, 1);
 }
-static inline void ensure_stopped(struct gdbstub *stub) {
-    if (!started(stub)) return; // idempotent
+static inline void ensure_stopped(struct gdbstub_ctrl *stub_ctrl) {
+    if (!started(stub_ctrl)) return; // idempotent
     _config.stop();
-    set_started(stub, 0);
+    set_started(stub_ctrl, 0);
 }
 static int32_t mon_start_stop(struct gdbstub *stub, uint32_t start) {
-    uint32_t was = started(stub);
+    uint32_t was = started(stub->ctrl);
     if (was == start) {
         // Already in desired state
     }
@@ -83,11 +83,11 @@ static int32_t mon_start_stop(struct gdbstub *stub, uint32_t start) {
         gdbstub_fn_start fn = start ? _config.start : _config.stop;
         if (fn) {
             fn();
-            set_started(stub, 1);
+            set_started(stub->ctrl, 1);
         }
     }
     const char reply[] = {
-        '0'+ was,'-','>','0'+ started(stub),'\n',0
+        '0'+ was,'-','>','0'+ started(stub->ctrl),'\n',0
     };
     return rsp_hex_cstring(stub->rpl, reply);
 }
@@ -106,7 +106,7 @@ static int32_t cmd_Rcmd(struct gdbstub *stub, const uint8_t *cmd, uint32_t cmd_l
     if (!memcmp("start", (char*)rc, 6)) { return mon_start_stop(stub, 1); }
     if (!memcmp("stop",  (char*)rc, 5)) { return mon_start_stop(stub, 0); }
     if (!flash_null(_config.monitor)) {
-        ensure_started(stub);
+        ensure_started(stub->ctrl);
         const char *reply = _config.monitor((const char*)rc);
         if (!reply) goto error;
         uint32_t max_len = (stub->rpl->size - 5)/2; // '+$.....#XX
@@ -442,7 +442,7 @@ void gdbstub_write(struct gdbstub *stub, const uint8_t *inbuf, uint32_t size) {
              * it on. */
             if (!flash_null(_config.switch_protocol)) {
                 LOG("starting app io\n");
-                ensure_started(stub);
+                ensure_started(stub->ctrl);
                 _config.switch_protocol(inbuf, size);
                 return;
             }

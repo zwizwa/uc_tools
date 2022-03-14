@@ -18,7 +18,10 @@
 #define GDBSTUB_INSTANCE(stub, cmds)                           \
     GDBSTUB_PACKET(stub##_req);                                \
     GDBSTUB_PACKET(stub##_rpl);                                \
+    struct gdbstub_ctrl stub##_ctrl = {                        \
+    };                                                         \
     struct gdbstub stub = {                                    \
+        .ctrl = &stub##_ctrl,                                  \
         .req = &stub##_req,                                    \
         .rpl = &stub##_rpl,                                    \
         .reg = GDBSTUB_REG_INIT,                               \
@@ -44,8 +47,13 @@ extern const struct gdbstub_io *io;
 #define GDBSTUB_NB_REGS 26
 #define GDBSTUB_FLAG_STARTED (1 << 0)
 #define GDBSTUB_FLAG_LOOP    (1 << 1)
-struct gdbstub {
+
+// Core functionality, needed even if gdbstub is not defined.
+struct gdbstub_ctrl {
     uint32_t flags;
+};
+struct gdbstub {
+    struct gdbstub_ctrl *ctrl;
     struct packet *req;
     struct packet *rpl;
     uint32_t reg[GDBSTUB_NB_REGS];

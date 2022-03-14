@@ -65,8 +65,8 @@ int main(void) {
 #if 0
         bootloader_tick();
 #else
-        if ((bootloader_stub.flags & GDBSTUB_FLAG_STARTED) && (_config.loop)) {
-            bootloader_stub.flags |= GDBSTUB_FLAG_LOOP;
+        if ((bootloader_stub_ctrl.flags & GDBSTUB_FLAG_STARTED) && (_config.loop)) {
+            bootloader_stub_ctrl.flags |= GDBSTUB_FLAG_LOOP;
             _config.loop(&bootloader_tick);
             // NOT REACHED
         }
