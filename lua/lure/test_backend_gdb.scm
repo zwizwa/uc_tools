@@ -57,4 +57,20 @@
       (+ rv 345) ;; use so rv prop can be checked
       )))
 
-      
+
+;; Double loop
+
+(begin
+  (define (test_loop) ;; wrap to skip top level
+    (let ((rv ;; bind so rv prop can be checked
+           (let loop1 ((i 0))
+             (if (> i 3)
+                 123 ;; recognizable return value
+                 (let loop2 ((j 0))
+                   (if (> j 3)
+                       (loop1 (+ i 1))
+                       (loop2 (+ j 1))))))))
+      (+ rv 345) ;; use so rv prop can be checked
+      )))
+
+

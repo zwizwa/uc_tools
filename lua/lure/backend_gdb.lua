@@ -169,11 +169,18 @@ function class.w_maybe_assign(s, var)
    end
 end
 
-function class.with_rv(s, var, thunk, indent)
-   local rv = ((var == '_') and s.rv) or var
-   s:parameterize(
-      {rv = rv, indent = s.indent + (indent or 0)},
-      thunk)
+function class.pass_rv(s, var)
+   return ((var == '_') and s.rv) or var
+end
+
+function class.find_loop_vars(s, name)
+   for binding in se.elements(s.loop) do
+      if name == se.car(binding) then
+         _trace("LOOP_VARS", binding)
+         return se.cdr(binding)
+      end
+   end
+   return nil
 end
 
 function class.w_bindings(s, bindings)
@@ -185,16 +192,16 @@ function class.w_bindings(s, bindings)
          {
             {"(,var (if ,cond ,etrue, efalse))", function(m)  -- FIXME var
                 trace("IF",binding)
-                s:with_rv(
-                   m.var,
+                s:parameterize(
+                   { rv = s:pass_rv(m.var),
+                     indent = s.indent + 2 },
                    function()
                       s:w("if ", s:iol_atom(m.cond), "\n",s:tab())
                       s:comp(m.etrue)
                       s:w("\n", s:tab(-1), "else\n",s:tab())
                       s:comp(m.efalse)
                       s:w("\n",s:tab(-1), "end")
-                   end,
-                   2)
+                   end)
             end},
             {"(,rvar (set! ,var ,expr))", function(m)
                 s:w_maybe_assign(m.var)
@@ -202,7 +209,7 @@ function class.w_bindings(s, bindings)
             end},
             {"(,var (app ,fun . ,args))", function(m)
                 trace("APP",binding)
-                local loop_vars = s.loop[m.fun]
+                local loop_vars = s:find_loop_vars(m.fun)
                 if (loop_vars) then
                    -- See labels form for while loops
                    -- FIXME: For nested loops, all intermediate loop
@@ -239,22 +246,20 @@ function class.w_bindings(s, bindings)
             -- Special case for recognizing while loops.
             {"(,var (labels ((,loop (lambda (,index) ,expr))) (app ,loop0 ,index_init)))", function(m)
                 assert(m.loop == m.loop0)  -- FIXME: match needs guards
-
-                -- Track this, such that it can be implemented in (app <loop> <arg>) case.
-                s.loop[m.loop] = {m.index}
                 s:w_assign(m.loop)  ; s:w("1\n",s:tab())
                 s:w_assign(m.index) ; s:w(s:iol_atom(m.index_init),"\n",s:tab())
                 s:w("while ",s:iol_atom(m.loop),"\n",s:tab(1))
-                s:with_rv(
-                   m.var,
+                s:parameterize(
+                   { rv = s:pass_rv(m.var),
+                     indent = s.indent + 1,
+                     loop = {l(m.loop, m.index), s.loop} },
                    function()
                       -- Reset the condition.  Loops need to be
                       -- requested explicitly.  Default is
                       -- fallthrough.
                       s:w_assign(m.loop) ; s:w("0\n",s:tab())
                       s:comp(m.expr)
-                   end,
-                   1)
+                   end)
                 s:w("\n",s:tab(),"end")
             end},
             {"(,var (labels ,bindings ,inner))", function(m)
@@ -354,7 +359,7 @@ function class.compile(s,expr)
    s.env = se.empty
    s.rv = var("rv")
    s.out = {}
-   s.loop = {}
+   s.loop = se.empty
    s.match(
       expr,
       {{"(lambda (,lib_ref) (block . ,bindings))", function(m)
