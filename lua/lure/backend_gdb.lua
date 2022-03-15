@@ -129,12 +129,13 @@ function class.iol_atom(s, a)
    end
 end
 
-function class.arglist(s,lst)
+function class.arglist(s,lst,sep)
+   sep = sep or " "
    local iol = {}
    for el, last in se.elements(lst) do
       ins(iol, s:iol_atom(el))
       if not se.is_empty(last) then
-         ins(iol, " ")
+         ins(iol, sep)
       end
    end
    return iol
@@ -155,6 +156,12 @@ for scm,op in pairs(infix) do
       s:w(s:iol_atom(a)," ",op," ",s:iol_atom(b))
    end
 end
+form['vector'] = function(s, args)
+   s:w("{")
+   s:w(s:arglist(args,", "))
+   s:w("}")
+end
+
 
 function class.w_assign(s, var)
    s:w("set ", s:iol_atom(var), " = ")
@@ -194,7 +201,7 @@ function class.w_bindings(s, bindings)
                 trace("IF",binding)
                 s:parameterize(
                    { rv = s:pass_rv(m.var),
-                     indent = s.indent + 2 },
+                     indent = s.indent + 1 },
                    function()
                       s:w("if ", s:iol_atom(m.cond), "\n",s:tab())
                       s:comp(m.etrue)
@@ -211,6 +218,7 @@ function class.w_bindings(s, bindings)
                 trace("APP",binding)
                 local loop_vars = s:find_loop_vars(m.fun)
                 if (loop_vars) then
+                   assert(s.tail)
                    -- See labels form for while loops
                    -- FIXME: For nested loops, all intermediate loop
                    -- variables need to be invalidated!

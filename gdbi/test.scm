@@ -31,13 +31,26 @@
     (+ rv 345) ;; use so rv prop can be checked
     ))
 
+(define (test_2loop) ;; wrap to skip top level
+  (let ((rv ;; bind so rv prop can be checked
+         (let loop1 ((i 0))
+           (if (> i 3)
+               123 ;; recognizable return value
+               (let loop2 ((j 0))
+                 (if (> j 3)
+                     (loop1 (+ i 1))
+                     (begin
+                       (print (vector i j))
+                       (loop2 (+ j 1)))))))))
+    (+ rv 345) ;; use so rv prop can be checked
+    ))
 
 (define (f x) (+ x 10))
 (define (g x) (+ (f x) (f (+ 100 x))))
 
 ;; (g 1)
 
-(test_loop)
+(test_2loop)
 
 
 
