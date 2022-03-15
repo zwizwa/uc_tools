@@ -156,15 +156,25 @@ for scm,op in pairs(infix) do
    end
 end
 
+function class.w_assign(s, var)
+   s:w("set ", s:iol_atom(var), " = ")
+end
+
 
 function class.w_maybe_assign(s, var)
    if s.tail and s.rv then
       s:w("set ", s:iol_atom(s.rv), " = ")
    elseif var ~= '_' then
-      s:w("set ", s:iol_atom(var), " = ")
+      s:w_assign(var)
    end
 end
 
+function class.with_rv(s, var, thunk, indent)
+   local rv = ((var == '_') and s.rv) or var
+   s:parameterize(
+      {rv = rv, indent = s.indent + (indent or 0)},
+      thunk)
+end
 
 function class.w_bindings(s, bindings)
    -- trace("BINDINGS", bindings)
@@ -175,9 +185,8 @@ function class.w_bindings(s, bindings)
          {
             {"(,var (if ,cond ,etrue, efalse))", function(m)  -- FIXME var
                 trace("IF",binding)
-                local rv = ((m.var == '_') and s.rv) or m.var
-                s:parameterize(
-                   {rv = rv, indent = s.indent + 1},
+                s:with_rv(
+                   m.var,
                    function()
                       s:w("if ", s:iol_atom(m.cond), "\n",s:tab())
                       s:comp(m.etrue)
@@ -188,12 +197,20 @@ function class.w_bindings(s, bindings)
                    2)
             end},
             {"(,rvar (set! ,var ,expr))", function(m)
-                s:maybe_assign(m.var)
+                s:w_maybe_assign(m.var)
                 s:comp(m.expr)
             end},
             {"(,var (app ,fun . ,args))", function(m)
                 trace("APP",binding)
-                if m.fun == s.lib_ref then
+                local loop_vars = s.loop[m.fun]
+                if (loop_vars) then
+                   -- See labels form for while loops
+                   -- FIXME: For nested loops, all intermediate loop
+                   -- variables need to be invalidated!
+                   -- FIXME: Only one variable supported.
+                   s:w_assign(loop_vars[1]) ; s:w(s:iol_atom(se.car(m.args)),"\n",s:tab())
+                   s:w_assign(m.fun)        ; s:w("1")
+                elseif m.fun == s.lib_ref then
                    s:def(m.var, se.car(m.args))
                 else
                    local fun = s:ref(m.fun, true)
@@ -219,7 +236,29 @@ function class.w_bindings(s, bindings)
             {"(,var (lambda ,args ,expr))", function(m)
                 error('lambda_toplevel_only')
             end},
+            -- Special case for recognizing while loops.
+            {"(,var (labels ((,loop (lambda (,index) ,expr))) (app ,loop0 ,index_init)))", function(m)
+                assert(m.loop == m.loop0)  -- FIXME: match needs guards
+
+                -- Track this, such that it can be implemented in (app <loop> <arg>) case.
+                s.loop[m.loop] = {m.index}
+                s:w_assign(m.loop)  ; s:w("1\n",s:tab())
+                s:w_assign(m.index) ; s:w(s:iol_atom(m.index_init),"\n",s:tab())
+                s:w("while ",s:iol_atom(m.loop),"\n",s:tab(1))
+                s:with_rv(
+                   m.var,
+                   function()
+                      -- Reset the condition.  Loops need to be
+                      -- requested explicitly.  Default is
+                      -- fallthrough.
+                      s:w_assign(m.loop) ; s:w("0\n",s:tab())
+                      s:comp(m.expr)
+                   end,
+                   1)
+                s:w("\n",s:tab(),"end")
+            end},
             {"(,var (labels ,bindings ,inner))", function(m)
+                _trace("LABELS", binding)
                 error('labels_toplevel_only')
             end},
             {"(,var (hint ,tag . ,args))", function(m)
@@ -315,6 +354,7 @@ function class.compile(s,expr)
    s.env = se.empty
    s.rv = var("rv")
    s.out = {}
+   s.loop = {}
    s.match(
       expr,
       {{"(lambda (,lib_ref) (block . ,bindings))", function(m)

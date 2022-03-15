@@ -15,6 +15,11 @@ fi
 
 TEST=$GDBDIR/test.gdb
 
+# To resolve types, GDB needs an ELF loaded.
+ELF=../gdb/bl_c8t6_a12b5_boot1.core.f103.elf
+
+
+
 cat <<EOF >$INITSCRIPT
 $(cat $GDBDIR/lib.gdb)
 define connect
@@ -24,6 +29,7 @@ define test
   shell $GDBDIR/test.sh $TEST
   source $TEST
 end
+file $ELF
 connect
 EOF
 

@@ -234,6 +234,18 @@ function class.comp_if(s, expr, m)
    end
 end
 
+-- TODO
+-- 1. Capture closure
+-- 2. Introduce closed over variables as 0-ref
+-- 3. Find out which variables were actually used
+-- 4. Use that to hoist to top level
+function class.comp_lambda(s, expr, m)
+   for var in se.elements(m.vars) do
+      s:def(var)
+   end
+   return l('lambda', m.vars, s:comp(s:need_block(m.expr)))
+end
+
 function class.comp(s,expr)
    return s.match(
       expr,
@@ -244,10 +256,7 @@ function class.comp(s,expr)
          end},
          {"(lambda ,vars ,expr)", function(m)
              trace("LAMBDA", expr)
-             for var in se.elements(m.vars) do
-                s:def(var)
-             end
-             return l('lambda', m.vars, s:comp(s:need_block(m.expr)))
+             return s:comp_lambda(expr, m)
          end},
          {"(if ,cond ,etrue ,efalse)", function(m)
              return s:comp_if(expr, m)

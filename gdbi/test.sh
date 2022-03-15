@@ -21,7 +21,4 @@ $(lua -e "$CMD")
 print \$rv
 EOF
 
-# cat $OUT >&2
-
-
-
+cat $OUT >&2
