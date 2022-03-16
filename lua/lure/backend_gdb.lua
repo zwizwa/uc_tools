@@ -22,19 +22,17 @@
 --   from labels form.  It seems to work but there are likely corner
 --   cases that are not implemented correctly.
 --
--- TODO:
+-- . Functions are not re-entrant due to global variables only.  There
+--   doesn't seem to be a simple way around this, besides creating a
+--   large array and running an interpreter inside of it, or using
+--   target memory.
 --
 -- . Since all variables are global and uniquely named, closures just
---   work.  However, there is an issue in that we can't store a
---   closure (function reference) in a variable.  This might need
---   strings, which needs malloc on the target.  It's probably best to
---   add indirection which maps integers to functions:
---   - all functions have indexable names (f0, f1, ....)
---   - the top level vars are mapped to numbers
---   - if (app ...) sees a toplevel variable it can just call
---   - if not (local variable with reference to function) calls: eval "f%d $a1 $a2 $rv", num
---   - toplevel functions that are referenced as values need to be wrapped
-
+--   work (definition control-dominates use) with the caveat that they
+--   are still not re-entrant, so things like 'map' won't work when
+--   nested.  To be able to store functions in variables, they are
+--   encoded as integers, and named such that they can be referenced
+--   via eval "lambda%d".
 --
 -- . The trampoline heuristic excludes a degenerate subset of code
 --   patterns where a letrec function is used for actual recursion.
