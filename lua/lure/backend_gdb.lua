@@ -1,21 +1,49 @@
 -- Compile to gdb command sequence.
 --
--- FIXME: Just a stub.  Not sure if this is actually useful.  So why?
--- I need a little nudge, a little excursion to see if I can use plain
--- GDB to be a better uc_tools SMOS host.  And I need some exercise in
--- compiling to weird substrates.
-
--- Note the the GDB language is quite limited, so focus is on inlining
--- + mapping single-clause letrec to while loops.
+-- Note that there are some holes in the implementation.  Not all
+-- Scheme programs can be represented.
 --
--- Top level structure is a labels form.  Beyond that all other
--- functions are inlined.
+-- The intended purpose is for running test and to explore the
+-- "gradual untethering" design method, where code is written in
+-- Scheme and originally runs mostly in GDB.  Then pieces are
+-- translated to a subset of Scheme that can compile to C, gradually
+-- building up a C program.
 
--- Some notes on the GDB command language:
-
+-- Some notes on the GDB command language and the Scheme mapping:
+--
 -- . There is no concept of return value, but GDB uses call-by-name,
 --   so it is possible to parameterize a return value parameter:
 --   https://stackoverflow.com/questions/12572631/return-a-value-via-a-gdb-user-defined-command
+--
+-- . Top level structure is expected to be a labels form.  Mutual
+--   recursion is supported, but is not stack-safe.
+--
+-- . There is support for nested self-tail recursion, pattern-matched
+--   from labels form.  It seems to work but there are likely corner
+--   cases that are not implemented correctly.
+--
+-- TODO:
+--
+-- . Since all variables are global and uniquely named, closures just
+--   work.  However, there is an issue in that we can't store a
+--   closure (function reference) in a variable.  This might need
+--   strings, which needs malloc on the target.  It's probably best to
+--   add indirection which maps integers to functions:
+--   - all functions have indexable names (f0, f1, ....)
+--   - the top level vars are mapped to numbers
+--   - if (app ...) sees a toplevel variable it can just call
+--   - if not (local variable with reference to function) calls: eval "f%d $a1 $a2 $rv", num
+--   - toplevel functions that are referenced as values need to be wrapped
+
+--
+-- . The trampoline heuristic excludes a degenerate subset of code
+--   patterns where a letrec function is used for actual recursion.
+--   To fix this it is likely necessary to implement backtracking.
+--   Doesn't seem worth it at the moment.
+--
+-- . Arrays of word-size integers can be represented locally, but
+--   cannot have zero size.
+
 
 local se        = require('lure.se')
 local se_match  = require('lure.se_match')
@@ -51,6 +79,10 @@ end
 local function trace(tag,expr)
    -- _trace(tag,expr)
 end
+
+class.prim = {
+   ["print"] = 1
+}
 
 function id(x) return x end
 
@@ -144,7 +176,7 @@ end
 local infix = {
    ['+']  = '+',
    ['-']  = '-',
-   ['*']  = '/',
+   ['*']  = '*',
    ['/']  = '/',
    ['>']  = '>',
    ['<']  = '<',
@@ -180,8 +212,8 @@ function class.pass_rv(s, var)
    return ((var == '_') and s.rv) or var
 end
 
-function class.find_loop_vars(s, name)
-   for binding in se.elements(s.loop) do
+function class.find_trampoline(s, name)
+   for binding in se.elements(s.trampoline) do
       if name == se.car(binding) then
          _trace("LOOP_VARS", binding)
          return se.cdr(binding)
@@ -194,6 +226,7 @@ function class.w_bindings(s, bindings)
    -- trace("BINDINGS", bindings)
 
    function match_binding(binding, rest)
+      local nop = false
       s.match(
          binding,
          {
@@ -214,17 +247,61 @@ function class.w_bindings(s, bindings)
                 s:w_maybe_assign(m.var)
                 s:comp(m.expr)
             end},
+            -- Special case for recognizing while loops.  Note that
+            -- this is a heuristic: once the loop function is
+            -- converted to a trampoline, it can no longer be used as
+            -- a regular function.  Only tail calls are allowed.
+            {"(,var (labels ((,loop (lambda ,state ,expr))) (app ,loop0 . ,state_init)))",
+             function(m)
+                -- Guard
+                return m.loop == m.loop0
+             end,
+             function(m)
+                -- Reuse the name of the loop function as a boolean
+                -- variable that is used as the argument to 'while'.
+                s:w_assign(m.loop)
+                s:w("1\n",s:tab())
+                se.zip(
+                   function(var, vexpr)
+                      s:w_assign(var)
+                      s:w(s:iol_atom(vexpr),"\n",s:tab())
+                   end,
+                   m.state, m.state_init)
+                s:w("while ",s:iol_atom(m.loop),"\n",s:tab(1))
+                s:parameterize(
+                   { rv = s:pass_rv(m.var),
+                     indent = s.indent + 1,
+                     trampoline = {{m.loop, m.state}, s.trampoline} },
+                   function()
+                      -- Once the loop is entered, the default
+                      -- behavior is to not loop next time. This makes
+                      -- it so that only the (app loop ...) form needs
+                      -- to be modified downstream, i.e. it sets the
+                      -- loop variable to true.
+                      s:w_assign(m.loop) ; s:w("0\n",s:tab())
+                      s:comp(m.expr)
+                   end)
+                s:w("\n",s:tab(),"end")
+            end},
+            -- Other labels forms are only supported at top level.
+            {"(,var (labels ,bindings ,inner))", function(m)
+                _trace("LABELS", binding)
+                error('labels_toplevel_only')
+            end},
             {"(,var (app ,fun . ,args))", function(m)
                 trace("APP",binding)
-                local loop_vars = s:find_loop_vars(m.fun)
+                local loop_vars = s:find_trampoline(m.fun)
                 if (loop_vars) then
-                   assert(s.tail)
-                   -- See labels form for while loops
-                   -- FIXME: For nested loops, all intermediate loop
-                   -- variables need to be invalidated!
-                   -- FIXME: Only one variable supported.
-                   s:w_assign(loop_vars[1]) ; s:w(s:iol_atom(se.car(m.args)),"\n",s:tab())
-                   s:w_assign(m.fun)        ; s:w("1")
+                   -- Recursive calls that are converted to
+                   -- trampolines can only be used in tail position.
+                   se.zip(
+                      function(var, vexpr)
+                         s:w_assign(var)
+                         s:w(s:iol_atom(vexpr),"\n",s:tab())
+                      end,
+                      loop_vars, m.args)
+                   s:w_assign(m.fun)
+                   s:w("1")
                 elseif m.fun == s.lib_ref then
                    s:def(m.var, se.car(m.args))
                 else
@@ -237,42 +314,42 @@ function class.w_bindings(s, bindings)
                       s:w_maybe_assign(m.var)
                       w_f(s, m.args)
                    else
-                      -- Return variable is the last argument
-                      local k_arg = l()
-                      if s.tail then
-                         if s.rv then k_arg = l(s.rv) end
+                      if s.prim[fun_name] then
+                         -- Primitives do not take a return value argument.
+                         k_arg = l({class='var',unique='ign'})
+                         s:w(fun_name," ",s:arglist(m.args))
                       else
-                         if m.var ~= '_' then k_arg = l(m.var) end
+                         -- Return variable is the last argument.
+                         local k_arg = l({class='var',unique='ign'})
+                         if s.tail then
+                            if s.rv then k_arg = l(s.rv) end
+                         elseif m.var ~= '_' then
+                            k_arg = l(m.var)
+                         end
+                         local args = se.append(m.args, k_arg)
+                         if s.fun[m.fun] then
+                            -- Toplevel function referred by original name.
+                            s:w(fun_name," ",s:arglist(args))
+                         else
+                            -- Anonymous function represented by integer.
+                            s:w('eval "lambda%d ',s:arglist(args),'", ', s:iol_atom(m.fun))
+                         end
                       end
-                      s:w(fun_name," ",s:arglist(se.append(m.args, k_arg)))
                    end
                 end
             end},
             {"(,var (lambda ,args ,expr))", function(m)
-                error('lambda_toplevel_only')
-            end},
-            -- Special case for recognizing while loops.
-            {"(,var (labels ((,loop (lambda (,index) ,expr))) (app ,loop0 ,index_init)))", function(m)
-                assert(m.loop == m.loop0)  -- FIXME: match needs guards
-                s:w_assign(m.loop)  ; s:w("1\n",s:tab())
-                s:w_assign(m.index) ; s:w(s:iol_atom(m.index_init),"\n",s:tab())
-                s:w("while ",s:iol_atom(m.loop),"\n",s:tab(1))
-                s:parameterize(
-                   { rv = s:pass_rv(m.var),
-                     indent = s.indent + 1,
-                     loop = {l(m.loop, m.index), s.loop} },
-                   function()
-                      -- Reset the condition.  Loops need to be
-                      -- requested explicitly.  Default is
-                      -- fallthrough.
-                      s:w_assign(m.loop) ; s:w("0\n",s:tab())
-                      s:comp(m.expr)
-                   end)
-                s:w("\n",s:tab(),"end")
-            end},
-            {"(,var (labels ,bindings ,inner))", function(m)
-                _trace("LABELS", binding)
-                error('labels_toplevel_only')
+                -- All variables are global and unique, and since
+                -- definition always control-dominates use, closures
+                -- will just work as top level functions. However, we
+                -- can't store references to functions in variables,
+                -- so calls are done indirectly with each function
+                -- assigned an index.
+                local n = se.length(s.lambda)
+                local var = {class='var', unique='lambda'..n}
+                s.lambda = {l(var, se.cadr(binding)), s.lambda}
+                s:w_maybe_assign(m.var)
+                s:w(s:iol_atom(n))
             end},
             {"(,var (hint ,tag . ,args))", function(m)
                 trace("HINT",binding)
@@ -293,7 +370,7 @@ function class.w_bindings(s, bindings)
             end}
          }
       )
-      if not se.is_empty(rest) then
+      if not se.is_empty(rest) and not nop then
          s:w("\n",s:tab())
       end
    end
@@ -367,7 +444,9 @@ function class.compile(s,expr)
    s.env = se.empty
    s.rv = var("rv")
    s.out = {}
-   s.loop = se.empty
+   s.trampoline = se.empty
+   s.lambda = se.empty
+   s.fun = {}
    s.match(
       expr,
       {{"(lambda (,lib_ref) (block . ,bindings))", function(m)
@@ -378,23 +457,46 @@ function class.compile(s,expr)
            local lib_refs = se.reverse(se.cdr(rbindings))
            local labels = se.car(rbindings)
            s:w_bindings(lib_refs)
+
+           function comp_lambda_binding(binding)
+              s.match(
+                 binding,
+                 {
+                    {"(,var (lambda ,args ,expr))", function(m)
+                        trace("LAMBDA",binding)
+                        s:w("define ", s:mangle_fun(m.var, id))
+                        s:w_lambda(m.args, m.expr)
+                        s:w("\n",s:tab(),"end\n")
+                    end},
+              })
+           end
+
            s.match(
               labels,
               {{"(_ (labels ,bindings ,main))))", function(m)
+
+                   -- Declare toplevel fuctions to allow mutual
+                   -- references.
                    for binding in se.elements(m.bindings) do
-                      s.match(
-                         binding,
-                         {
-                            {"(,var (lambda ,args ,expr))", function(m)
-                                trace("LAMBDA",binding)
-                                s:w("define ", s:mangle_fun(m.var, id))
-                                s:w_lambda(m.args, m.expr)
-                                s:w("\n",s:tab(),"end\n")
-                            end},
-                      })
+                      local var = se.car(binding)
+                      s.fun[var] = true
                    end
+
+                   -- Compile the top level functions.
+                   for binding in se.elements(m.bindings) do
+                      comp_lambda_binding(binding)
+                   end
+
+                   -- Compile all collected closures as top level functions.
+                   for binding in se.elements(s.lambda) do
+                      comp_lambda_binding(binding)
+                   end
+
+                   -- Compile the in-line code.
                    s:comp(m.main)
               end}})
+
+
       end}})
    local mod = { s.out }
    return { class = "iolist", iolist = {mod,"\n"} }

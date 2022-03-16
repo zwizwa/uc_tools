@@ -33,24 +33,32 @@
 
 (define (test_2loop) ;; wrap to skip top level
   (let ((rv ;; bind so rv prop can be checked
-         (let loop1 ((i 0))
+         (let loop1 ((i 0) (ii 2))
            (if (> i 3)
                123 ;; recognizable return value
                (let loop2 ((j 0))
                  (if (> j 3)
-                     (loop1 (+ i 1))
+                     (loop1 (+ i 1) (* ii ii))
                      (begin
-                       (print (vector i j))
+                       (print (vector i j ii))
                        (loop2 (+ j 1)))))))))
     (+ rv 345) ;; use so rv prop can be checked
     ))
+
+(define (trice f)
+  (vector (f 1) (f 2) (f 3)))
+(define (test_lambda)
+  (let* ((captured 123))
+    (trice (lambda (x) (+ captured x)))))
 
 (define (f x) (+ x 10))
 (define (g x) (+ (f x) (f (+ 100 x))))
 
 ;; (g 1)
-
 (test_2loop)
+
+;; (test_lambda)
+(test_lambda)
 
 
 

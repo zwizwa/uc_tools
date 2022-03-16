@@ -17,10 +17,20 @@ end
 
 local function do_se_match(s, expr, string_clauses)
    for _,clause in ipairs(string_clauses) do
-      local spat, fhandle = unpack(clause)
+      -- FIXME: Guards are currently only used in the scheme passes.
+      local spat, guard, fhandle
+      if #clause == 3 then
+         spat, guard, fhandle = unpack(clause)
+      elseif #clause == 2 then
+         spat, fhandle = unpack(clause)
+      else
+         error('do_se_match bad clause')
+      end
       local cpat = memo_eval(s, pquasiquote, spat)
       local m = match.apply(cpat, expr)
-      if m then return fhandle(m) end
+      if m and ((not guard) or guard(m)) then
+         return fhandle(m)
+      end
    end
    -- FIXME: Make this configurable?
    error('pattern mismatch')
