@@ -1,3 +1,6 @@
+;; Experimentail.  Main drawback is lack of re-entrancy due to lack of
+;; local variables.  See backend_gdb.scm for more comments.
+
 (begin
   (define (f x) x)
   (define (g x) (f x))
@@ -10,40 +13,6 @@
   (f 0))
 
   
-  
-
-;; ;; This generates code that is supposed to be captured in a while
-;; ;; loop.  Note that a while loop is imperative, so the return value is
-;; ;; void.  I'd like two things: a macro that maps while to a named let,
-;; ;; and a matcher that maps it back to a while loop.
-
-;; (let ((context 0))
-;;   (letrec
-;;       ((loop
-;;         (lambda (i)
-;;           (if (> i 3)
-;;               (void) ;; Stop condition
-;;               (begin
-;;                 (set! context i) ;; Some side-effect
-;;                 (loop (+ i 1)))))))
-;;     (loop 0)))
-
-;; ;; Should it be that, or should I make it effectful?
-
-;; (let ((context 0)
-;;       (i 0))
-;;   (letrec
-;;       ((loop
-;;         (lambda ()
-;;           (if (> i 3)
-;;               (void) ;; Stop condition
-;;               (begin
-;;                 (set! context i) ;; Some side-effect
-;;                 (set! i (+ i 1))
-;;                 (loop))))))
-;;     (loop)))
-
-
 ;; Named let (letrec with one recursive function) is converted to a
 ;; while loop.
 
@@ -58,8 +27,7 @@
       )))
 
 
-;; Double loop
-
+;; Double loop with print & vector.
 (begin
   (define (test_loop) ;; wrap to skip top level
     (let ((rv ;; bind so rv prop can be checked
@@ -68,9 +36,19 @@
                  123 ;; recognizable return value
                  (let loop2 ((j 0))
                    (if (> j 3)
-                       (loop1 (+ i 1))
+                       (begin
+                         (print (vector i j))
+                         (loop1 (+ i 1)))
                        (loop2 (+ j 1))))))))
       (+ rv 345) ;; use so rv prop can be checked
       )))
 
+;; Anonymous functions.
+(begin
+  (define (trice f)
+    (vector (f 1) (f 2) (f 3)))
+  (define (test_lambda)
+    (let* ((captured 123))
+      (print (trice (lambda (x) (+ captured x))))))
+  (test_lambda))
 
