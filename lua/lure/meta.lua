@@ -5,6 +5,7 @@ return { modules = {
   'backend_gdb',
   'backend_js',
   'backend_lua',
+  'cc',
   'comp',
   'index',
   'init',
