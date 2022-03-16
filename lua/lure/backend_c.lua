@@ -24,13 +24,6 @@ class.indented     = lure_comp.indented
 class.tab          = lure_comp.tab
 
 
--- Convention for newline/tab:
-
--- Expressions are always compiled in binding position, are already at
--- indented position and should not print newline.
-
--- FIXME: There's a double :tab() somewhere.
-
 local lib = require('lure.slc_runtime')
 
 local function mangle(var)
@@ -62,10 +55,6 @@ local function mangle(var)
    return {var.unique,"_",name}
 end
 
--- FIXME: Go over tree once to collect the reverse mappings:
---  (r22:r21 (r34:base-ref 'cons))
--- FIXME: Create a library with generic iterators.
--- FIXME: Actually it's simpler: compile the quotation into cons in the frontend.
 local function iol_cons(a,d)
    return {"{",a,",",d,"}"}
 end
@@ -141,16 +130,33 @@ local infix = {
 for scm,op in pairs(infix) do
    form[scm] = function(s, args)
       local a, b = se.unpack(args, {n=2})
-      s:w(iol_atom(a)," ",op," ",iol_atom(b))
+      s:w(iol_atom(a)," ",op," ",iol_atom(b),";")
    end
 end
 
 
+-- Single expression forms inside if, lambda etc are converted to
+-- block with a single return binding.
+function class.w_expr(s, expr, indent)
+   s.match(
+      expr,
+      {
+         {"(block . ,bindings)", function(m)
+             s:w_bindings(m.bindings, indent)
+         end},
+         {",body", function(m)
+             s:w_bindings(l(l('_', m.body)), indent)
+         end}
+   })
+end
 
--- FIXME: Needs re-org to allow for
--- (a (make-vector 3 0)) to be mapped to
--- T a[3] = {0,0,0};
-function class.w_bindings(s, bindings)
+function class.w_bindings(s, bindings, indent)
+   indent = indent or 1
+   s:parameterize(
+      {indent = s.indent + indent},
+      function() s:w_bindings_inner(bindings) end)
+end
+function class.w_bindings_inner(s, bindings)
    local function maybe_assign(var)
       if var ~= '_' then
          s:w("T ", iol_atom(var), " = ")
@@ -180,13 +186,13 @@ function class.w_bindings(s, bindings)
                 error("bad expression form")
             end},
             {",atom", function(m)
-                s:w_atom(m.atom)
+                s:w(iol_atom(m.atom))
             end}
          })
    end
 
-   for binding in se.elements(bindings) do
-      s:w(s:tab())
+   for binding, rest in se.elements(bindings) do
+      local last = se.is_empty(rest)
       s.match(
          binding,
          {
@@ -195,7 +201,7 @@ function class.w_bindings(s, bindings)
                 s:indented(
                    function()
                       s:w("T ", iol_atom(b.var), "(", s:commalist(b.args),") {","\n")
-                      s:w_body(b.expr)
+                      s:w_expr(b.expr)
                       s:w(s:tab(),"}")
                    end)
             end},
@@ -205,33 +211,32 @@ function class.w_bindings(s, bindings)
                 s:w(s:tab(),"}")
             end},
             {"(_ (labels ,bindings ,entry))", function(m)
-                s:w("/* labels: entry */\n",s:tab())
-                s:i_comp(m.entry)
-                s:w("\n",s:tab())
+                s:w("/* labels: entry */\n",s:tab(),"{\n",s:tab(1))
+                s:w_expr(m.entry, 1)
+                s:w("\n",s:tab(), "}\n", s:tab())
                 s:w("/* labels: clauses */\n",s:tab())
-                for binding in se.elements(m.bindings) do
+                for binding, rest in se.elements(m.bindings) do
                    s.match(
                       binding,
                       {{"(,name (lambda () ,expr))", function(b)
-                           s:w(iol_atom(b.name),":\n",s:tab())
-                           s:i_comp(b.expr)
-                           s:w("\n",s:tab())
-                      end}})
+                           s:w(iol_atom(b.name),": {\n",s:tab(1))
+                           s:w_expr(b.expr,1)
+                           s:w("\n",s:tab(),"}")
+                           if not se.is_empty(rest) then
+                              s:w("\n",s:tab())
+                           end
+                   end}})
                 end
             end},
             {"(_ (if ,cond ,etrue, efalse))", function(m)
-                s:w("if (", iol_atom(m.cond), ") {\n")
-                s:indented(
-                   function()
-                      s:w_body(m.etrue)
-                      s:w(s:tab(), "} else {\n")
-                      s:w_body(m.efalse)
-                      s:w(s:tab(), "}")
-                   end,
-                   -1)
+                s:w("if (", iol_atom(m.cond), ") {\n", s:tab(1))
+                s:w_expr(m.etrue, 1)
+                s:w("\n", s:tab(), "else {\n", s:tab(1))
+                s:w_expr(m.efalse, 1)
+                s:w("\n",s:tab(),"}")
             end},
             {"(_ (goto ,label))", function(m)
-                s:w("goto ", iol_atom(m.label), ":")
+                s:w("goto ", iol_atom(m.label), ";")
             end},
             {"(_ (hint ,tag . ,args))", function(m)
             end},
@@ -259,24 +264,10 @@ function class.w_bindings(s, bindings)
                 w_prim_eval(m.prim_eval)
             end}
       })
-      s:w("\n")
+      if not last then
+         s:w("\n", s:tab())
+      end
    end
-end
-
-function class.w_indented_bindings(s, bindings)
-   s:indented(function() s:w_bindings(bindings) end)
-end
-
-function class.w_body(s, expr)
-   s.match(
-      expr,
-      -- The do .. end block can be omitted in a function body.
-      {{"(block . ,bindings)", function(m)
-           s:w_indented_bindings(m.bindings)
-       end},
-       {",body", function(m)
-           s:i_comp(m.body)
-      end}})
 end
 
 function class.w(s, ...)
@@ -288,29 +279,12 @@ end
 -- Top level entry point
 function class.compile(s,top_expr)
 
-   -- -- The IR expr is a single lambda expression, parameterized by
-   -- -- 'lib_ref', a function that performs library symbol lookup for
-   -- -- all free variables that were found by scheme_frontend.
-   -- local bindings =
-   --    s.match(
-   --       top_expr,
-   --       {{'(lambda (,base_ref) (block . ,bindings))',
-   --         function(m)
-   --            assert(m.base_ref.class == 'var')
-   --            return m.bindings
-   --    end}})
-
-   -- FIXME: We now take output from scheme_sm pass, which doesn't
-   -- have lambda.
-   
-
-
    local mod_body = {}
    s:parameterize(
       {out = mod_body},
       function()
          -- s:w_bindings(bindings)
-         s:comp(top_expr)
+         s:w_expr(top_expr, 0)
          s:w("\n")
       end)
    local mod = {
@@ -322,13 +296,6 @@ function class.compile(s,top_expr)
    return { class = "iolist", iolist = mod }
 end
 
-function class.i_comp(s, expr)
-   s:indented(function() s:comp(expr) end)
-end
-
-function class.w_atom(s, a)
-   s:w(iol_atom(a))
-end
 
 -- FIXME: Also do 'quote' or 'lit'
 
@@ -345,22 +312,6 @@ end
 
 
 
--- Recursive expression compiler.
-function class.comp(s,expr)
-   s.match(
-      expr,
-      {
-         {"(block . ,bindings)", function(m)
-             s:w(s:tab(),"{\n")
-             s:w_bindings(m.bindings)
-             s:w(s:tab(),"}")
-         end},
-         {",other", function(m)
-             s:w_bindings(l(l('_', m.other)))
-         end},
-      }
-   )
-end
 
 local function new(config)
    local obj = { match = se_match.new(), indent = 0, config = config or {} }

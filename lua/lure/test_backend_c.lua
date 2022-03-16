@@ -18,21 +18,23 @@ local c_new =
          'lure.scheme_frontend',
          'lure.scheme_flatten',
          'lure.scheme_sm',
+         'lure.scheme_flatten',
       })
 
 local function run()
    local str = asset['test_backend_c.scm']
    assert(str)
    local exprs = se.read_string_multi(str)
-   local expr = {'begin', exprs}
-   log_se_n(expr, "INPUT:")
-   local c = c_new()
-   local ir = c:compile(expr)
-   log("IR:") ; pretty.log_pp(ir)
-   local c = backend_c.new()
-   -- c.write = function(_, str) io.stderr:write(str) end
-   local out = c:compile(ir)
-   log_se_n(out, "OUTPUT:\n")
+   for expr in se.elements(exprs) do
+      log_se_n(expr, "INPUT:")
+      local c = c_new()
+      local ir = c:compile(expr)
+      log("IR:") ; pretty.log_pp(ir)
+      local c = backend_c.new()
+      -- c.write = function(_, str) io.stderr:write(str) end
+      local out = c:compile(ir)
+      log_se_n(out, "OUTPUT:\n")
+   end
 end
 
 

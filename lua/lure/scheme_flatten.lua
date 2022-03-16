@@ -97,9 +97,9 @@ local compile_form = {
    end,
    ['labels'] = function(s, expr)
       local _, clauses, inner = se.unpack(expr, {n=3})
-      if se.length(clauses) == 0 then
-         return s:compile(inner)
-      end
+      --if se.length(clauses) == 0 then
+      --   return s:compile(inner)
+      --end
       return l('labels',
                se.map(
                   function(clause)
