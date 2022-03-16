@@ -17,6 +17,17 @@ done
 echo "}"
 ) >lure/asset_scm.lua
 
+( cd lure
+echo "# -*- c -*-"
+echo "return {"
+for file in *.h; do
+    echo "['$file'] = [["
+    cat $file
+    echo "]],"
+done
+echo "}"
+) >lure/asset_c.lua
+
 
 # 2. Generate the lure/meta.lua file
 META=lure/meta.lua

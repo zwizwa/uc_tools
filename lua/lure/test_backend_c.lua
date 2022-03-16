@@ -8,6 +8,7 @@ local comp          = require('lure.comp')
 local asset         = require('lure.asset_scm')
 local pretty        = require('lure.scheme_pretty')
 local backend_c     = require('lure.backend_c')
+local cc            = require('lure.cc')
 require('lure.log_se')
 local ins = table.insert
 
@@ -22,6 +23,7 @@ local c_new =
       })
 
 local function run()
+   local cc_version = cc.version()
    local str = asset['test_backend_c.scm']
    assert(str)
    local exprs = se.read_string_multi(str)
@@ -34,6 +36,12 @@ local function run()
       -- c.write = function(_, str) io.stderr:write(str) end
       local out = c:compile(ir)
       log_se_n(out, "OUTPUT:\n")
+      if cc_version then
+         -- If there is a C compiler available, compile and run.
+         local inp = se.list()
+         local out = cc.eval_se(se.iolist(out), inp)
+         log_se_n(out, "C_RUN:\n")
+      end
    end
 end
 

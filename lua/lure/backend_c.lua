@@ -231,7 +231,7 @@ function class.w_bindings_inner(s, bindings)
             {"(_ (if ,cond ,etrue, efalse))", function(m)
                 s:w("if (", iol_atom(m.cond), ") {\n", s:tab(1))
                 s:w_expr(m.etrue, 1)
-                s:w("\n", s:tab(), "else {\n", s:tab(1))
+                s:w("\n", s:tab(), "} else {\n", s:tab(1))
                 s:w_expr(m.efalse, 1)
                 s:w("\n",s:tab(),"}")
             end},
@@ -262,6 +262,7 @@ function class.w_bindings_inner(s, bindings)
             {"(,var ,prim_eval)", function(m)
                 maybe_assign(m.var)
                 w_prim_eval(m.prim_eval)
+                s:w(";")
             end}
       })
       if not last then
@@ -283,12 +284,20 @@ function class.compile(s,top_expr)
    s:parameterize(
       {out = mod_body},
       function()
+         s.indent = 1
+         s:w(s:tab())
+
          -- s:w_bindings(bindings)
          s:w_expr(top_expr, 0)
          s:w("\n")
       end)
    local mod = {
-      mod_body
+      -- FIXME: Later, require the toplevel to be a list of
+      -- definitions.
+      "T module(void) {\n",
+      mod_body,
+      "}\n",
+      "int main(int argc, char **argv) { return module(); }\n"
    }
    if s.config.debug_lua_output then
       iolist.write_to_file(s.config.debug_lua_output, mod)

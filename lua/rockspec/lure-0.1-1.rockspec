@@ -22,6 +22,7 @@ dependencies = {
 build = {
   type = "builtin",
   modules = {
+    ['lure.asset_c'] = 'asset_c.lua',
     ['lure.asset_scm'] = 'asset_scm.lua',
     ['lure.backend_c'] = 'backend_c.lua',
     ['lure.backend_erlang'] = 'backend_erlang.lua',

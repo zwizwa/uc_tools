@@ -1,3 +1,7 @@
+;; These are all in state machine mode, where the output is a single C
+;; function, and Scheme functions map to goto labels.  Later, add top
+;; level mode where the outer labels form maps to C functions.
+
 (begin
   (let ((a 1))
     (+ a a)))
@@ -8,20 +12,27 @@
   (x 1 2))
 
 (begin
-  (define (f x) (g (+ x 1)))
-  (define (g x) (f (* x x)))
-  (f x))
-
-(begin
   (define (f x)
-    (define (a x)
-      (if (> x 3)
-          a
-          (a (+ 1 x))))
-    (g (+ x (a x))))
+    (trace x)
+    (g (+ x 1)))
   (define (g x)
     (f (* x x)))
-  (f x))
+  ;; (f x)  ;; Gives obscure error due to missing ephemeral variable.
+  (f 0)
+  )
 
+;; Nested structures have issues.
+;; (begin
+;;   (define (f x)
+;;     (define (a x)
+;;       (if (> x 3)
+;;           ;; a ;; FIXME: Old type error referenced function here,
+;;           ;; which didn't cause an error, just an undefined reference.
+;;           x
+;;           (a (+ 1 x))))
+;;     (g (+ x x)))
+;;   (define (g x)
+;;     (f (* x x)))
+;;   (f x))
 
 

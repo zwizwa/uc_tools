@@ -1,4 +1,5 @@
 return { modules = {
+  'asset_c',
   'asset_scm',
   'backend_c',
   'backend_erlang',
