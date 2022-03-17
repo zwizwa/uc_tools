@@ -62,12 +62,15 @@ local function closure_iolist(c)
 end
 
 local function make_prim(name)
+   assert(type(name) == 'string')
    return {
       class = 'prim',
       name = name,
       iolist = {"prim:",name}
    }
 end
+class.make_prim = make_prim
+
 local function prim_app(fn_name, ...)
    return {'app', {make_prim(fn_name), a2l({...})}}
 end

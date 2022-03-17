@@ -7,6 +7,7 @@ local se        = require('lure.se')
 local se_match  = require('lure.se_match')
 local iolist    = require('lure.iolist')
 local lure_comp = require('lure.comp')
+local backend   = require('lure.backend')
 local scheme_frontend = require('lure.scheme_frontend')
 local scheme_pretty   = require('lure.scheme_pretty')
 local l = se.list
@@ -167,7 +168,7 @@ function class.w_bindings(s, bindings)
                    end,
                    2)
             end},
-            {"(,rvar (set! ,var ,expr))", function(m) 
+            {"(,rvar (set! ,var ,expr))", function(m)
                 _trace("SET",binding)
                 error("assingnment_not_supported")
             end},
@@ -287,38 +288,11 @@ function class.compile(s,expr)
       top_fun({var = main, args=l(), body=inner})
    end
 
-   s.match(
-      expr,
-      {{"(lambda (,lib_ref) (block . ,bindings))", function(m)
-           -- Assumptions:
-           -- . Last binding is a labels form
-           -- . All other bindings are lib_ref
-
-           for binding, rest in se.elements(m.bindings) do
-              if not se.is_empty(rest) then
-                 -- Collect binding
-                 s.match(
-                    binding,
-                    {{"(,var (app ,lib_ref ,sym))", function(b)
-                         assert(m.lib_ref == b.lib_ref)
-                         s.lib_ref[b.var] = b.sym
-                     end}})
-              else
-                 -- Compile top-level functions
-                 s.match(
-                    binding,
-                    {
-                       {"(_ (labels ,bindings ,inner))", function(l)
-                           compile_labels(l.bindings, l.inner)
-                       end},
-                       {",other", function(b)
-                           _trace("BAD",b.other)
-                           error("bad_binding")
-                       end}
-                    })
-              end
-           end
-       end}})
+   -- Match the canonical top level module form.
+   backend.match_module_form(
+      s, expr,
+      function(var, sym) s.lib_ref[var] = sym end,
+      compile_labels)
 
    local mod = { s.out }
    return { class = "iolist", iolist = mod }

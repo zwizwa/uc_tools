@@ -5,6 +5,7 @@ return { modules = {
   'backend_erlang',
   'backend_gdb',
   'backend_js',
+  'backend',
   'backend_lua',
   'cc',
   'comp',

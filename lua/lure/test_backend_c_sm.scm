@@ -21,18 +21,19 @@
   (f 0)
   )
 
-;; Nested structures have issues.
-;; (begin
-;;   (define (f x)
-;;     (define (a x)
-;;       (if (> x 3)
-;;           ;; a ;; FIXME: Old type error referenced function here,
-;;           ;; which didn't cause an error, just an undefined reference.
-;;           x
-;;           (a (+ 1 x))))
-;;     (g (+ x x)))
-;;   (define (g x)
-;;     (f (* x x)))
-;;   (f x))
+(begin
+  (define (f x)
+    (define (a x)
+      (if (> x 3)
+          ;; a ;; FIXME: Old type error referenced function here,
+          ;; which didn't cause an error, just an undefined reference.
+          (begin
+            (trace x)
+            (g x))
+          (a (+ 1 x))))
+    (a (+ x x)))
+  (define (g x)
+    (f (* x x)))
+  (f 0))
 
 

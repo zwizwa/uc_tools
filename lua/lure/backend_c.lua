@@ -1,12 +1,25 @@
 -- C code pretty-printer
--- This is a partial clone of backend_lua.lua
+
+-- Currently this only does goto version, and a wrapper is needed.
+-- Later, do this:
+--
+-- The input block IR is interpreted as follows:
+-- . The outer labels form is converted to named C functions
+-- . Inside that, all labels are converted to goto
+--
+-- This allows representation of both use cases (plain C, state
+-- machine C) in one backend, as it is probably going to be useful to
+-- mix.
+--
 
 local se        = require('lure.se')
 local se_match  = require('lure.se_match')
 local iolist    = require('lure.iolist')
 local lure_comp = require('lure.comp')
+local backend   = require('lure.backend')
 local scheme_frontend = require('lure.scheme_frontend')
 local scheme_pretty   = require('lure.scheme_pretty')
+local scheme_sm       = require('lure.scheme_sm')
 local l = se.list
 local ins = table.insert
 local pprint = scheme_pretty.new()
@@ -87,10 +100,11 @@ local function iol_atom(a)
    end
 end
 
-function class.commalist(s,lst)
+function class.commalist(s,lst,typ)
+   typ = typ or ""
    local iol = {}
    for el, last in se.elements(lst) do
-      ins(iol, iol_atom(el))
+      ins(iol, {typ, iol_atom(el)})
       if not se.is_empty(last) then
          ins(iol, ", ")
       end
@@ -122,7 +136,7 @@ end
 local infix = {
    ['+']  = '+',
    ['-']  = '-',
-   ['*']  = '/',
+   ['*']  = '*',
    ['/']  = '/',
    ['>']  = '>',
    ['<']  = '<',
@@ -169,16 +183,31 @@ function class.w_bindings_inner(s, bindings)
          {
             {"(app ,fun . ,args)",
              function(m)
+                _trace("APP_FUN", expr)
+
                 -- Note that in C, we require all function
                 -- applications to be top level functions, represented
                 -- by the 'prim' data type.  Any flattening needs to
                 -- happen in a previous pass.
-                assert(m.fun.class == 'prim')
-                local w_f = m.fun.name and form[m.fun.name]
+                if m.fun.class == 'prim' then
+                   -- produced by scheme_frontend -> scheme_sm
+                   name = m.fun.name
+                elseif m.fun.class == 'var' then
+                   local prim = s.prim[m.fun]
+                   if prim then
+                      name = prim.name
+                   else
+                      -- FIXME: Use mangled name
+                      name = iol_atom(m.fun)
+                   end
+                else
+                   error("unknown function class '" .. m.fun.class .. "'")
+                end
+                local w_f = form[name]
                 if w_f then
                    w_f(s, m.args)
                 else
-                   s:w(m.fun.name,"(",s:commalist(m.args),");")
+                   s:w(name,"(",s:commalist(m.args),");")
                 end
             end},
             {"(,form . ,args)", function(m)
@@ -191,19 +220,37 @@ function class.w_bindings_inner(s, bindings)
          })
    end
 
+   local function w_labels_goto(m)
+      s:w("/* labels: ", s.labels_depth, " entry */\n",s:tab(),"{\n",s:tab(1))
+      s:w_expr(m.entry, 1)
+      s:w("\n",s:tab(), "}\n", s:tab())
+      s:w("/* labels: ", s.labels_depth, " clauses */\n",s:tab())
+      for binding, rest in se.elements(m.bindings) do
+         s.match(
+            binding,
+            -- IR needs to produce lambda expressions without
+            -- arguments.  I.e. argument passing is already solved by
+            -- other means.
+            {{"(,name (lambda () ,expr))", function(b)
+                 s:w(iol_atom(b.name),": {\n",s:tab(1))
+                 s:w_expr(b.expr,1)
+                 s:w("\n",s:tab(),"}")
+                 if not se.is_empty(rest) then
+                    s:w("\n",s:tab())
+                 end
+         end}})
+      end
+   end
+
    for binding, rest in se.elements(bindings) do
       local last = se.is_empty(rest)
       s.match(
          binding,
          {
-            -- These are only allowed in the top level bindings form.
+            -- These are only allowed in the top level bindings form,
+            -- or in a labels form.
             {"(,var (lambda ,args ,expr))", function(b)
-                s:indented(
-                   function()
-                      s:w("T ", iol_atom(b.var), "(", s:commalist(b.args),") {","\n")
-                      s:w_expr(b.expr)
-                      s:w(s:tab(),"}")
-                   end)
+                error('lambda_not_allowed')
             end},
             {"(_ (block . ,bindings))", function(m)
                 s:w(s:tab(),"{\n")
@@ -211,22 +258,11 @@ function class.w_bindings_inner(s, bindings)
                 s:w(s:tab(),"}")
             end},
             {"(_ (labels ,bindings ,entry))", function(m)
-                s:w("/* labels: entry */\n",s:tab(),"{\n",s:tab(1))
-                s:w_expr(m.entry, 1)
-                s:w("\n",s:tab(), "}\n", s:tab())
-                s:w("/* labels: clauses */\n",s:tab())
-                for binding, rest in se.elements(m.bindings) do
-                   s.match(
-                      binding,
-                      {{"(,name (lambda () ,expr))", function(b)
-                           s:w(iol_atom(b.name),": {\n",s:tab(1))
-                           s:w_expr(b.expr,1)
-                           s:w("\n",s:tab(),"}")
-                           if not se.is_empty(rest) then
-                              s:w("\n",s:tab())
-                           end
-                   end}})
-                end
+                s:parameterize(
+                   {labels_depth = s.labels_depth + 1},
+                   function()
+                      w_labels_goto(m)
+                   end)
             end},
             {"(_ (if ,cond ,etrue, efalse))", function(m)
                 s:w("if (", iol_atom(m.cond), ") {\n", s:tab(1))
@@ -249,7 +285,6 @@ function class.w_bindings_inner(s, bindings)
                 w_prim_eval(m.prim_eval)
             end},
             {"(,var (app ,fun . ,args))", function(m)
-                assert(m.fun.class == 'prim')
                 if (m.fun.name == 'make-vector') then
                    assert(m.var ~= '_')
                    assert(se.length(m.args) == 1)
@@ -277,32 +312,72 @@ function class.w(s, ...)
    ins(out, {...})
 end
 
--- Top level entry point
-function class.compile(s,top_expr)
-
-   local mod_body = {}
-   s:parameterize(
-      {out = mod_body},
-      function()
-         s.indent = 1
-         s:w(s:tab())
-
-         -- s:w_bindings(bindings)
-         s:w_expr(top_expr, 0)
-         s:w("\n")
-      end)
-   local mod = {
-      -- FIXME: Later, require the toplevel to be a list of
-      -- definitions.
+-- Currrently the compiler output only generates the inside of a
+-- single function.  This can be used to wrap that code for testing.
+function class.wrap_main(mod_body)
+   return {
       "T module(void) {\n",
       mod_body,
       "}\n",
       "int main(int argc, char **argv) { return module(); }\n"
    }
+end
+
+-- Top level entry point
+function class.compile(s,top_expr)
+   local mod_body = {}
+   local main = { class='var', unique='main' }
+
+   function top_fun(b)
+      s:w("T ", iol_atom(b.name), "(", s:commalist(b.args, "T "),") {","\n",s:tab(1))
+      s:w_expr(b.expr)
+      s:w("\n",s:tab(),"}")
+      if not se.is_empty(rest) then
+         s:w("\n",s:tab())
+      end
+   end
+   function compile_labels(bindings, inner)
+      for binding in se.elements(bindings) do
+         s.match(
+            binding,
+            {{"(,name (lambda ,args ,expr))", top_fun}})
+      end
+      top_fun({ name = main, args = l(), expr = inner })
+   end
+
+   s:parameterize(
+      {out = mod_body},
+      function()
+         s.indent = 1
+         s.labels_depth = 0
+         s.prim = {}
+         s:w(s:tab())
+         s.match(
+            top_expr,
+            {
+               {"(block . ,_)", function(m)
+                   -- scheme_sm output: compile as state machine
+                   s:w_expr(top_expr, 0)
+                   s:w("\n")
+               end},
+               {"(lambda . ,_)", function(m)
+                   -- scheme_frontend output: compile as set of top
+                   -- level functions.
+                   backend.match_module_form(
+                      s, top_expr,
+                      function(var, sym)
+                         -- Same behavor as scheme_sm
+                         s.prim[var] = scheme_sm.make_prim(sym.expr)
+                      end,
+                      compile_labels)
+               end},
+            })
+      end)
+
    if s.config.debug_lua_output then
       iolist.write_to_file(s.config.debug_lua_output, mod)
    end
-   return { class = "iolist", iolist = mod }
+   return { class = "iolist", iolist = mod_body }
 end
 
 
@@ -323,7 +398,7 @@ end
 
 
 local function new(config)
-   local obj = { match = se_match.new(), indent = 0, config = config or {} }
+   local obj = { match = se_match.new(), config = config or {} }
    setmetatable(obj, { __index = class })
    return obj
 end

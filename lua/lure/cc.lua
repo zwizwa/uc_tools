@@ -32,15 +32,11 @@ function mod.version()
    return shell({"gcc --version | head -n1"})
 end
 
-
--- For testing, the most convenient is to map C code + s expression
--- input to s expression output...
 function mod.eval_se(c_code_iol, in_se, cflags_iol)
    local out = mod.eval_iol(c_code_iol, se.iolist(in_se), cflags_iol)
    return out and se.read_string_multi(out)
 end
 
--- ... but for now we just do iolists.
 function mod.eval_iol(c_code_iol, in_iol, cflags_iol)
    assert(mod.version())
    local c   = "main.c"
