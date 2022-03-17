@@ -55,7 +55,7 @@ local c_new_top =
       {
          'lure.scheme_frontend',
          'lure.scheme_flatten',
-         -- 'lure.scheme_blockval',
+         'lure.scheme_blockval',
       })
 
 local function run_top()
@@ -65,7 +65,12 @@ local function run_top()
    local exprs = se.read_string_multi(str)
    for expr in se.elements(exprs) do
       log_se_n(expr, "INPUT:")
-      local c = c_new_top({primitive_letrec = 'primitive-letrec'})
+      local c = c_new_top({
+            -- Produce recursive labels form
+            primitive_letrec = 'primitive-letrec',
+            -- Ensure that the return value slot of a block is primitive.
+            block_primitive_return = true,
+      })
       local ir = c:compile(expr)
       log("IR:") ; pretty.log_pp(ir)
       local c = backend_c.new()

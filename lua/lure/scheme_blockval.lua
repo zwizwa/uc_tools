@@ -120,14 +120,20 @@ function class.comp(s,expr)
    return s.match(
       expr,
       {
-         -- Reduced block form where all statements have been included
-         -- as bindings to '_' to indicate ignored value.
          {"(block . ,bindings)", function(m)
              trace("BLOCK", expr)
              return {'block', s:comp_bindings(m.bindings)}
          end},
-         -- Reduced lambda form with single body expression..
-         -- Second form is generic.
+         {"(labels ,bindings ,inner)", function(m)
+             trace("LABELS", expr)
+             local function label_binding(binding)
+                local var, vexpr = se.unpack(binding, {n=2})
+                return l(var, s:comp(vexpr))
+             end
+             return l('labels',
+                      se.map(label_binding, m.bindings),
+                      s:comp(need_block(m.inner)))
+         end},
          {"(lambda ,vars ,expr)", function(m)
              trace("LAMBDA", expr)
              return s:parameterize(

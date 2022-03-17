@@ -6,10 +6,20 @@ local se = require('lure.se')
 
 local mod = {}
 
+local function _trace(tag, e)
+   log_se_n(e, tag)
+   log("\n")
+end
+
 -- Unpack the top level lambda as a sequence of lib_ref bindings + a
 -- labels form.  This is the preferred form for languages that produce
 -- output modules built from a set of mutually recursive top level
 -- functions.
+
+-- Note that this tolerates the scheme_blockval form where the labels
+-- form is bound to a variable, and an explicit return statement is
+-- present.
+
 function mod.match_module_form(s, expr, lib_def, compile_labels)
    s.match(
       expr,
@@ -18,29 +28,30 @@ function mod.match_module_form(s, expr, lib_def, compile_labels)
            -- . Last binding is a labels form
            -- . All other bindings are lib_ref
 
+           local retvar = nil
+
            for binding, rest in se.elements(m.bindings) do
-              if not se.is_empty(rest) then
-                 -- Collect binding
-                 s.match(
-                    binding,
-                    {{"(,var (app ,lib_ref ,sym))", function(b)
-                         assert(m.lib_ref == b.lib_ref)
-                         lib_def(b.var, b.sym)
-                     end}})
-              else
-                 -- Compile top-level functions
-                 s.match(
-                    binding,
-                    {
-                       {"(_ (labels ,bindings ,inner))", function(l)
-                           compile_labels(l.bindings, l.inner)
-                       end},
-                       {",other", function(b)
-                           _trace("BAD",b.other)
-                           error("bad_binding")
-                       end}
-                    })
-              end
+              -- Collect binding
+              s.match(
+                 binding,
+                 {
+                    {"(,var (app ,lib_ref ,sym))", function(b)
+                        assert(m.lib_ref == b.lib_ref)
+                        lib_def(b.var, b.sym)
+                    end},
+                    {"(,var (labels ,bindings ,inner))", function(l)
+                        if m.var ~= '_' then retvar = m.var end
+                        compile_labels(l.bindings, l.inner)
+                    end},
+                    {"(_ (return ,var))", function(b)
+                        assert(se.is_empty(rest))
+                        assert(m.var == retvar)
+                    end},
+                    {",other", function(b)
+                        _trace("BAD",b.other)
+                        error("bad_binding")
+                    end}
+                 })
            end
        end}})
 end

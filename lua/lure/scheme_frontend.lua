@@ -135,15 +135,28 @@ local void = '#<void>'
 local prim_out_forms = {'block','set!','if','lambda'}
 
 
-function class.block(s, exprs)
-   -- For languages that do not support tail calls, it is more
-   -- convenient to ensure that the last expression in a block is a
-   -- variable.  This faciliates insertion of 'return' and 'set!' for
-   -- return value passing.
-   if s.config.block_retval then
-      return {'block', exprs}
+function class.block(s, bindings)
+   if s.config.block_primitive_return then
+      -- For languages that do not support tail calls, it is more
+      -- convenient to ensure that the last expression in a block is a
+      -- variable reference.  This faciliates insertion of 'return'
+      -- and 'set!'  for return value passing.
+      local bs = {}
+      for binding, rest in se.elements(bindings) do
+         if not se.is_empty(rest) then
+            ins(bs, binding)
+         else
+            local var, vexpr = se.unpack(binding, {n=2})
+            if se.expr_type(vexpr) ~= 'var' then
+               local retvar = s:var_def()
+               ins(bs, l(retvar, vexpr))
+               ins(bs, l('_', retvar))
+            end
+         end
+      end
+      return {'block', a2l(bs)}
    else
-      return {'block', exprs}
+      return {'block', bindings}
    end
 end
 
