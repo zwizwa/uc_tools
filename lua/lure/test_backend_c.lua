@@ -55,7 +55,7 @@ local c_new_top =
       {
          'lure.scheme_frontend',
          'lure.scheme_flatten',
-         -- FIXME: Will need closure conversion.
+         -- 'lure.scheme_blockval',
       })
 
 local function run_top()

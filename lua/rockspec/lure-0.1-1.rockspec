@@ -28,6 +28,7 @@ build = {
     ['lure.backend_erlang'] = 'backend_erlang.lua',
     ['lure.backend_gdb'] = 'backend_gdb.lua',
     ['lure.backend_js'] = 'backend_js.lua',
+    ['lure.backend'] = 'backend.lua',
     ['lure.backend_lua'] = 'backend_lua.lua',
     ['lure.cc'] = 'cc.lua',
     ['lure.comp'] = 'comp.lua',

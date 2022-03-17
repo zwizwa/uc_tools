@@ -134,6 +134,19 @@ local void = '#<void>'
 -- compilers return a primitive form, which is one of
 local prim_out_forms = {'block','set!','if','lambda'}
 
+
+function class.block(s, exprs)
+   -- For languages that do not support tail calls, it is more
+   -- convenient to ensure that the last expression in a block is a
+   -- variable.  This faciliates insertion of 'return' and 'set!' for
+   -- return value passing.
+   if s.config.block_retval then
+      return {'block', exprs}
+   else
+      return {'block', exprs}
+   end
+end
+
 local function quote_to_iolist(q)
    return {"'", se.iolist(q.expr)}
 end
@@ -149,7 +162,7 @@ class.form = {
       local function tx_form(seqform)
          return l('_', s:comp(seqform))
       end
-      return {'block',se.map(tx_form, forms)}
+      return s:block(se.map(tx_form, forms))
    end,
    -- Optional: uses the 'labels' form to postpone the fixed point
    -- operation until later.  Initially added to anticipate Erlang,
@@ -280,7 +293,7 @@ function class.anf(s, exprs, fn)
       return fn(a2l(normalform))
    else
       ins(bindings, l('_',fn(a2l(normalform))))
-      return {'block', a2l(bindings)}
+      return s:block(a2l(bindings))
    end
 end
 
@@ -301,7 +314,7 @@ function class.apply(s, expr)
          fargs, args)
       local vars = se.map(se.car, bindings)
       local cexp = s:comp_extend({'begin',fbody}, vars)
-      return {'block',se.append(bindings, l(l('_', cexp)))}
+      return s:block(se.append(bindings, l(l('_', cexp))))
    else
       -- Ordinary application.
       trace("APPLY", expr)
@@ -376,7 +389,7 @@ function class.compile(s, expr)
       end
       i = i + 1
    until (not did)
-   return l('lambda',top_args,{'block', bs})
+   return l('lambda',top_args,s:block(bs))
 end
 
 -- All variables are renamed, so gensyms will never clash with anything.

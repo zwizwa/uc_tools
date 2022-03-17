@@ -2,4 +2,5 @@
   (define (f x)
     (let ((x2 (* x x)))
       (+ 1 x2)))
-  (f 0))
+  (trace (f 0)))
+

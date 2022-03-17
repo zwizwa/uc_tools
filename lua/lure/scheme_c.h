@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-typedef uintptr_t T;
+typedef intptr_t T;
 T trace_max = 10;
 static inline void trace(T val) {
     printf("%d\n", val);

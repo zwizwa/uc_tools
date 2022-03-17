@@ -183,7 +183,7 @@ function class.w_bindings_inner(s, bindings)
          {
             {"(app ,fun . ,args)",
              function(m)
-                _trace("APP_FUN", expr)
+                -- _trace("APP_FUN", expr)
 
                 -- Note that in C, we require all function
                 -- applications to be top level functions, represented
@@ -220,28 +220,6 @@ function class.w_bindings_inner(s, bindings)
          })
    end
 
-   local function w_labels_goto(m)
-      s:w("/* labels: ", s.labels_depth, " entry */\n",s:tab(),"{\n",s:tab(1))
-      s:w_expr(m.entry, 1)
-      s:w("\n",s:tab(), "}\n", s:tab())
-      s:w("/* labels: ", s.labels_depth, " clauses */\n",s:tab())
-      for binding, rest in se.elements(m.bindings) do
-         s.match(
-            binding,
-            -- IR needs to produce lambda expressions without
-            -- arguments.  I.e. argument passing is already solved by
-            -- other means.
-            {{"(,name (lambda () ,expr))", function(b)
-                 s:w(iol_atom(b.name),": {\n",s:tab(1))
-                 s:w_expr(b.expr,1)
-                 s:w("\n",s:tab(),"}")
-                 if not se.is_empty(rest) then
-                    s:w("\n",s:tab())
-                 end
-         end}})
-      end
-   end
-
    for binding, rest in se.elements(bindings) do
       local last = se.is_empty(rest)
       s.match(
@@ -257,12 +235,27 @@ function class.w_bindings_inner(s, bindings)
                 s:w_bindings(m.bindings)
                 s:w(s:tab(),"}")
             end},
+            -- Nested labels are supported, but are always implemented
+            -- using goto.  IR needs to produce lambda expressions
+            -- without arguments.  I.e. argument passing is already
+            -- solved by other means.
             {"(_ (labels ,bindings ,entry))", function(m)
-                s:parameterize(
-                   {labels_depth = s.labels_depth + 1},
-                   function()
-                      w_labels_goto(m)
-                   end)
+                s:w("/* labels: entry */\n",s:tab(),"{\n",s:tab(1))
+                s:w_expr(m.entry, 1)
+                s:w("\n",s:tab(), "}\n", s:tab())
+                s:w("/* labels: clauses */\n",s:tab())
+                for binding, rest in se.elements(m.bindings) do
+                   s.match(
+                      binding,
+                      {{"(,name (lambda () ,expr))", function(b)
+                           s:w(iol_atom(b.name),": {\n",s:tab(1))
+                           s:w_expr(b.expr,1)
+                           s:w("\n",s:tab(),"}")
+                           if not se.is_empty(rest) then
+                              s:w("\n",s:tab())
+                           end
+                   end}})
+                end
             end},
             {"(_ (if ,cond ,etrue, efalse))", function(m)
                 s:w("if (", iol_atom(m.cond), ") {\n", s:tab(1))
@@ -348,8 +341,7 @@ function class.compile(s,top_expr)
    s:parameterize(
       {out = mod_body},
       function()
-         s.indent = 1
-         s.labels_depth = 0
+         s.indent = 0
          s.prim = {}
          s:w(s:tab())
          s.match(
@@ -357,6 +349,8 @@ function class.compile(s,top_expr)
             {
                {"(block . ,_)", function(m)
                    -- scheme_sm output: compile as state machine
+                   -- without function wrapper (old style)
+                   s.indent = 1
                    s:w_expr(top_expr, 0)
                    s:w("\n")
                end},
