@@ -43,13 +43,11 @@ function mod.match_module_form(s, expr, lib_def, compile_labels)
                         if m.var ~= '_' then retvar = m.var end
                         compile_labels(l.bindings, l.inner)
                     end},
-                    {"(_ (return ,var))", function(b)
-                        assert(se.is_empty(rest))
-                        assert(m.var == retvar)
-                    end},
                     {",other", function(b)
-                        _trace("BAD",b.other)
-                        error("bad_binding")
+                        if m.other ~= retvar then
+                           _trace("BAD",b.other)
+                           error("bad_binding")
+                        end
                     end}
                  })
            end

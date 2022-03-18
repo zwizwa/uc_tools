@@ -17,6 +17,7 @@ local se_match  = require('lure.se_match')
 local iolist    = require('lure.iolist')
 local lure_comp = require('lure.comp')
 local backend   = require('lure.backend')
+local scheme_blockval = require('lure.scheme_blockval')
 local scheme_frontend = require('lure.scheme_frontend')
 local scheme_pretty   = require('lure.scheme_pretty')
 local scheme_sm       = require('lure.scheme_sm')
@@ -81,7 +82,7 @@ local function iol_atom(a)
    elseif type(a) == 'string' then
       return {"'",a,"'"} -- FIXME: string quoting
    elseif a == scheme_frontend.void then
-      return 'nil'
+      return {"0","/*void*/"}
    elseif type(a) == 'table' then
       -- All tables are abstract types wrapped in the style of se.lua
       local et = se.expr_type(a)
@@ -216,6 +217,7 @@ function class.w_bindings_inner(s, bindings)
             end},
             {",atom", function(m)
                 s:w(iol_atom(m.atom))
+                s:w(";")
             end}
          })
    end
@@ -269,13 +271,13 @@ function class.w_bindings_inner(s, bindings)
             end},
             {"(_ (hint ,tag . ,args))", function(m)
             end},
-            {"(_ (return ,prim_eval))", function(m)
+            {"(_ (return ,expr))", function(m)
                 s:w("return ")
-                w_prim_eval(m.prim_eval)
+                w_prim_eval(m.expr)
             end},
             {"(_ (set! ,var ,expr))", function(m)
                 s:w(iol_atom(m.var), " = ")
-                w_prim_eval(m.prim_eval)
+                w_prim_eval(m.expr)
             end},
             {"(,var (app ,fun . ,args))", function(m)
                 if (m.fun.name == 'make-vector') then
@@ -290,7 +292,6 @@ function class.w_bindings_inner(s, bindings)
             {"(,var ,prim_eval)", function(m)
                 maybe_assign(m.var)
                 w_prim_eval(m.prim_eval)
-                s:w(";")
             end}
       })
       if not last then
@@ -318,12 +319,18 @@ end
 
 -- Top level entry point
 function class.compile(s,top_expr)
+
+   -- Do blockval pass after rewriting toplevel expression.
+   local c_blockval = scheme_blockval.new()
+
    local mod_body = {}
    local main = { class='var', unique='main' }
 
-   function top_fun(b)
-      s:w("T ", iol_atom(b.name), "(", s:commalist(b.args, "T "),") {","\n",s:tab(1))
-      s:w_expr(b.expr)
+   function top_fun(name, args, expr1)
+      local l_expr = c_blockval:compile(l('lambda',args,expr1))
+      local _, _, expr = se.unpack(l_expr, {n=3})
+      s:w("T ", iol_atom(name), "(", s:commalist(args, "T "),") {","\n",s:tab(1))
+      s:w_expr(expr)
       s:w("\n",s:tab(),"}")
       if not se.is_empty(rest) then
          s:w("\n",s:tab())
@@ -333,9 +340,11 @@ function class.compile(s,top_expr)
       for binding in se.elements(bindings) do
          s.match(
             binding,
-            {{"(,name (lambda ,args ,expr))", top_fun}})
+            {{"(,name (lambda ,args ,expr))", function(m)
+                 top_fun(m.name, m.args, m.expr)
+             end}})
       end
-      top_fun({ name = main, args = l(), expr = inner })
+      top_fun(main, l(), inner)
    end
 
    s:parameterize(

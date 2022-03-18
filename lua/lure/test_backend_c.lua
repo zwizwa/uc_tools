@@ -55,7 +55,9 @@ local c_new_top =
       {
          'lure.scheme_frontend',
          'lure.scheme_flatten',
-         'lure.scheme_blockval',
+         -- This is now done as part of backend_c, after rewriting
+         -- toplevel expression.
+         -- 'lure.scheme_blockval',
       })
 
 local function run_top()
@@ -70,6 +72,10 @@ local function run_top()
             primitive_letrec = 'primitive-letrec',
             -- Ensure that the return value slot of a block is primitive.
             block_primitive_return = true,
+            -- Configure scheme_blockval to produce only toplevel
+            -- functions, using this label for the inner forms of the
+            -- toplevel labels expression.
+            main_label = 'inner',
       })
       local ir = c:compile(expr)
       log("IR:") ; pretty.log_pp(ir)
@@ -89,7 +95,7 @@ end
 
 
 local function run()
-   run_sm()
+   -- run_sm()
    run_top()
 end
 

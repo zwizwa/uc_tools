@@ -16,9 +16,23 @@ IN=$(readlink -f $(dirname $0)/test.scm)
 cd $(dirname $0)/../lua
 CMD="require('lure')['gdb']('$IN')"
 # set -x
+rm -f $OUT
+
+exit_clean() {
+    rm -f $OUT.stdout $OUT.stderr    
+    cat $OUT >&2
+    exit $1
+}
+
+if lua -e "$CMD" >$OUT.stdout 2>$OUT.stderr; then
 cat <<EOF >$OUT
-$(lua -e "$CMD")
+$(cat $OUT.stdout)
 print \$rv
 EOF
-
-cat $OUT >&2
+exit_clean 0
+else
+cat $OUT.stderr >&2
+cat <<EOF >$OUT
+EOF
+exit_clean 1
+fi

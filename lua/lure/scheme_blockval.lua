@@ -32,11 +32,15 @@ class.indented     = lure_comp.indented
 class.tab          = lure_comp.tab
 
 
+local function _trace(tag, expr)
+   log('\n') ; log_se_n(expr, tag .. ": ")
+end
 local function trace(tag, expr)
-   -- log('\n') ; log_se_n(expr, tag .. ": ")
+   -- _trace(tag, expr)
 end
 
 function class.compile(s,expr)
+   s.label_depth = 0
    return s:comp(expr)
 end
 
@@ -58,10 +62,20 @@ end
 -- necessary for those functions that eventually end up in a loop.
 
 function class.comp_bindings(s,bindings)
+   -- trace("BINDINGS", bindings)
    local bs = {}
+   local function bind(var, vexpr)
+      assert(var)
+      assert(vexpr)
+      ins(bs, l(var, vexpr))
+   end
+
+
    local function pass_continuation(expr)
       -- Blocks should have been flattened, but recurse anyway.
-      return se.is_expr(expr,'if') or se.is_expr(expr,'block')
+      return se.is_expr(expr,'if')
+          or se.is_expr(expr,'labels')
+          or se.is_expr(expr,'block')
    end
    s:parameterize(
       {var = s.var},
@@ -77,34 +91,37 @@ function class.comp_bindings(s,bindings)
                if cont_var then
                   if pass_continuation(expr) then
                      s.var = cont_var
-                     cexpr = s:compile(expr)
+                     cexpr = s:comp(expr)
+                     assert(cexpr)
                   else
                      if cont_var.unique == 'return' then
-                        cexpr = l('return',s:compile(expr))
+                        cexpr = l('return',s:comp(expr))
                      else
-                        cexpr = l('set!',cont_var,s:compile(expr))
+                        cexpr = l('set!',cont_var,s:comp(expr))
                      end
                   end
                else
                   -- Don't change anything if the return value is
                   -- ignored.
-                  cexpr = s:compile(expr)
+                  cexpr = s:comp(expr)
+                  assert(cexpr)
                end
             else
                if pass_continuation(expr) and var ~= '_' then
                   -- Split the binding up in a declaration and a
                   -- continuation passed downwards.
                   s.var = var
-                  ins(bs, l(var, scheme_frontend.void))
+                  bind(var, scheme_frontend.void)
                   var = '_'
                else
                   -- Bind primitive value, or execute block or if
                   -- without storing value.
                   s.var = nil
                end
-               cexpr = s:compile(expr)
+               cexpr = s:comp(expr)
+               assert(cexpr)
             end
-            ins(bs, l(var, cexpr))
+            bind(var, cexpr)
          end
       end)
    return a2l(bs)
@@ -117,7 +134,8 @@ function need_block(expr)
 end
 
 function class.comp(s,expr)
-   return s.match(
+   trace("COMP", expr)
+   local rv = s.match(
       expr,
       {
          {"(block . ,bindings)", function(m)
@@ -126,13 +144,17 @@ function class.comp(s,expr)
          end},
          {"(labels ,bindings ,inner)", function(m)
              trace("LABELS", expr)
-             local function label_binding(binding)
-                local var, vexpr = se.unpack(binding, {n=2})
-                return l(var, s:comp(vexpr))
-             end
-             return l('labels',
-                      se.map(label_binding, m.bindings),
-                      s:comp(need_block(m.inner)))
+             return s:parameterize(
+                { label_depth = s.label_depth + 1 },
+                function()
+                   local function label_binding(binding)
+                      local var, vexpr = se.unpack(binding, {n=2})
+                      return l(var, s:comp(vexpr))
+                   end
+                   return l('labels',
+                            se.map(label_binding, m.bindings),
+                            s:comp(m.inner))
+                end)
          end},
          {"(lambda ,vars ,expr)", function(m)
              trace("LAMBDA", expr)
@@ -154,11 +176,12 @@ function class.comp(s,expr)
          end}
       }
    )
+   assert(rv)
+   return rv
 end
 
-local function new()
-   -- FIXME: Make sure match raises error on mismatch.
-   local obj = { match = se_match.new(), indent = 0 }
+local function new(config)
+   local obj = { match = se_match.new(), config = config or {} }
    setmetatable(obj, { __index = class })
    return obj
 end

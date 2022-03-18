@@ -47,6 +47,7 @@ local se        = require('lure.se')
 local se_match  = require('lure.se_match')
 local iolist    = require('lure.iolist')
 local lure_comp = require('lure.comp')
+local backend   = require('lure.backend')
 local scheme_frontend = require('lure.scheme_frontend')
 local scheme_pretty   = require('lure.scheme_pretty')
 local l = se.list
@@ -300,8 +301,8 @@ function class.w_bindings(s, bindings)
                       loop_vars, m.args)
                    s:w_assign(m.fun)
                    s:w("1")
-                elseif m.fun == s.lib_ref then
-                   s:def(m.var, se.car(m.args))
+                --elseif m.fun == s.lib_ref then
+                --   s:def(m.var, se.car(m.args))
                 else
                    local fun = s:ref(m.fun, true)
                    local fun_name = (fun and fun.expr) or s:mangle_fun(m.fun)
@@ -445,57 +446,48 @@ function class.compile(s,expr)
    s.trampoline = se.empty
    s.lambda = se.empty
    s.fun = {}
-   s.match(
-      expr,
-      {{"(lambda (,lib_ref) (block . ,bindings))", function(m)
-           s.lib_ref = m.lib_ref
-           -- Last expression contains the labels form.  The rest are
-           -- assumed to be top level lib_ref bindings.
-           local rbindings = se.reverse(m.bindings)
-           local lib_refs = se.reverse(se.cdr(rbindings))
-           local labels = se.car(rbindings)
-           s:w_bindings(lib_refs)
+   s.lib_ref = {}
 
-           function comp_lambda_binding(binding)
-              s.match(
-                 binding,
-                 {
-                    {"(,var (lambda ,args ,expr))", function(m)
-                        trace("LAMBDA",binding)
-                        s:w("define ", s:mangle_fun(m.var, id))
-                        s:w_lambda(m.args, m.expr)
-                        s:w("\n",s:tab(),"end\n")
-                    end},
-              })
-           end
+   function comp_lambda_binding(binding)
+      s.match(
+         binding,
+         {
+            {"(,var (lambda ,args ,expr))", function(m)
+                trace("LAMBDA",binding)
+                s:w("define ", s:mangle_fun(m.var, id))
+                s:w_lambda(m.args, m.expr)
+                s:w("\n",s:tab(),"end\n")
+            end},
+      })
+   end
 
-           s.match(
-              labels,
-              {{"(_ (labels ,bindings ,main))))", function(m)
+   function compile_labels(bindings, main)
+      -- Mark toplevel fuctions.
+      for binding in se.elements(bindings) do
+         local var, _ = se.unpack(binding, {n=2})
+         s.fun[var] = true
+      end
 
-                   -- Declare toplevel fuctions to allow mutual
-                   -- references.
-                   for binding in se.elements(m.bindings) do
-                      local var = se.car(binding)
-                      s.fun[var] = true
-                   end
+      -- Compile toplevel functions.  This will collect anonymous
+      -- functions in s.lambda list.
+      for binding in se.elements(bindings) do
+         comp_lambda_binding(binding)
+      end
 
-                   -- Compile the top level functions.
-                   for binding in se.elements(m.bindings) do
-                      comp_lambda_binding(binding)
-                   end
+      -- Compile all anonymous fuctions as top level functions.
+      for binding in se.elements(s.lambda) do
+         comp_lambda_binding(binding)
+      end
 
-                   -- Compile all collected closures as top level functions.
-                   for binding in se.elements(s.lambda) do
-                      comp_lambda_binding(binding)
-                   end
+      -- Compile the in-line code.
+      s:comp(main)
+   end
 
-                   -- Compile the in-line code.
-                   s:comp(m.main)
-              end}})
+   backend.match_module_form(
+      s, expr,
+      function(var, sym) s:def(var, sym) end,
+      compile_labels)
 
-
-      end}})
    local mod = { s.out }
    return { class = "iolist", iolist = {mod,"\n"} }
 

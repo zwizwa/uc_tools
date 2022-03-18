@@ -54,11 +54,13 @@
 (define (f x) (+ x 10))
 (define (g x) (+ (f x) (f (+ 100 x))))
 
+
+
 ;; (g 1)
 (test_2loop)
 
 ;; (test_lambda)
-(test_lambda)
+;; (test_lambda)
 
 
 
