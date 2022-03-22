@@ -24,8 +24,11 @@ exit_clean() {
     exit $1
 }
 
+# Can't propagate error condition to gdb, so handle that here and
+# display the error while returning an empty file for GDB.
 if lua -e "$CMD" >$OUT.stdout 2>$OUT.stderr; then
 cat <<EOF >$OUT
+# -*- gdb-script -*-
 $(cat $OUT.stdout)
 print \$rv
 EOF

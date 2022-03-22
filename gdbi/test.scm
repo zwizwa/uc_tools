@@ -51,8 +51,16 @@
   (let* ((captured 123))
     (trice (lambda (x) (+ captured x)))))
 
-(define (f x) (+ x 10))
-(define (g x) (+ (f x) (f (+ 100 x))))
+;; Test for moving from target to host.  The begin-target form will
+;; compile forms to C and create gdb 'call' wrappers for them.
+(begin-target
+ (define (f x) (+ x 10))
+ (define (g x) (+ (f x) (f (+ 100 x)))))
+
+;; TODO:
+;;
+;; - Toplevel GDB and C functions should not keep names if they are
+;;   correct C identifiers.
 
 
 
