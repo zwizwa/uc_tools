@@ -18,6 +18,7 @@ fn main() -> ! {
 
 
     // enable the GPIO clock for IO port C
+    // FIXME: apb2enr.write is not defined
     rcc.apb2enr.write(|w| w.iopcen().set_bit());
     gpioc.crh.write(|w| unsafe{
         w.mode13().bits(0b11);
