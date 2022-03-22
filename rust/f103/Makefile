@@ -10,7 +10,7 @@
 .PHONY: all
 all:
 	cargo build --release
-	[ ! -z "$$ELF" ] && ln -f target/thumbv7m-none-eabi/release/bluepill "$$ELF" # && arm-none-eabi-objdump -d $$ELF
+	if [ ! -z "$$ELF" ]; then ln -f target/thumbv7m-none-eabi/release/bluepill "$$ELF"; fi # && arm-none-eabi-objdump -d $$ELF
 
 %.readelf: %.elf
 	readelf -a $< >$@.tmp
