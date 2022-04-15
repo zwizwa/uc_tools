@@ -60,7 +60,7 @@ case "$TYPE" in
         #     echo "Only dynamic linking: ARCH=$ARCH LD=$LD"
         #     exit 1
         # fi
-        $GCC $LDFLAGS -Wl,-Map=$MAP -o $ELF $O $O_SYSTEM $A $LDLIBS
+        $GCC $LDFLAGS $LDFLAGS_EXTRA -Wl,-Map=$MAP -o $ELF $O $O_SYSTEM $A $LDLIBS
         ;;
     so)
         assert_vars LD ARCH MAP SO A
@@ -74,7 +74,7 @@ case "$TYPE" in
             exit 1
         fi
         set -x
-        $GCC $LDFLAGS -Wl,-Map=$MAP -o $SO $O $O_SYSTEM $A $LDLIBS -shared
+        $GCC $LDFLAGS $LDFLAGS_EXTRA -Wl,-Map=$MAP -o $SO $O $O_SYSTEM $A $LDLIBS -shared
         ;;
     *)
         echo "TYPE=$TYPE unknown" >&2
