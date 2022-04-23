@@ -1,8 +1,11 @@
 #include <unistd.h>
 
 // Build against 5.1 for best compatibility with both Lua and LuaJIT
-#include <lua5.1/lua.h>
-#include <lua5.1/lauxlib.h>
+//#include <lua5.1/lua.h>
+//#include <lua5.1/lauxlib.h>
+
+#include <lua.h>
+#include <lauxlib.h>
 
 // apt-get install liblua5.1-0-dev
 

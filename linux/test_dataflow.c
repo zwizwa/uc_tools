@@ -18,8 +18,8 @@ void notify(const meta_t *m) {
 /* n1, n2: inputs */
 extern const meta_t n3_meta;
 node_t n1 = { };
-const meta_t const* n1_fwd_deps[] = {NULL};
-const meta_t const* n1_rev_deps[] = {&n3_meta, NULL};
+const meta_t *const n1_fwd_deps[] = {NULL};
+const meta_t *const n1_rev_deps[] = {&n3_meta, NULL};
 const meta_t n1_meta = {
     .node = &n1,
     .notify = notify,
@@ -28,8 +28,8 @@ const meta_t n1_meta = {
 };
 
 node_t n2 = { };
-const meta_t const* n2_fwd_deps[] = {NULL};
-const meta_t const* n2_rev_deps[] = {&n3_meta, NULL};
+const meta_t *const n2_fwd_deps[] = {NULL};
+const meta_t *const n2_rev_deps[] = {&n3_meta, NULL};
 const meta_t n2_meta = {
     .node = &n2,
     .notify = notify,
@@ -40,8 +40,8 @@ const meta_t n2_meta = {
 /* n3: add */
 node_t n3 = { };
 extern const meta_t n5_meta;
-const meta_t const* n3_fwd_deps[] = {&n1_meta, &n2_meta, NULL};
-const meta_t const* n3_rev_deps[] = {&n5_meta, NULL};
+const meta_t *const n3_fwd_deps[] = {&n1_meta, &n2_meta, NULL};
+const meta_t *const n3_rev_deps[] = {&n5_meta, NULL};
 const meta_t n3_meta = {
     .node = &n3,
     .update = add,
@@ -54,8 +54,8 @@ const meta_t n3_meta = {
 
 /* n4: input */
 node_t n4 = { };
-const meta_t const* n4_fwd_deps[] = {NULL};
-const meta_t const* n4_rev_deps[] = {&n5_meta, NULL};
+const meta_t *const n4_fwd_deps[] = {NULL};
+const meta_t *const n4_rev_deps[] = {&n5_meta, NULL};
 const meta_t n4_meta = {
     .node = &n4,
     .notify = notify,
@@ -65,8 +65,8 @@ const meta_t n4_meta = {
 
 /* n5: add */
 node_t n5 = { };
-const meta_t const* n5_fwd_deps[] = {&n3_meta, &n4_meta, NULL};
-const meta_t const* n5_rev_deps[] = {NULL};
+const meta_t *const n5_fwd_deps[] = {&n3_meta, &n4_meta, NULL};
+const meta_t *const n5_rev_deps[] = {NULL};
 const meta_t n5_meta = {
     .node = &n5,
     .update = add,
