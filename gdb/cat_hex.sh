@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 set -e
 # set -x
 [ -z "$2" ] && echo "usage: $0 <out.hex> <in1.hex> [<in2.hex> ...]" && exit 1
