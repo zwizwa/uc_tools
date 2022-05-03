@@ -41,5 +41,6 @@
    };
 */
 #define DECLARE_UINT8_T(name) uint8_t name;
+#define DECLARE_UINT16_T(name) uint16_t name;
 
 #endif
