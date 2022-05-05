@@ -65,7 +65,14 @@ void frame_send(struct uart_out *s, uint16_t tag) {
         U16_BE(s->port),
         U32_BE(s->brk_time)
     };
-    memcpy(buf + 4 + HDR_SIZE, s->buf, s->count);
+    // memcpy(buf + 4 + HDR_SIZE, s->buf, s->count);  // WRONG!
+
+    // The buffer contains u16 tokens, so convert it to u8.  FIXME:
+    // This should use a different protocol in case we want to push
+    // frame errors etc...
+    for (int i=0; i<s->count; i++) {
+        buf[4 + HDR_SIZE + i] = s->buf[i] & 0xFF;
+    }
     assert_write(1, buf, 4 + HDR_SIZE + s->count);
 }
 // 3. push it to a list
