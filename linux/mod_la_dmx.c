@@ -15,7 +15,9 @@
 
 // These should be configurable
 #define UART_DIV   8   // 2MHz sample rate / 250kBaud UART
+#ifndef SAMPLE_MHZ
 #define SAMPLE_MHZ 2
+#endif
 
 // DMX frame timeout.  For debugging purposes it is probably best to
 // keep this low.  Note that DMX standard allows for 1 second before
@@ -24,7 +26,9 @@
 #define MAX_IDLE MAX_IDLE_MS(100)
 
 // For time stamp logging, use the same resolution as STM32 clock
+#ifndef TIME_MUL
 #define TIME_MUL   (72 / SAMPLE_MHZ)
+#endif
 
 // Stop bit position is used to encode frame errors and the location
 // of the control code tag.  See la_uart.h
@@ -54,10 +58,10 @@ void frame_print(struct uart_out *s) {
 }
 // 2. uc_tools style message
 #define HDR_SIZE (2+2+4)
-void frame_send(struct uart_out *s) {
+void frame_send(struct uart_out *s, uint16_t tag) {
     uint8_t buf[4 + HDR_SIZE + BUF_SIZE] = {
         U32_BE(HDR_SIZE + s->count),
-        U16_BE(0xC805),
+        U16_BE(tag),
         U16_BE(s->port),
         U32_BE(s->brk_time)
     };

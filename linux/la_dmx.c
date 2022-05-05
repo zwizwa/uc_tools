@@ -19,7 +19,8 @@ static void frame_out(struct uart_out *s) {
         frame_print(s);
     }
     else {
-        frame_send(s);
+        uint16_t tag = 0x1234; // arbitrary
+        frame_send(s, tag);
     }
 }
 
