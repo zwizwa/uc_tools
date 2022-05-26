@@ -5,7 +5,11 @@
    debug functionality that does things like adding extra members to
    structs should be defined here. */
 
+#ifndef CBUF_DEBUG
 #define CBUF_DEBUG 1
+#endif
+
+
 #define CBUF_DEBUG_INFO_OVERFLOW 0
 
 #define PBUF_DEBUG_FIELDS 1

@@ -6,8 +6,7 @@
 #include "macros.h"
 #include "uc_tools_config.h"
 
-/* Circular byte buffer implemented as inline functions.  Rolling
-   pointers, power-of-2 size, wrap on access. */
+/* Circular byte buffer implemented as inline functions. */
 
 /* Control codes. */
 #define CBUF_EAGAIN ((uint16_t)0x100)
@@ -38,7 +37,11 @@ static inline cbuf_oob_element_t cbuf_oob_element_none(void) { return CBUF_EAGAI
 /* Most of the functionality is inherited from the generic circular
    bufer in ns_cbuf.h */
 #define NS(name) cbuf##name
+#define NS_CBUF_DEBUG               CBUF_DEBUG
+#define NS_CBUF_DEBUG_INFO_OVERFLOW CBUF_DEBUG_INFO_OVERFLOW
 #include "ns_cbuf.h"
+#undef NS_CBUF_DEBUG
+#undef NS_CBUF_DEBUG_INFO_OVERFLOW
 #undef NS
 
 

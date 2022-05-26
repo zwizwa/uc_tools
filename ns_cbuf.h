@@ -1,6 +1,6 @@
-/* This is written for ARM Cortex3, which has atomic uint32_t
-   read/write as long as the words are properly aligned, and no
-   reordering of memory operations.
+/* This is written for single core ARM Cortex3, which has atomic
+   uint32_t read/write as long as the words are properly aligned, and
+   no reordering of memory operations.
 
    This allows cbuf to be used as a lock-free queue.  I don't know
    what exactly I need to prove, but here are some arguments that
@@ -97,14 +97,14 @@ static inline void NS(_drop)(NS(_queue_t) *b, uint32_t nb_drop) {
 static inline void NS(_clear)(NS(_queue_t) *b) {
     NS(_drop)(b, 0xFFFFFFFF);
 }
+#if NS_CBUF_DEBUG
 static inline void NS(_update_watermark)(NS(_queue_t) *b) {
-#if CBUF_DEBUG
     uint32_t elements = NS(_elements)(b);
     if (elements > b->watermark) b->watermark = elements;
-#endif
 }
+#endif
 
-#if CBUF_DEBUG_INFO_OVERFLOW
+#if NS_CBUF_DEBUG_INFO_OVERFLOW
 #include "infof.h"
 #endif
 
@@ -116,10 +116,10 @@ static inline uint32_t NS(_write)(NS(_queue_t) *b, const NS(_element_t) *buf, ui
     uint32_t elements = NS(_elements3)(b, read, write);
     uint32_t room  = b->size - 1 - elements;
     if (len > room) {
-#if CBUF_DEBUG
+#if NS_CBUF_DEBUG
         b->overflow++;
 #endif
-#if CBUF_DEBUG_INFO_OVERFLOW
+#if NS_CBUF_DEBUG_INFO_OVERFLOW
         infof("ns_cbuf_write overflow %p %p %d %d\n", b, buf, len, room);
 #endif
         return 0;
@@ -128,7 +128,9 @@ static inline uint32_t NS(_write)(NS(_queue_t) *b, const NS(_element_t) *buf, ui
         b->buf[NS(_index_)(b, write, i)] = buf[i];
     }
     b->write = NS(_index_)(b, write, len);
+#if NS_CBUF_DEBUG
     NS(_update_watermark)(b);
+#endif
     return len;
 }
 
