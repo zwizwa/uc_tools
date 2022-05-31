@@ -17,7 +17,7 @@ assert_vars TYPE
 
 case "$TYPE" in
     o)
-        assert_vars ARCH O
+        assert_vars ARCH O C D
         dump_closure_to_file ${O}.build
         rm -rf "$O"
 
