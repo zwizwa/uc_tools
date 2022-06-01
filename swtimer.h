@@ -2,6 +2,7 @@
 #define SWTIMER_H
 
 /* 16 bit software timer. */
+#include <stdint.h>
 
 typedef struct swtimer_element {
     uint16_t time_abs;
