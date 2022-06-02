@@ -15,14 +15,19 @@ typedef struct swtimer {
     uint16_t now_abs;
 } swtimer_heap_t;
 
+/* Compute positive delta-time to future time relative to now. */
+static inline uint16_t swtimer_delta(swtimer_heap_t *h, uint16_t future_abs_time) {
+    return future_abs_time - h->now_abs;
+}
+
 static inline int swtimer_gte(swtimer_heap_t *h,
                               swtimer_element_t a,
                               swtimer_element_t b) {
     // Note:
     // - Inverted: We want a min-heap, while ns_heap is a max-heap
     // - The now_abs marker allows correct interpretation of wraparound
-    uint16_t delta_a = a.time_abs - h->now_abs;
-    uint16_t delta_b = b.time_abs - h->now_abs;
+    uint16_t delta_a = swtimer_delta(h, a.time_abs);
+    uint16_t delta_b = swtimer_delta(h, b.time_abs);
     return delta_a <= delta_b;
 }
 
