@@ -65,5 +65,12 @@ static inline uint16_t swtimer_diff(swtimer_heap_t *h) {
    expires.  Resetting the hardware timer is something that needs a
    little thought as it needs to be done atomically. */
 
+
+/* Iterate over events in the queue. */
+#define SWTIMER_FOR(swt,e) \
+    for(swtimer_element_t *e = &(swt)->arr[0]; \
+        e < &(swt)->arr[(swt)->nb]; \
+        e++)
+
 #endif
 
