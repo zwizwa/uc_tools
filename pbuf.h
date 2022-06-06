@@ -57,7 +57,7 @@ static inline void pbuf_update_watermark(struct pbuf *p) {
 }
 
 /* Initialize with statically allocated buffer with _buf postfix. */
-#define PBUF_INIT(name) pbuf_init(&name, &name##_buf[0], sizeof(name##_buf))
+#define PBUF_INIT(name) pbuf_init(&(name), &name##_buf[0], sizeof(name##_buf))
 
 static inline void pbuf_put(struct pbuf *p, uint8_t c) {
     if (p->count < p->size) {
