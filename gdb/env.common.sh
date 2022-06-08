@@ -37,6 +37,12 @@ CPPFLAGS_COMMON="\
 
 # -std=gnu99
 
+if [ -z "$CFLAGS_OPTI" ]; then
+    CFLAGS_OPTI=-Os
+#else
+#    echo "override CFLAGS_OPTI=$CFLAGS_OPTI"
+fi
+
 CFLAGS_COMMON=" \
 -std=c99 \
 -fno-common \
@@ -48,7 +54,7 @@ CFLAGS_COMMON=" \
 -Wno-attributes \
 -Wno-multichar \
 -g \
--Os \
+$CFLAGS_OPTI \
 $CFLAGS_ERROR \
 "
 

@@ -26,15 +26,17 @@ dump_closure() {
     shift
     dump_var() {
         # FIXME: don't add if var is empty
-        # echo $1
+        # echo "dump_var $1" >&2
         local val="$(eval "echo \$$var")"
         [ ! -z "$val" ] && echo "export $1=\"$val"\"
     }
     mkdir -p $(dirname "$file")
+    # Note that the +e is necessary such that subshell continues if
+    # var name eval fails.
     cat <<EOF >$file
 #!/bin/sh
 echo "\$0:2: "
-$(for var in $*; do dump_var $var; done)
+$(set +e; for var in $*; do dump_var $var; done)
 export CLOSURE=$file
 cd $(pwd)
 exec $(readlink -f $0)
@@ -44,6 +46,7 @@ EOF
 
 dump_closure_to_file() {
     assert_vars CLOSURE_VARS
+    # echo "dump_closure $1 VARS=$CLOSURE_VARS" >&2
     dump_closure "$1" $CLOSURE_VARS
     # This is for emacs to recompile the file.
     # Make this configurable? Write it somewhere else?
