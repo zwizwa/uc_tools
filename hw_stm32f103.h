@@ -1127,6 +1127,7 @@ INLINE int hw_usart_send_ready_interrupt_enabled(uint32_t usart) {
 
 
 
+
 /* Note on baud divisors:
    USART1 wrt. APB2 @72Mhz
    USART3 wrt. APB1 @36Mhz
@@ -1246,9 +1247,9 @@ INLINE int hw_usart_recv_ready(uint32_t usart) {
 INLINE int hw_usart_send_ready(uint32_t usart) {
     return USART_SR(usart) & USART_SR_TXE;
 }
-INLINE void hw_usart_send_ready_ack(uint32_t usart) {
-    USART_SR(usart) &= ~USART_SR_TXE;
-}
+//INLINE void hw_usart_send_ready_ack(uint32_t usart) {
+//    USART_SR(usart) &= ~USART_SR_TXE;
+//}
 INLINE void hw_usart_send(uint32_t usart, uint8_t cmd) {
     // usart_send(USART1, cmd);
     USART_DR(usart) = (cmd & USART_DR_MASK); // inline
@@ -1261,6 +1262,13 @@ INLINE void hw_usart_send_flush(uint32_t usart) {
     while(!hw_usart_send_ready(usart));
     while(!hw_usart_send_done(usart));
 }
+/* I'm seeing some odd behavoir calling send_ready and send_done in
+   sequence.  This does the same in a single read. */
+INLINE int hw_usart_flushed(uint32_t usart) {
+    uint32_t mask = USART_SR_TC | USART_SR_TXE;
+    uint32_t bits = USART_SR(usart) & mask;
+    return bits == mask;
+}
 
 /* Old routines, hardcoded to usart1 */
 INLINE uint8_t hw_usart1_recv(void)        { return hw_usart_recv(USART1); }
@@ -1269,7 +1277,7 @@ INLINE int hw_usart1_getchar_nsr(void)     { return hw_usart_getchar_nsr(USART1)
 INLINE int hw_usart1_recv_ready(void)      { return hw_usart_recv_ready(USART1); }
 INLINE int hw_usart1_send_ready(void)      { return hw_usart_send_ready(USART1); }
 INLINE int hw_usart1_send_done(void)       { return hw_usart_send_done(USART1); }
-INLINE void hw_usart1_send_ready_ack(void) { hw_usart_send_ready_ack(USART1); }
+//INLINE void hw_usart1_send_ready_ack(void) { hw_usart_send_ready_ack(USART1); }
 INLINE void hw_usart1_send(uint8_t cmd)    { hw_usart_send(USART1, cmd); }
 INLINE void hw_usart1_send_flush(void)     { hw_usart_send_flush(USART1); }
 
