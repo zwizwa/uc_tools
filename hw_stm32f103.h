@@ -1342,7 +1342,17 @@ INLINE void hw_exti_ack(struct hw_exti c) {
     // exti_disable_request(EXTI6); // don't trigger again
     // exti_reset_request(EXTI6); // ack current pending bit
     //*hw_bitband(&EXTI_IMR, c.pin) = 0; // rmw
+
+    /* Prevent future triggering by disabling event in mask register. */
     *hw_bitband(&EXTI_EMR, c.pin) = 0; // rmw
+
+    /* Set pending register to zero = acknowledge. */
+    EXTI_PR = 1 << c.pin; // w
+}
+
+INLINE void hw_exti_clear_pending(struct hw_exti c) {
+    /* 10.3.6 Pending register (EXTI_PR)
+       Bit is cleared by writing a '1' into the bit. */
     EXTI_PR = 1 << c.pin; // w
 }
 
