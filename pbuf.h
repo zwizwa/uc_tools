@@ -29,10 +29,13 @@ struct pbuf_h {
 };
 
 
-/* Note: I had tried to fix this by setting .count = 0, but that
- * appears to be a load bearing bug in some application.  Leave this
- * here. */
-#define PBUF_INIT_FROM_BUF(b) { .buf = &b[0], .size = sizeof(b), .count = sizeof(b) }
+/* 2022/07/06 This used to be called PBUF_INIT_FROM_BUF.
+
+   The name was changed to more explicitly refer to the meaning: this
+   constructs a wrapper around a uint8_t array, *initializing the
+   buffer as full*.
+*/
+#define PBUF_INIT_FULL_BUF(b) { .buf = &b[0], .size = sizeof(b), .count = sizeof(b) }
 
 static inline void pbuf_init(struct pbuf *p, uint8_t *buf, uint32_t size) {
     p->count = 0;
