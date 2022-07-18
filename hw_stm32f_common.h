@@ -165,15 +165,24 @@ INLINE void hw_delayed_write_seq2_busywait(uint32_t nb_busy_loops,
    Note: this works wel with the dev struct: *hw_bitband(&dev.tim2.sr, 0) = 0;
    See STM32F10xxx Cortex-M3 programming manual, section 2.2.5 Bit-banding
 */
-INLINE volatile uint32_t hw_bitband_addr(uint32_t addr, uint32_t bit) {
+INLINE
+__attribute__((const))
+volatile uint32_t hw_bitband_addr(uint32_t addr, uint32_t bit) {
     uint32_t segment = addr & 0xF0000000; // valid for 0x20000000 and 0x40000000
     return segment + 0x02000000 + ((addr & 0x000FFFFF) * 32) + ((bit & 0x3F) * 4);
 }
-INLINE volatile uint32_t *hw_bitband(volatile uint32_t *ptr, uint32_t bit) {
+INLINE
+__attribute__((const))
+volatile uint32_t *hw_bitband(volatile uint32_t *ptr, uint32_t bit) {
     uint32_t addr = (uint32_t)ptr;
     return (volatile void*)hw_bitband_addr(addr, bit);
 }
 
+/* Macro versions that can be used in const initializers. */
+#define HW_BITBAND_ADDR(addr, bit) \
+    (((addr) & 0xF0000000) +  0x02000000 + (((addr) & 0x000FFFFF) * 32) + (((bit) & 0x3F) * 4))
+#define HW_BITBAND(ptr, bit) \
+    ((volatile void*)HW_BITBAND_ADDR((uint32_t)(ptr), bit))
 
 /* Write to GPIO CRL / CRH config registers.
 
