@@ -2,7 +2,7 @@
 
 /* Simple readline example with tab completer. */
 
-#define _GNU_SOURCE
+#define _GNU_SOURCE 1
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

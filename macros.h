@@ -113,7 +113,7 @@ static inline void abort_busyloop(void) {
 #define INLINE static inline __attribute__((__always_inline__))
 #endif
 
-#ifndef PACKED
+#ifndef PACKEDas
 #define PACKED __attribute__((__packed__))
 #endif
 
@@ -133,7 +133,7 @@ static inline void abort_busyloop(void) {
             __typeof__(a) _a = (a); \
             __typeof__(b) _b = (b); \
             if(_a != _b) { \
-                ERROR("ASSERT FAIL: " #a "(%d) == " #b "(%d)\n", _a, _b); \
+                ERROR("ASSERT FAIL: " #a "(%d) == " #b "(%d)\n", (int)_a, (int)_b); \
             } })
 #endif
 #ifndef ASSERT_GT

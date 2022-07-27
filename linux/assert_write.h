@@ -19,7 +19,7 @@ static inline void assert_write(int fd, const uint8_t *buf, size_t len) {
             //}
             //else {
                 ERROR("write(%d,%p,%d) == %d, errno=%d, strerror=\"%s\"\n",
-                      fd,buf,len,  rv, errno,    strerror(errno));
+                      fd, buf, (int)len, (int)rv, (int)errno, strerror(errno));
             //}
         }
         written += rv;
