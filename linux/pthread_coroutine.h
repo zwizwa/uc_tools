@@ -33,6 +33,7 @@ static inline void pthread_coroutine_init(
     void *(mainloop)(void *arg), void *arg) {
 
     ASSERT_ERRNO(pipe(cor->wakeup));
+    // LOG("pipe %d %d\n", cor->wakeup[0], cor->wakeup[1]);
 
     if (mainloop) {
         ASSERT(0 == pthread_create(
