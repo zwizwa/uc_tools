@@ -89,6 +89,8 @@ case "$TYPE" in
         assert_vars O C D ARCH FIRMWARE
         dump_closure_to_file ${O}.build
         . $UC_TOOLS/gdb/env.$ARCH.sh
+        # echo "GCC=$GCC ($(readlink -f $GCC))"
+        # $GCC --version
         [ ! -z "$VERSION" ] && DEFINE_BUILD_VERSION="-DBUILD=\"$VERSION\""
         # echo "CFLAGS=$CFLAGS" >&2
         $GCC \

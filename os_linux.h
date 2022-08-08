@@ -5,7 +5,7 @@
    properly set all feature test macros, to avoid including the macros
    before the specific configurations are set. */
 
-#define _GNU_SOURCE 1 // for mremap()
+#define _GNU_SOURCE // for mremap()
 
 //#define _XOPEN_SOURCE 500 // for ftruncate()
 

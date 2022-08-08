@@ -10,7 +10,11 @@
 
 # Tool Prefix
 [ ! -z "$GCC_ARM_NONE_EABI_PREFIX" ] && TPF="$GCC_ARM_NONE_EABI_PREFIX"
-[ -z "$TPF" ] && TPF=$UC_TOOLS/../gcc-arm-none-eabi-4_8-2014q2/bin/arm-none-eabi-
+
+# By default, assume the tools are linked relative to uc_tools directory.
+# [ -z "$TPF" ] && TPF=$UC_TOOLS/../gcc-arm-none-eabi-4_8-2014q2/bin/arm-none-eabi-
+[ -z "$TPF" ] && TPF=$UC_TOOLS/../gcc-arm-none-eabi/bin/arm-none-eabi-
+
 [ -z "$LIBOPENCM3" ] && LIBOPENCM3=$UC_TOOLS/../libopencm3
 
 # ---- Implementation
