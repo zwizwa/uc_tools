@@ -214,8 +214,11 @@ struct gdbstub_config {
     /* 18: Firmware control block. */
     struct gdbstub_control *control;
 
-    /* 18: Reserved */
-    void *reserved_19[32-19];
+    /* 19: Optional tag or flags for code handling firmware images. */
+    uint32_t fwtag;
+
+    /* 20: Reserved */
+    void *reserved_20[32-20];
 };
 
 /* Indices for uint32_t array overlayed on top of config block.  For
@@ -223,6 +226,7 @@ struct gdbstub_config {
 #define GDBSTUB_CONFIG_INDEX_VERSION      9
 #define GDBSTUB_CONFIG_INDEX_FLASH_START 15
 #define GDBSTUB_CONFIG_INDEX_FLASH_ENDX  16
+#define GDBSTUB_CONFIG_INDEX_FWTAG       19
 
 extern struct gdbstub_config _config; // FLASH
 

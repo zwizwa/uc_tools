@@ -90,6 +90,8 @@ int bin2fw(
                &control->elf_sha1[0], 20));
     control->ctrl_crc = crc32b((uint8_t*)control, control->size - 4);
 
+    // FIXME: Those '=' should be '=='
+
     /* Write out the .fw image = padded .bin + control block appended. */
     LOG("firmware image: %s\n", fw);
     ASSERT(f_fw = fopen(fw, "w"));
