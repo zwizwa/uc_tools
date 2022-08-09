@@ -35,18 +35,29 @@ void ensure_started(struct gdbstub_ctrl *stub_ctrl);
 #define GDBSTUB_RSP_ENABLED 1
 #endif
 
+#ifndef GDBSTUB_3IF_ENABLED
+#define GDBSTUB_3IF_ENABLED 0
+#endif
+
 
 
 #if GDBSTUB_RSP_ENABLED
+/* Original GDBSTUB */
 BOOTLOADER_DEFAULT_SERVICE()
+
+#elif GDBSTUB_3IF_ENABLED
+/* Experimental 3-Instruction Forth */
+#include "mod_3if.c"
+BOOTLOADER_SERVICE(bootloader_3if_read,
+                   bootloader_3if_write,
+                   NULL)
+
 #else
-struct gdbstub_ctrl bootloader_stub_ctrl;
-uint32_t null_read(uint8_t *buf, uint32_t size) {
-    return 0;
-}
-void null_write(const uint8_t *buf, uint32_t size) {
-}
-BOOTLOADER_SERVICE(null_read, null_write, NULL)
+/* Dummy interface that only attempts to switch protocol to app. */
+#include "mod_switch_protocol.c"
+BOOTLOADER_SERVICE(bootloader_switch_protocol_read,
+                   bootloader_switch_protocol_write,
+                   NULL)
 #endif
 
 

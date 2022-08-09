@@ -5,6 +5,7 @@
 
 #include <stdint.h>
 #include "rsp_packet.h"
+#include "gdbstub_ctrl.h"
 
 // Currently fixed, size constrained by commands: req: X, rpl: g
 #define GDBSTUB_PACKET_BUFFER_SIZE 220
@@ -45,13 +46,7 @@ extern const struct gdbstub_io *io;
 // that execute target code.
 #define GDBSTUB_REG_INIT {[13] = 0x20005000}
 #define GDBSTUB_NB_REGS 26
-#define GDBSTUB_FLAG_STARTED (1 << 0)
-#define GDBSTUB_FLAG_LOOP    (1 << 1)
 
-// Core functionality, needed even if gdbstub is not defined.
-struct gdbstub_ctrl {
-    uint32_t flags;
-};
 struct gdbstub {
     struct gdbstub_ctrl *ctrl;
     struct packet *req;
