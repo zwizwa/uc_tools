@@ -205,6 +205,13 @@ case "$TYPE" in
         # ls -l $UC_TOOLS/gdb/elf2fw.sh
         $UC_TOOLS/gdb/elf2fw.sh $ELF $FW $ELF_SHA1_DIR
         ;;
+    enc)
+        # Note that encryption key needs to be configured implicitly
+        # in the FW2ENC encryptor wrapper.
+        assert_vars ENC FW FW2ENC
+        dump_closure_to_file ${ENC}.build
+        $FW2ENC $FW $ENC
+        ;;
     data)
         # Convert binary to elf to be loaded at address.  Note that
         # this is a last resort.  Of possible, please don't project
