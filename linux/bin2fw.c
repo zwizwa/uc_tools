@@ -23,7 +23,7 @@ int bin2fw(
     /* Read bin file. */
     LOG("=== BIN2FW <- %s\n", bin);
     FILE *f, *f_fw;
-    ASSERT(f = fopen(bin, "r"));
+    ASSERT(NULL != (f = fopen(bin, "r")));
     ASSERT(0 == fseek(f, 0, SEEK_END));
     uint32_t bin_len = ftell(f);
 
@@ -90,19 +90,17 @@ int bin2fw(
                &control->elf_sha1[0], 20));
     control->ctrl_crc = crc32b((uint8_t*)control, control->size - 4);
 
-    // FIXME: Those '=' should be '=='
-
     /* Write out the .fw image = padded .bin + control block appended. */
     LOG("firmware image: %s\n", fw);
-    ASSERT(f_fw = fopen(fw, "w"));
-    ASSERT(fw_len = fwrite(fw_u8, 1, fw_len, f_fw));
+    ASSERT(NULL != (f_fw = fopen(fw, "w")));
+    ASSERT(fw_len == fwrite(fw_u8, 1, fw_len, f_fw));
     fclose(f_fw);
 
     /* Write out the control block. */
     LOG("control block:  %s\n", fwctrl);
     FILE *f_fwctrl;
-    ASSERT(f_fwctrl = fopen(fwctrl, "w"));
-    ASSERT(block_size = fwrite((void*)control, 1, block_size, f_fwctrl));
+    ASSERT(NULL != (f_fwctrl = fopen(fwctrl, "w")));
+    ASSERT(block_size == fwrite((void*)control, 1, block_size, f_fwctrl));
     fclose(f_fwctrl);
 
     LOG("=== BIN2FW\n-> %s\n-> %s, %s\n\n", fw, fwctrl);
