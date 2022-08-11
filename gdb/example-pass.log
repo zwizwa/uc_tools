@@ -1,0 +1,67 @@
+Using firmware from /vol/core/panda/rootfs/home/tom/priv/git-private/constell8/deps/rdm-bridge/stm32f103
+-rwxr-xr-x 1 tom tom 342088 Aug 10 09:30 bl_3if.core.f103.elf
+-rwxr-xr-x 1 tom tom 342132 Aug 10 08:34 bl_nano.core.f103.elf
+-rwxr-xr-x 1 tom tom 366764 Aug 10 08:34 bl_nano_debug.core.f103.elf
+-rwxr-xr-x 1 tom tom 834300 Aug 10 08:35 main_nano_loop.x8.f103.elf
+-rwxr-xr-x 1 tom tom 834300 Aug 10 09:07 main_nano_loop.x8.f103.fw.elf
+-rwxr-xr-x 1 tom tom 840408 Aug 10 08:35 main_nano.x8a.f103.elf
+-rwxr-xr-x 1 tom tom 840408 Aug 10 09:07 main_nano.x8a.f103.fw.elf
+-rwxr-xr-x 1 tom tom 832216 Aug 10 08:35 main_nano.x8b.f103.elf
+-rwxr-xr-x 1 tom tom 832216 Aug 10 09:07 main_nano.x8b.f103.fw.elf
+-rwxr-xr-x 1 tom tom 834264 Aug 10 08:35 main_nano.x8.f103.elf
+-rwxr-xr-x 1 tom tom 834264 Aug 10 09:07 main_nano.x8.f103.fw.elf
+-rwxr-xr-x 1 tom tom 859144 Aug 10 08:34 main_node.x8a.f103.elf
+-rwxr-xr-x 1 tom tom 859144 Aug 10 09:07 main_node.x8a.f103.fw.elf
+-rwxr-xr-x 1 tom tom 850952 Aug 10 08:34 main_node.x8b.f103.elf
+-rwxr-xr-x 1 tom tom 850952 Aug 10 09:07 main_node.x8b.f103.fw.elf
+-rwxr-xr-x 1 tom tom 853000 Aug 10 08:34 main_node.x8.f103.elf
+-rwxr-xr-x 1 tom tom  38528 Aug 10 08:34 main_trampoline.x8.f103.elf
+-rwxr-xr-x 1 tom tom 356548 Aug 10 08:34 test_lowlevel.x8.f103.elf
+Using OpenOCD localhost:3307
+file=bl_nano.core.f103.elf
+0x080032f4 in ?? ()
+use 'lc_all' to Flash nano firmware, 'wtf' for more help
+- BOOTLOADER
+file=bl_nano.core.f103.elf
+Loading section .text, size 0x18d4 lma 0x8000000
+Loading section .data, size 0x10 lma 0x80018d4
+Loading section .config, size 0x800 lma 0x8002800
+Start address 0x80002f0, load size 8420
+Transfer rate: 12 KB/sec, 2806 bytes/write.
+Section .text, range 0x8000000 -- 0x80018d4: matched.
+Section .data, range 0x80018d4 -- 0x80018e4: matched.
+Section .config, range 0x8002800 -- 0x8003000: matched.
+- TRAMPOLINE
+file=main_trampoline.x8.f103.elf
+Loading section .config, size 0x800 lma 0x8002800
+Loading section .text, size 0x368 lma 0x8003000
+Start address 0x80032f4, load size 2920
+Transfer rate: 11 KB/sec, 1460 bytes/write.
+Section .text, range 0x8003000 -- 0x8003368: matched.
+Section .config, range 0x8002800 -- 0x8003000: matched.
+- FIRMWARE A
+file=main_nano.x8a.f103.fw.elf
+Loading section .config, size 0x800 lma 0x8004000
+Loading section .text, size 0xb198 lma 0x8004800
+Loading section .data, size 0x474 lma 0x800f998
+Loading section .control, size 0x400 lma 0x8010000
+Start address 0x80084dc, load size 49676
+Transfer rate: 17 KB/sec, 8279 bytes/write.
+Section .text, range 0x8004800 -- 0x800f998: matched.
+Section .data, range 0x800f998 -- 0x800fe0c: matched.
+Section .config, range 0x8004000 -- 0x8004800: matched.
+Section .control, range 0x8010000 -- 0x8010400: matched.
+$1 = 0x80040b8 <config_version> "20220810-083530-842425-dev-dirty"
+- FIRMWARE B
+file=main_nano.x8b.f103.fw.elf
+Loading section .config, size 0x800 lma 0x8012000
+Loading section .text, size 0xb198 lma 0x8012800
+Loading section .data, size 0x474 lma 0x801d998
+Loading section .control, size 0x400 lma 0x801e000
+Start address 0x80164dc, load size 49676
+Transfer rate: 17 KB/sec, 8279 bytes/write.
+Section .text, range 0x8012800 -- 0x801d998: matched.
+Section .data, range 0x801d998 -- 0x801de0c: matched.
+Section .config, range 0x8012000 -- 0x8012800: matched.
+Section .control, range 0x801e000 -- 0x801e400: matched.
+$2 = 0x80120b8 <config_version> "20220810-083530-842425-dev-dirty"

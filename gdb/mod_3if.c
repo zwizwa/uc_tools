@@ -2,19 +2,19 @@
 #define MOD_3IF
 
 
-/* Experimental 3-Instruction Forth monitor application to replace
-   GDBSTUB.  Idea is to use a 2-layer architecture: run the gdbstub
-   code on host, and use a minimal load/store/execute API on the
-   target.  Similar to Staapl, which in turn is inspired by Frank
-   Sergeant's https://pages.cs.wisc.edu/~bolo/shipyard/3ins4th.html */
+/* Experimental Forth monitor application to replace GDBSTUB. */
 
+#include "forth_dsl.h"
+#include "gdbstub_ctrl.h"
 struct gdbstub_ctrl bootloader_stub_ctrl;
+
+struct forth_dsl_env forth_dsl_env;
 
 uint32_t count = 0;
 uint32_t bootloader_3if_read1(uint8_t *buf) {
-        buf[0] = '!';
-        count--;
-        return 1;
+    buf[0] = '!';
+    count--;
+    return 1;
 }
 uint32_t bootloader_3if_read(uint8_t *buf, uint32_t size) {
     if (count > 0) {
@@ -25,7 +25,10 @@ uint32_t bootloader_3if_read(uint8_t *buf, uint32_t size) {
     }
 }
 void bootloader_3if_write(const uint8_t *buf, uint32_t size) {
-    count += size;
+    /* This needs to support protocol switching, which is based on
+       bootloader protocol being sufficiently different from any
+       application protocol.  Let's not worry about it yet. */
+    forth_dsl_write(&forth_dsl_env, buf, size);
 }
 
 #endif
