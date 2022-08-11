@@ -80,12 +80,13 @@ INLINE uint32_t hw_swap(uint32_t val) {
 
 /* Loop based busywait. */
 INLINE void hw_busywait(uint32_t nb_loops) {
-    __asm__("   .align 4         \n" // to make it more predictable
-            "1: subs  %0, %0, #1 \n" // 1 cycle
-            "   bne   1b         \n" // 1+P if taken, 1 otherwise
-            :
-            : "r"(nb_loops)
-            : );
+    __asm__ __volatile__(
+        "   .align 4         \n" // to make it more predictable
+        "1: subs  %0, %0, #1 \n" // 1 cycle
+        "   bne   1b         \n" // 1+P if taken, 1 otherwise
+        :
+        : "r"(nb_loops)
+        :);
     /* Cycle timing based on 0-wait-state operation. P is pipeline
        refill.  According to datasheet this ranges from 1 to 3
        depending on alignment and width of the target instruction, and
@@ -98,7 +99,7 @@ INLINE void hw_busywait(uint32_t nb_loops) {
    for 72MHz CPU frequency.  It is not clear how to compute that
    number from what is described in the datasheet. */
 INLINE void hw_busywait_us(uint32_t us) { hw_busywait(HW_LOOPS_PER_US * us); }
-INLINE void hw_busywait_ms(uint32_t ms) { while(ms--) hw_busywait_us(1000); }
+INLINE void hw_busywait_ms(uint32_t ms) { while(ms--) hw_busywait(1000); }
 
 
 

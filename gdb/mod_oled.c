@@ -1,6 +1,7 @@
 #ifndef MOD_OLED_C
 #define MOD_OLED_C
 
+#include "oled.h"
 #include "mod_audio.c"
 
 /* OLED */
@@ -73,7 +74,13 @@ static inline void oled_init(void) {
     hw_gpio_config(OLED_DC, HW_GPIO_CONFIG_OUTPUT);
     hw_gpio_config(OLED_RES, HW_GPIO_CONFIG_OUTPUT);
     oled_res(0);
-    hw_busywait_ms(10);
+    // FIXME: hw_busywait_ms() causes a high level hang here.
+    // Can't properly isolate it at this time so just beware of this in the future
+    // Works 2014 compiler but has issue with newer
+    // arm-none-eabi-gcc (GNU Tools for ARM Embedded Processors) 4.8.4 20140526 (release) [ARM/embedded-4_8-branch revision 211358] (download from ARM)
+    // arm-none-eabi-gcc (GNU Tools for Arm Embedded Processors 8-2018-q4-major) 8.2.1 20181213 (release) [gcc-8-branch revision 267074] (Nixos)
+    // hw_busywait_ms(10);
+    hw_busywait_us(10000);
     oled_res(1);
     oled_dc(0);
     oled_cs(0);
