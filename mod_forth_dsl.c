@@ -33,37 +33,42 @@
 #error need RAMLEN
 #endif
 
-#ifndef ROMLEN
-#error need ROMLEN
-#endif
+typedef uint16_t CELL;
 
 /* Opcode name<->number mapping is needed for external compilation, so
    put the definition in a macro iterator. */
 #define FOR_OP(m)                           \
     m(KEY,0)  m(EMIT,1) m(EXEC,2) m(SWAP,3) \
     m(DROP,4) m(LIT,5)  m(ADD,6)  m(JUMP,7) \
+    m(EXIT,8)
 
-/* In this files the opcodes are C identfiers collecte in this enum. */
-#define REC_INIT(word,N) word = 0xFFFF-(N),
-enum OP { FOR_OP(REC_INIT) };
+/* Expose opcodes as enum. */
+#define OP_ENUM_INIT(word,N) word = 0xFFFF-(N),
+enum OP { FOR_OP(OP_ENUM_INIT) };
 
-enum LABEL {
-    /* After primtiive code space we can place RAM words. */
-    OUTER=0,
-};
-typedef uint16_t CELL;
-static const CELL rom[ROMLEN] = {
-    [OUTER] = LIT, '1', KEY, ADD, EMIT, JUMP, OUTER,
-};
-static CELL ram[RAMLEN] = {
-};
+/* Threaded code defined in this file can go into ROM, which starts at
+   address 0 in the virtual memory. */
+#define FOR_LABEL(m) \
+    m(OUTER,0)       \
+    m(ADD1,OUTER+5)
 
+#define LABEL_ENUM_INIT(word,N) word = N,
+enum LABEL { FOR_LABEL(LABEL_ENUM_INIT) };
+
+static const CELL rom[] = {
+    [OUTER] = KEY, ADD1, EMIT, JUMP, OUTER,
+    [ADD1]  = LIT, 1, ADD, EXIT,
+};
+#define ROMLEN ARRAY_SIZE(rom)
+
+/* RAM is not initialized. */
+static CELL ram[RAMLEN];
 #define IP (ram[0])
 #define DS (ram[1])
 #define RS (ram[2])
 
 /* 64k words of virtual memory. */
-static CELL *mem(CELL addr) {
+static __attribute__((__const__)) CELL *mem(CELL addr)  {
     if (addr < ROMLEN) return (CELL*)&rom[addr];
     addr -= ROMLEN;
     if (addr < RAMLEN) return &ram[addr];
@@ -76,17 +81,20 @@ static CELL *mem(CELL addr) {
 #define RS1 (MEM(RS+1))
 #define IP0 (MEM(IP))
 
+#define RAM(N) (ROMLEN + (N))
+
 /* Machine suspends on input (KEY), and output is buffered (EMIT). */
 static inline void push_key(struct forth_dsl_env *s, uint8_t key) {
     enum OP OP;
     goto resume;
   next:
     OP=MEM(IP++);
-    LOG("IP=%04x, OP=%02x\n", IP-1, OP);
+    LOG("IP=%04x, OP=%02x, DS0=%d\n", IP-1, OP, DS0);
   execute:
     switch(OP) {
     case EXEC: OP = DS0; DS++;                     goto execute;
     case JUMP: IP = IP0;                           goto next;
+    case EXIT: IP = RS0; RS++;                     goto next;
     case KEY:  return; resume: DS--; DS0=key;      goto next;
     case EMIT: cbuf_put(&s->out, DS0); DS++;       goto next;
     case DROP: DS++;                               goto next;
@@ -107,10 +115,10 @@ void forth_dsl_init(struct forth_dsl_env *s) {
     IP = OUTER;
 
     /* RS is placed after DS to absorb dummy_key push during boot. */
-    DS = ROMLEN + 0x10 + 1;
-    RS = ROMLEN + 0x20;
+    DS = RAM(0x10 + 1);
+    RS = RAM(0x20);
 
-    /* Execute up to the first occurance of KEY.  The key we pass in
+    /* Execute up to the first occurrence of KEY.  The key we pass in
        here will be ignored. */
     uint8_t dummy_key = 0;
     forth_dsl_write(s, &dummy_key, 1);
