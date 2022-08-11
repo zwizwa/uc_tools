@@ -6,15 +6,21 @@
    https://pages.cs.wisc.edu/~bolo/shipyard/3ins4th.html
    which are also used in Staapl's Forth monitor
 
-   The primary application is to replace gdbstub on target with a
-   minimal Forth and a gdbstub or other protocol wrapper running as a
-   Linux daemon.
+   Remarks:
 
-   Implementation should go into a separate compilation unit to allow
-   use of concise macros that would otherwise pollute the global
-   namespace.
+   - Context this was written in: replace uc_tools STM32F103
+     bootloader's gdbstub on target with a minimal Forth, then write a
+     gdbstub or other protocol wrapper running as a Linux daemon to
+     restore old functionality.
 
-   Some extensions: this supports both RAM and ROM.
+   - Implementation should go into a separate compilation unit to
+     allow use of concise names that would otherwise pollute the
+     global namespace.
+
+   - Memory model is "ROM first", such that typeswitch's C initializer
+     can be used to encode threaded code in the C file.  Then RAM can
+     be used for compilation of new run time words.  The primitives
+     are mapped at the end of the 16-bit memory space.
 
 */
 
@@ -33,51 +39,49 @@
 
 /* Opcode name<->number mapping is needed for external compilation, so
    put the definition in a macro iterator. */
-#define FOR_OP(m) \
-    m(KEY) m(EMIT) m(EXEC) m(SWAP) m(DROP) m(LIT) m(ADD) \
-    m(JUMP)
+#define FOR_OP(m)                           \
+    m(KEY,0)  m(EMIT,1) m(EXEC,2) m(SWAP,3) \
+    m(DROP,4) m(LIT,5)  m(ADD,6)  m(JUMP,7) \
 
 /* In this files the opcodes are C identfiers collecte in this enum. */
-#define REC_INIT(word) word,
+#define REC_INIT(word,N) word = 0xFFFF-(N),
 enum OP { FOR_OP(REC_INIT) };
 
 enum LABEL {
     /* After primtiive code space we can place RAM words. */
-    OUTER=RAMLEN+0x20,
+    OUTER=0,
 };
 typedef uint16_t CELL;
-static const CELL rom_cells[ROMLEN] = {
-    [OUTER-RAMLEN] = LIT, '1', KEY, ADD, EMIT, JUMP, OUTER,
+static const CELL rom[ROMLEN] = {
+    [OUTER] = LIT, '1', KEY, ADD, EMIT, JUMP, OUTER,
 };
-static CELL ram_cells[RAMLEN] = {
+static CELL ram[RAMLEN] = {
 };
 
-#define IP   (ram_cells[0])
-#define DS   (ram_cells[1])
-#define RS   (ram_cells[2])
+#define IP (ram[0])
+#define DS (ram[1])
+#define RS (ram[2])
 
 /* 64k words of virtual memory. */
 static CELL *mem(CELL addr) {
-    if (addr < RAMLEN) return &ram_cells[addr];
-    return (CELL*)&rom_cells[addr-RAMLEN];
+    if (addr < ROMLEN) return (CELL*)&rom[addr];
+    addr -= ROMLEN;
+    if (addr < RAMLEN) return &ram[addr];
+    return 0;
 }
-
-/* Use wrapped access for RAM? */
-//#define REF(N) (ram_cells[(CELL)(N) % RAMLEN])
-#define REF(N) (*mem(N))
-
-#define DS0  (REF(DS+0))
-#define DS1  (REF(DS+1))
-#define RS0  (REF(RS+0))
-#define RS1  (REF(RS+1))
-#define IP0  (REF(IP))
+#define MEM(N) (*mem(N))
+#define DS0 (MEM(DS+0))
+#define DS1 (MEM(DS+1))
+#define RS0 (MEM(RS+0))
+#define RS1 (MEM(RS+1))
+#define IP0 (MEM(IP))
 
 /* Machine suspends on input (KEY), and output is buffered (EMIT). */
 static inline void push_key(struct forth_dsl_env *s, uint8_t key) {
     enum OP OP;
     goto resume;
   next:
-    OP=REF(IP++);
+    OP=MEM(IP++);
     LOG("IP=%04x, OP=%02x\n", IP-1, OP);
   execute:
     switch(OP) {
@@ -103,8 +107,8 @@ void forth_dsl_init(struct forth_dsl_env *s) {
     IP = OUTER;
 
     /* RS is placed after DS to absorb dummy_key push during boot. */
-    DS = 0x10 + 1;
-    RS = 0x02;
+    DS = ROMLEN + 0x10 + 1;
+    RS = ROMLEN + 0x20;
 
     /* Execute up to the first occurance of KEY.  The key we pass in
        here will be ignored. */
