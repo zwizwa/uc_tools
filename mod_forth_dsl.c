@@ -75,13 +75,14 @@ static __attribute__((__const__)) CELL *mem(CELL addr)  {
     return 0;
 }
 #define MEM(N) (*mem(N))
+#define IP0 (MEM(IP))
+// FIXME: These are always RAM, so de-virtualize the DS/RS pointers?
 #define DS0 (MEM(DS+0))
 #define DS1 (MEM(DS+1))
 #define RS0 (MEM(RS+0))
 #define RS1 (MEM(RS+1))
-#define IP0 (MEM(IP))
 
-#define RAM(N) (ROMLEN + (N))
+#define RAM_CELL(N) (ROMLEN + (N))
 
 /* Machine suspends on input (KEY), and output is buffered (EMIT). */
 static inline void push_key(struct forth_dsl_env *s, uint8_t key) {
@@ -89,20 +90,20 @@ static inline void push_key(struct forth_dsl_env *s, uint8_t key) {
     goto resume;
   next:
     OP=MEM(IP++);
-    LOG("IP=%04x, OP=%02x, DS0=%d\n", IP-1, OP, DS0);
+    LOG("IP=%04x OP=%04x DS0=%04x\n", IP-1, OP, DS0);
   execute:
     switch(OP) {
-    case EXEC: OP = DS0; DS++;                     goto execute;
-    case JUMP: IP = IP0;                           goto next;
-    case EXIT: IP = RS0; RS++;                     goto next;
-    case KEY:  return; resume: DS--; DS0=key;      goto next;
-    case EMIT: cbuf_put(&s->out, DS0); DS++;       goto next;
-    case DROP: DS++;                               goto next;
-    case LIT:  DS--; DS0 = IP0; IP++;              goto next;
-    case SWAP: {CELL T = DS0; DS0 = DS1; DS1 = T;} goto next;
-    case ADD:  DS1 += DS0; DS++;                   goto next;
+    case EXEC: OP=DS0; DS++;                  goto execute;
+    case JUMP: IP=IP0;                        goto next;
+    case EXIT: IP=RS0; RS++;                  goto next;
+    case KEY:  return; resume: DS--; DS0=key; goto next;
+    case EMIT: cbuf_put(&s->out, DS0); DS++;  goto next;
+    case DROP: DS++;                          goto next;
+    case LIT:  DS--; DS0=IP0; IP++;           goto next;
+    case SWAP: {CELL T=DS0; DS0=DS1; DS1=T;}  goto next;
+    case ADD:  DS1+=DS0; DS++;                goto next;
     }
-    RS--; RS0=IP; IP=OP;                           goto next;
+    RS--; RS0=IP; IP=OP;                      goto next;
 }
 
 void forth_dsl_write(struct forth_dsl_env *s, const uint8_t *buf, uint32_t len) {
@@ -113,13 +114,11 @@ void forth_dsl_write(struct forth_dsl_env *s, const uint8_t *buf, uint32_t len) 
 void forth_dsl_init(struct forth_dsl_env *s) {
     CBUF_INIT(s->out);
     IP = OUTER;
-
-    /* RS is placed after DS to absorb dummy_key push during boot. */
-    DS = RAM(0x10 + 1);
-    RS = RAM(0x20);
-
-    /* Execute up to the first occurrence of KEY.  The key we pass in
-       here will be ignored. */
+    DS = RAM_CELL(0x10 + /* dummy_key compensation */ 1);
+    RS = RAM_CELL(0x20);
+    /* Execute up to the first occurrence of KEY so that the machine
+       is waiting for data.  The key we pass in here will be ignored
+       and we just compensate for the DS push on first resume. */
     uint8_t dummy_key = 0;
     forth_dsl_write(s, &dummy_key, 1);
 }
