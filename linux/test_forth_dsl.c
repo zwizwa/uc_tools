@@ -1,7 +1,8 @@
-#define RAMLEN 0x1000
 
+#include "mod_forth_dsl_tc.c"
 //#include "mod_forth_dsl_cprim.c"
 #include "mod_forth_dsl.c"
+
 int main(int argc, char **argv) {
     struct forth_dsl_state s;
     forth_dsl_init(&s);

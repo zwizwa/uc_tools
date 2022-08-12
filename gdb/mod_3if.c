@@ -4,7 +4,6 @@
 
 /* Experimental Forth monitor application to replace GDBSTUB. */
 
-#define RAMLEN 0x100
 #include "mod_forth_dsl.c"
 //#include "mod_forth_dsl_cprim.c"
 #include "gdbstub_ctrl.h"

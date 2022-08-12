@@ -4,9 +4,7 @@
 #ifndef MOD_FORTH_DSL
 #define MOD_FORTH_DSL
 
-#define FORTH_DSL_BITS
 #include "forth_dsl.h"
-
 
 /* Stack pointers are not accessible from the OPs, so representation
    can just as well be direct offsets into ram[], not using the mem()
@@ -17,6 +15,7 @@
 #define DS0 (DS[0])
 #define DS1 (DS[1])
 #define RS0 (RS[0])
+#define MEM(N) (*forth_dsl_mem(s,N))
 
 typedef void (*prim_t)(struct forth_dsl_state *s);
 
@@ -34,22 +33,22 @@ void _ADD (S s) { DS1+=DS0; DS++; }
 void _JUMP(S s) { IP = MEM(IP); }
 void _EXIT(S s) { IP=RS0; RS++; }
 
-#define OP_TABLE_INIT(word,N) [N] = _##word,
-static const prim_t prim[] = { FOR_OP(OP_TABLE_INIT) };
-static inline int is_prim(enum OP op) {
+#define PRIM_TABLE_INIT(word,N) [N] = _##word,
+static const prim_t prim[] = { FORTH_DSL_FOR_PRIM(PRIM_TABLE_INIT) };
+static inline int is_prim(CELL op) {
     return op >= (0x10000 - ARRAY_SIZE(prim));
 }
 #define DO_PRIM(op,s) ((prim[0xFFFF - op])(s))
 
 /* Machine suspends on input (KEY), and output is buffered (EMIT). */
 static inline void push_key(struct forth_dsl_state *s, uint8_t key) {
-    enum OP op;
+    enum PRIM op;
     /* resume KEY */
     DS--; DS0 = key;
   next:
     op=MEM(IP++);
   execute:
-    LOG("IP=%04x op=%04x DS(0)=%04x\n", IP-1, op, DS0);
+    // LOG("IP=%04x op=%04x DS(0)=%04x\n", IP-1, op, DS0);
     switch(op) {
     case KEY:  return;
     case EXEC: op = DS0; DS++; goto execute;
