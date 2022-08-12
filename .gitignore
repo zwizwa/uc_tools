@@ -6,6 +6,10 @@
 *.dasm
 *.a
 *.bin
+*.build
+*.so
+*.fw
+*.enc
 out.list
 build
 \#*\#
@@ -24,3 +28,6 @@ rust/cmix_ex/ex2/test
 a.out.js
 a.out.wasm
 **/.DS_Store
+test_*.txt
+.gdb*
+
