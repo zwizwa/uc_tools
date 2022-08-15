@@ -2,23 +2,21 @@
 #define MOD_3IF
 
 
-/* Experimental Forth monitor application to replace GDBSTUB. */
-
-#include "mod_forth_dsl.c"
-//#include "mod_forth_dsl_cprim.c"
+#include "mod_monitor_3if.c"
 #include "gdbstub_ctrl.h"
 struct gdbstub_ctrl bootloader_stub_ctrl;
 
-struct forth_dsl_state forth_dsl_state;
+struct monitor_3if monitor_3if;
 
 uint32_t bootloader_3if_read(uint8_t *buf, uint32_t size) {
-    return cbuf_read(&forth_dsl_state, buf, size);
+    return cbuf_read(&monitor_3if.out, buf, size);
 }
 void bootloader_3if_write(const uint8_t *buf, uint32_t size) {
     /* This needs to support protocol switching, which is based on
        bootloader protocol being sufficiently different from any
        application protocol.  Let's not worry about it yet. */
-    forth_dsl_write(&forth_dsl_state, buf, size);
+    monitor_3if_write(&monitor_3if, buf, size);
 }
+
 
 #endif
