@@ -15,6 +15,7 @@
 #include "cbuf.h"
 #include <stdint.h>
 
+
 /* Same encoding as Staapl.
    A = rAm pointer
    F = Flash pointer */
@@ -39,19 +40,25 @@ enum PRIM { MONITOR_3IF_FOR_PRIM(PRIM_ENUM_INIT) };
 #define NEXT(s,var)                             \
     NEXT_LABEL(s,var,GENSYM(label_))
 
-enum {
-    A=1,F=2,C=3
-} reg_nb;
+struct monitor_3if;
 struct monitor_3if {
-    /* 0 */ void *next;
-    /* 1 */ uint8_t *a;
-    /* 2 */ uint8_t *f;
-    /* 3 */ void (*c)(void);
-    /* 4 */ void *cont;
-    /* 5 */ uint8_t *ds;
-    uint8_t count,reg,tmp,tmp2;
+    /* Forth */
+    /* 0 */ uint8_t *ds;
+
+    /* Interpreter */
+    /* 1 */ void *next;
+    /* 2 */ uint8_t *ram;
+    /* 3 */ uint8_t *flash;
+    /* 4 */ void (*code)(void);
+    /* 5 */ void *cont;
+    /* 6 */ void (*transfer)(struct monitor_3if *s);
+    uint16_t count;
+    uint8_t offset, tmp;
     struct cbuf out; uint8_t out_buf[256];
 };
+
+#define REG(name) OFFSETOF(struct monitor_3if, name)
+
 
 #define DS (s->ds)
 #define DS0 (DS[0])
@@ -62,7 +69,18 @@ struct monitor_3if {
    the out buffer is always large enough, essentially moving flow
    control to the host end. */
 
+/* Loop body loaded into s->code. */
+void from_ram  (struct monitor_3if *s) { s->tmp = *(s->ram)++; }
+void from_flash(struct monitor_3if *s) { s->tmp = *(s->flash)++; }
 
+void to_ram    (struct monitor_3if *s) { *(s->ram)++ = s->tmp; }
+void to_flash  (struct monitor_3if *s) { /* FIXME */; }
+
+void to_state  (struct monitor_3if *s) { ((uint8_t*)s)[s->offset++] = s->tmp; }
+
+/* FIXME: Check byte order. */
+void from_stack(struct monitor_3if *s) { s->tmp = *(s->ds)++; }
+void to_stack  (struct monitor_3if *s) { *--(s->ds) = s->tmp; }
 
 static inline void push_key(struct monitor_3if *s, uint8_t key) {
     /* Contains any op, but we set type as enum PRIM such that
@@ -72,55 +90,46 @@ static inline void push_key(struct monitor_3if *s, uint8_t key) {
   next:
     NEXT(s,op);
     switch(op) {
-    case ACK: goto ack;
-    case JSR: s->reg = C; s->cont = &&call; goto load_reg;
-    case LDA: s->reg = A; s->cont = &&ack;  goto load_reg;
-    case LDF: s->reg = F; s->cont = &&ack;  goto load_reg;
-    case NPUSH:
-        NEXT(s,s->count);
-        while(s->count--) { DS--; NEXT(s,DS0); }
-        goto ack;
-    case NPOP:
-        NEXT(s,s->count);
-        while(s->count--) { cbuf_put(&s->out, DS0); DS++; }
-        goto ack;
-    case INTR:
-        ASSERT(0);
-    case NAL:
-        NEXT(s,s->count);
-        cbuf_put(&s->out, s->count);
-        while(s->count--) { cbuf_put(&s->out, *(s->a)++); }
-        goto next;
-    case NFL:
-        NEXT(s,s->count);
-        cbuf_put(&s->out, s->count);
-        while(s->count--) { cbuf_put(&s->out, *(s->f)++); }
-        goto next;
-    case NAS:
-        NEXT(s,s->count);
-        cbuf_put(&s->out, s->count);
-        while(s->count--) { NEXT(s, *(s->a)++); }
-        goto ack;
-    case NFS:
-        NEXT(s,s->count);
-        while(s->count--) {
-            // FIXME: Erase on boundary, write 16 bits at a time
-        }
-        goto ack;
+
+    case ACK:                              goto ack;
+
+    case JSR:   s->offset = REG(code);     goto to_reg;
+    case LDA:   s->offset = REG(ram);      goto to_reg;
+    case LDF:   s->offset = REG(flash);    goto to_reg;
+
+    case NAL:   s->transfer = from_ram;    goto loop_from;
+    case NFL:   s->transfer = from_flash;  goto loop_from;
+    case NPOP:  s->transfer = from_stack;  goto loop_from;
+
+    case NAS:   s->transfer = to_ram;      goto loop_to;
+    case NFS:   s->transfer = to_flash;    goto loop_to;
+    case NPUSH: s->transfer = to_stack;    goto loop_to;
+
+    case INTR: ASSERT(0); // FIXME: not used
+
     }
-  load_reg:
-    // Load 32 bits, little endian encoding
-    s->count = 4;
-    while(s->count--) {
-        NEXT(s,s->tmp);
-        uintptr_t *ptr = ((uintptr_t*)s) + s->reg;
-        (*ptr) >>= 8;
-        (*ptr) |= (s->tmp << 24);
-    }
+
+  loop_from:
+    // needs s->transfer
+    NEXT(s, s->count);
+    cbuf_put(&s->out, s->count);
+    s->cont = &&next;
+    while(s->count--) { s->transfer(s); cbuf_put(&s->out, s->tmp);}
     goto *(s->cont);
-  call:
-    s->c();
-    goto ack;
+
+  to_reg:
+    // needs s->offset
+    s->transfer = to_state;
+    s->count = 4;
+    goto loop_to_inner;
+  loop_to:
+    // needs s->transfer
+    NEXT(s, s->count);
+  loop_to_inner:
+    s->cont = &&ack;
+    while(s->count--) { NEXT(s, s->tmp); s->transfer(s); }
+    goto *(s->cont);
+
   ack:
     cbuf_put(&s->out, 0); // 0-size reply
     goto next;
