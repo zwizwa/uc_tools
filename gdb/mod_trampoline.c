@@ -97,7 +97,13 @@ void switch_protocol(const uint8_t *buf, uint32_t len) {
         return;
     }
 }
-void start(void) {
+
+void trampoline_start(void) {
+    const struct partition_config *p = choose_partition(&part[0], &part[1]);
+    if (p) p->config->start();
+}
+
+void trampoline_app_init_and_start(void) {
     /* Low level application init.  This needs to be called manually
        after loading to initialize memory.  Note that this will be
        immediately undone by the application's start() function, if
@@ -105,8 +111,7 @@ void start(void) {
     hw_app_init();
 
     /* The rest is generic and later can go into the library. */
-    const struct partition_config *p = choose_partition(&part[0], &part[1]);
-    if (p) p->config->start();
+    trampoline_start();
 }
 
 void main_loop(gdbstub_fn_poll bl_poll_fn) {
@@ -134,12 +139,16 @@ const char config_firmware[]     CONFIG_DATA_SECTION = FIRMWARE;
 /* This is now generated at link time. */
 extern const char config_version[];
 
-struct gdbstub_config config CONFIG_HEADER_SECTION = {
+struct gdbstub_config trampoline_config CONFIG_HEADER_SECTION = {
     .manufacturer    = config_manufacturer,
     .product         = config_product,
     .firmware        = config_firmware,
     .version         = config_version,
-    .start           = start,
+#ifdef TRAMPOLINE_IN_BOOTLOADER
+    .start           = trampoline_start,
+#else
+    .start           = trampoline_app_init_and_start,
+#endif
     .switch_protocol = switch_protocol,
     .loop            = main_loop,
 };

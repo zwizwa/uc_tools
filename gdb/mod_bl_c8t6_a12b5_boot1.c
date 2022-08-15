@@ -14,10 +14,11 @@ const uint32_t flash_page_size_log = 10; // 1k
 /* Config is stored in a separate Flash block and overwritten when we
    flash the application code.  To make the code more robust, the case
    of an empty (all 0xFF) flash block is handled. */
+#ifndef CONFIG_DEFAULT
 struct gdbstub_config _config_default __attribute__ ((section (".config_header"))) = {
     .bottom = 0x8002800  // allow config overwrite
 };
-
+#endif
 
 // #include "inline.dbg_pin.c" // KEEPs for interactive toggling and reading
 
