@@ -30,7 +30,7 @@ void _SWAP(S s) { CELL T=DS0; DS0=DS1; DS1=T; }
 void _DROP(S s) { DS++; }
 void _LIT (S s) { DS--; DS0=MEM(IP); IP++; }
 void _ADD (S s) { DS1+=DS0; DS++; }
-void _JUMP(S s) { IP = MEM(IP); }
+void _JUMP(S s) { IP=MEM(IP); }
 void _EXIT(S s) { IP=RS0; RS++; }
 
 #define PRIM_TABLE_INIT(word,N) [N] = _##word,
@@ -54,7 +54,7 @@ static inline void push_key(struct forth_dsl_state *s, uint8_t key) {
     case EXEC: op = DS0; DS++; goto execute;
     default:
         if (is_prim(op)) { DO_PRIM(op,s); }
-        else             { RS--; RS0 = IP; IP = op; }
+        else { RS--; RS0 = IP; IP = op; }
         goto next;
     }
 }
