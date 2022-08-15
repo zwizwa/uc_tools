@@ -311,7 +311,8 @@ void start(void) {
     dht11_init();
 #endif
 
-    usart1_init();
+    // FIXME: fix the noise on the 'r' board instead!
+    // usart1_init();
 
     _service.add(poll_uart1_tx);
     _service.add(poll_timebase);
