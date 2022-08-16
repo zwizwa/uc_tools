@@ -41,10 +41,15 @@ void ensure_started(struct gdbstub_ctrl *stub_ctrl);
 #endif
 
 
+/* Configure the monitor that is connected to the ttyACMx port.  This
+   can be original GDBSTUB, the new 3 Instruction Forth, or a dummy
+   passthrough. */
 
 #if GDBSTUB_RSP_ENABLED
 /* Original GDBSTUB */
 BOOTLOADER_DEFAULT_SERVICE()
+void monitor_init(void) {
+}
 
 #elif GDBSTUB_3IF_ENABLED
 /* Experimental 3-Instruction Forth */
@@ -52,13 +57,17 @@ BOOTLOADER_DEFAULT_SERVICE()
 BOOTLOADER_SERVICE(bootloader_3if_read,
                    bootloader_3if_write,
                    NULL)
-
+static inline void monitor_init(void) {
+    bootloader_3if_init();
+}
 #else
 /* Dummy interface that only attempts to switch protocol to app. */
 #include "mod_switch_protocol.c"
 BOOTLOADER_SERVICE(bootloader_switch_protocol_read,
                    bootloader_switch_protocol_write,
                    NULL)
+void monitor_init(void) {
+}
 #endif
 
 
@@ -90,6 +99,7 @@ int main(void) {
     hw_gpio_config(GPIOB,5,HW_GPIO_CONFIG_OUTPUT);
 
     bootloader_init();
+    monitor_init();
 
     /* When BOOT0==0 (boot from flash), BOOT1 is ignored by the STM
        boot ROM, so we can use it as an application start toggle. */

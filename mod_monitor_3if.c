@@ -9,6 +9,7 @@
    - Codes are different
    - JSR doesn't load code ptr, LDC loads code ptr
    - Uses uintptr_t register lengths for ram, flash, code registers
+   - Use an opaque framing mechanism, i.e. {packet,1}
 
    The idea is that this can go on a microcontroller taking up very
    little code space.  The host side can then read/write to Flash and
@@ -38,25 +39,13 @@
    This ensures that protocol errors can be used to cause transparent
    protocol switches for things based on. */
 
-#define MONITOR_3IF_FOR_PRIM(m)                      \
-    m(ACK,  0)  m(NPUSH, 1)  m(NPOP, 2)  m(JSR,  3)  \
-    m(LDA,  4)  m(LDF,   5)  m(LDC,  6)  m(INTR, 7)  \
-    m(NAL,  8)  m(NFL,   9)  m(NAS, 11)  m(NFS, 12)  \
+#define MONITOR_3IF_FOR_PRIM(m)                              \
+    m(ACK,  0x0)  m(NPUSH, 0x1)  m(NPOP, 0x2)  m(JSR,  0x3)  \
+    m(LDA,  0x4)  m(LDF,   0x5)  m(LDC,  0x6)  m(INTR, 0x7)  \
+    m(NAL,  0x8)  m(NFL,   0x9)  m(NAS,  0xa)  m(NFS,  0xb)  \
 
 #define PRIM_ENUM_INIT(word,N) word = (0x80 + N),
 enum PRIM { MONITOR_3IF_FOR_PRIM(PRIM_ENUM_INIT) };
-
-/* Machine is written in push style, waiting for next byte.  There are
-   multiple suspend points. */
-#define NEXT_LABEL(s,var,label)                         \
-    do {						\
-	s->next = &&label;				\
-	return 0;                                       \
-      label: 						\
-        (var) = key;                                    \
-    } while(0)
-#define NEXT(s,var)                             \
-    NEXT_LABEL(s,var,GENSYM(label_))
 
 struct monitor_3if;
 struct monitor_3if {
@@ -71,10 +60,9 @@ struct monitor_3if {
 
     /* Internal interpreter state */
     /* 5 */ void *next;  // continuation after byte input
-    /* 6 */ void *cont;  // continuation after end of loop
-    /* 7 */ void (*transfer)(struct monitor_3if *s);  // what to do inside loop
-    /* 8 */ struct cbuf *out; // output buffer
-    /* 9 */ uint16_t count; uint8_t offset; uint8_t byte;
+    /* 6 */ void (*transfer)(struct monitor_3if *s);  // what to do inside loop
+    /* 7 */ struct cbuf *out; // output buffer
+    /* 8 */ uint16_t count; uint8_t offset; uint8_t byte;
 
 };
 
@@ -108,15 +96,37 @@ void to_state  (struct monitor_3if *s) { ((uint8_t*)s)[s->offset++] = s->byte; }
 void push_stack(struct monitor_3if *s) { *(s->ds)++ = s->byte; }
 void pop_stack (struct monitor_3if *s) { s->byte = *--(s->ds); }
 
-static inline uintptr_t push_key(struct monitor_3if *s, uint8_t key) {
+
+/* Machine is written in push style, waiting for next byte.
+   Each occurrence of NEXT is a suspend point. */
+#define NEXT_LABEL(s,var,label)                         \
+    do {						\
+	s->next = &&label;				\
+	return 0;                                       \
+      label: 						\
+        (var) = key;                                    \
+    } while(0)
+#define NEXT(s,var)                             \
+    NEXT_LABEL(s,var,GENSYM(label_))
+
+static inline uintptr_t monitor_3if_push_key(struct monitor_3if *s, uint8_t key) {
     enum PRIM op;
     if (s->next) goto *(s->next);
   next:
+    NEXT(s,s->count);
+    if (s->count == 0) {
+        // 0-size packets are treated as NOP in most uc_tools
+        // encodings (notably SLIP) and are often used as heartbeat /
+        // sync, so send a 0-size reply
+        cbuf_put(s->out, 0);
+        goto next;
+    }
     NEXT(s,op);
-    LOG("op=%02x\n", op);
+    // LOG("n=%d, op=%02x\n", s->count, op);
+    s->count--;
     switch(op) {
 
-    case ACK:                              goto ack;
+    case ACK: if (s->count != 0) goto err; else goto ack;
 
         /* LOAD */
 
@@ -135,48 +145,47 @@ static inline uintptr_t push_key(struct monitor_3if *s, uint8_t key) {
     case LDC:   s->offset = REG(code);     goto to_reg;
 
         /* EXECUTE */
-
     case JSR:   s->code(s);                goto ack;
     case INTR:  s->code(s);                goto next;
 
     }
 
-    /* Protocol error. */
+  err:
+    // LOG("err\n");
     return 1;
 
   loop_from:
+    if (s->count != 1) goto err;
     // needs s->transfer
-    NEXT(s, s->count);
+    NEXT(s,s->count);
     cbuf_put(s->out, s->count);
-    s->cont = &&next;
     while(s->count--) { s->transfer(s); cbuf_put(s->out, s->byte);}
-    goto *(s->cont);
+    goto next;
 
   to_reg:
     // needs s->offset
     s->transfer = to_state;
-    s->count = sizeof(uintptr_t);
-    goto loop_to_inner;
+    if (s->count != sizeof(uintptr_t)) goto err;
   loop_to:
     // needs s->transfer
-    NEXT(s, s->count);
-  loop_to_inner:
     while(s->count--) { NEXT(s, s->byte); s->transfer(s); }
-    goto ack;
-
   ack:
-    cbuf_put(s->out, 0); // 0-size reply
+    // 0-size packets are NOP, so send a non-zero size ack
+    cbuf_put(s->out, 1);
+    cbuf_put(s->out, 0);
     goto next;
 }
 
-uintptr_t monitor_3if_write(struct monitor_3if *s, const uint8_t *buf, uint32_t len) {
+uintptr_t monitor_3if_write(struct monitor_3if *s,
+                            const uint8_t *buf, uint32_t len) {
     for (uint32_t i=0; i<len; i++) {
-        uintptr_t status = push_key(s, buf[i]);
+        uintptr_t status = monitor_3if_push_key(s, buf[i]);
         if (status) return status;
     }
     return 0;
 }
-void monitor_3if_init(struct monitor_3if *s, struct cbuf *out, uint8_t *ds_buf, uint8_t *rs_buf) {
+void monitor_3if_init(struct monitor_3if *s,
+                      struct cbuf *out, uint8_t *ds_buf, uint8_t *rs_buf) {
     memset(s,0,sizeof(*s));
     cbuf_clear(out);
     s->out = out;
