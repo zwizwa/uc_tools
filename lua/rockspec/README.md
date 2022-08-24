@@ -1,3 +1,5 @@
+See elfutils/README.md for full instructions for elfutils
+
 To keep things simple, all dependencies are copied into a separate git
 archive, which is then pushed to github.  The .rockspec refers to a
 tag/version in the github repository. The conversion to .zip is then

@@ -76,7 +76,9 @@ local function die_unpack_memoize(die, nodes)
    -- 'children' but the structure is deep enough already.
 
    node.tag = inv_DW_TAG[C.die_tag(die)]
-   assert(node.tag)
+   if not node.tag then
+      log("WARNING: bad tag: " .. (C.die_tag(die) or nil) .. "\n")
+   end
 
    local attrs = node
    nodes[id] = node
@@ -86,7 +88,10 @@ local function die_unpack_memoize(die, nodes)
       local at_name = inv_DW_AT[at_code]
       if at_name ~= 'sibling' then
          if not at_name then
-            error("attribute code " .. at_code .. " not supported")
+            -- Don't raise error for future compat.
+            -- error("attribute code " .. at_code .. " not supported")
+            -- Instead provide generic name.
+            at_name = string.format("AT_0x%x", at_code)
          end
          local at_val = C.die_attr(die, at_code)
          if (elfutils.metatables.die == getmetatable(at_val)) then

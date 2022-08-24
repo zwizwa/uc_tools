@@ -31,6 +31,7 @@
     m(unspecified_parameters)                   \
     m(GNU_call_site)                            \
     m(GNU_call_site_parameter)                  \
+    m(atomic_type)                              \
 
 #define FOR_DW_AT(m)                            \
     m(producer)                                 \
@@ -48,6 +49,7 @@
     m(location)                                 \
     m(decl_file)                                \
     m(decl_line)                                \
+    m(decl_column)                              \
     m(type)                                     \
     m(data_member_location)                     \
     m(sibling)                                  \
@@ -63,11 +65,13 @@
     m(entry_pc)                                 \
     m(call_file)                                \
     m(call_line)                                \
+    m(specification)                            \
     m(GNU_call_site_value)                      \
     m(GNU_call_site_target)                     \
     m(GNU_tail_call)                            \
     m(GNU_all_tail_call_sites)                  \
     m(GNU_all_call_sites)                       \
     m(GNU_macros)                               \
+
 
 #endif
