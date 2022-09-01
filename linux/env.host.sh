@@ -6,7 +6,7 @@
 [ -z "$GCC" ] && GCC=gcc
 
 # Only enable -Werror for development builds!
-CFLAGS_ERROR=-Werror
+# CFLAGS_ERROR=-Werror
 [ -z "$CFLAGS_ERROR" ] && CFLAGS_ERROR=-Wno-error
 
 # The path of least resistance is to just use gnu99 on linux.
