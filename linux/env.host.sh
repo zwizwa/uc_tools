@@ -5,16 +5,19 @@
 [ -z "$UC_TOOLS" ] && UC_TOOLS=..
 [ -z "$GCC" ] && GCC=gcc
 
-# Only enable -Werror for development builds!
-# CFLAGS_ERROR=-Werror
-[ -z "$CFLAGS_ERROR" ] && CFLAGS_ERROR=-Wno-error
 
-# The path of least resistance is to just use gnu99 on linux.
-# -std=c99
+# Note that this used to default to -Werror disabled, but it has
+# caused a lot of issues in the past so enable it by default.  It can
+# still be disabled if necessary (e.g. in the Nix package build there
+# are some harmless warnings).
+
+[ -z "$CFLAGS_ERROR" ] && CFLAGS_ERROR=-Werror
 
 
 # Keep optimization enabled by default.  Also, nix complains:
 # warning _FORTIFY_SOURCE requires compiling with optimization (-O)
+
+# Note that the path of least resistance is to just use gnu99 on linux.
 
 
 CFLAGS="$CFLAGS \
