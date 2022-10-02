@@ -32,13 +32,22 @@ static inline const lua_Number L_number(lua_State *L, int index) {
     return n;
 }
 
-static inline void new_lua_metatable(lua_State *L, const char *t_name, int (*gc)(lua_State *)) {
+static inline void new_lua_metatable(lua_State *L, const char *t_name,
+                                     int (*gc)(lua_State *)) {
     luaL_newmetatable(L, t_name);
     luaL_getmetatable(L, t_name);
     lua_pushstring(L, t_name); lua_setfield(L, -2, "__name");
     lua_pushcfunction(L, gc);  lua_setfield(L, -2, "__gc");
     lua_pop(L, -1);
 }
+
+#define DEF_CFUN(_name) { \
+    lua_pushcfunction (L, _name##_cmd); \
+    lua_setfield (L, -2, #_name); \
+    }
+// To be used for macro lists that include type as first arg.  Just ignore type.
+#define TDEF_CFUN(_t,_name) \
+    DEF_CFUN(_name)
 
 
 

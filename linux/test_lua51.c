@@ -1,19 +1,10 @@
+// See comments in mod file
+#include "mod_test_lua51.c"
+
+// This file is just a wrapper, instantiating the mod code.
+
 #include <unistd.h>
-
-// Build against 5.1 for best compatibility with both Lua and LuaJIT
-//#include <lua5.1/lua.h>
-//#include <lua5.1/lauxlib.h>
-
-#include <lua.h>
-#include <lauxlib.h>
-
-// apt-get install liblua5.1-0-dev
-
-// To link this on Linux, it doesn't seem necessary to resolve all the
-// symbols at .so link time.  Lua binary provides them on ldopen.
-
-
-static int wait_msec (lua_State *L) {
+static int wait_msec_cmd (lua_State *L) {
     int msec = (int) luaL_checknumber (L, -1);
     lua_pop (L, 1);
     usleep (msec * 1000);
@@ -24,9 +15,14 @@ static int wait_msec (lua_State *L) {
 
 
 int luaopen_test_lua51 (lua_State *L) {
+
+    new_lua_metatable(L, pbuf_a_T, pbuf_a_gc);
+
+    /* This table is what is returned by 'require' */
     lua_newtable(L);
-    lua_pushcfunction (L, wait_msec);
-    lua_setfield (L, -2, "wait_msec");
-    /* ... more push operations ... */
+
+    DEF_CFUN(wait_msec);
+    DEF_CFUN(pbuf_a_new);
+
     return 1;
 }
