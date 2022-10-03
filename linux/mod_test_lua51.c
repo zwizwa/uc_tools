@@ -19,3 +19,24 @@ void pbuf_a_init(struct pbuf_a *a) {
 #include "ns_lua_struct.h"
 #undef NS
 
+
+/* Parameterized tests for heap data structure (software timer) */
+#define TEST_LOG(...)
+#include "mod_test_heap.c"
+
+static int fun_wrap_i_iiii(struct lua_State *L,
+                          int (*fun)(int,int,int,int)) {
+    int rv = fun(L_number(L,-4),
+                 L_number(L,-3),
+                 L_number(L,-2),
+                 L_number(L,-1));
+    lua_pushnumber(L, rv);
+    return 1;
+}
+
+
+#define for_heap_tests(m)                        \
+    m(i_iiii, heap_test1)                         \
+
+
+for_heap_tests(DEF_FUN_CMD)

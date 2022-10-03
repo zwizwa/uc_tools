@@ -1,3 +1,7 @@
+// Include before anything else.  This will implement ABORT in ERROR
+// and ASSERT messages via setjmp/longjmp.
+#include "mod_abort_longjmp.c"
+
 // See comments in mod file
 #include "mod_test_lua51.c"
 
@@ -23,6 +27,9 @@ int luaopen_test_lua51 (lua_State *L) {
 
     DEF_CFUN(wait_msec);
     DEF_CFUN(pbuf_a_new);
+
+    for_heap_tests(DEF_TCFUN);
+
 
     return 1;
 }

@@ -46,9 +46,16 @@ static inline void new_lua_metatable(lua_State *L, const char *t_name,
     lua_setfield (L, -2, #_name); \
     }
 // To be used for macro lists that include type as first arg.  Just ignore type.
-#define TDEF_CFUN(_t,_name) \
+#define DEF_TCFUN(_t,_name) \
     DEF_CFUN(_name)
 
+
+
+/* Generic macro for instantiating function wrappers. */
+#define DEF_FUN_CMD(typ, fun) \
+    static int fun##_cmd(lua_State *L) { \
+        return fun_wrap_##typ(L, fun); \
+    }
 
 
 #endif
