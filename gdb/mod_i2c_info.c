@@ -9,14 +9,14 @@
 struct i2c_info {
     void *next;
     int32_t left;
-    struct i2c_bus *bus;
+    struct i2c_port *bus;
     union {
         struct i2c_start_state     i2c_start;
         struct i2c_send_byte_state i2c_send_byte;
         struct i2c_stop_state      i2c_stop;
     } sub;
 };
-void i2c_info_init(struct i2c_info *s, struct i2c_bus *bus, uint32_t left) {
+void i2c_info_init(struct i2c_info *s, struct i2c_port *bus, uint32_t left) {
     ZERO(s);
     s->bus = bus;
     s->left = left;

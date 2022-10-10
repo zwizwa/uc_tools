@@ -35,7 +35,7 @@
 
 struct i2c_track {
     void *next;
-    struct i2c_bus *i2c_bus;
+    struct i2c_port *i2c_port;
     struct pbuf *p;
     uint16_t sreg;  // shift register (8 x data + ack)
     uint16_t byte;  // byte count
@@ -45,9 +45,9 @@ struct i2c_track {
     uint8_t flags;
 };
 struct i2c_track i2c_track;
-void i2c_track_init(struct i2c_track *s, struct i2c_bus *i2c_bus) {
+void i2c_track_init(struct i2c_track *s, struct i2c_port *i2c_port) {
     memset(s,0,sizeof(*s));
-    s->i2c_bus = i2c_bus;
+    s->i2c_port = i2c_port;
     s->bus = 0b11;
 }
 // CD -> CD
@@ -108,7 +108,7 @@ uint32_t i2c_track_tick(struct i2c_track *s) {
                     if (s->flags & I2C_FLAG_TRANSMIT) {
                         // In transmit mode, we release the line since
                         // other end needs to acknowledge.
-                        i2c_write_sda(s->i2c_bus,1);
+                        i2c_write_sda(s->i2c_port,1);
                     }
                     else if (s->byte == 0) {
                         // Inaddress receive mode, we only acknowledge
@@ -117,10 +117,10 @@ uint32_t i2c_track_tick(struct i2c_track *s) {
                         uint16_t addr    = (s->sreg >> 1) & 0x7f;
                         I2C_LOG("addr = 0x%02x\n", addr);
                         if (0x10 == addr) { // FIXME
-                            i2c_write_sda(s->i2c_bus,0); // ack
+                            i2c_write_sda(s->i2c_port,0); // ack
                         }
                         else {
-                            i2c_write_sda(s->i2c_bus,1); // nack
+                            i2c_write_sda(s->i2c_port,1); // nack
                         }
                         (void)receive; // FIXME
                     }
@@ -128,17 +128,17 @@ uint32_t i2c_track_tick(struct i2c_track *s) {
                         // In data receive mode there are a number of
                         // conditions that can cause a nack, but we
                         // will just acknowledge here.
-                        i2c_write_sda(s->i2c_bus,0);
+                        i2c_write_sda(s->i2c_port,0);
                     }
                 }
                 else {
                     // The data bit depends on what mode we're in.
                     if (s->flags & I2C_FLAG_TRANSMIT) {
-                        i2c_write_sda(s->i2c_bus,1); // FIXME: write actual data.
+                        i2c_write_sda(s->i2c_port,1); // FIXME: write actual data.
                     }
                     else {
                         // Release the line in receive mode.
-                        i2c_write_sda(s->i2c_bus,1);
+                        i2c_write_sda(s->i2c_port,1);
                     }
                 }
 

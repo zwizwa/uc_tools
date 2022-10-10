@@ -5,7 +5,7 @@
 
 /* Blocking wrappers. */
 uint32_t i2c_transmit(
-    struct i2c_bus *bus,
+    struct i2c_port *bus,
     uint32_t slave,
     const uint8_t *hdr, uint32_t hdr_len,
     const uint8_t *data, uint32_t data_len) {
@@ -15,7 +15,7 @@ uint32_t i2c_transmit(
     return s.ctrl.sr;
 }
 uint32_t i2c_receive(
-    struct i2c_bus *bus,
+    struct i2c_port *bus,
     uint32_t slave,
     uint8_t *data, uint32_t data_len) {
     i2c_receive_t s;
@@ -24,7 +24,7 @@ uint32_t i2c_receive(
     return s.ctrl.sr;
 }
 
-void i2c_stop(struct i2c_bus *bus) {
+void i2c_stop(struct i2c_port *bus) {
     i2c_stop_t s;
     i2c_stop_init(&s, bus);
     while (SM_WAITING == i2c_stop_tick(&s));

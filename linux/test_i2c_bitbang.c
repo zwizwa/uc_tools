@@ -43,7 +43,7 @@ void cycle_counter_next(void) {
 struct i2c_ports {
     uint8_t m, s;
 } i2c_ports;
-struct i2c_bus {
+struct i2c_port {
 };
 void i2c_ports_init(struct i2c_ports *p) {
     // Both high impedance.
@@ -58,29 +58,29 @@ void i2c_write_port(uint8_t *port, uint8_t mask, int bitval) {
     *port &= ~mask;
     if (bitval) *port |= mask;
 }
-int i2c_read_sda(struct i2c_bus *);
-int i2c_read_scl(struct i2c_bus *);
+int i2c_read_sda(struct i2c_port *);
+int i2c_read_scl(struct i2c_port *);
 
 
 /* Tracker / slave. */
-#define i2c_write_sda(bus,bitval)  i2c_write_port(&i2c_ports.s, I2C_TRACK_SDA, bitval)
-#define i2c_write_scl(bus,bitval)  i2c_write_port(&i2c_ports.s, I2C_TRACK_SCL, bitval)
+#define i2c_write_sda(port,bitval)  i2c_write_port(&i2c_ports.s, I2C_TRACK_SDA, bitval)
+#define i2c_write_scl(port,bitval)  i2c_write_port(&i2c_ports.s, I2C_TRACK_SCL, bitval)
 #include "gdb/mod_i2c_track.c"
 #undef  i2c_write_sda
 #undef  i2c_write_scl
 
 /* Master impl + info packet write. */
-#define i2c_write_sda(bus,bitval)  i2c_write_port(&i2c_ports.m, I2C_TRACK_SDA, bitval)
-#define i2c_write_scl(bus,bitval)  i2c_write_port(&i2c_ports.m, I2C_TRACK_SCL, bitval)
+#define i2c_write_sda(port,bitval)  i2c_write_port(&i2c_ports.m, I2C_TRACK_SDA, bitval)
+#define i2c_write_scl(port,bitval)  i2c_write_port(&i2c_ports.m, I2C_TRACK_SCL, bitval)
 #include "gdb/mod_i2c_bitbang.c"
 #include "gdb/mod_i2c_info.c"
 #undef  i2c_write_sda
 #undef  i2c_write_scl
 
-int i2c_read_sda(struct i2c_bus *s) {
+int i2c_read_sda(struct i2c_port *s) {
     return !!(i2c_read_bus() & I2C_TRACK_SDA);
 }
-int i2c_read_scl(struct i2c_bus *s) {
+int i2c_read_scl(struct i2c_port *s) {
     return !!(i2c_read_bus() & I2C_TRACK_SCL);
 }
 
@@ -98,7 +98,7 @@ int i2c_read_scl(struct i2c_bus *s) {
 int main(void) {
     struct i2c_track i2c_track = {};
     struct i2c_info  i2c_info = {};
-    struct i2c_bus *bus =  NULL;  // DUMMY, we use global bus
+    struct i2c_port *bus =  NULL;  // DUMMY, we use global bus
 
     i2c_ports_init(&i2c_ports);
     i2c_track_init(&i2c_track, bus);
