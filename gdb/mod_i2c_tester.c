@@ -125,22 +125,22 @@ int map_i2c_tester(struct tag_u32 *req) {
 
 
 /* Blocking wrappers for mod_i2c_bitbang.c state machines. */
-int send_byte(int byte) {
+int send_byte(struct i2c_bus *bus, int byte) {
     struct i2c_send_byte_state s;
-    i2c_send_byte_init(&s, byte);
+    i2c_send_byte_init(&s, bus, byte);
     while(SM_WAITING == i2c_send_byte_tick(&s));
     return s.nack;
 }
-int recv_byte(int nack) {
+int recv_byte(struct i2c_bus *bus, int nack) {
     struct i2c_recv_byte_state s;
-    i2c_recv_byte_init(&s, nack);
+    i2c_recv_byte_init(&s, bus, nack);
     while(SM_WAITING == i2c_recv_byte_tick(&s));
     return s.val;
 }
 
-void i2c_start(void) {
+void i2c_start(struct i2c_bus *bus) {
     struct i2c_start_state s;
-    i2c_start_init(&s);
+    i2c_start_init(&s, bus);
     while(SM_WAITING == i2c_start_tick(&s));
 }
 
@@ -158,49 +158,49 @@ void info_ack(int nack) {
     else
         info_putchar('n');
 }
-int info_send_byte(uint8_t b) {
-    int nack = send_byte(b);
+int info_send_byte(struct i2c_bus *bus, uint8_t b) {
+    int nack = send_byte(bus, b);
     // infof(" %02x %d", b, nack);
     infof(" %02x%s", b, nack ? "(nack)" : "");
     // infof(" %02x", b);
     return nack;
 }
-int info_recv_byte(int nack) {
+int info_recv_byte(struct i2c_bus *bus, int nack) {
 #if I2C_DEBUG_SPACING
     I2C_NDELAY(s, 2); // spacing on scope
 #endif
-    int b = recv_byte(nack);
+    int b = recv_byte(bus, nack);
     infof(" %02x", b);
     return b;
 }
 
-KEEP void eeprom_write(uint8_t page, const uint8_t *buf, uintptr_t len) {
-    i2c_start();
+KEEP void eeprom_write(struct i2c_bus *bus, uint8_t page, const uint8_t *buf, uintptr_t len) {
+    i2c_start(bus);
     infof(" S");
 
     // return value 1 means nack
-    if (info_send_byte(i2c_tester_state.addr << 1 | I2C_W)) goto nack;
-    if (info_send_byte(page)) goto nack;
+    if (info_send_byte(bus, i2c_tester_state.addr << 1 | I2C_W)) goto nack;
+    if (info_send_byte(bus, page)) goto nack;
     for (uintptr_t i=0; i<len; i++) {
-        if (info_send_byte(buf[i])) goto nack;
+        if (info_send_byte(bus, buf[i])) goto nack;
     }
     goto stop;
   nack:
     infof("nack\n");
   stop:
     infof(" P");
-    i2c_stop();
+    i2c_stop(bus);
     infof("\n");
     return;
 }
 
-void test_eeprom_read_1(void) {
-    i2c_start();
-    int nack = info_send_byte(i2c_tester_state.addr << 1 | I2C_R);
+void test_eeprom_read_1(struct i2c_bus *bus) {
+    i2c_start(bus);
+    int nack = info_send_byte(bus, i2c_tester_state.addr << 1 | I2C_R);
     if (nack) goto stop;
-    info_recv_byte(0);
+    info_recv_byte(bus, 0);
   stop:
-    i2c_stop();
+    i2c_stop(bus);
 
     //I2C_NDELAY(s, 3);
     //I2C_DEBLOCK(s);
@@ -208,21 +208,22 @@ void test_eeprom_read_1(void) {
 }
 
 
-KEEP intptr_t test_eeprom_read(uint8_t offset, uint8_t *buf, uintptr_t len) {
+KEEP intptr_t test_eeprom_read(struct i2c_bus *bus,
+                               int8_t offset, uint8_t *buf, uintptr_t len) {
     intptr_t rv = -1;
 
-    i2c_start();
+    i2c_start(bus);
     infof(" S");
 
-    info_send_byte(i2c_tester_state.addr << 1 | I2C_W);
-    info_send_byte(offset);
+    info_send_byte(bus, i2c_tester_state.addr << 1 | I2C_W);
+    info_send_byte(bus, offset);
 
-    i2c_stop();
+    i2c_stop(bus);
 
-    i2c_start();
+    i2c_start(bus);
     infof(" S");
 
-    int nack = info_send_byte(i2c_tester_state.addr << 1 | I2C_R);
+    int nack = info_send_byte(bus, i2c_tester_state.addr << 1 | I2C_R);
     if (nack) {
         infof(" nack\n");
         goto stop;
@@ -233,13 +234,13 @@ KEEP intptr_t test_eeprom_read(uint8_t offset, uint8_t *buf, uintptr_t len) {
     intptr_t i;
     for (i=0; i<len; i++) {
         int nack = i >= len-1;
-        buf[i] = info_recv_byte(nack);
+        buf[i] = info_recv_byte(bus, nack);
     }
     rv = len;
 
   stop:
     infof(" P");
-    i2c_stop();
+    i2c_stop(bus);
 
     infof("\n");
 
@@ -258,20 +259,20 @@ void info_ascii(uint8_t *buf, uint32_t len) {
     info_putchar('\n');
 }
 
-void i2c_test_eeprom(void) {
+void i2c_test_eeprom(struct i2c_bus *bus) {
     if (0) {
-        i2c_start();
-        send_byte(123);
-        i2c_stop();
+        i2c_start(bus);
+        send_byte(bus, 123);
+        i2c_stop(bus);
     }
 
     if (0) {
-        test_eeprom_read_1();
+        test_eeprom_read_1(bus);
     }
     if (1) {
         uint8_t buf[8] = "abcdefg";
         uint8_t page = 0;
-        eeprom_write(page, buf, sizeof(buf));
+        eeprom_write(bus, page, buf, sizeof(buf));
     }
     if (1) {
         uint8_t offset = 0;
@@ -279,7 +280,7 @@ void i2c_test_eeprom(void) {
             uint8_t buf[16];
             for(int i=0; i<3; i++) {
                 memset(buf, 0, sizeof(buf));
-                test_eeprom_read(offset, buf, sizeof(buf));
+                test_eeprom_read(bus, offset, buf, sizeof(buf));
                 //test_eeprom_read(buf, sizeof(buf));
                 // hw_busywait_ms(100);
                 // FIXME: eeprom gets confused.  deblock solves it.
@@ -289,34 +290,35 @@ void i2c_test_eeprom(void) {
                 for(int c=0; c<sizeof(buf); c++) {
                     buf[c]++;
                 }
-                eeprom_write(offset, buf, sizeof(buf));
+                eeprom_write(bus, offset, buf, sizeof(buf));
             }
             offset += sizeof(buf);
         }
     }
 }
 
-KEEP void eeprom_write_read() {
+KEEP void eeprom_write_read(struct i2c_bus *bus) {
 
-    i2c_start();
+    i2c_start(bus);
 
-    info_send_byte(i2c_tester_state.addr << 1 | I2C_W);
-    info_send_byte(1);
+    info_send_byte(bus, i2c_tester_state.addr << 1 | I2C_W);
+    info_send_byte(bus, 1);
 
-    i2c_start();
+    i2c_start(bus);
 
-    send_byte(i2c_tester_state.addr << 1 | I2C_R);
+    send_byte(bus, i2c_tester_state.addr << 1 | I2C_R);
 
-    info_recv_byte(0);
-    info_recv_byte(0);
-    info_recv_byte(1);
+    info_recv_byte(bus, 0);
+    info_recv_byte(bus, 0);
+    info_recv_byte(bus, 1);
 
-    i2c_stop();
+    i2c_stop(bus);
 }
 
 /* Tiny command interpreter. To keep things simple, single letter
    commands are used. */
-KEEP void i2c_tester_command_write(const uint8_t *buf, uint32_t len) {
+KEEP void i2c_tester_command_write(struct i2c_bus *bus,
+                                   const uint8_t *buf, uint32_t len) {
     void *s = NULL;
     int val;
     for(int i=0; i<len; i++) {
@@ -334,16 +336,16 @@ KEEP void i2c_tester_command_write(const uint8_t *buf, uint32_t len) {
             infof("sda=%d", val);
             break;
         case 'e':
-            eeprom_write_read();
+            eeprom_write_read(bus);
             break;
         case 'w': {
             uint8_t buf[1] = {123};
-            eeprom_write(0, buf, sizeof(buf));
+            eeprom_write(bus, 0, buf, sizeof(buf));
             break;
         }
         case 'r': {
             uint8_t buf[1];
-            test_eeprom_read(0, buf, sizeof(buf));
+            test_eeprom_read(bus, 0, buf, sizeof(buf));
             break;
         }
         case '[':

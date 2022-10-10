@@ -9,14 +9,16 @@
 struct i2c_info {
     void *next;
     int32_t left;
+    struct i2c_bus *bus;
     union {
         struct i2c_start_state     i2c_start;
         struct i2c_send_byte_state i2c_send_byte;
         struct i2c_stop_state      i2c_stop;
     } sub;
 };
-void i2c_info_init(struct i2c_info *s, uint32_t left) {
+void i2c_info_init(struct i2c_info *s, struct i2c_bus *bus, uint32_t left) {
     ZERO(s);
+    s->bus = bus;
     s->left = left;
 }
 
@@ -34,8 +36,8 @@ void i2c_info_init(struct i2c_info *s, uint32_t left) {
 
 sm_status_t i2c_info_tick(struct i2c_info *s) {
     SM_RESUME(s);
-    SM_SUB_CATCH0(s, i2c_start);
-    if (SM_SUB_CATCH(s, i2c_send_byte, I2C_INFO_ADDR << 1)) {
+    SM_SUB_CATCH(s, i2c_start, s->bus);
+    if (SM_SUB_CATCH(s, i2c_send_byte, s->bus, I2C_INFO_ADDR << 1)) {
         I2C_LOG("l: nack@start\n");
         goto done;
     }
@@ -43,13 +45,13 @@ sm_status_t i2c_info_tick(struct i2c_info *s) {
     while ((info_bytes()) > 0 && (s->left-- > 0)) {
         uint8_t byte;
         info_read(&byte, 1);
-        if (SM_SUB_CATCH(s, i2c_send_byte, byte)) {
+        if (SM_SUB_CATCH(s, i2c_send_byte, s->bus, byte)) {
             I2C_LOG("l: nack@%d\n", s->left);
             goto done;
         }
     }
   done:
-    SM_SUB_CATCH0(s, i2c_stop);
+    SM_SUB_CATCH(s, i2c_stop, s->bus);
     SM_HALT(s);
 }
 
