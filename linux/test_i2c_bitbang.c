@@ -56,28 +56,28 @@ void i2c_write_port(uint8_t *port, uint8_t mask, int bitval) {
     *port &= ~mask;
     if (bitval) *port |= mask;
 }
-int i2c_read_sda(void);
-int i2c_read_scl(void);
+int i2c_read_sda(void *);
+int i2c_read_scl(void *);
 
 /* Tracker / slave. */
-#define i2c_write_sda(bitval)  i2c_write_port(&i2c_ports.s, I2C_TRACK_SDA, bitval)
-#define i2c_write_scl(bitval)  i2c_write_port(&i2c_ports.s, I2C_TRACK_SCL, bitval)
+#define i2c_write_sda(s,bitval)  i2c_write_port(&i2c_ports.s, I2C_TRACK_SDA, bitval)
+#define i2c_write_scl(s,bitval)  i2c_write_port(&i2c_ports.s, I2C_TRACK_SCL, bitval)
 #include "gdb/mod_i2c_track.c"
 #undef  i2c_write_sda
 #undef  i2c_write_scl
 
 /* Master impl + info packet write. */
-#define i2c_write_sda(bitval)  i2c_write_port(&i2c_ports.m, I2C_TRACK_SDA, bitval)
-#define i2c_write_scl(bitval)  i2c_write_port(&i2c_ports.m, I2C_TRACK_SCL, bitval)
+#define i2c_write_sda(s,bitval)  i2c_write_port(&i2c_ports.m, I2C_TRACK_SDA, bitval)
+#define i2c_write_scl(s,bitval)  i2c_write_port(&i2c_ports.m, I2C_TRACK_SCL, bitval)
 #include "gdb/mod_i2c_bitbang.c"
 #include "gdb/mod_i2c_info.c"
 #undef  i2c_write_sda
 #undef  i2c_write_scl
 
-int i2c_read_sda(void) {
+int i2c_read_sda(void *s) {
     return !!(i2c_read_bus() & I2C_TRACK_SDA);
 }
-int i2c_read_scl(void) {
+int i2c_read_scl(void *s) {
     return !!(i2c_read_bus() & I2C_TRACK_SCL);
 }
 
@@ -89,9 +89,13 @@ int i2c_read_scl(void) {
    before running the slave. */
 
 #include "macros.h"
+
+#define LOG_ASSERT(cond) do { LOG(#cond "\n"); ASSERT(cond); } while(0)
+
 int main(void) {
     struct i2c_track i2c_track = {};
     struct i2c_info  i2c_info = {};
+    void *s = NULL;
 
     i2c_ports_init(&i2c_ports);
     i2c_track_init(&i2c_track);
@@ -104,7 +108,7 @@ int main(void) {
         for(;;) {
             sm_status_t status1 = i2c_info_tick(&i2c_info);
             i2c_track.bus = i2c_read_bus();
-            //LOG_I2C("t: %d %d\n", i2c_read_scl(), i2c_read_sda());
+            LOG_I2C("t: %d %d\n", i2c_read_scl(s), i2c_read_sda(s));
             sm_status_t status2 = i2c_track_tick(&i2c_track);
             ASSERT(SM_WAITING == status2);
 

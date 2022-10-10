@@ -317,19 +317,20 @@ KEEP void eeprom_write_read() {
 /* Tiny command interpreter. To keep things simple, single letter
    commands are used. */
 KEEP void i2c_tester_command_write(const uint8_t *buf, uint32_t len) {
+    void *s = NULL;
     int val;
     for(int i=0; i<len; i++) {
         int c = buf[i];
         infof("c:%02x --", c);
         switch(c) {
         case 'c':
-            val = !i2c_read_scl();
-            i2c_write_scl(val);
+            val = !i2c_read_scl(s);
+            i2c_write_scl(s,val);
             infof("scl=%d", val);
             break;
         case 'd':
-            val = !i2c_read_sda();
-            i2c_write_sda(val);
+            val = !i2c_read_sda(s);
+            i2c_write_sda(s,val);
             infof("sda=%d", val);
             break;
         case 'e':

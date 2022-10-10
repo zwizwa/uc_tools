@@ -83,16 +83,16 @@ static inline void i2c_pin_set(uint32_t gpio, uint32_t pin, uint32_t val) {
         i2c_pin_low(gpio, pin);
 }
 
-static inline void i2c_write_sda(int bitval) {
+static inline void i2c_write_sda(void *s, int bitval) {
     i2c_pin_set(I2C_GPIO, I2C_PIN_SDA, bitval);
 }
-static inline void i2c_write_scl(int bitval) {
+static inline void i2c_write_scl(void *s, int bitval) {
     i2c_pin_set(I2C_GPIO, I2C_PIN_SCL, bitval);
 }
-static inline int i2c_read_sda(void) {
+static inline int i2c_read_sda(void *s) {
     return hw_gpio_read(I2C_GPIO, I2C_PIN_SDA);
 }
-static inline int i2c_read_scl(void) {
+static inline int i2c_read_scl(void *s) {
     return hw_gpio_read(I2C_GPIO, I2C_PIN_SCL);
 }
 
@@ -146,10 +146,10 @@ static inline int i2c_read_scl(void) {
 
 #define I2C_WAIT_STRETCH(s) {                                           \
         /* PRE: SCL released */                                         \
-        if (I2C_STRETCH) I2C_WHILE(s, !i2c_read_scl());                 \
+        if (I2C_STRETCH) I2C_WHILE(s, !i2c_read_scl(s));                \
     }
 #define I2C_WRITE_SCL_1(s) {                    \
-        i2c_write_scl(1);                       \
+        i2c_write_scl(s,1);                     \
         I2C_WAIT_STRETCH(s);                    \
     }
 
@@ -161,11 +161,11 @@ static inline int i2c_read_scl(void) {
 
 #define I2C_DEBLOCK(s) {                                                \
         for(s->clock=0; s->clock<16; s->clock++) {                      \
-            int sda1 = i2c_read_sda();                                  \
-            int scl1 = i2c_read_scl();                                  \
+            int sda1 = i2c_read_sda(s);                                 \
+            int scl1 = i2c_read_scl(s);                                 \
             if (sda1 && scl1) break;                                    \
-            i2c_write_scl(0); I2C_DELAY(s);                             \
-            i2c_write_scl(1); I2C_DELAY(s);  /* no stretch */           \
+            i2c_write_scl(s,0); I2C_DELAY(s);                           \
+            i2c_write_scl(s,1); I2C_DELAY(s);  /* no stretch */         \
         }                                                               \
         if (s->clock) {                                                 \
             I2C_LOG("m: WARNING: deblock clocks=%d\n", s->clock);       \
@@ -178,12 +178,12 @@ static inline int i2c_read_scl(void) {
         /* - idle:   SDA=1,SCL=1 */                                     \
         /* - repeat: SDA=?,SCL=0 */                                     \
         /* For repeated start: bring lines high without causing a stop. */ \
-        i2c_write_sda(1);   I2C_DELAY(s);                               \
+        i2c_write_sda(s,1); I2C_DELAY(s);                               \
         I2C_WRITE_SCL_1(s); I2C_DELAY(s);                               \
         /* START transition = SDA 1->0 while SCL=1 */                   \
-        i2c_write_sda(0);   I2C_DELAY(s);                               \
+        i2c_write_sda(s,0); I2C_DELAY(s);                               \
         /* Bring clock line low for first bit */                        \
-        i2c_write_scl(0);   I2C_DELAY(s);                               \
+        i2c_write_scl(s,0); I2C_DELAY(s);                               \
         /* POST: SDA=0, SCL=0 */                                        \
 }
 
@@ -206,26 +206,26 @@ sm_status_t i2c_start_tick(struct i2c_start_state *s) {
 
 #define I2C_SEND_BIT(s, val) {  \
         /* PRE: SDA=?, SCL=0 */                                         \
-        i2c_write_sda(val); I2C_DELAY(s);  /* set + propagate */        \
-        I2C_WRITE_SCL_1(s); I2C_DELAY(s);  /* set + wait read */        \
-        i2c_write_scl(0);                                               \
+        i2c_write_sda(s,val); I2C_DELAY(s);  /* set + propagate */      \
+        I2C_WRITE_SCL_1(s);   I2C_DELAY(s);  /* set + wait read */      \
+        i2c_write_scl(s,0);                                             \
         /* POST: SDA=x, SCL=0 */                                        \
 }
 
 #define I2C_RECV_BIT(s, lval) {                                         \
         /* PRE: SDA=?, SCL=0 */                                         \
-        i2c_write_sda(1);   I2C_DELAY(s);  /* release, allow slave write */ \
+        i2c_write_sda(s,1); I2C_DELAY(s);  /* release, allow slave write */ \
         I2C_WRITE_SCL_1(s); I2C_DELAY(s);  /* slave write propagation */ \
-        lval = i2c_read_sda();                                          \
-        i2c_write_scl(0);                                               \
+        lval = i2c_read_sda(s);                                         \
+        i2c_write_scl(s,0);                                             \
         /* POST: SDA=1, SCL=0 */                                        \
     }
 
-void i2c_info_busy(const char *tag) {
-    if (i2c_read_sda()) {
+void i2c_info_busy(void *s, const char *tag) {
+    if (i2c_read_sda(s)) {
         I2C_LOG("\nWARNING: %s: SDA=0\n", tag);
     }
-    if (i2c_read_scl()) {
+    if (i2c_read_scl(s)) {
         I2C_LOG("\nWARNING: %s: SCL=0\n", tag);
     }
 }
@@ -237,12 +237,12 @@ struct i2c_stop_state {
 void i2c_stop_init(struct i2c_stop_state *s) {
     s->next = 0;
 }
-#define I2C_STOP(s) {                           \
-        /* PRE: SDA=?, SCL=0 */                 \
-        i2c_write_sda(0);   I2C_DELAY(s);               \
-        I2C_WRITE_SCL_1(s); I2C_DELAY(s);               \
-        /* STOP transition = SDA 0->1 while SCL=1 */    \
-        i2c_write_sda(1);  I2C_DELAY(s);                 \
+#define I2C_STOP(s) {                                    \
+        /* PRE: SDA=?, SCL=0 */                          \
+        i2c_write_sda(s,0); I2C_DELAY(s);                \
+        I2C_WRITE_SCL_1(s); I2C_DELAY(s);                \
+        /* STOP transition = SDA 0->1 while SCL=1 */     \
+        i2c_write_sda(s,1);  I2C_DELAY(s);               \
         /* POST: SDA=1, SCL=1  (unless held by slave) */ \
 }
 sm_status_t i2c_stop_tick(struct i2c_stop_state *s) {

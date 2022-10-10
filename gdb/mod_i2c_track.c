@@ -106,7 +106,7 @@ uint32_t i2c_track_tick(struct i2c_track *s) {
                     if (s->flags & I2C_FLAG_TRANSMIT) {
                         // In transmit mode, we release the line since
                         // other end needs to acknowledge.
-                        i2c_write_sda(1);
+                        i2c_write_sda(s,1);
                     }
                     else if (s->byte == 0) {
                         // Inaddress receive mode, we only acknowledge
@@ -115,10 +115,10 @@ uint32_t i2c_track_tick(struct i2c_track *s) {
                         uint16_t addr    = (s->sreg >> 1) & 0x7f;
                         I2C_LOG("addr = 0x%02x\n", addr);
                         if (0x10 == addr) { // FIXME
-                            i2c_write_sda(0); // ack
+                            i2c_write_sda(s,0); // ack
                         }
                         else {
-                            i2c_write_sda(1); // nack
+                            i2c_write_sda(s,1); // nack
                         }
                         (void)receive; // FIXME
                     }
@@ -126,17 +126,17 @@ uint32_t i2c_track_tick(struct i2c_track *s) {
                         // In data receive mode there are a number of
                         // conditions that can cause a nack, but we
                         // will just acknowledge here.
-                        i2c_write_sda(0);
+                        i2c_write_sda(s,0);
                     }
                 }
                 else {
                     // The data bit depends on what mode we're in.
                     if (s->flags & I2C_FLAG_TRANSMIT) {
-                        i2c_write_sda(1); // FIXME: write actual data.
+                        i2c_write_sda(s,1); // FIXME: write actual data.
                     }
                     else {
                         // Release the line in receive mode.
-                        i2c_write_sda(1);
+                        i2c_write_sda(s,1);
                     }
                 }
 
@@ -215,16 +215,14 @@ static inline void hw_exti_do_ack(uint32_t pin) {
 }
 static uint32_t isr_count;
 void exti9_5_isr(void) {
+    void *s = NULL;
     /* We just need to be woken up on change, so it's ok if this
        handles a simultaneous change on 8 and 9.  */
     hw_exti_do_ack(8);
     hw_exti_do_ack(9);
     isr_count++;
-    i2c_track.bus = (i2c_read_scl() << 1) | i2c_read_sda();
+    i2c_track.bus = (i2c_read_scl(s) << 1) | i2c_read_sda(s);
     i2c_track_tick(&i2c_track);
-
-
-
 }
 // This extends hw_exti_arm() for multi-event setup.
 static inline void hw_exti_do_arm(uint32_t gpio, uint32_t pin, uint32_t trigger) {
