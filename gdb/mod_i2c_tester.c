@@ -25,10 +25,7 @@
 #include "sm_def.h"
 
 #include "mod_i2c_bitbang.c"
-#include "mod_i2c_track.c"
-
-
-
+#include "mod_i2c_track_stm32f103.c"
 
 
 struct i2c_tester_config {
