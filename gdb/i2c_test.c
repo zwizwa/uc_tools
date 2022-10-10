@@ -10,6 +10,7 @@
 #include "mod_lab.c"
 #include "mod_console.c"
 #include "mod_map_forth.c"
+#include "mod_i2c_stm32f103.c"
 #include "mod_i2c_tester.c"
 
 
