@@ -89,14 +89,14 @@ setmetatable(shrink, { __index = function(k,v) return dont_shrink end })
 -- Try halving first, then try decrementing.
 local function nat_shrink_to(min_val)
    return function(val)
-      return function(visit_nat)
+      return function(push_nat)
          if (val > min_val) then
             local v1 = min_val + math.floor((val - min_val) / 2)
             local v2 = val - 1
             -- log_desc({v1=v1,val=val})
             -- assert(v1 < val)
-            visit_nat(v1)
-            if v2  ~= v1 then visit_nat(v2) end
+            push_nat(v1)
+            if v2  ~= v1 then push_nat(v2) end
          end
       end
    end
@@ -122,16 +122,16 @@ end
 
 function shrink.list(shrink_el)
    return function(lst)
-      return function(visit_list)
+      return function(push_list)
          for i=1,#lst do
-            visit_list(lst_replace(lst, i))
+            push_list(lst_replace(lst, i))
          end
          for i,el_to_shrink in ipairs(lst) do
             -- log_desc({el_to_shrink=el_to_shrink})
             local for_shrunk = shrink_el(el_to_shrink)
             for_shrunk(
                function(el_shrunk)
-                  visit_list(lst_replace(lst, i, el_shrunk))
+                  push_list(lst_replace(lst, i, el_shrunk))
                end)
          end
       end
@@ -142,7 +142,7 @@ function shrink.map(shrink_els)
    -- log_desc({shrink_els = shrink_els})
    return function(map)
       -- log_desc({shrink_map = map})
-      return function(visit_map)
+      return function(push_map)
          -- assert(type(f) == 'function')
          for key,shrink_el in pairs(shrink_els) do
             local for_map_el_shrinks = shrink_el(map[key])
@@ -152,14 +152,15 @@ function shrink.map(shrink_els)
                   for k in pairs(shrink_els) do map1[k] = map[k] end
                   -- log_desc({shrunk_el=shrunk_el})
                   map1[key] = shrunk_el
-                  visit_map(map1)
+                  push_map(map1)
                end)
          end
       end
    end
 end
 
--- Perform shrink using the visitor-style shrinkers.
+-- Perform shrink. This stap adds early abort to the visitor-style
+-- shrinkers that otherwise iterate over all the shrinks.
 function m.run_shrink(shrinker, prop, args)
    -- log_desc({shrinking = args})
    local function done()
@@ -169,7 +170,6 @@ function m.run_shrink(shrinker, prop, args)
 
    while true do
       local for_top_shrinks = shrinker(args)
-
       local nb_shrinks = 0
       local smaller = nil
       pcall(
@@ -198,8 +198,5 @@ function m.run_shrink(shrinker, prop, args)
 
    end
 end
-
-
-
 
 return m
