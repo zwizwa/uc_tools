@@ -14,8 +14,12 @@ local shrink = qctools.shrink
 -- this name from time to time to make sure it is really not accessed.
 local priv = '_priv'
 
-
 local tc = {}
+
+-- All properties take tc as an environment object.  This contains a
+-- 'c' member with functions from linux/mod_test_lua51.c that expose C
+-- state machines and corresponding test routines.
+tc.c = require('test_lua51')
 
 function tc.new()
    local tc_state = {
@@ -94,7 +98,15 @@ function tc:run_test(spec)
 
    local function pcall_prop(cfg)
       local ok, rv = pcall(eval_prop, r_tc, cfg)
-      if ok then return rv else return false end
+      if ok then
+         -- Property evaluated properly
+         return rv
+      else
+         -- When property raises an error, we treat it as if it
+         -- evaluated to false.
+         log_desc("pcall_prop error\n")
+         return false
+      end
    end
 
    -- Instantiate the type as generators
