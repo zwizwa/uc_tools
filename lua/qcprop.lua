@@ -1,11 +1,11 @@
 local m = {}
-m.assoc = {
+m.plus_assoc = {
    function(t)
       return { a = t.nat, b = t.nat }
    end,
-   function(env, args)
-      env:log_desc({args=args})
-      return args.a + args.b == args.b + args.a
+   function(env, arg)
+      env:log_desc({arg=arg})
+      return arg.a + arg.b == arg.b + arg.a
    end
 }
 return m

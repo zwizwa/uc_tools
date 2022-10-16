@@ -99,20 +99,12 @@ function tc:run_test(spec)
 
    -- Instantiate the type as generators
    local config_gens = config_type(gen)
-
-   assert(type(config_gens) == 'table')
-   local config_keys = {}
-   for k in pairs(config_gens) do table.insert(config_keys, k) end
-   table.sort(config_keys)
-
+   -- Convert map of generators to generator of map.
+   local config_gen = gen.map(config_gens)
+   -- Bind it to the seed in tc.
    local function gen_config()
       log(p.name .. " " .. p.size .. " " .. p.seed .. "\n")
-      local config = {}
-      for _, key in ipairs(config_keys) do
-         local gen = config_gens[key]
-         config[key] = self:random(gen, p.size)
-      end
-      return config
+      return self:random(config_gen, p.size)
    end
 
    local function run_test(config)

@@ -72,6 +72,30 @@ function gen.list(gen_el)
    end
 end
 
+-- Optionally a 'keys' argument specified the order of generation to
+-- remove dependency on implementation-dependent order of the pairs()
+-- iterator.
+function gen.map(gen_els, keys)
+   if nil == keys then
+      -- Re-generate it if not specified.
+      keys = {}
+      for k in pairs(gen_els) do
+         table.insert(keys, k)
+      end
+      table.sort(keys)
+   end
+   return function(seed, size)
+      local tab = {}
+      for _, key in ipairs(keys) do
+         local gen = gen_els[key]
+         local val, new_seed = gen(seed, size)
+         seed = new_seed
+         tab[key] = val
+      end
+      return tab, seed
+   end
+end
+
 -- FIXME: Also do sized.
 function gen.size(seed, size)
    return size, seed
