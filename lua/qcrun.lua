@@ -9,6 +9,10 @@ require('lure.log')
 local gen    = qctools.gen
 local shrink = qctools.shrink
 
+-- FIXME: Better bookkeeping
+qcprop.timer = require('qcsm').timer
+
+
 -- To implement private data only accessible by the test framework,
 -- use a name that is not know to the prop functions.  Maybe change
 -- this name from time to time to make sure it is really not accessed.
@@ -89,10 +93,102 @@ function tc:run_test(spec)
    p.name = spec[1]
    assert(p.name)
 
-   -- Access to test environment is always restricted.
-   local r_tc = restricted(self)
    -- Each test name indexes a pair containing type and property.
-   local config_type, eval_prop = unpack(qcprop[p.name])
+   local prop = qcprop[p.name]
+   assert(type(prop) == 'table')
+   -- FSM and pure tests are different
+   if prop.init then
+      return self:run_fsm_test(spec, prop)
+   else
+      return self:run_pure_test(spec, prop)
+   end
+end
+
+-- Map exception to false.
+local function e2f_pcall(...)
+   local ok, rv = pcall(...)
+   return ok and rv
+end
+
+function tc:run_fsm_test(spec, prop)
+   local p = self[priv]
+   log_desc(prop)
+
+   local cmd_names = {}
+   for cmd in pairs(prop.cmd) do
+      table.insert(cmd_names, cmd)
+   end
+
+   self:set_loglevel(1)
+
+   local init_gen = gen.map(prop.init.typ(gen))
+
+   local function gen_init()
+      log(p.name .. " " .. p.size .. " " .. p.seed .. "\n")
+      return self:random(init_gen, p.size)
+   end
+
+   local function run_init(init)
+      local ok, state = pcall(prop.init.app, self, init)
+      assert(ok)
+      local nb_cmds = self:random(gen.range(1, p.size))
+      -- log_desc({nb_cmds = nb_cmds})
+      for cmd_nb=1,nb_cmds do
+         local legal_names = {}
+         for _,cmd in ipairs(cmd_names) do
+            if prop.cmd[cmd].pre(state) then
+               table.insert(legal_names, cmd)
+            end
+         end
+         log_desc({legal_names=legal_names})
+         assert(#legal_names > 0)
+         local cmd_index = self:random(gen.range(1,#legal_names))
+         local cmd_name = legal_names[cmd_index]
+         log_desc({cmd_name=cmd_name})
+         local cmd = prop.cmd[cmd_name]
+         assert(cmd)
+
+         local cmd_arg_gen = gen.map(cmd.typ(gen)) -- cache?
+         local cmd_arg = self:random(cmd_arg_gen, p.size)
+         log_desc({cmd_arg=cmd_arg})
+         -- local ok = e2f_pcall(cmd.app, state)
+         cmd.app(state, cmd_arg)
+         assert(ok)
+
+         log_desc({state=state})
+
+         -- prop.cmd[cmd].app
+
+      end
+   end
+
+   if #spec == 1 then
+      -- Generate a test configuration from arg_type
+      p.size = 1
+      while (p.size < p.max_size) do
+         run_init(gen_init())
+         self:grow_size()
+      end
+   else
+      p.size = spec[2]
+      p.seed = spec[3]
+      -- log_desc({size=p.size,seed=p.seed})
+      run_init(gen_init())
+   end
+
+end
+
+-- Expected geometric growth
+function tc:grow_size()
+   local p = self[priv]
+   local inc = self:random(gen.nat1, 1 + math.floor(p.size / 5))
+   p.size = p.size + inc
+end
+
+function tc:run_pure_test(spec, prop)
+   local p = self[priv]
+   local r_tc = restricted(self)
+   local config_type, eval_prop = unpack(prop)
    assert(type(config_type) == 'function')
    assert(type(eval_prop) == 'function')
 
@@ -119,7 +215,7 @@ function tc:run_test(spec)
       return self:random(config_gen, p.size)
    end
 
-   local function run_test(config)
+   local function run_config(config)
       self:log_desc({config=config})
 
       local ok, rv = pcall_prop(config)
@@ -149,23 +245,20 @@ function tc:run_test(spec)
          end
       end
 
-      -- Expected geometric growth
-      local inc = self:random(gen.nat1, 1 + math.floor(p.size / 5))
-      p.size = p.size + inc
-
    end
 
    if #spec == 1 then
       -- Generate a test configuration from arg_type
       p.size = 0
       while (p.size < p.max_size) do
-         run_test(gen_config())
+         run_config(gen_config())
+         self:grow_size()
       end
    else
       p.size = spec[2]
       p.seed = spec[3]
       -- log_desc({size=p.size,seed=p.seed})
-      run_test(gen_config())
+      run_config(gen_config())
    end
 end
 

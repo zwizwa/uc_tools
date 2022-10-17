@@ -39,24 +39,26 @@ function timer.init.app(env, arg)
    return state
 end
 -- Sorted insert
-function timer.cmd.add.typ(t)     return { time = t.nat, event = t.nat} end
-function timer.cmd.add.pre(s,arg) return #s.queue < s.max_size end
+function timer.cmd.add.pre(s) return #s.queue < s.max_size end
+function timer.cmd.add.typ(t) return { time = t.nat, event = t.nat} end
 function timer.cmd.add.app(s,arg)
+   s.env:log_desc({cmd='add'})
    table.insert(s.queue, {time=arg.time, event=arg.event})
    function less_than(e1, e2) return e1.time < e2.time end
-   table.sort(s.queue, less_tan)
-   return #s.queue == n0 + 1
+   table.sort(s.queue, less_than)
+   return true
 end
 -- Pop top element
-function timer.cmd.pop.typ(t)     return {} end
-function timer.cmd.pop.pre(s)     return #s.queue > 0 end
+function timer.cmd.pop.pre(s) return #s.queue > 0 end
+function timer.cmd.pop.typ(t) return {} end
 function timer.cmd.pop.app(s)
-   local el = table.remove(self.queue, 1)
+   local el = table.remove(s.queue, 1)
    return true
 end
 
 m.timer = timer
 
+return m
 
 
 -- REVIEW LATER
@@ -91,6 +93,9 @@ m.timer = timer
 --   precondition used as filter, and apply which rolls everything
 --   into one: model update, SUT update, model and SUT response and
 --   state validation.
+--
+-- . Generating command sequences with a good distribution is not
+--   easy!  E.g. outliers like 100x CMDA, 1xCMDB might be needed
 
 
 
