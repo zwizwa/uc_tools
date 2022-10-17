@@ -4,15 +4,14 @@
 -- commands while making sure all invariants hold.
 
 -- Basic idea:
--- . A FSM is an object with a typed new function.
--- . Runner will instantiate with random args.
+-- . A FSM is an object with a typed init function.
+-- . Runner will instantiate init function with random args.
 -- . A FSM api is a collection of typed transition functions (commands)
--- . Runner wil generate new command, and check if it is valid by evaluation precondition
--- . If valid, it will execute apply, which returns the result of applying postconditions
+-- . Each command has a precondition to indicate if it is valid in a particular state
+-- . Runner will pick a random sequence of commands based, using precondition to see what is valid
 
 -- All the verification logic is baked into the app routine.
--- E.g. this just predict and compare opaque API's result, or do
--- actual state comparsisons or other inspections.
+-- E.g. app does the bookkeping to predict SUT's behavor and compare results and/or state
 
 
 -- Example: Software timer test.  A sorted Lua list will do.  Note
@@ -28,15 +27,13 @@
 
 local m = {}
 
--- Each command has a dictionary.
+-- A test is an init function and a collection of commands descriptions.
 local timer = { init = {}, cmd = { add = {}, pop = {} } }
 
 -- Init
 function timer.init.typ(t) return { max_size = t.nat1 } end
 function timer.init.app(env, arg)
-   local state = { queue = {}, env = env, max_size = arg.max_size }
-   setmetatable(state, { __index = timer })
-   return state
+   return { queue = {}, env = env, max_size = arg.max_size }
 end
 -- Sorted insert
 function timer.cmd.add.pre(s) return #s.queue < s.max_size end
@@ -45,14 +42,14 @@ function timer.cmd.add.app(s,arg)
    table.insert(s.queue, {time=arg.time, event=arg.event})
    function less_than(e1, e2) return e1.time < e2.time end
    table.sort(s.queue, less_than)
-   return true
+   return true -- FIXME: apply to SUT and compare state
 end
 -- Pop top element
 function timer.cmd.pop.pre(s) return #s.queue > 0 end
 function timer.cmd.pop.typ(t) return {} end
 function timer.cmd.pop.app(s)
    local el = table.remove(s.queue, 1)
-   return true
+   return true -- FIXME: apply to SUT and compare state
 end
 
 m.timer = timer
