@@ -42,7 +42,6 @@ end
 function timer.cmd.add.pre(s) return #s.queue < s.max_size end
 function timer.cmd.add.typ(t) return { time = t.nat, event = t.nat} end
 function timer.cmd.add.app(s,arg)
-   s.env:log_desc({cmd='add'})
    table.insert(s.queue, {time=arg.time, event=arg.event})
    function less_than(e1, e2) return e1.time < e2.time end
    table.sort(s.queue, less_than)

@@ -112,53 +112,65 @@ end
 
 function tc:run_fsm_test(spec, prop)
    local p = self[priv]
-   log_desc(prop)
+   -- log_desc(prop)
 
+   -- Collect command names in a sorted list to remove dependency on
+   -- the order of pairs() iterator.
    local cmd_names = {}
+   assert(type(prop.cmd == 'table'))
    for cmd in pairs(prop.cmd) do
       table.insert(cmd_names, cmd)
    end
+   table.sort(cmd_names)
 
-   self:set_loglevel(1)
+   -- self:set_loglevel(1)  -- FIXME
 
+   -- Unpack generator for the init function.
    local init_gen = gen.map(prop.init.typ(gen))
-
    local function gen_init()
       log(p.name .. " " .. p.size .. " " .. p.seed .. "\n")
       return self:random(init_gen, p.size)
    end
 
-   local function run_init(init)
-      local ok, state = pcall(prop.init.app, self, init)
+   -- Same for all command arguments
+   local arg_gen= {}
+   for _,cmd_name in ipairs(cmd_names) do
+      local cmd = prop.cmd[cmd_name]
+      local cmd_arg_gen = gen.map(cmd.typ(gen))
+      arg_gen[cmd_name] = function() return self:random(cmd_arg_gen, p.size) end
+   end
+
+   local function run()
+      -- Create initial state
+      local init_args = gen_init()
+      local ok, state = pcall(prop.init.app, self, init_args)
       assert(ok)
+      -- Sequence a random number of state transition commands
       local nb_cmds = self:random(gen.range(1, p.size))
       -- log_desc({nb_cmds = nb_cmds})
       for cmd_nb=1,nb_cmds do
+         -- Determine what are legal transitions in this state.
          local legal_names = {}
          for _,cmd in ipairs(cmd_names) do
             if prop.cmd[cmd].pre(state) then
                table.insert(legal_names, cmd)
             end
          end
-         log_desc({legal_names=legal_names})
+         -- log_desc({legal_names=legal_names})
          assert(#legal_names > 0)
+         -- Pick a random legal command
          local cmd_index = self:random(gen.range(1,#legal_names))
          local cmd_name = legal_names[cmd_index]
-         log_desc({cmd_name=cmd_name})
-         local cmd = prop.cmd[cmd_name]
-         assert(cmd)
-
-         local cmd_arg_gen = gen.map(cmd.typ(gen)) -- cache?
-         local cmd_arg = self:random(cmd_arg_gen, p.size)
-         log_desc({cmd_arg=cmd_arg})
-         -- local ok = e2f_pcall(cmd.app, state)
-         cmd.app(state, cmd_arg)
+         -- Generate its argument list
+         local cmd_arg = (arg_gen[cmd_name])()
+         -- log_desc({cmd_arg=cmd_arg})
+         -- Apply it to the state.  The app() function will modify
+         -- state in-place and will return the result of all
+         -- assertions.  Exceptions are mapped to failures.
+         -- log_desc({cmd_name,cmd_arg})
+         local ok = e2f_pcall(prop.cmd[cmd_name].app, state, cmd_arg)
          assert(ok)
-
-         log_desc({state=state})
-
-         -- prop.cmd[cmd].app
-
+         -- log_desc({queue=state.queue})
       end
    end
 
@@ -166,14 +178,14 @@ function tc:run_fsm_test(spec, prop)
       -- Generate a test configuration from arg_type
       p.size = 1
       while (p.size < p.max_size) do
-         run_init(gen_init())
+         run()
          self:grow_size()
       end
    else
       p.size = spec[2]
       p.seed = spec[3]
       -- log_desc({size=p.size,seed=p.seed})
-      run_init(gen_init())
+      run()
    end
 
 end
