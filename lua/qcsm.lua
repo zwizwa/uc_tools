@@ -10,8 +10,8 @@
 -- . Each command has a precondition to indicate if it is valid in a particular state
 -- . Runner will pick a random sequence of commands based, using precondition to see what is valid
 
--- All the verification logic is baked into the app routine.
--- E.g. app does the bookkeping to predict SUT's behavor and compare results and/or state
+-- All the verification logic is baked into the run routine.
+-- E.g. run does the bookkeping to predict SUT's behavor and compare results and/or state
 
 
 -- Example: number heap (see mod_test_heap.c).
@@ -19,10 +19,10 @@
 -- Model it using a sorted Lua list.
 
 -- heap.init.typ: Type of initialization function.
--- heap.init.app: Initialization function.  The 'env' provides access to SUT etc...
+-- heap.init.run: Initialization function.  The 'env' provides access to SUT etc...
 -- heap.cmd.X.typ: Type of command
 -- heap.cmd.X.pre: Is particular command valid in this state
--- heap.cmd.X.app: Perform transition on model and SUT, perform asserts, return pass/fail bool.
+-- heap.cmd.X.run: Perform transition on model and SUT, perform asserts, return pass/fail bool.
 
 local m = {}
 
@@ -31,14 +31,14 @@ local heap = { init = {}, cmd = { insert = {}, pop = {} } }
 
 -- Init
 function heap.init.typ(t) return { max_size = t.range(1,512) } end
-function heap.init.app(tc, arg)
+function heap.init.run(tc, arg)
    return { queue = {}, tc = tc, max_size = arg.max_size,
             heap = tc.c.num_heap_a_new() }
 end
 -- Sorted insert
 function heap.cmd.insert.pre(s) return #s.queue < s.max_size end
 function heap.cmd.insert.typ(t) return { number = t.nat } end
-function heap.cmd.insert.app(s,arg)
+function heap.cmd.insert.run(s,arg)
    table.insert(s.queue, arg.number) ; table.sort(s.queue)
    s.tc.c.num_heap_insert(s.heap, arg.number)
    -- s.tc:log_desc({#s.queue, s.tc.c.num_heap_nb(s.heap)}, 1)
@@ -48,7 +48,7 @@ end
 -- Pop top element
 function heap.cmd.pop.pre(s) return #s.queue > 0 end
 function heap.cmd.pop.typ(t) return {} end
-function heap.cmd.pop.app(s)
+function heap.cmd.pop.run(s)
    local exp = table.remove(s.queue)
    local sut = s.tc.c.num_heap_pop(s.heap)
    -- s.tc:log_desc({'pop',{exp=exp,sut=sut}}, 1)

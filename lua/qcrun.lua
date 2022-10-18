@@ -143,7 +143,7 @@ function tc:run_fsm_test(spec, prop)
    local function run()
       -- Create initial state
       local init_args = gen_init()
-      local ok, state = pcall(prop.init.app, self, init_args)
+      local ok, state = pcall(prop.init.run, self, init_args)
       assert(ok)
       -- Current test size is interpreted as the number of commands in
       -- the sequence.
@@ -169,8 +169,8 @@ function tc:run_fsm_test(spec, prop)
          -- state in-place and will return the result of all
          -- assertions.  Exceptions are mapped to failures.
          -- log_desc({cmd_name,cmd_arg})
-         prop.cmd[cmd_name].app(state, cmd_arg)
-         -- local ok = e2f_pcall(prop.cmd[cmd_name].app, state, cmd_arg)
+         prop.cmd[cmd_name].run(state, cmd_arg)
+         -- local ok = e2f_pcall(prop.cmd[cmd_name].run, state, cmd_arg)
          assert(ok)
          -- log_desc({queue=state.queue})
 
