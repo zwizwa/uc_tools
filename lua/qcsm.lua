@@ -30,7 +30,7 @@ local m = {}
 local heap = { init = {}, cmd = { insert = {}, pop = {} } }
 
 -- Init
-function heap.init.typ(t) return { max_size = t.nat1 } end
+function heap.init.typ(t) return { max_size = t.range(1,512) } end
 function heap.init.app(tc, arg)
    return { queue = {}, tc = tc, max_size = arg.max_size,
             heap = tc.c.num_heap_a_new() }
@@ -41,8 +41,9 @@ function heap.cmd.insert.typ(t) return { number = t.nat } end
 function heap.cmd.insert.app(s,arg)
    table.insert(s.queue, arg.number) ; table.sort(s.queue)
    s.tc.c.num_heap_insert(s.heap, arg.number)
-   s.tc:log_desc({'insert',arg.number},1)
-   return true  -- FIXME: Anything to check here?
+   -- s.tc:log_desc({#s.queue, s.tc.c.num_heap_nb(s.heap)}, 1)
+   -- s.tc:log_desc({'insert',arg.number},1)
+   return #s.queue == s.tc.c.num_heap_nb(s.heap)
 end
 -- Pop top element
 function heap.cmd.pop.pre(s) return #s.queue > 0 end
@@ -50,7 +51,7 @@ function heap.cmd.pop.typ(t) return {} end
 function heap.cmd.pop.app(s)
    local exp = table.remove(s.queue)
    local sut = s.tc.c.num_heap_pop(s.heap)
-   s.tc:log_desc({'pop',{exp=exp,sut=sut}}, 1)
+   -- s.tc:log_desc({'pop',{exp=exp,sut=sut}}, 1)
    return exp == sut
 end
 
