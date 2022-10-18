@@ -20,15 +20,18 @@ static int wait_msec_cmd (lua_State *L) {
 
 int luaopen_test_lua51 (lua_State *L) {
 
-    new_lua_metatable(L, pbuf_a_T, pbuf_a_gc);
+    new_lua_metatable(L, pbuf_a_T,     pbuf_a_gc);
+    new_lua_metatable(L, num_heap_a_T, num_heap_a_gc);
 
     /* This table is what is returned by 'require' */
     lua_newtable(L);
 
     DEF_CFUN(wait_msec);
     DEF_CFUN(pbuf_a_new);
+    DEF_CFUN(num_heap_a_new);
 
     for_heap_tests(DEF_TCFUN);
+    for_num_heap(DEF_TCFUN);
 
 
     return 1;

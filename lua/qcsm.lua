@@ -14,45 +14,47 @@
 -- E.g. app does the bookkeping to predict SUT's behavor and compare results and/or state
 
 
--- Example: Software timer test.  A sorted Lua list will do.  Note
--- that preconditions are fed to Lua assert() mostly to guard for
--- errors in the model.  The QCSM framework should not generate calls
--- with failing preconditions.
+-- Example: number heap (see mod_test_heap.c).
+--
+-- Model it using a sorted Lua list.
 
--- timer.init.typ: Type of initialization function.
--- timer.init.app: Initialization function.  The 'env' provides access to SUT etc...
--- timer.cmd.X.typ: Type of command
--- timer.cmd.X.pre: Is particular command valid in this state
--- timer.cmd.X.app: Perform transition on model and SUT, perform asserts, return pass/fail bool.
+-- heap.init.typ: Type of initialization function.
+-- heap.init.app: Initialization function.  The 'env' provides access to SUT etc...
+-- heap.cmd.X.typ: Type of command
+-- heap.cmd.X.pre: Is particular command valid in this state
+-- heap.cmd.X.app: Perform transition on model and SUT, perform asserts, return pass/fail bool.
 
 local m = {}
 
 -- A test is an init function and a collection of commands descriptions.
-local timer = { init = {}, cmd = { add = {}, pop = {} } }
+local heap = { init = {}, cmd = { insert = {}, pop = {} } }
 
 -- Init
-function timer.init.typ(t) return { max_size = t.nat1 } end
-function timer.init.app(env, arg)
-   return { queue = {}, env = env, max_size = arg.max_size }
+function heap.init.typ(t) return { max_size = t.nat1 } end
+function heap.init.app(tc, arg)
+   return { queue = {}, tc = tc, max_size = arg.max_size,
+            heap = tc.c.num_heap_a_new() }
 end
 -- Sorted insert
-function timer.cmd.add.pre(s) return #s.queue < s.max_size end
-function timer.cmd.add.typ(t) return { time = t.nat, event = t.nat} end
-function timer.cmd.add.app(s,arg)
-   table.insert(s.queue, {time=arg.time, event=arg.event})
-   function less_than(e1, e2) return e1.time < e2.time end
-   table.sort(s.queue, less_than)
-   return true -- FIXME: apply to SUT and compare state
+function heap.cmd.insert.pre(s) return #s.queue < s.max_size end
+function heap.cmd.insert.typ(t) return { number = t.nat } end
+function heap.cmd.insert.app(s,arg)
+   table.insert(s.queue, arg.number) ; table.sort(s.queue)
+   s.tc.c.num_heap_insert(s.heap, arg.number)
+   s.tc:log_desc({'insert',arg.number},1)
+   return true  -- FIXME: Anything to check here?
 end
 -- Pop top element
-function timer.cmd.pop.pre(s) return #s.queue > 0 end
-function timer.cmd.pop.typ(t) return {} end
-function timer.cmd.pop.app(s)
-   local el = table.remove(s.queue, 1)
-   return true -- FIXME: apply to SUT and compare state
+function heap.cmd.pop.pre(s) return #s.queue > 0 end
+function heap.cmd.pop.typ(t) return {} end
+function heap.cmd.pop.app(s)
+   local exp = table.remove(s.queue)
+   local sut = s.tc.c.num_heap_pop(s.heap)
+   s.tc:log_desc({'pop',{exp=exp,sut=sut}}, 1)
+   return exp == sut
 end
 
-m.timer = timer
+m.heap = heap
 
 return m
 

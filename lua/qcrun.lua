@@ -10,7 +10,7 @@ local gen    = qctools.gen
 local shrink = qctools.shrink
 
 -- FIXME: Better bookkeeping
-qcprop.timer = require('qcsm').timer
+qcprop.heap = require('qcsm').heap
 
 
 -- To implement private data only accessible by the test framework,
@@ -167,7 +167,8 @@ function tc:run_fsm_test(spec, prop)
          -- Apply it to the state.  The app() function will modify
          -- state in-place and will return the result of all
          -- assertions.  Exceptions are mapped to failures.
-         log_desc({cmd_name,cmd_arg})
+         -- log_desc({cmd_name,cmd_arg})
+         -- prop.cmd[cmd_name].app(state, cmd_arg)
          local ok = e2f_pcall(prop.cmd[cmd_name].app, state, cmd_arg)
          assert(ok)
          -- log_desc({queue=state.queue})

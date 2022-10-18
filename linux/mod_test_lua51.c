@@ -26,10 +26,10 @@ void pbuf_a_init(struct pbuf_a *a) {
 
 static int fun_wrap_i_iiii(struct lua_State *L,
                           int (*fun)(int,int,int,int)) {
-    int rv = fun(L_number(L,-4),
-                 L_number(L,-3),
-                 L_number(L,-2),
-                 L_number(L,-1));
+    int rv = fun(L_number(L,1),
+                 L_number(L,2),
+                 L_number(L,3),
+                 L_number(L,4));
     lua_pushnumber(L, rv);
     return 1;
 }
@@ -39,4 +39,45 @@ static int fun_wrap_i_iiii(struct lua_State *L,
     m(i_iiii, heap_test1)                         \
 
 
+
 for_heap_tests(DEF_FUN_CMD)
+
+
+
+/* Wrapper for num_heap defined in mod_test_heap.c */
+#define num_heap_a_T "rdm.num_heap_a"
+struct num_heap_a {
+    struct num_heap heap;
+    uint32_t arr[512];
+};
+void num_heap_a_init(struct num_heap_a *a) {
+    a->heap.nb = 0;
+    a->heap.arr = a->arr;
+}
+#define NS(name) CONCAT(num_heap_a,name)
+#include "ns_lua_struct.h"
+#undef NS
+
+static int fun_wrap_v_hu(struct lua_State *L,
+                         void (*fun)(struct num_heap *h, uint32_t)) {
+    fun(&num_heap_a_L(L, 1)->base.heap, L_number(L,2));
+    return 0;
+}
+static int fun_wrap_u_h(struct lua_State *L,
+                        uint32_t (*fun)(struct num_heap *h)) {
+    lua_pushnumber(L, fun(&num_heap_a_L(L, 1)->base.heap));
+    return 1;
+}
+static int fun_wrap_w_h(struct lua_State *L,
+                        uintptr_t (*fun)(struct num_heap *h)) {
+    lua_pushnumber(L, fun(&num_heap_a_L(L, 1)->base.heap));
+    return 1;
+}
+
+#define for_num_heap(m)                    \
+    m(v_hu, num_heap_insert)               \
+    m(u_h,  num_heap_peek)                 \
+    m(u_h,  num_heap_pop)                  \
+    m(w_h,  num_heap_nb)                   \
+
+for_num_heap(DEF_FUN_CMD)
