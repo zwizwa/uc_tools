@@ -145,8 +145,9 @@ function tc:run_fsm_test(spec, prop)
       local init_args = gen_init()
       local ok, state = pcall(prop.init.app, self, init_args)
       assert(ok)
-      -- Sequence a random number of state transition commands
-      local nb_cmds = self:random(gen.range(1, p.size))
+      -- Current test size is interpreted as the number of commands in
+      -- the sequence.
+      local nb_cmds = p.size
       -- log_desc({nb_cmds = nb_cmds})
       for cmd_nb=1,nb_cmds do
          -- Determine what are legal transitions in this state.
@@ -172,6 +173,12 @@ function tc:run_fsm_test(spec, prop)
          -- local ok = e2f_pcall(prop.cmd[cmd_name].app, state, cmd_arg)
          assert(ok)
          -- log_desc({queue=state.queue})
+
+         -- FIXME: Shrink should happen on any error, from init to one
+         -- of the procedure calls.  Shrinking is similar, only that
+         -- preconditions need to be valid: e.g. toss out the test if
+         -- a precondition failed after a shrink.
+
       end
    end
 
