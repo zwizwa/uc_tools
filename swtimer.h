@@ -60,6 +60,16 @@ static inline uint16_t swtimer_diff(swtimer_heap_t *h) {
     return diff;
 }
 
+/* At least one more element at the same absolute time, e.g. for
+   iterating over all concurrent elements. */
+static inline uint16_t swtimer_next_at(swtimer_heap_t *h, uint16_t time_abs) {
+    if (h->nb == 0) return 0;
+    swtimer_element_t next = swtimer_peek(h);
+    return next.time_abs == time_abs;
+}
+
+
+
 /* To cancel a timer, it might be simplest to set a bit in a flag
    register that will drop the software event when the hardware timer
    expires.  Resetting the hardware timer is something that needs a
