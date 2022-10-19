@@ -35,7 +35,7 @@ function gen.random(seed)
 end
 
 function gen.range(min_inc, max_inc)
-   return function(seed, size)
+   return function(seed, size_not_used)
       -- log_desc({min_inc=min_inc, max_inc=max_inc})
       local range = max_inc - min_inc + 1
       if range <= 0 then
@@ -50,6 +50,14 @@ end
 function gen.nat(seed, size)
    local g = gen.range(0, size)
    return g(seed, size)
+end
+
+
+function gen.upto(max)
+   return function (seed, size)
+      local g = gen.range(0, math.min(size, max))
+      return g(seed, size)
+   end
 end
 local function fmap(fun, gen)
    return function(seed, size)
@@ -140,6 +148,7 @@ end
 shrink.nat  = nat_shrink_to(0)
 shrink.nat1 = nat_shrink_to(1)
 
+shrink.upto = shrink.nat
 
 local function lst_replace(lst, index, new_el)
    local lst1 = {}

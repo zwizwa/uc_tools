@@ -2,15 +2,16 @@
 
 -- Test runner for property tests in qcprop.lua
 
-local qcprop  = require('qcprop')
 local qctools = require('lib.qctools')
 require('lure.log')
 
 local gen    = qctools.gen
 local shrink = qctools.shrink
 
--- FIXME: Better bookkeeping
-qcprop.heap = require('qcsm').heap
+-- Collect all the tests in one table
+local test = {}
+for k,v in pairs(require('qcsm'))   do test[k] = v end
+for k,v in pairs(require('qcprop')) do test[k] = v end
 
 
 -- To implement private data only accessible by the test framework,
@@ -94,7 +95,7 @@ function tc:run_test(spec)
    assert(p.name)
 
    -- Each test name indexes a pair containing type and property.
-   local prop = qcprop[p.name]
+   local prop = test[p.name]
    assert(type(prop) == 'table')
    -- FSM and pure tests are different
    if prop.init then
@@ -208,7 +209,8 @@ end
 function tc:run_pure_test(spec, prop)
    local p = self[priv]
    local r_tc = restricted(self)
-   local config_type, eval_prop = unpack(prop)
+   local config_type = prop.typ
+   local eval_prop   = prop.run
    assert(type(config_type) == 'function')
    assert(type(eval_prop) == 'function')
 
@@ -286,7 +288,7 @@ local tc_state = tc.new()
 
 if #arg == 0 then
    -- No arguments: run all tests once
-   for name,_ in pairs(qcprop) do
+   for name,_ in pairs(test) do
       tc_state:run_test({name})
    end
 elseif #arg == 1 then
