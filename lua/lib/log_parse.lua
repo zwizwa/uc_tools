@@ -58,7 +58,9 @@ function log_parse.messages(config)
    local parse = C.new_log_parse()
    if wind_prefix then
       local offset = C.wind_prefix(parse, file, wind_prefix)
-      -- io.stderr:write(filename .. ": wind offset = " .. offset .. "\n")
+      io.stderr:write(filename .. ": wind offset = " .. offset .. "\n")
+   else
+      io.stderr:write(filename .. ": not winding\n")
    end
    return function() return nxt(parse, file) end
 end

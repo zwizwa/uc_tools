@@ -206,6 +206,7 @@ end
 -- probably be refactored or old should be deleted.
 function logsvg.read_log_parse(filename, config)
    if not config then config = {} end
+   -- log_desc({logsvg_read_log_parse_config = config})
    local sync_re = config.sync_re or "^ping (.-)"
    local max_lines = config.max_lines or 1000
    local bin_to_string = config.bin_to_string
@@ -228,7 +229,7 @@ function logsvg.read_log_parse(filename, config)
       sequence = config.sequence or
          log_parse.messages(
             {file = filename,
-             wind = {0},
+             wind = config.wind or {0},
              next = nxt })
    end
 
