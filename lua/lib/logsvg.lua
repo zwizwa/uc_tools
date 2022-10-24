@@ -207,7 +207,8 @@ end
 function logsvg.read_log_parse(filename, config)
    if not config then config = {} end
    -- log_desc({logsvg_read_log_parse_config = config})
-   local sync_re = config.sync_re or "^ping (.-)"
+   -- the default "" matches any message
+   local sync_re = config.sync_re or "" -- "^ping (.-)"
    local max_lines = config.max_lines or 1000
    local bin_to_string = config.bin_to_string
    local lines = {}
@@ -229,7 +230,8 @@ function logsvg.read_log_parse(filename, config)
       sequence = config.sequence or
          log_parse.messages(
             {file = filename,
-             wind = config.wind or {0},
+             -- The default {} does not perform any winding in C code.
+             wind = config.wind or {}, -- {0},
              next = nxt })
    end
 
@@ -259,7 +261,19 @@ function logsvg.read_log_parse(filename, config)
          end
          local adjusted_n = n - first + wraps * 0x100000000
          last = n
-         table.insert(lines, {adjusted_n, adjusted_n, logline})
+
+         local keep = true
+         if config.drop_res then
+            for _,re in ipairs(config.drop_res) do
+               if string.match(logline, re) then
+                  keep = false
+                  break
+               end
+            end
+         end
+         if keep then
+            table.insert(lines, {adjusted_n, adjusted_n, logline})
+         end
       end
    end
 
