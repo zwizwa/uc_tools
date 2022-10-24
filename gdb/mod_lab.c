@@ -140,6 +140,8 @@ extern const char config_version[];
 
 extern struct info_buf_hdr info_buf;
 
+extern uint8_t _firmware_endx;
+
 struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .manufacturer    = config_manufacturer,
     .product         = config_product,
@@ -151,5 +153,8 @@ struct gdbstub_config config CONFIG_HEADER_SECTION = {
     .switch_protocol = slipstub_switch_protocol,
     .monitor         = console_monitor,
     .info_buf        = &info_buf,
+    .flash_start     = (const void*)&config,
+    .flash_endx      = (void*)&_firmware_endx
+
 };
 

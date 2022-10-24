@@ -91,12 +91,19 @@ fwstream_new_priority(struct fwstream *s, const struct gdbstub_config *config) {
     struct gdbstub_control *c = (void*)(config->flash_start + size_padded);
 
     uint32_t priority = 0;
-    uint32_t crc = fwstream_ctrl_crc(s, c);
-    if (c->ctrl_crc == crc) {
-        priority = c->priority + 1;
+    if (c) {
+        uint32_t crc = fwstream_ctrl_crc(s, c);
+        if (c->ctrl_crc == crc) {
+            priority = c->priority + 1;
+        }
+        else {
+            LOG("fwstream_ctrl_crc: %x != %x\n", c->ctrl_crc, crc);
+        }
     }
     else {
-        LOG("fwstream_ctrl_crc: %x != %x\n", c->ctrl_crc, crc);
+        /* Test path: config can have _start and _endx set to zero to
+           indicate there is no target Flash. */
+        LOG("fwstream_ctrl_crc: no gdbstub_control\n");
     }
     return priority;
 
