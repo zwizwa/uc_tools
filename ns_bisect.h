@@ -31,3 +31,6 @@ static inline intptr_t NS(_find)(NS(_t) *a, intptr_t rank) {
     }
     return -1;
 }
+static inline int NS(_contains)(NS(_t) *a, intptr_t rank) {
+    return NS(_find)(a, rank) >= 0;
+}
