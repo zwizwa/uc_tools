@@ -1,3 +1,6 @@
+#ifndef LA_UART_H
+#define LA_UART_H
+
 /* Logic Analyzer: UART */
 
 /* There are Rust and C++ counterparts to this.  However, I am
@@ -227,3 +230,5 @@ INLINE void la_uart_push(struct la_uart *s,
     //LOG("idle_expire = %d\n", s->idle_expire);
 
 }
+
+#endif
