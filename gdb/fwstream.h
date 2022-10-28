@@ -91,7 +91,9 @@ fwstream_new_priority(struct fwstream *s, const struct gdbstub_config *config) {
     struct gdbstub_control *c = (void*)(config->flash_start + size_padded);
 
     uint32_t priority = 0;
-    if (c) {
+    if (c &&
+        (c->size > BLOCK_SIZE) /* sanity check */) {
+
         uint32_t crc = fwstream_ctrl_crc(s, c);
         if (c->ctrl_crc == crc) {
             priority = c->priority + 1;
