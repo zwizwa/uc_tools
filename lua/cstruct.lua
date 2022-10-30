@@ -71,13 +71,20 @@ local tab = "    "
 
 -- Type declaration printer.
 -- Generates a typedef for each node in the tree.
+
+local function counter(init)
+   local nb = 0
+   return function()
+      local rv = nb
+      nb = nb + 1
+      return rv
+   end
+end
+
 function gen_decl(def, w)
 
    -- Anonymous types
-   local nb = 0
-   local function next_nb() local rv = nb ; nb = nb + 1 ; return rv end
-   local function next_struct() return 'struct_' .. next_nb() end
-
+   local next_nb = counter(0)
    -- This map keeps track of all primitive and generated types.
    -- Initialized with primitives
    local types = {"int"}
@@ -119,7 +126,7 @@ function gen_decl(def, w)
    -- Structs are always unique, i.e. two isomorphic definitions are
    -- different types.
    function sem.struct(...)
-      local new = next_struct()
+      local new = 'struct_' .. next_nb()
       types[new] = true;
       w("typedef struct {\n")
       for _, field in ipairs({...}) do
@@ -137,8 +144,8 @@ function gen_decl(def, w)
 end
 
 -- Test
---gen_decl(ex1, w)
---gen_decl(ex2, w, s)
+gen_decl(ex1, w)
+gen_decl(ex2, w, s)
 
 
 -- Now what I really want to do is instantiation.  I can tink of a
@@ -156,9 +163,12 @@ function type_checker(def, c)
    function sem.int(data)
       c.assert(type(data) == 'number')
    end
-   function sem.array(check_el)
+   function sem.array(check_el, nb_el)
       return function(data)
          c.assert(type(data) == 'table')
+         if nil ~= nb_el then
+            c.assert(nb_el == #data)
+         end
          for _, el in ipairs(data) do
             -- log_desc({el=el,check_el=check_el})
             check_el(el)
@@ -195,16 +205,18 @@ local function ex3(t) return t.int end
 local function ex4(t) return t.array(t.int) end
 local function ex5(t) return t.pointer(ex4(t)) end
 local function ex6(t) return t.struct({'a',t.int},{'b',t.int}) end
+local function ex7(t) return t.array(t.array(t.int,2),3) end
 
 log_desc({
-      type_check(ex3, {}),
-      type_check(ex3, 123),
-      type_check(ex4, {1,2,3}),
-      type_check(ex4, {1,2,'abc'}),
-      type_check(ex5, {1,2,3}),
-      type_check(ex6, {a=1,b=2}),
-      type_check(ex6, {a=1,c=2}),
-
+      a = type_check(ex3, {}),
+      b = type_check(ex3, 123),
+      c = type_check(ex4, {1,2,3}),
+      d = type_check(ex4, {1,2,'abc'}),
+      e = type_check(ex5, {1,2,3}),
+      f = type_check(ex6, {a=1,b=2}),
+      g = type_check(ex6, {a=1,c=2}),
+      h = type_check(ex7, {{1,2},{3,4},{5,6}}),
+      i = type_check(ex7, {{1,2},{3,4}}),
 })
 
 -- Alright so next is a serializer for C initializers.  It might be
@@ -213,4 +225,69 @@ log_desc({
 -- always going to be the bottleneck so running the compiler is
 -- probably ok.
 
+-- This seems to be a merge of the type generator and the type
+-- checker.  I don't really see a way to do that automatically.
 
+-- Precondition: data typechecks.
+function serializer(def, c)
+   local next_nb = counter(0)
+
+   local sem = {}
+   -- int, array and struct are fairly straightforward: C initializer
+   -- can use nested syntax, so this just recurses.
+   function sem.int(data, w)
+      w(data)
+   end
+   function sem.array(w_el)
+      return function(data, w)
+         w("{ ")
+         for _, el in ipairs(data) do
+            w_el(el,w)
+            w(", ")
+         end
+         w("}")
+      end
+   end
+   function sem.struct(...)
+      local fields = {...}
+      return function(data, w)
+         w("{ ")
+         for _, field in ipairs(fields) do
+            local name, w_el = unpack(field)
+            local val = data[name] or error('nil')
+            w(".", name, " = ")
+            w_el(val,w)
+            w(", ")
+         end
+         w("}")
+      end
+   end
+   -- pointers are special. a node needs to be serialized then
+   -- referenced by name
+   function sem.pointer(w_el)
+      -- 
+
+      -- FIXME
+      return w_el
+   end
+   return def(sem)
+end
+
+function serialize(def, data)
+   local c = { assert = function(bool) assert(bool) end }
+   local ser = serializer(def, c)
+   ser(data, w)
+   w("\n")
+end
+
+local function ex8(t)
+   local arr = t.array(t.int, 2)
+   return t.struct({'a',arr},{'b',arr})
+end
+
+
+serialize(ex3, 123)
+serialize(ex4, {1,2,3})
+serialize(ex6, {a=1,b=2})
+serialize(ex7, {{1,2},{3,4},{5,6}})
+serialize(ex8, {a = {1,2}, b = {3,4}})
