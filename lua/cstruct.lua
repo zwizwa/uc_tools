@@ -81,10 +81,10 @@ local function counter(init)
    end
 end
 
-function gen_decl(def, w)
+function types(def, w)
 
    -- Anonymous types
-   local next_nb = counter(0)
+   local next_struct = counter(0)
    -- This map keeps track of all primitive and generated types.
    -- Initialized with primitives
    local types = {"int"}
@@ -94,10 +94,10 @@ function gen_decl(def, w)
       return function(base, size)
          -- Precondition: base is a type name that is either
          -- primitive, or one we've generated.
-         local new = base .. suffix
+         local new = base .. suffix .. (size or "")
          if types[new] ~= nil then return new end
          types[new] = true
-         w({"typedef ", gen(new, base, size),";\n"})
+         w({"typedef ", gen(new, base, size), ";\n"})
          return new
       end
    end
@@ -114,19 +114,19 @@ function gen_decl(def, w)
    -- Arrays and pointers are treated as isomorphic, because C does
    -- as well.
    sem.array =
-      typedef("_arr",
+      typedef("_a",
               function(new, base, size)
                  return {base, " ", new, "[", size or "", "]"}
               end)
    sem.pointer =
-      typedef("_ptr",
+      typedef("_p",
               function(new, base)
                  return {base, " *", new}
               end)
    -- Structs are always unique, i.e. two isomorphic definitions are
    -- different types.
    function sem.struct(...)
-      local new = 'struct_' .. next_nb()
+      local new = 'struct_' .. next_struct()
       types[new] = true;
       w("typedef struct {\n")
       for _, field in ipairs({...}) do
@@ -144,8 +144,8 @@ function gen_decl(def, w)
 end
 
 -- Test
-gen_decl(ex1, w)
-gen_decl(ex2, w, s)
+types(ex1, w)
+types(ex2, w, s)
 
 
 -- Now what I really want to do is instantiation.  I can tink of a
@@ -228,61 +228,106 @@ log_desc({
 -- This seems to be a merge of the type generator and the type
 -- checker.  I don't really see a way to do that automatically.
 
+
+function writer()
+   local buf = {}
+   function w_buf(...) table.insert(buf, {...}) end
+   return buf, w_buf
+end
+
+function serialize_def(var, ser_el, data, s)
+   local def, w_def = writer()
+   -- log_desc({ser_sel_t = ser_el.t})
+   w_def(ser_el.t, " v", var, " = ")
+   ser_el.w_el(data, w_def, s)
+   w_def(";\n")
+   table.insert(s, def)
+end
+
 -- Precondition: data typechecks.
 function serializer(def, c)
-   local next_nb = counter(0)
+   local next_struct = counter(0)
+   local next_var = counter(0)
 
    local sem = {}
    -- int, array and struct are fairly straightforward: C initializer
    -- can use nested syntax, so this just recurses.
-   function sem.int(data, w)
-      w(data)
-   end
-   function sem.array(w_el)
-      return function(data, w)
-         w("{ ")
-         for _, el in ipairs(data) do
-            w_el(el,w)
-            w(", ")
-         end
-         w("}")
-      end
+   sem.int = {
+      w_el = function(data, w) w(data) end,
+      t = 'int'
+   }
+   function sem.array(ser_el, size)
+      return {
+         w_el = function(data, w, s)
+            w("{ ")
+            for _, el in ipairs(data) do
+               ser_el.w_el(el, w, s)
+               w(", ")
+            end
+            w("}")
+         end,
+         t = ser_el.t .. "_a" .. (size or "")
+      }
    end
    function sem.struct(...)
       local fields = {...}
-      return function(data, w)
-         w("{ ")
-         for _, field in ipairs(fields) do
-            local name, w_el = unpack(field)
-            local val = data[name] or error('nil')
-            w(".", name, " = ")
-            w_el(val,w)
-            w(", ")
-         end
-         w("}")
-      end
+      local t = 'struct_' .. next_struct()
+      return {
+         w_el = function(data, w, s)
+            w("{ ")
+            for _, field in ipairs(fields) do
+               local name, ser_el = unpack(field)
+               local val = data[name] or error('nil')
+               w(".", name, " = ")
+               ser_el.w_el(val, w, s)
+               w(", ")
+            end
+            w("}")
+         end,
+         t = t
+      }
    end
    -- pointers are special. a node needs to be serialized then
    -- referenced by name
-   function sem.pointer(w_el)
-      -- 
-
-      -- FIXME
-      return w_el
+   function sem.pointer(ser_el)
+      return {
+         w_el = function(data, w, s)
+            local var = next_var()
+            serialize_def(var, ser_el, data, s)
+            w("&v", var)
+         end,
+         t = ser_el.t .. "_p"
+      }
    end
    return def(sem)
 end
 
 function serialize(def, data)
+   w("\n")
+   types(def, w)
+
    local c = { assert = function(bool) assert(bool) end }
    local ser = serializer(def, c)
-   ser(data, w)
-   w("\n")
+
+   local out = {}
+   serialize_def("_top", ser, data, out)
+   w(out)
 end
 
 local function ex8(t)
    local arr = t.array(t.int, 2)
    return t.struct({'a',arr},{'b',arr})
+end
+
+local function ex9(t)
+   local arr = t.pointer(t.array(t.int, 2))
+   return t.struct({'a',arr},{'b',arr})
+end
+
+local function ex10(t)
+   local inner = t.pointer(t.array(t.int, 3))
+   local outer = t.pointer(t.array(inner, 2))
+   return t.struct({'a',outer},{'b',outer})
 end
 
 
@@ -291,3 +336,5 @@ serialize(ex4, {1,2,3})
 serialize(ex6, {a=1,b=2})
 serialize(ex7, {{1,2},{3,4},{5,6}})
 serialize(ex8, {a = {1,2}, b = {3,4}})
+serialize(ex9, {a = {1,2}, b = {3,4}})
+serialize(ex10, {a = {{1,10,0},{2,20,0}}, b = {{3,30,0},{4,40,0}}})
