@@ -33,25 +33,6 @@
 require 'lure.log'
 
 
-local ex1 = function(t)
-   return t.struct(
-      {'a', t.pointer(t.array(t.int,6))},
-      {'b', t.int}
-   )
-end
-
-local ex2 = function(t)
-   local tx = t.array(t.int)
-   return t.struct(
-      {'a', t.int},
-      {'b', t.array(t.int)},
-      {'c', t.struct(
-          {'left',  t.int},
-          {'right', t.int}
-      )},
-      {'d', t.pointer(tx)}
-   )
-end
 
 
 -- Erlang's iolist
@@ -143,9 +124,6 @@ function types(def, w)
    w("// top:", top, "\n")
 end
 
--- Test
-types(ex1, w)
-types(ex2, w, s)
 
 
 -- Now what I really want to do is instantiation.  I can tink of a
@@ -201,23 +179,6 @@ function type_check(def, data)
    return ok
 end
 
-local function ex3(t) return t.int end
-local function ex4(t) return t.array(t.int) end
-local function ex5(t) return t.pointer(ex4(t)) end
-local function ex6(t) return t.struct({'a',t.int},{'b',t.int}) end
-local function ex7(t) return t.array(t.array(t.int,2),3) end
-
-log_desc({
-      a = type_check(ex3, {}),
-      b = type_check(ex3, 123),
-      c = type_check(ex4, {1,2,3}),
-      d = type_check(ex4, {1,2,'abc'}),
-      e = type_check(ex5, {1,2,3}),
-      f = type_check(ex6, {a=1,b=2}),
-      g = type_check(ex6, {a=1,c=2}),
-      h = type_check(ex7, {{1,2},{3,4},{5,6}}),
-      i = type_check(ex7, {{1,2},{3,4}}),
-})
 
 -- Alright so next is a serializer for C initializers.  It might be
 -- enough to do just this, then let the C compiler + linker generate
@@ -245,11 +206,19 @@ function serialize_def(var, ser_el, data, s)
 end
 
 -- Precondition: data typechecks.
-function serializer(def, c)
+function serializer(def)
    local next_struct = counter(0)
    local next_var = counter(0)
 
    local sem = {}
+
+   -- types are represented by a {w_el, t} pair: an element writer and
+   -- a string containing the type name
+
+   -- the element writer takes 3 arguments: the data to write, the
+   -- current writer hole, and the table where definitions can be
+   -- concatenated.
+
    -- int, array and struct are fairly straightforward: C initializer
    -- can use nested syntax, so this just recurses.
    sem.int = {
@@ -258,10 +227,10 @@ function serializer(def, c)
    }
    function sem.array(ser_el, size)
       return {
-         w_el = function(data, w, s)
+         w_el = function(data, w, defs)
             w("{ ")
             for _, el in ipairs(data) do
-               ser_el.w_el(el, w, s)
+               ser_el.w_el(el, w, defs)
                w(", ")
             end
             w("}")
@@ -273,13 +242,13 @@ function serializer(def, c)
       local fields = {...}
       local t = 'struct_' .. next_struct()
       return {
-         w_el = function(data, w, s)
+         w_el = function(data, w, defs)
             w("{ ")
             for _, field in ipairs(fields) do
                local name, ser_el = unpack(field)
                local val = data[name] or error('nil')
                w(".", name, " = ")
-               ser_el.w_el(val, w, s)
+               ser_el.w_el(val, w, defs)
                w(", ")
             end
             w("}")
@@ -291,9 +260,9 @@ function serializer(def, c)
    -- referenced by name
    function sem.pointer(ser_el)
       return {
-         w_el = function(data, w, s)
+         w_el = function(data, w, defs)
             local var = next_var()
-            serialize_def(var, ser_el, data, s)
+            serialize_def(var, ser_el, data, defs)
             w("&v", var)
          end,
          t = ser_el.t .. "_p"
@@ -305,14 +274,55 @@ end
 function serialize(def, data)
    w("\n")
    types(def, w)
-
-   local c = { assert = function(bool) assert(bool) end }
-   local ser = serializer(def, c)
-
-   local out = {}
-   serialize_def("_top", ser, data, out)
-   w(out)
+   local ser = serializer(def)
+   local defs = {}
+   serialize_def("_top", ser, data, defs)
+   w(defs)
 end
+
+function test()
+
+local ex1 = function(t)
+   return t.struct(
+      {'a', t.pointer(t.array(t.int,6))},
+      {'b', t.int}
+   )
+end
+
+local ex2 = function(t)
+   local tx = t.array(t.int)
+   return t.struct(
+      {'a', t.int},
+      {'b', t.array(t.int)},
+      {'c', t.struct(
+          {'left',  t.int},
+          {'right', t.int}
+      )},
+      {'d', t.pointer(tx)}
+   )
+end
+
+local function ex3(t) return t.int end
+local function ex4(t) return t.array(t.int) end
+local function ex5(t) return t.pointer(ex4(t)) end
+local function ex6(t) return t.struct({'a',t.int},{'b',t.int}) end
+local function ex7(t) return t.array(t.array(t.int,2),3) end
+
+
+types(ex1, w)
+types(ex2, w, s)
+
+log_desc({
+      a = type_check(ex3, {}),
+      b = type_check(ex3, 123),
+      c = type_check(ex4, {1,2,3}),
+      d = type_check(ex4, {1,2,'abc'}),
+      e = type_check(ex5, {1,2,3}),
+      f = type_check(ex6, {a=1,b=2}),
+      g = type_check(ex6, {a=1,c=2}),
+      h = type_check(ex7, {{1,2},{3,4},{5,6}}),
+      i = type_check(ex7, {{1,2},{3,4}}),
+})
 
 local function ex8(t)
    local arr = t.array(t.int, 2)
@@ -338,3 +348,11 @@ serialize(ex7, {{1,2},{3,4},{5,6}})
 serialize(ex8, {a = {1,2}, b = {3,4}})
 serialize(ex9, {a = {1,2}, b = {3,4}})
 serialize(ex10, {a = {{1,10,0},{2,20,0}}, b = {{3,30,0},{4,40,0}}})
+
+
+
+
+end
+
+
+test()
