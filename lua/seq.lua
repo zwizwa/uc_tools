@@ -57,16 +57,36 @@ end
 -- that does not have a defined tail.  This works as long as the tail
 -- of the s_next and out results are never evaluated.  The loop can
 -- then be closed using a state variable.
-local function close(init, update)
+
+-- Implement base routine on state vectors (lua lists).
+local function close_vec(init, update)
    local state = init
    local tail_thunk
    tail_thunk = function()
-      s_prev = {head = state, tail = function() error('undefined_tail') end}
-      local s_next, out = update(s_prev)
-      state = s_next.head
+      s_in = {}
+      for i,si in ipairs(state) do
+         s_in[i] = {
+            head = si,
+            tail = function() error('undefined_tail') end
+         }
+      end
+      local s_out, out = update(s_in)
+      for i,si in ipairs(s_out) do
+         state[i] = si.head
+      end
       return list(out.head, tail_thunk)
    end
    return tail_thunk()
+end
+
+-- Wrapper for single state variable.
+local function close(init, update)
+   return close_vec(
+      {init},
+      function(states)
+         local next_state, out = update(states[1])
+         return {next_state}, out
+      end)
 end
 
 
