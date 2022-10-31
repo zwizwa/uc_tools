@@ -18,9 +18,8 @@ local function prog2(c)
 end
 
 
--- In Haskell the 'close' operator can tuck away the state signals in
--- the monad.  In Lua lazy lists are used.
-
+-- Use lazy lists to represent signals.  The head is always strict.
+-- The tail is delayed (memoized thunk).
 local function memo(thunk)
    local cache = nil
    return function()
@@ -29,52 +28,45 @@ local function memo(thunk)
       return cache
    end
 end
-
-
+local function list(head, tail_thunk)
+   return { head = head, tail = memo(tail_thunk) }
+end
 
 local function pure(val)
-   return {
-      head=val,
-      tail=memo(function() return pure(val) end)
-   }
+   return list(val, function() return pure(val) end)
 end
 local function lift1(f)
    local fl
    fl = function(a)
-      return {
-         head=f(a.head),
-         tail=memo(function() return fl(a.tail()) end)
-      }
+      return list(f(a.head),
+                  function() return fl(a.tail()) end)
    end
    return fl
 end
 local function lift2(f)
    local fl
    fl = function(a,b)
-      return {
-         head=f(a.head,b.head),
-         tail=memo(function() return fl(a.tail(),b.tail()) end)
-      }
+      return list(f(a.head,b.head),
+                  function() return fl(a.tail(),b.tail()) end)
    end
    return fl
 end
 
--- For probing we rely on the tail not being evaluated, so it can be
--- undefined.  This function is never called.
-local function undefined_tail()
-   error('undefined_tail')
-end
 
+-- To implement 'close', the update function is probed using a signal
+-- that does not have a defined tail.  This works as long as the tail
+-- of the s_next and out results are never evaluated.  The loop can
+-- then be closed using a state variable.
 local function close(init, update)
-   local s = init
-   local do_update
-   do_update = function()
-      s_prev = {head = s, tail = undefined_tail}
+   local state = init
+   local tail_thunk
+   tail_thunk = function()
+      s_prev = {head = state, tail = function() error('undefined_tail') end}
       local s_next, out = update(s_prev)
-      s = s_next.head
-      return {head = out.head, tail = memo(do_update)}
+      state = s_next.head
+      return list(out.head, tail_thunk)
    end
-   return do_update()
+   return tail_thunk()
 end
 
 
