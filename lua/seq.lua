@@ -123,3 +123,11 @@ local f2 = prog2(c)
 log_desc({
       f2 = take(3,f2)
 })
+
+
+
+-- TODO:
+-- . C code generator
+-- . Lua (Lure) code generator for LuaJIT
+-- . Combinators
+
