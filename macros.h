@@ -47,9 +47,9 @@ int kill(pid_t pid, int sig);
 #endif // __linux__
 
 /* In bare metal microcontroller context there is no universal way to
-   handle this so we take the following approach: implement abort a
-   halt, by performing an endless loop.  This will trigger the
-   watchdog timer. */
+   handle this so we take the following approach: implement abort as
+   an endless loop.  This will trigger the watchdog timer. */
+static inline void abort_busyloop(void) __attribute__ ((noreturn));
 static inline void abort_busyloop(void) {
   loop:
     goto loop;
@@ -113,7 +113,7 @@ static inline void abort_busyloop(void) {
 #define INLINE static inline __attribute__((__always_inline__))
 #endif
 
-#ifndef PACKEDas
+#ifndef PACKED
 #define PACKED __attribute__((__packed__))
 #endif
 

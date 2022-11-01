@@ -34,7 +34,7 @@ CPPFLAGS_COMMON="\
 -I$LIBOPENCM3/include \
 "
 
-# CFLAGS_ERROR=-Werror
+CFLAGS_ERROR=-Werror
 # CFLAGS_ERROR=
 
 # Note: to see which gnu extensions are used, set -std=c99

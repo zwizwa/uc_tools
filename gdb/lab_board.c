@@ -100,7 +100,7 @@ void usart1_isr(void) {
     /* FIXME: handle error conditions */
     cbuf_put(&uart1_in, sr_dr & 0xFF);
 }
-static void usart1_init(void) {
+static inline void usart1_init(void) {
     // uart controller init, io port setup
     hw_usart1_init();
     // uart config.
