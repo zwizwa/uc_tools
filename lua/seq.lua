@@ -145,6 +145,24 @@ log_desc({
 
 
 
+-- SEMANTICS: COMPILER
+local function compile(prog)
+   local function prim2(op)
+      return function(a, b)
+         
+      end
+   end
+   local c = {
+      add  = prim2('add'),
+      add1 = prim1('add1'),
+      close = close,
+   }
+   prog(c)
+end
+
+
+
+
 -- TODO:
 -- . C code generator
 -- . Lua (Lure) code generator for LuaJIT
