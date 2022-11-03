@@ -3,78 +3,20 @@
    Code:    http://zwizwa.be/git/uc_tools
    License: http://creativecommons.org/publicdomain/zero/1.0 */
 
+#include "macros.h"
 #include "infof.h"
 #include <stdarg.h>
 
-void info_decimal(int d) {
-    if (d < 0) { info_putchar('-'); d = -d; }
-    char stack[12]; // enough for max 2^31
-    char *s = stack;
-    while(d) {*s++ = '0' + d % 10; d /= 10;}
-    if (s == stack) info_putchar('0');
-    else while(s > stack) info_putchar(*--s);
-}
-void info_hex(unsigned int d, int digits) {
-    while(digits > 0) {
-        info_putchar("0123456789abcdef"[(d >> (4*(--digits))) & 0xF]);
-    }
-}
-void info_hex_u8(const uint8_t *buf, int n) {
-    for (int i = 0; i<n; i++) {
-        info_putchar(' ');
-        info_hex(buf[i], 2);
-    }
-}
-void info_hex_u16(const uint16_t *buf, int n) {
-    for (int i = 0; i<n; i++) {
-        info_putchar(' ');
-        info_hex(buf[i], 4);
-    }
-}
-void info_str(const char *c) {
-    while(*c) info_putchar(*c++);
-}
-void info_str_n(const char *c, int n) {
-    while(n--) info_putchar(*c++);
-}
-static inline int is_digit(int d) {
-    return d >= '0' && d <= '9';
-}
+// 20221103 The formatter is abstracted in an NS module
+#define NS(name) CONCAT(info_,name)
+// no context def/ref, context is global
+#define info_CTX_DEF
+#define info_CTX_REF
+// The original routine did not use a context parameter.
+typedef void *_info_ctx_t;
+#include "ns_infof.c"
+#undef NS
 
-/* The escape character is abstracted here to allow the valid C
-   identifier character '_' to be used by tracef. */
-int vinfof(const char *fmt, va_list ap) {
-    while (*fmt) {
-        if (*fmt == '%') {
-            fmt++;
-            /* Ignore '0'; always print leading zeros for %x, by default: %08x.
-               For %d all numeric arguments are ignored. */
-            int nb_digits = 8;
-            while (is_digit(*fmt)) {nb_digits = *fmt-'0'; fmt++;}
-            switch(*fmt) {
-            case 0: break;
-            case 'p':
-            case 'X':
-            case 'x': fmt++; info_hex(va_arg(ap,int),nb_digits); break;
-            case 'u': // FIXME
-            case 'd': fmt++; info_decimal(va_arg(ap, int));      break;
-            case 's': fmt++; info_str(va_arg(ap,const char*));   break;
-            case 'c': fmt++; info_putchar(va_arg(ap, int));      break;
-            /* Nonstandard: raw binary strings as hex. */
-            case 'b': fmt++; info_hex_u8(va_arg(ap, uint8_t*), nb_digits); break;
-            default:
-                info_putchar('%');
-                info_putchar(*fmt);
-                fmt++;
-                break;
-            }
-        }
-        else {
-            info_putchar(*fmt++);
-        }
-    }
-    return 0; // this is not used.
-}
 
 extern int32_t info_level_threshold;
 extern int32_t info_level_current;
@@ -84,7 +26,7 @@ int infof(const char *fmt, ...) {
     if (info_level_threshold > info_level_current) return 0;
     va_list ap;
     va_start(ap, fmt);
-    int rv = vinfof(fmt, ap);
+    int rv = info_vf(fmt, ap);
     va_end(ap);
     return rv;
 }

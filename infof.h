@@ -25,8 +25,8 @@ uint32_t info_bytes(void);
 
 /* Entry points */
 int infof(const char *fmt, ...);
-int vinfof(const char *fmt, va_list ap);
-int vinfof_with_escape(char escape, const char *fmt, va_list ap);
+int info_vf(const char *fmt, va_list ap);
+int info_vf_with_escape(char escape, const char *fmt, va_list ap);
 void info_decimal(int d);
 void info_hex(unsigned int d, int digits);
 void info_hex_u8(const uint8_t *buf, int n);
