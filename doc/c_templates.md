@@ -32,7 +32,13 @@ The code in `ns_generic.h` then has all name references wrapped in
 `NS()`.  This allows the caller (includer) to set up an environment of
 functions, types and macros and import behavor from the generic file.
 
-TODO: example
+Note that this only goes one deep: it is not possible to include an
+`ns_*.h` file from inside another one unless the `NS()` macro is the
+same.  However it is flexible enough for most practical purposes in
+`uc_tools`.
+
+[Example](../ns_stack.h)
+
 
 
 
