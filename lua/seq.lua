@@ -65,33 +65,37 @@ local function take(n, lst)
    return rv
 end
 
+-- Constant signals
 local function pure(val)
    return signal(val, function() return pure(val) end)
 end
--- Automatically lift lua primitives
 
+-- Automatically lift lua primitives
 local function as_signal(thing)
    if type(thing) == 'table' and thing.type == 'signal' then return thing end
    return pure(thing)
 end
 
--- FIXME: lift can be generic
-local function lift1(f)
+-- Lift an n-argument lua function to a lazy list operation
+local function lift(n,f)
    local fl
-   fl = function(a_)
-      local a = as_signal(a_)
-      return signal(f(a.head),
-                  function() return fl(a.tail()) end)
-   end
-   return fl
-end
-local function lift2(f)
-   local fl
-   fl = function(a_,b_)
-      local a = as_signal(a_)
-      local b = as_signal(b_)
-      return signal(f(a.head, b.head),
-                    function() return fl(a.tail(), b.tail()) end)
+   fl = function(...)
+      local args = {...}
+      assert(n == #args)
+      local heads = {}
+      local tails = {}
+      for i,a in ipairs(args) do
+         local sig_a = as_signal(a)
+         heads[i] = sig_a.head
+         tails[i] = sig_a.tail
+      end
+      return signal(
+         f(unpack(heads)),
+         function()
+            local app_tails = {}
+            for i,tail in ipairs(tails) do app_tails[i] = (tails[i])() end
+            return fl(unpack(app_tails))
+         end)
    end
    return fl
 end
@@ -133,8 +137,8 @@ end
 
 
 local signal_c = {
-   add1  = lift1(function(a)   return a+1 end),
-   add   = lift2(function(a,b) return a+b end),
+   add1  = lift(1, function(a)   return a+1 end),
+   add   = lift(2, function(a,b) return a+b end),
    close = close
 }
 
@@ -216,9 +220,7 @@ local function compile(prog, nb_args)
 
    local args = {c}
    for i=1,nb_args do
-      local input = new_var()
-      table.insert(code, {'let',input,{'input',i-1}})
-      table.insert(args, signal('ref',input))
+      table.insert(args, signal('input',i-1))
    end
    local out = { prog(unpack(args)) }
    log_desc({code=code,out=out,init=init_state,nb_args=nb_args})
@@ -228,8 +230,8 @@ end
 compile(prog3, 1)
 compile(prog4, 2)
 compile(prog5, 1)
-
 compile(prog2, 1)
+compile(prog1, 1)
 
 
 
