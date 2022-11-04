@@ -172,7 +172,7 @@ end
 -- SEMANTICS: COMPILER
 local function compile(prog, nb_args)
    local code = {}
-   local new_var = counter(1)
+   local new_var = counter(0)
    local signal_mt = {}
    local function signal(...)
       local rep = {...}
@@ -180,7 +180,6 @@ local function compile(prog, nb_args)
       return rep
    end
    local as_signal = function(thing)
-      log_desc({thing=thing})
       if type(thing) == 'table' and thing[1] == 'ref' then return thing end
       return signal('lit',thing)
    end
@@ -198,13 +197,12 @@ local function compile(prog, nb_args)
          return app(op, args)
       end
    end
-   local svars = {}
+   local new_state = counter(0)
+   local init_state = {}
    local function close(init, fun)
-      -- FIXME: track init
-      local svar = new_var()
-      table.insert(svars, svar)
-      table.insert(code, {'let',svar,{'state', #svars-1}})
-      local sin = signal('ref',svar)
+      local svar = new_state()
+      init_state[svar] = init
+      local sin = signal('sref',svar)
       local sout, out = fun(sin)
       table.insert(code, {'set-state!', svar, sout})
       return out
@@ -223,28 +221,16 @@ local function compile(prog, nb_args)
       table.insert(args, signal('ref',input))
    end
    local out = { prog(unpack(args)) }
-   log_desc({code=code,out=out,svars=svars})
+   log_desc({code=code,out=out,init=init_state,nb_args=nb_args})
    return code
 end
 
---compile(prog3, 1)
---compile(prog4, 2)
---compile(prog5, 1)
+compile(prog3, 1)
+compile(prog4, 2)
+compile(prog5, 1)
 
 compile(prog2, 1)
 
--- {
---   svars = { 2,  },
---   code = {
---            { "let", 1, { "input", 0 }},
---            { "let", 2, { "state", 0 }},
---            { "let", 3, { "add1", {{ "ref", 2 }}}},
---            { "set-state!", 2, { "ref", 3,  }},
---   },
---   out = {
---           { "ref", 2 }
---   },
--- }
 
 
 
