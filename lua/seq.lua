@@ -9,6 +9,7 @@
 require 'lure.log'
 
 -- FIXME: curry the context argument.
+-- FIXME: in should be a single argument
 
 local function prog1(c, i)
    local function counter_sm(s) return s+1, s end
@@ -173,8 +174,8 @@ local function compile(prog, nb_args)
    local code = {}
    local new_var = counter(1)
    local signal_mt = {}
-   local function signal(tag, arg)
-      local rep = {tag, arg}
+   local function signal(...)
+      local rep = {...}
       setmetatable(rep, signal_mt)
       return rep
    end
@@ -187,7 +188,7 @@ local function compile(prog, nb_args)
       local var = new_var()
       local args = {}
       for i,a in ipairs(args_) do args[i] = as_signal(a) end
-      code[var] = {op, args}
+      table.insert(code, {'let', var, {op, args}})
       return signal('ref',var)
    end
    local function prim(op, n)
@@ -197,9 +198,16 @@ local function compile(prog, nb_args)
          return app(op, args)
       end
    end
-   local function close(op)
-      -- generate state variable and insert get/set state statements
-      return function() end
+   local svars = {}
+   local function close(init, fun)
+      -- FIXME: track init
+      local svar = new_var()
+      table.insert(svars, svar)
+      table.insert(code, {'let',svar,{'state', #svars-1}})
+      local sin = signal('ref',svar)
+      local sout, out = fun(sin)
+      table.insert(code, {'set-state!', svar, sout})
+      return out
    end
    local c = {
       add  = prim('add',2),
@@ -211,18 +219,32 @@ local function compile(prog, nb_args)
    local args = {c}
    for i=1,nb_args do
       local input = new_var()
-      code[input] = {'input',i}
+      table.insert(code, {'let',input,{'input',i-1}})
       table.insert(args, signal('ref',input))
    end
    local out = { prog(unpack(args)) }
-   log_desc({code=code,out=out})
+   log_desc({code=code,out=out,svars=svars})
    return code
 end
 
-compile(prog3, 1)
-compile(prog4, 2)
-compile(prog5, 1)
+--compile(prog3, 1)
+--compile(prog4, 2)
+--compile(prog5, 1)
 
+compile(prog2, 1)
+
+-- {
+--   svars = { 2,  },
+--   code = {
+--            { "let", 1, { "input", 0 }},
+--            { "let", 2, { "state", 0 }},
+--            { "let", 3, { "add1", {{ "ref", 2 }}}},
+--            { "set-state!", 2, { "ref", 3,  }},
+--   },
+--   out = {
+--           { "ref", 2 }
+--   },
+-- }
 
 
 
