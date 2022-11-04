@@ -8,6 +8,8 @@
 
 require 'lure.log'
 
+-- FIXME: curry the context argument.
+
 local function prog1(c, i)
    local function counter_sm(s) return s+1, s end
    local counter = c.close(0, counter_sm)
@@ -17,6 +19,18 @@ end
 local function prog2(c)
    function update(s) return c.add1(s), s end
    return c.close(0, update)
+end
+
+local function prog3(c, a)
+   return c.add1(a)
+end
+
+local function prog4(c, a, b)
+   return c.add(a, b)
+end
+
+local function prog5(c, a)
+   return a + 1
 end
 
 
@@ -54,10 +68,12 @@ local function pure(val)
    return signal(val, function() return pure(val) end)
 end
 -- Automatically lift lua primitives
+
 local function as_signal(thing)
    if type(thing) == 'table' and thing.type == 'signal' then return thing end
    return pure(thing)
 end
+
 -- FIXME: lift can be generic
 local function lift1(f)
    local fl
@@ -143,22 +159,69 @@ log_desc({
       f2 = take(3,f2)
 })
 
+local function counter(n)
+   return function()
+      local val = n
+      n = n + 1
+      return val
+   end
+end
 
 
 -- SEMANTICS: COMPILER
-local function compile(prog)
-   local function prim2(op)
-      return function(a, b)
-         
+local function compile(prog, nb_args)
+   local code = {}
+   local new_var = counter(1)
+   local signal_mt = {}
+   local function signal(tag, arg)
+      local rep = {tag, arg}
+      setmetatable(rep, signal_mt)
+      return rep
+   end
+   local as_signal = function(thing)
+      log_desc({thing=thing})
+      if type(thing) == 'table' and thing[1] == 'ref' then return thing end
+      return signal('lit',thing)
+   end
+   local function app(op, args_)
+      local var = new_var()
+      local args = {}
+      for i,a in ipairs(args_) do args[i] = as_signal(a) end
+      code[var] = {op, args}
+      return signal('ref',var)
+   end
+   local function prim(op, n)
+      return function(...)
+         local args = {...}
+         assert(#args == n)
+         return app(op, args)
       end
    end
+   local function close(op)
+      -- generate state variable and insert get/set state statements
+      return function() end
+   end
    local c = {
-      add  = prim2('add'),
-      add1 = prim1('add1'),
+      add  = prim('add',2),
+      add1 = prim('add1',1),
       close = close,
    }
-   prog(c)
+   signal_mt.__add = c.add
+
+   local args = {c}
+   for i=1,nb_args do
+      local input = new_var()
+      code[input] = {'input',i}
+      table.insert(args, signal('ref',input))
+   end
+   local out = { prog(unpack(args)) }
+   log_desc({code=code,out=out})
+   return code
 end
+
+compile(prog3, 1)
+compile(prog4, 2)
+compile(prog5, 1)
 
 
 
