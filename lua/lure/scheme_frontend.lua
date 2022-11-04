@@ -56,7 +56,7 @@ class.macro = {} ; do
       -- log("MACRO: " .. name .. "\n")
       class.macro[name] = function(s, expr)
          local config = { state = s, void = void }
-         tab.copy(s.config, config)
+         tab.copy1(s.config, config)
          return m(expr, config)
       end
    end

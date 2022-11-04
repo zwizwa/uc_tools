@@ -46,13 +46,18 @@ if [ ! -z "$1" ]; then
 fi
 
 # Proceed with rest, redirecting output, only printing tail on failure.
-LOG=$(readlink -f ./test_lure.log)
-lua -e "require ('lure.test').run()" >$LOG 2>&1
+LOG_OUT=$(readlink -f ./test_lure.out)
+LOG_ERR=$(readlink -f ./test_lure.err)
+lua -e "require ('lure.test').run()" >$LOG_OUT 2>$LOG_ERR
 ERR=$?
 if [ "$ERR" != 0 ]; then
+    # tail -n 30 $LOG
+    # just print the one that has the backtrace
+    tail -n 100 $LOG_ERR 
     echo "ERR: $ERR"
-    echo "see $LOG"
-    tail -n 30 $LOG
+    echo "see:"
+    echo $LOG_OUT
+    echo $LOG_ERR
     exit $ERR
 fi
 echo "test OK"

@@ -86,8 +86,14 @@ test_dfl.lua begin
   arity = 2,
   next_node = 6,
   nodes = { 
-            {  }, 
-            {  }, 
+            { 
+              opcode = "input",
+              operands = {  },
+            }, 
+            { 
+              opcode = "input",
+              operands = {  },
+            }, 
             { 
               opcode = "mul",
               operands = { 1, 1,  },
@@ -106,9 +112,9 @@ test_dfl.lua begin
 }
 - code:
 test_dfl.lua end
-int testfun(void*_ctx, int r1, int r2) {
-    int r3 = mul(_ctx, r1, r1)
-    int r4 = mul(_ctx, r2, r2)
-    int r5 = add(_ctx, r3, r4)
+int testfun(void*_, int r1, int r2) {
+    int r3 = mul(_, r1, r1)
+    int r4 = mul(_, r2, r2)
+    int r5 = add(_, r3, r4)
     return r5;
 }

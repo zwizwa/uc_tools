@@ -26,7 +26,7 @@ local r = se.reverse
 local void = l('begin')
 
 macro['begin@'] = function(expr, config)
-   local c = tab.copy(config or {}, { letrec = 'letrec@' })
+   local c = tab.copy1(config or {}, { letrec = 'letrec@' })
    return macro['begin'](expr, c)
 end
 
@@ -174,7 +174,7 @@ end
 -- It's currently not possible to check if letrec@ trampolines are
 -- safe, so keep them explicit.
 macro['let@'] = function(expr, config)
-   local c = tab.copy(config or {}, { begin = 'begin@' })
+   local c = tab.copy1(config or {}, { begin = 'begin@' })
    return macro['let'](expr, c)
 end
 

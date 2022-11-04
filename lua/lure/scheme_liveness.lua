@@ -214,8 +214,8 @@ function class.comp_if(s, expr, m)
    end
 
    -- Fork the parent running refcount.
-   local rc_t = tab.copy(s.rc)
-   local rc_f = tab.copy(s.rc)
+   local rc_t = tab.copy1(s.rc)
+   local rc_f = tab.copy1(s.rc)
 
    -- The rc_max is recovered from the previous pass. These are
    -- attached to the 'if' syntax node via rc_max_if table.
