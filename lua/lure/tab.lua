@@ -8,12 +8,12 @@ function tab.invert(t)
 end
 
 -- Shallow copy
-function tab.copy1(t)
-   copy = {}
+function tab.copy1(t, into)
+   into = into or {}
    for k,v in pairs(t) do
-      copy[k] = v
+      into[k] = v
    end
-   return copy
+   return into
 end
 
 function tab.map(fun, inp)
