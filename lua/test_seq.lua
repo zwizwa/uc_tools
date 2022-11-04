@@ -1,6 +1,10 @@
 #!./lua.sh
 
-local ll = require('lure.lazylist')
+
+-- Rework: this is a proof of concept interpretation model + compiler.
+-- It is best to switch from this approach to Lure intermediate
+-- language.
+
 
 -- SYNTAX
 
@@ -80,57 +84,19 @@ end
 -- SEMANTICS: SIGNALS AS LAZY LISTS
 
 -- Use lazy lists to represent signals.
-local signal  = ll.signal
-local pure    = ll.pure
-local project = ll.project
-local lift    = ll.lift
-local take    = ll.take
-
-
--- To implement 'close', the update function is probed using a signal
--- that does not have a defined tail.  This works as long as the tail
--- of the s_out and out signals are never evaluated.  The loop can
--- then be closed using a state variable.
-
--- Implement base routine on state vectors (lua lists).
-local function close_vec(init, update)
-   local state = init
-   local tail_thunk
-   tail_thunk = function()
-      local s_in = {}
-      for i=1,#state do
-         s_in[i] = signal(state[i], nil)
-      end
-      local s_out, out = update(s_in)
-      for i,si in ipairs(s_out) do
-         state[i] = si.head
-      end
-      local rv = signal(out.head, tail_thunk)
-      return rv
-   end
-   return tail_thunk()
-end
-
--- Wrapper for single state variable.
-local function close(init, update)
-   return close_vec(
-      {init},
-      function(states)
-         local next_state, out = update(states[1])
-         return {next_state}, out
-      end)
-end
-
+local ll_metatable = {}
+local ll = require('lure.lazylist')(ll_metatable)
 
 local signal_c = {
-   add1  = lift(1, function(a)   return a+1 end),
-   add   = lift(2, function(a,b) return a+b end),
-   close = close
+   add1  = ll.lift(1, function(a)   return a+1 end),
+   add   = ll.lift(2, function(a,b) return a+b end),
+   close = ll.close
 }
 
-ll.mt.__add = signal_c.add
+-- Patch the metatable for operator support.
+ll_metatable.__add = signal_c.add
 
-local f1 = prog1(signal_c, pure(100))
+local f1 = prog1(signal_c, ll.pure(100))
 local f2 = prog2(signal_c)
 
 -- log_desc({
@@ -146,8 +112,8 @@ local f2 = prog2(signal_c)
 -- })
 
 log_desc({
-      f1 = take(3,f1),
-      f2 = take(3,f2)
+      f1 = ll.take(3,f1),
+      f2 = ll.take(3,f2)
 })
 
 local function counter(n)

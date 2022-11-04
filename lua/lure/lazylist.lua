@@ -1,5 +1,8 @@
 -- Lazy lists with eager heads and lazy tails.
 
+-- Parameterized module: metatable for operators.
+return function(mt)
+
 --  The head is always strict.  The tail is delayed (memoized thunk).
 local function memo(thunk)
    local cache = nil
@@ -9,12 +12,6 @@ local function memo(thunk)
       return cache
    end
 end
-
--- FIXME: How to parameterize this?
--- This is only for test_seq.lua direct implementation.
--- Signal metatable will be patched below to support Lua operator overloading.
-local mt = {
-}
 
 local function signal(head, tail_thunk)
    s = { type = 'signal', head = head, tail = memo(tail_thunk) }
@@ -68,6 +65,41 @@ local function take(n, lst)
 end
 
 
+-- To implement 'causal close', the update function is probed using a
+-- signal that does not have a defined tail.  This works as long as
+-- the tail of the s_out and out signals are never evaluated.  The
+-- loop can then be closed using a state variable.
+
+-- Implement base routine on state vectors (lua lists).
+local function close_vec(init, update)
+   local state = init
+   local tail_thunk
+   tail_thunk = function()
+      local s_in = {}
+      for i=1,#state do
+         s_in[i] = signal(state[i], nil)
+      end
+      local s_out, out = update(s_in)
+      for i,si in ipairs(s_out) do
+         state[i] = si.head
+      end
+      local rv = signal(out.head, tail_thunk)
+      return rv
+   end
+   return tail_thunk()
+end
+-- Wrapper for single state variable.
+local function close(init, update)
+   return close_vec(
+      {init},
+      function(states)
+         local next_state, out = update(states[1])
+         return {next_state}, out
+      end)
+end
+
+
+
 return {
    take = take,
    signal = signal,
@@ -75,5 +107,10 @@ return {
    pure = pure,
    project = project,
    lift = lift,
+   close_vec = close_vec,
+   close = close,
 }
+
+end
+
 
