@@ -35,6 +35,45 @@ local function prog5(c, a)
 end
 
 
+-- The idea is to generate C array processing code.  The iteration
+-- procedure is based around the idea of an array constructor with
+-- self-reference for old values (triangle).
+--
+-- Before doing any of this, first make sure the compiler produces
+-- code that can place return values directly into arrays etc...
+-- CPS-style.  That seems to be the main property that's needed to
+-- then generalize to array initializers as state machine unfolds.
+--
+-- Important to realize here is that the language can just be
+-- applicative, and the Lua model can be as well, but the
+-- implementation can use "parameterized output" or CPS-like
+-- representation to pass destination location into the correct spot.
+--
+-- This kind of thing has already been implemented in lure, so maybe
+-- it is best to switch over to that.  The main point of this file
+-- here is:
+-- 1. Lua can serve as HOAS for a causal signal/RTL language
+-- 2. Representation as lazy lists works
+
+
+
+
+-- local function prog6(c)
+--    local arr =
+--       c.array(
+--          3, -- size of the array
+--          function(s, i, ref)
+--             -- i is the current index
+--             -- ref allows access to previous results 0 to i-1
+--             -- return values are state and output
+--             -- output is stored in the array
+--             local s_next = s + 1
+--             local out = s + i
+--             return s_next, out
+--          end)
+--    return arr
+-- end
+
 
 -- SEMANTICS: SIGNALS AS LAZY LISTS
 
@@ -70,8 +109,8 @@ local function pure(val)
    return signal(val, function() return pure(val) end)
 end
 
--- Automatically lift lua primitives
-local function as_signal(thing)
+-- Project prim x signal -> signal
+local function project(thing)
    if type(thing) == 'table' and thing.type == 'signal' then return thing end
    return pure(thing)
 end
@@ -85,7 +124,7 @@ local function lift(n,f)
       local heads = {}
       local tails = {}
       for i,a in ipairs(args) do
-         local sig_a = as_signal(a)
+         local sig_a = project(a)
          heads[i] = sig_a.head
          tails[i] = sig_a.tail
       end
@@ -174,23 +213,38 @@ end
 
 
 -- SEMANTICS: COMPILER
-local function compile(prog, nb_args)
+
+-- Erlang's iolist
+local function w_thing(thing)
+   if type(thing) == 'table' then
+      for _, subthing in ipairs(thing) do
+         w_thing(subthing)
+      end
+   else
+      io.stdout:write(thing .. "")
+   end
+end
+local function w(...) w_thing({...}) end
+
+local function compile(prog, nb_input)
    local code = {}
    local new_var = counter(0)
    local signal_mt = {}
    local function signal(...)
       local rep = {...}
+      rep.type = 'signal'
       setmetatable(rep, signal_mt)
       return rep
    end
-   local as_signal = function(thing)
-      if type(thing) == 'table' and thing[1] == 'ref' then return thing end
-      return signal('lit',thing)
+   local function project(thing)
+      if type(thing) == 'table' and thing.type == 'signal' then return thing end
+      return signal('lit', thing)
    end
+
    local function app(op, args_)
       local var = new_var()
       local args = {}
-      for i,a in ipairs(args_) do args[i] = as_signal(a) end
+      for i,a in ipairs(args_) do args[i] = project(a, lit) end
       table.insert(code, {'let', var, {op, args}})
       return signal('ref',var)
    end
@@ -205,7 +259,7 @@ local function compile(prog, nb_args)
    local init_state = {}
    local function close(init, fun)
       local svar = new_state()
-      init_state[svar] = init
+      init_state[svar+1] = init
       local sin = signal('sref',svar)
       local sout, out = fun(sin)
       table.insert(code, {'set-state!', svar, sout})
@@ -219,11 +273,38 @@ local function compile(prog, nb_args)
    signal_mt.__add = c.add
 
    local args = {c}
-   for i=1,nb_args do
+   for i=1,nb_input do
       table.insert(args, signal('input',i-1))
    end
    local out = { prog(unpack(args)) }
-   log_desc({code=code,out=out,init=init_state,nb_args=nb_args})
+
+   -- log_desc({code=code,out=out,init=init_state,nb_input=nb_input})
+   local function w_code(w, code)
+      if type(code) == 'table' then
+         w('( ')
+         for _,c in ipairs(code) do
+            w_code(w, c)
+            w(' ')
+         end
+         w(')')
+      else
+         w(code)
+      end
+   end
+   w("\n")
+   w("input:\n")
+   log_desc({init_state=init_state,nb_input=nb_input})
+   w("code:\n")
+   for _,c in ipairs(code) do
+      w_code(w, c)
+      w('\n')
+   end
+   w("output:\n")
+   for _,c in ipairs(out) do
+      w_code(w, c)
+      w('\n')
+   end
+
    return code
 end
 
