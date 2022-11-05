@@ -5,6 +5,11 @@
 -- It is best to switch from this approach to Lure intermediate
 -- language.
 
+-- Split into:
+-- . lazy list lib (done)
+-- . compie from hoas to Scheme syntax
+-- . compile Lure IR to CPS, supporting 'unfold into array' to implement map
+
 
 -- SYNTAX
 
@@ -143,14 +148,15 @@ local function compile(prog, nb_input)
    local code = {}
    local new_var = counter(0)
    local signal_mt = {}
+   local signal_type = {'signal'}  -- table instance is unique tag
    local function signal(...)
       local rep = {...}
-      rep.type = 'signal'
+      rep.type = signal_type
       setmetatable(rep, signal_mt)
       return rep
    end
    local function project(thing)
-      if type(thing) == 'table' and thing.type == 'signal' then return thing end
+      if type(thing) == 'table' and thing.type == signal_type then return thing end
       return signal('lit', thing)
    end
 
