@@ -66,9 +66,6 @@ end
 -- 1. Lua can serve as HOAS for a causal signal/RTL language
 -- 2. Representation as lazy lists works
 
-
-
-
 -- local function prog6(c)
 --    local arr =
 --       c.array(
@@ -84,6 +81,11 @@ end
 --          end)
 --    return arr
 -- end
+
+local function prog6(c, n)
+   
+end
+
 
 
 -- SEMANTICS: SIGNALS AS LAZY LISTS
@@ -146,7 +148,15 @@ local function w(...) w_thing({...}) end
 
 local function compile(prog, nb_input)
    local code = {}
-   local new_var = counter(0)
+   local new_var_number = counter(1)
+   local types = {}
+   local function new_var()
+      local v = new_var_number()
+      -- type will be patched later by access pattern
+      types[v] = {}
+      return v
+   end
+
    local signal_mt = {}
    local signal_type = {'signal'}  -- table instance is unique tag
    local function signal(...)
@@ -164,7 +174,8 @@ local function compile(prog, nb_input)
       local var = new_var()
       local args = {}
       for i,a in ipairs(args_) do args[i] = project(a, lit) end
-      table.insert(code, {'let', var, {op, args}})
+      table.insert(code, {'alloc', var})
+      table.insert(code, {op, args, {'into', var}})
       return signal('ref',var)
    end
    local function prim(op, n)
@@ -184,16 +195,21 @@ local function compile(prog, nb_input)
       table.insert(code, {'set-state!', svar, sout})
       return out
    end
+   local function vec(n, fun)
+      local vec_var = new_state()
+      -- FIXME
+   end
    local c = {
-      add  = prim('add',2),
-      add1 = prim('add1',1),
+      add   = prim('add',2),
+      add1  = prim('add1',1),
+      vec   = vec,
       close = close,
    }
    signal_mt.__add = c.add
 
    local args = {c}
    for i=1,nb_input do
-      table.insert(args, signal('input',i-1))
+      table.insert(args, signal('input',i))
    end
    local out = { prog(unpack(args)) }
 
@@ -211,6 +227,8 @@ local function compile(prog, nb_input)
       end
    end
    w("\n")
+   w("types:\n")
+   log_desc(types)
    w("input:\n")
    log_desc({init_state=init_state,nb_input=nb_input})
    w("code:\n")
