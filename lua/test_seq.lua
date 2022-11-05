@@ -45,6 +45,15 @@ local function prog5(c, a)
    return a + 1
 end
 
+local function prog6(c, a)
+   return c.vec(3, function(i) return i + 1 end)
+end
+
+local function prog7(c, a)
+   local a = c.vec(13, function(i) return i + i + 1 end)
+   return a + 1
+end
+
 
 -- The idea is to generate C array processing code.  The iteration
 -- procedure is based around the idea of an array constructor with
@@ -82,9 +91,6 @@ end
 --    return arr
 -- end
 
-local function prog6(c, n)
-   
-end
 
 
 
@@ -147,9 +153,13 @@ end
 local function w(...) w_thing({...}) end
 
 local function compile(prog, nb_input)
+   -- State
    local code = {}
    local new_var_number = counter(1)
    local types = {}
+   local new_state = counter(0)
+   local init_state = {}
+
    local function new_var()
       local v = new_var_number()
       -- type will be patched later by access pattern
@@ -157,7 +167,7 @@ local function compile(prog, nb_input)
       return v
    end
 
-   local signal_mt = {}
+   local signal_mt = {} -- patched later for Lua operator overloading
    local signal_type = {'signal'}  -- table instance is unique tag
    local function signal(...)
       local rep = {...}
@@ -165,18 +175,25 @@ local function compile(prog, nb_input)
       setmetatable(rep, signal_mt)
       return rep
    end
+   local function is_signal(thing)
+      return type(thing) == 'table' and thing.type == signal_type
+   end
    local function project(thing)
-      if type(thing) == 'table' and thing.type == signal_type then return thing end
+      if is_signal(thing) then return thing end
       return signal('lit', thing)
    end
-
+   local function var_name(var_nb)
+      return 'v' .. var_nb
+   end
+   local function ref(var_nb)
+      return signal('ref', var_name(var_nb))
+   end
    local function app(op, args_)
       local var = new_var()
       local args = {}
       for i,a in ipairs(args_) do args[i] = project(a, lit) end
-      table.insert(code, {'alloc', var})
-      table.insert(code, {op, args, {'into', var}})
-      return signal('ref',var)
+      table.insert(code, {'let', var_name(var), {op, args}})
+      return ref(var)
    end
    local function prim(op, n)
       return function(...)
@@ -185,19 +202,24 @@ local function compile(prog, nb_input)
          return app(op, args)
       end
    end
-   local new_state = counter(0)
-   local init_state = {}
    local function close(init, fun)
       local svar = new_state()
       init_state[svar+1] = init
-      local sin = signal('sref',svar)
+      local sin = ref(svar)
       local sout, out = fun(sin)
-      table.insert(code, {'set-state!', svar, sout})
+      table.insert(code, {'set-state!', var_name(svar), sout})
       return out
    end
    local function vec(n, fun)
-      local vec_var = new_state()
-      -- FIXME
+      local vec_index = new_var()
+      local vec_out   = new_var()
+      local saved_code = code ; code = {}
+      local el_out = fun(ref(vec_index))
+      table.insert(code,{'vector-set!', var_name(vec_out), var_name(vec_index), el_out})
+      table.insert(code, {'vector-loop!', vec_index, n})
+      table.insert(saved_code, {'vector-begin', var_name(vec_out), n, code})
+      code = saved_code
+      return ref(vec_out)
    end
    local c = {
       add   = prim('add',2),
@@ -214,11 +236,11 @@ local function compile(prog, nb_input)
    local out = { prog(unpack(args)) }
 
    -- log_desc({code=code,out=out,init=init_state,nb_input=nb_input})
-   local function w_code(w, code)
+   local function w_expr(w, code)
       if type(code) == 'table' then
          w('( ')
          for _,c in ipairs(code) do
-            w_code(w, c)
+            w_expr(w, c)
             w(' ')
          end
          w(')')
@@ -226,19 +248,38 @@ local function compile(prog, nb_input)
          w(code)
       end
    end
+   local tab = ''
+   local function w_seq(w, code)
+      for _,c in ipairs(code) do
+         if c[1] == 'vector-begin' then
+            local _, name, n, sub_code = unpack(c)
+            w('( vector-begin ')
+            w(name)
+            w(" ")
+            w(n)
+            w("\n")
+            local saved_tab = tab ; tab = tab .. '    '
+            w_seq(w, sub_code)
+            tab = saved_tab
+            w(')\n')
+         else
+            w(tab)
+            w_expr(w, c)
+            w('\n')
+         end
+      end
+   end
+
    w("\n")
    w("types:\n")
    log_desc(types)
    w("input:\n")
    log_desc({init_state=init_state,nb_input=nb_input})
    w("code:\n")
-   for _,c in ipairs(code) do
-      w_code(w, c)
-      w('\n')
-   end
+   w_seq(w, code)
    w("output:\n")
    for _,c in ipairs(out) do
-      w_code(w, c)
+      w_expr(w, c)
       w('\n')
    end
 
@@ -250,6 +291,8 @@ compile(prog4, 2)
 compile(prog5, 1)
 compile(prog2, 1)
 compile(prog1, 1)
+compile(prog6, 1)
+compile(prog7, 1)
 
 
 
