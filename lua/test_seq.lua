@@ -7,8 +7,9 @@
 
 -- Split into:
 -- . lazy list lib (done)
--- . compie from hoas to Scheme syntax
--- . compile Lure IR to CPS, supporting 'unfold into array' to implement map
+-- . compile 'unfold into array' (done)
+-- . compile from hoas to Scheme syntax (+- done)
+-- . compile Lure IR extended with vector loops to CPS (return slot pointer only)
 
 
 -- SYNTAX
@@ -18,6 +19,7 @@
 -- Library functions will auto-lift numbers to signals.
 
 require 'lure.log'
+local se = require 'lure.se'
 
 -- FIXME: curry the context argument.
 -- FIXME: in should be a single argument
@@ -50,46 +52,23 @@ local function prog6(c, a)
 end
 
 local function prog7(c, a)
-   local a = c.vec(13, function(i) return i + i + 1 end)
+   local a = c.vec(
+      -- Vector size needs to be known at compile time (for now).
+      13,
+      function(
+            -- Index into array
+            i,
+            -- Dereference for elements already computed.  ref(j) is
+            -- valid for j<i.  If this is not used, the computation is
+            -- not causally linked so it can be performed in parallel.
+            ref)
+         -- The return value is what goes into slot i
+         return i + i + 1
+      end)
+   -- Later, implement auto-lifting of simple constructs.
    return a + 1
 end
 
-
--- The idea is to generate C array processing code.  The iteration
--- procedure is based around the idea of an array constructor with
--- self-reference for old values (triangle).
---
--- Before doing any of this, first make sure the compiler produces
--- code that can place return values directly into arrays etc...
--- CPS-style.  That seems to be the main property that's needed to
--- then generalize to array initializers as state machine unfolds.
---
--- Important to realize here is that the language can just be
--- applicative, and the Lua model can be as well, but the
--- implementation can use "parameterized output" or CPS-like
--- representation to pass destination location into the correct spot.
---
--- This kind of thing has already been implemented in lure, so maybe
--- it is best to switch over to that.  The main point of this file
--- here is:
--- 1. Lua can serve as HOAS for a causal signal/RTL language
--- 2. Representation as lazy lists works
-
--- local function prog6(c)
---    local arr =
---       c.array(
---          3, -- size of the array
---          function(s, i, ref)
---             -- i is the current index
---             -- ref allows access to previous results 0 to i-1
---             -- return values are state and output
---             -- output is stored in the array
---             local s_next = s + 1
---             local out = s + i
---             return s_next, out
---          end)
---    return arr
--- end
 
 
 
@@ -160,10 +139,14 @@ local function compile(prog, nb_input)
    local new_state = counter(0)
    local init_state = {}
 
-   local function new_var()
-      local v = new_var_number()
+   local function var_name(var_nb)
+      -- Variables are not ordered, so just represent them as strings.
+      return 'v' .. var_nb
+   end
+   local function new_var(typ)
+      local v = var_name(new_var_number())
       -- type will be patched later by access pattern
-      types[v] = {}
+      types[v] = typ or "T"
       return v
    end
 
@@ -182,17 +165,14 @@ local function compile(prog, nb_input)
       if is_signal(thing) then return thing end
       return signal('lit', thing)
    end
-   local function var_name(var_nb)
-      return 'v' .. var_nb
-   end
-   local function ref(var_nb)
-      return signal('ref', var_name(var_nb))
+   local function ref(var)
+      return signal('ref', var)
    end
    local function app(op, args_)
       local var = new_var()
       local args = {}
       for i,a in ipairs(args_) do args[i] = project(a, lit) end
-      table.insert(code, {'let', var_name(var), {op, args}})
+      table.insert(code, {'let', var, {op, args}})
       return ref(var)
    end
    local function prim(op, n)
@@ -207,17 +187,23 @@ local function compile(prog, nb_input)
       init_state[svar+1] = init
       local sin = ref(svar)
       local sout, out = fun(sin)
-      table.insert(code, {'set-state!', var_name(svar), sout})
+      table.insert(code, {'set-state!', svar, sout})
       return out
    end
    local function vec(n, fun)
+      -- Variable size arrays are not supported, but really should not
+      -- be a big deal if they reside on the stack, which is going to
+      -- be the case for most code.
+      assert(type(n) == 'number')
       local vec_index = new_var()
       local vec_out   = new_var()
       local saved_code = code ; code = {}
       local el_out = fun(ref(vec_index))
-      table.insert(code,{'vector-set!', var_name(vec_out), var_name(vec_index), el_out})
+      assert(el_out[1] == 'ref')
+      types[vec_out] = {'vec', types[el_out[2]], n}
+      table.insert(code,{'vector-set!', vec_out, vec_index, el_out})
       table.insert(code, {'vector-loop!', vec_index, n})
-      table.insert(saved_code, {'vector-begin', var_name(vec_out), n, code})
+      table.insert(saved_code, {'vector-begin', vec_out, n, code})
       code = saved_code
       return ref(vec_out)
    end
@@ -240,8 +226,7 @@ local function compile(prog, nb_input)
       if type(code) == 'table' then
          w('( ')
          for _,c in ipairs(code) do
-            w_expr(w, c)
-            w(' ')
+            w_expr(w, c) ; w(' ')
          end
          w(')')
       else
@@ -253,11 +238,7 @@ local function compile(prog, nb_input)
       for _,c in ipairs(code) do
          if c[1] == 'vector-begin' then
             local _, name, n, sub_code = unpack(c)
-            w('( vector-begin ')
-            w(name)
-            w(" ")
-            w(n)
-            w("\n")
+            w('( vector-begin ', name, " ", n, "\n")
             local saved_tab = tab ; tab = tab .. '    '
             w_seq(w, sub_code)
             tab = saved_tab
