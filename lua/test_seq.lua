@@ -69,6 +69,14 @@ local function prog7(c, a)
    return a + 1
 end
 
+local function prog8(c, a)
+   return c.vec(13, function(i)
+   return c.vec(17, function(j)
+   return i + i + 1
+   end)
+   end)
+end
+
 
 
 
@@ -119,24 +127,86 @@ end
 
 -- SEMANTICS: COMPILER
 
--- Erlang's iolist
-local function w_thing(thing)
-   if type(thing) == 'table' then
-      for _, subthing in ipairs(thing) do
-         w_thing(subthing)
-      end
-   else
-      io.stdout:write(thing .. "")
-   end
+local function is_signal(thing)
+   return type(thing) == 'table' and thing.class == 'signal'
 end
-local function w(...) w_thing({...}) end
+
+
+-- FIXME: use se pretty printer
+local function w_prog(prog)
+
+   -- Erlang's iolist
+   local function w_thing(thing)
+      if type(thing) == 'table' then
+         for _, subthing in ipairs(thing) do
+            w_thing(subthing)
+         end
+      else
+         io.stdout:write(thing .. "")
+      end
+   end
+   local function w(...) w_thing({...}) end
+
+   local function w_expr(w, code)
+      if is_signal(code) then
+         w('(',code.op," ",code.arg,')')
+      elseif se.is_pair(code) then
+         w('( ')
+         for c in se.elements(code) do
+            w_expr(w, c) ; w(' ')
+         end
+         w(')')
+      else
+         w(code)
+      end
+   end
+   local tab = ''
+   local function w_seq(w, code)
+      for c in se.elements(code) do
+         if (se.car(c) == 'vector-begin') then
+            local _, name, n, sub_code = se.unpack(c, {n=4})
+            w(tab, '( vector-begin ', name, " ", n, "\n")
+            local saved_tab = tab ; tab = tab .. '    '
+            w_seq(w, sub_code)
+            tab = saved_tab
+            w(tab,')\n')
+         else
+            w(tab)
+            w_expr(w, c)
+            w('\n')
+         end
+      end
+   end
+   local function w_prog(w, prog)
+      w("\n")
+      w("types:\n")
+      for k,v in pairs(prog.types) do
+         w(k,": ")
+         w_expr(w, v)
+         w("\n")
+      end
+      w("init_state: ")
+      w_expr(w, prog.init_state)
+      w("\n")
+      w("nb_input: ", prog.nb_input, "\n")
+      w("code:\n")
+      w_seq(w, prog.code)
+      w("output:\n")
+      for c in se.elements(prog.out) do
+         w_expr(w, c)
+         w('\n')
+      end
+   end
+
+   w_prog(w, prog)
+end
 
 local function compile(prog, nb_input)
    -- State
    local code = {}
    local new_var_number = counter(1)
    local types = {}
-   local new_state = counter(0)
+   local new_state = counter(1)
    local init_state = {}
 
    local function var_name(var_nb)
@@ -151,15 +221,11 @@ local function compile(prog, nb_input)
    end
 
    local signal_mt = {} -- patched later for Lua operator overloading
-   local signal_type = {'signal'}  -- table instance is unique tag
-   local function signal(...)
-      local rep = {...}
-      rep.type = signal_type
+   local function signal(op, arg)
+      local rep = {op = op, arg = arg}
+      rep.class = 'signal'
       setmetatable(rep, signal_mt)
       return rep
-   end
-   local function is_signal(thing)
-      return type(thing) == 'table' and thing.type == signal_type
    end
    local function project(thing)
       if is_signal(thing) then return thing end
@@ -172,7 +238,7 @@ local function compile(prog, nb_input)
       local var = new_var()
       local args = {}
       for i,a in ipairs(args_) do args[i] = project(a, lit) end
-      table.insert(code, {'let', var, {op, args}})
+      table.insert(code, se.list('let', var, se.cons(op, se.array_to_list(args))))
       return ref(var)
    end
    local function prim(op, n)
@@ -184,10 +250,10 @@ local function compile(prog, nb_input)
    end
    local function close(init, fun)
       local svar = new_state()
-      init_state[svar+1] = init
+      init_state[svar] = init
       local sin = ref(svar)
       local sout, out = fun(sin)
-      table.insert(code, {'set-state!', svar, sout})
+      table.insert(code, se.list('set-state!', svar, sout))
       return out
    end
    local function vec(n, fun)
@@ -199,11 +265,11 @@ local function compile(prog, nb_input)
       local vec_out   = new_var()
       local saved_code = code ; code = {}
       local el_out = fun(ref(vec_index))
-      assert(el_out[1] == 'ref')
-      types[vec_out] = {'vec', types[el_out[2]], n}
-      table.insert(code,{'vector-set!', vec_out, vec_index, el_out})
-      table.insert(code, {'vector-loop!', vec_index, n})
-      table.insert(saved_code, {'vector-begin', vec_out, n, code})
+      assert(el_out.op == 'ref')
+      types[vec_out] = se.list('vec', types[el_out.arg], n)
+      table.insert(code, se.list('vector-set!', vec_out, vec_index, el_out))
+      table.insert(code, se.list('vector-loop!', vec_index, n))
+      table.insert(saved_code, se.list('vector-begin', vec_out, n, se.array_to_list(code)))
       code = saved_code
       return ref(vec_out)
    end
@@ -222,49 +288,19 @@ local function compile(prog, nb_input)
    local out = { prog(unpack(args)) }
 
    -- log_desc({code=code,out=out,init=init_state,nb_input=nb_input})
-   local function w_expr(w, code)
-      if type(code) == 'table' then
-         w('( ')
-         for _,c in ipairs(code) do
-            w_expr(w, c) ; w(' ')
-         end
-         w(')')
-      else
-         w(code)
-      end
-   end
-   local tab = ''
-   local function w_seq(w, code)
-      for _,c in ipairs(code) do
-         if c[1] == 'vector-begin' then
-            local _, name, n, sub_code = unpack(c)
-            w('( vector-begin ', name, " ", n, "\n")
-            local saved_tab = tab ; tab = tab .. '    '
-            w_seq(w, sub_code)
-            tab = saved_tab
-            w(')\n')
-         else
-            w(tab)
-            w_expr(w, c)
-            w('\n')
-         end
-      end
-   end
 
-   w("\n")
-   w("types:\n")
-   log_desc(types)
-   w("input:\n")
-   log_desc({init_state=init_state,nb_input=nb_input})
-   w("code:\n")
-   w_seq(w, code)
-   w("output:\n")
-   for _,c in ipairs(out) do
-      w_expr(w, c)
-      w('\n')
-   end
+   local prog = {
+      types = types,
+      init_state = se.array_to_list(init_state),
+      nb_input = nb_input,
+      code = se.array_to_list(code),
+      out = se.array_to_list(out),
+   }
 
-   return code
+   w_prog(prog)
+
+
+   return prog
 end
 
 compile(prog3, 1)
@@ -274,6 +310,7 @@ compile(prog2, 1)
 compile(prog1, 1)
 compile(prog6, 1)
 compile(prog7, 1)
+compile(prog8, 1)
 
 
 

@@ -298,7 +298,7 @@ local function expr_type(e)
          if e.class then
             return e.class
          else
-            log_desc(e)
+            log_desc({bad_table = e})
             error('bad table')
          end
       end
