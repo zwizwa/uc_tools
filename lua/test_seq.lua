@@ -24,60 +24,60 @@ local se = require 'lure.se'
 -- FIXME: curry the context argument.
 -- FIXME: in should be a single argument
 
-local function prog1(c, i)
-   local function counter_sm(s) return s+1, s end
-   local counter = c.close(0, counter_sm)
-   return counter + i
-end
+-- It's more convenient to wrap the semantics 'c' around a collection
+-- of functions, thant to have a collection of functions with a 'c'
+-- parameter, curried or not.
+local function progs(c)
 
-local function prog2(c)
-   function update(s) return c.add1(s), s end
-   return c.close(0, update)
-end
-
-local function prog3(c, a)
-   return c.add1(a)
-end
-
-local function prog4(c, a, b)
-   return c.add(a, b)
-end
-
-local function prog5(c, a)
-   return a + 1
-end
-
-local function prog6(c, a)
-   return c.vec(3, function(i) return i + 1 end)
-end
-
-local function prog7(c, a)
-   local a = c.vec(
-      -- Vector size needs to be known at compile time (for now).
-      13,
-      function(
-            -- Index into array
-            i,
-            -- Dereference for elements already computed.  ref(j) is
-            -- valid for j<i.  If this is not used, the computation is
-            -- not causally linked so it can be performed in parallel.
-            ref)
-         -- The return value is what goes into slot i
-         return i + i + 1
+   local m = {}
+   function m.prog1(i)
+      local function counter_sm(s) return s+1, s end
+      local counter = c.close(0, counter_sm)
+      return counter + i
+   end
+   function m.prog2()
+      function update(s) return c.add1(s), s end
+      return c.close(0, update)
+   end
+   function m.prog3(a)
+      return c.add1(a)
+   end
+   function m.prog4(a, b)
+      return c.add(a, b)
+   end
+   function m.prog5(a)
+      return a + 1
+   end
+   function m.prog6(a)
+      return c.vec(3, function(i) return i + 1 end)
+   end
+   function m.prog7(a)
+      local a = c.vec(
+         -- Vector size needs to be known at compile time (for now).
+         13,
+         function(
+               -- Index into array
+               i,
+               -- Dereference for elements already computed.  ref(j)
+               -- is valid for j<i.  If this is not used, the
+               -- computation is not causally linked so it can be
+               -- performed in parallel.
+               ref)
+            -- The return value is what goes into slot i
+            return i + i + 1
       end)
-   -- Later, implement auto-lifting of simple constructs.
-   return a + 1
+      -- Later, implement auto-lifting of simple constructs.
+      return a + 1
+   end
+   function m.prog8(a)
+      return c.vec(13, function(i)
+      return c.vec(17, function(j)
+      return i + i + 1
+      end)
+      end)
+   end
+   return m
 end
-
-local function prog8(c, a)
-   return c.vec(13, function(i)
-   return c.vec(17, function(j)
-   return i + i + 1
-   end)
-   end)
-end
-
-
 
 
 
@@ -96,9 +96,17 @@ local signal_c = {
 -- Patch the metatable for operator support.
 ll_metatable.__add = signal_c.add
 
-local f1 = prog1(signal_c, ll.pure(100))
-local f2 = prog2(signal_c)
+llp = progs(signal_c)
 
+local f1 = llp.prog1(ll.pure(100))
+local f2 = llp.prog2()
+
+log_desc({
+      f1 = ll.take(3,f1),
+      f2 = ll.take(3,f2)
+})
+
+-- FIXME: old api
 -- log_desc({
 --       one = c.one,
 --       add1_one = c.add1(c.one),
@@ -111,10 +119,6 @@ local f2 = prog2(signal_c)
 --       f1_tail = f1.tail(),
 -- })
 
-log_desc({
-      f1 = ll.take(3,f1),
-      f2 = ll.take(3,f2)
-})
 
 local function counter(n)
    return function()
@@ -201,7 +205,7 @@ local function w_prog(prog)
    w_prog(w, prog)
 end
 
-local function compile(prog, nb_input)
+local function compile(prog_name, nb_input)
    -- State
    local code = {}
    local new_var_number = counter(1)
@@ -281,11 +285,14 @@ local function compile(prog, nb_input)
    }
    signal_mt.__add = c.add
 
-   local args = {c}
+   local c_progs = progs(c)
+   local prog_fun = c_progs[prog_name]
+
+   local args = {}
    for i=1,nb_input do
       table.insert(args, signal('input',i))
    end
-   local out = { prog(unpack(args)) }
+   local out = { prog_fun(unpack(args)) }
 
    -- log_desc({code=code,out=out,init=init_state,nb_input=nb_input})
 
@@ -303,14 +310,14 @@ local function compile(prog, nb_input)
    return prog
 end
 
-compile(prog3, 1)
-compile(prog4, 2)
-compile(prog5, 1)
-compile(prog2, 1)
-compile(prog1, 1)
-compile(prog6, 1)
-compile(prog7, 1)
-compile(prog8, 1)
+compile('prog3', 1)
+compile('prog4', 2)
+compile('prog5', 1)
+compile('prog2', 1)
+compile('prog1', 1)
+compile('prog6', 1)
+compile('prog7', 1)
+compile('prog8', 1)
 
 
 
