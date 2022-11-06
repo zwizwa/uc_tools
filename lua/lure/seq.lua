@@ -29,19 +29,22 @@ local function is_signal(thing)
 end
 
 
-local function w_prog(prog)
-
-   -- Erlang's iolist
-   local function w_thing(thing)
-      if type(thing) == 'table' then
-         for _, subthing in ipairs(thing) do
-            w_thing(subthing)
-         end
-      else
-         io.stdout:write(thing .. "")
+-- Erlang's iolist
+local function w_thing(thing)
+   if type(thing) == 'table' then
+      for _, subthing in ipairs(thing) do
+         w_thing(subthing)
       end
+   else
+      io.stdout:write(thing .. "")
    end
-   local function w(...) w_thing({...}) end
+end
+local function w(...) w_thing({...}) end
+
+
+
+
+local function w_scheme(prog)
 
    local function w_expr(w, code)
       if is_signal(code) then
@@ -98,9 +101,134 @@ local function w_prog(prog)
          w_expr(w, v)
          w("\n")
       end
-      w("state: ")
-      w_expr(w, prog.state)
+      w("state:\n")
+      for s in se.elements(prog.state) do
+         w_expr(w, s)
+         w("\n")
+      end
+      w("args: ")
+      w_expr(w, prog.args)
       w("\n")
+      w("code:\n")
+      w_seq(w, prog.code)
+      w("return:\n")
+      for _,c in ipairs(prog.out) do
+         w_expr(w, c)
+         w('\n')
+      end
+   end
+
+   w_prog(w, prog)
+end
+
+
+
+local function w_c(prog)
+
+   local expr
+   local function expr_list(lst)
+      local s_lst = {}
+      for el, nxt in se.elements(lst) do
+         table.insert(s_lst, expr(el))
+         if se.is_pair(nxt) then
+            table.insert(s_lst, ', ')
+         end
+      end
+      return s_lst
+   end
+   local function indexed(lst)
+      local s = {}
+      for el in se.elements(lst) do
+         table.insert(s,'[')
+         table.insert(s,el)
+         table.insert(s,']')
+      end
+      return s
+   end
+
+   function expr(code)
+      if is_signal(code) then
+         local s_index = ""
+         if code.index then
+            s_index = indexed(code.index)
+         end
+         -- code.op can be dropped: both ref and lit are directly represented
+         -- return { code.op,"(",code.arg, index, ')' }
+         return {code.arg, index}
+      elseif type(code) == 'table' then
+         local op, args = unpack(code)
+         local s_args = expr_list(args)
+         return {op,'(',s_args,')'}
+      else
+         return code
+      end
+   end
+
+
+   local function w_expr(w, e)
+      w(expr(e))
+   end
+
+   local tab = ''
+
+   local function w_seq(w, code)
+      for c in se.elements(code) do
+         if (se.car(c) == 'for-index') then
+            local _, index, n, sub_code = se.unpack(c, {n=4})
+            w(tab, 'for(int ', index, '=0; ', index, '<', n,'; ',index,'++) {\n')
+            local saved_tab = tab ; tab = tab .. '  '
+            w_seq(w, sub_code)
+            tab = saved_tab
+            w(tab,'}\n')
+         elseif (se.car(c) == 'let') then
+            local _, var, expr = se.unpack(c, {n=3})
+            w(tab, prog.types[var], '_t ', var, ' = ')
+            w_expr(w,expr)
+            w(';\n')
+         elseif (se.car(c) == 'alloc') then
+            -- Technically this is a 2nd pass
+            local _, var, typ = se.unpack(c, {n=3})
+            if prog.is_out[var] then
+               w(';; out: ')
+            end
+            w_expr(w,c)
+            w('\n')
+         elseif (se.car(c) == 'vector-set!') then
+            local _, var, idxs, expr = se.unpack(c, {n=4})
+            w(tab, var)
+            w(indexed(idxs))
+            w(" = ")
+            w_expr(w,expr)
+            w(';\n')
+         elseif (se.car(c) == 'state-set!') then
+            local _, var, idxs, expr = se.unpack(c, {n=4})
+            w(tab, var)
+            w(indexed(idxs))
+            w(" = ")
+            w_expr(w,expr)
+            w(';\n')
+         else
+            w(tab)
+            w_expr(w, c)
+            w('\n')
+         end
+      end
+   end
+
+
+   local function w_prog(w, prog)
+      w("\n")
+      w("types:\n")
+      for k,v in pairs(prog.types) do
+         w(k,": ")
+         w_expr(w, v)
+         w("\n")
+      end
+      w("state:\n")
+      for s in se.elements(prog.state) do
+         w_expr(w, s)
+         w("\n")
+      end
       w("args: ")
       w_expr(w, prog.args)
       w("\n")
@@ -324,7 +452,8 @@ local function compile(hoas, nb_input)
       is_out = is_out,
    }
 
-   w_prog(prog)
+   w_scheme(prog)
+   w_c(prog)
 
 
    return prog
