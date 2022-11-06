@@ -91,6 +91,10 @@ end
 
 -- SEMANTICS: SIGNALS AS LAZY LISTS
 
+-- FIXME: c.vec is not supported for these.  Probably not necessary as
+-- a Lua implementation can be constructed via Lure once the compiler
+-- is done.
+
 -- Use lazy lists to represent signals.
 local ll_metatable = {}
 local ll = require('lure.lazylist')(ll_metatable)
