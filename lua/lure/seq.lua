@@ -12,6 +12,7 @@
 
 local se = require 'lure.se'
 local a2l = se.array_to_list
+local l = se.list
 require 'lure.log'
 
 local function counter(n)
@@ -66,9 +67,9 @@ local function w_prog(prog)
 
    local function w_seq(w, code)
       for c in se.elements(code) do
-         if (se.car(c) == 'vector-let-loop') then
-            local _, name, index, n, sub_code = se.unpack(c, {n=5})
-            w(tab, '(vector-let-loop ', name, " ", index, " ", n, "\n")
+         if (se.car(c) == 'for-index') then
+            local _, index, n, sub_code = se.unpack(c, {n=4})
+            w(tab, '(for-index ', index, " ", n, "\n")
             local saved_tab = tab ; tab = tab .. '  '
             w_seq(w, sub_code)
             tab = saved_tab
@@ -106,6 +107,11 @@ local function w_prog(prog)
    w_prog(w, prog)
 end
 
+-- FIXME: Represenation is crude
+local function primitive_type(typ)
+   return type(typ) == 'string'
+end
+
 local function compile(hoas, nb_input)
    -- State
    local code = {}
@@ -118,6 +124,7 @@ local function compile(hoas, nb_input)
    -- iteration, and set/ref need to be indexed.
    local index = {}
    local dims  = {}
+   local vecs  = {}
 
    local function new_var(prefix, typ)
       assert(prefix)
@@ -148,7 +155,7 @@ local function compile(hoas, nb_input)
       local var = new_var('r','val')
       local args = {}
       for i,a in ipairs(args_) do args[i] = project(a, lit) end
-      table.insert(code, se.list('let', var, se.cons(op, a2l(args))))
+      table.insert(code, l('let', var, se.cons(op, a2l(args))))
       return ref(var)
    end
 
@@ -165,14 +172,14 @@ local function compile(hoas, nb_input)
       -- current spatial context.  Determine the type.
       local typ = "val"
       for i=#dims,1,-1 do
-         typ = se.list('vec', typ, dims[i])
+         typ = l('vec', typ, dims[i])
       end
       -- The index used for set/ref
       local sindex = a2l(index)
 
       -- Create variable, and track it together with the initial value.
       local svar = new_var('s', typ)
-      table.insert(state, se.list(svar, init_val))
+      table.insert(state, l(svar, init_val))
 
       -- Bind the reference to the current index and push it into the
       -- state machine, collecting next state and output
@@ -183,7 +190,7 @@ local function compile(hoas, nb_input)
 
       -- Note that this is pipelined: effect of set! is only visible
       -- at the next iteration.
-      table.insert(code, se.list('state-set!', svar, sindex, sout))
+      table.insert(code, l('state-set!', svar, sindex, sout))
       return out
    end
 
@@ -192,35 +199,67 @@ local function compile(hoas, nb_input)
       -- be a big deal if they reside on the stack, which is going to
       -- be the case for most code.
       assert(type(n) == 'number')
+
+      -- Variables used
       local vec_idx = new_var('i','idx')
       local vec_out = new_var('v', nil)
 
       -- Push spatial context
       table.insert(index, vec_idx)
       table.insert(dims,  n)
+      table.insert(vecs,  vec_out)
 
       -- Push code context
-      local saved_code = code ; code = {}
+      local parent_code = code ; code = {}
 
       local el_out = fun(ref(vec_idx))
+
+      -- FIXME: It doesn't make much sense for this to be a 'lit', but
+      -- if this ever happens, then wrap it in a var.  For now assume
+      -- 'ref'.
       assert(el_out.op == 'ref')
+      local el_out_var = el_out.arg
+      local el_out_type = types[el_out_var]
 
       -- The type of the vector is known after evaluation.
-      types[vec_out] = se.list('vec', types[el_out.arg], n)
+      local vec_out_type = l('vec', el_out_type, n)
+      types[vec_out] = vec_out_type
 
-      -- Store the current element
-      table.insert(
-         code, se.list('vector-set!', vec_out, vec_idx, el_out))
 
-      -- Pop code context
-      table.insert(
-         saved_code,
-         se.list('vector-let-loop', vec_out, vec_idx, n, a2l(code)))
-      code = saved_code
+      -- Body ends with a store to the current hole.  This only
+      -- happens in the inner loop where el_out is an element.
+      if primitive_type(el_out_type) then
+         table.insert(
+            code, l('vector-set!', vec_out, vec_idx, el_out))
+      end
+
+      -- Pop the loop block
+      local loop = l('for-index', vec_idx, n, a2l(code))
+      code = parent_code
 
       -- Pop spatial context
       table.remove(index)
       table.remove(dims)
+      table.remove(vecs)
+
+      -- Introduce the vector name.
+      if #dims == 0 then
+         -- At the top level of the iteration the storage needs to be
+         -- defined.  This is either a C stack allocation, or a
+         -- reference to an output provided by the C function's
+         -- caller.  This distinction is not known at this time, but
+         -- will be in the second pass.
+         table.insert(
+            code,
+            l('vector-alloc', vec_out, vec_out_type))
+      else
+         -- In an interation context: dereference the outer vector.
+         table.insert(
+            code,
+            l('let', vec_out,
+              l('pointer', vecs[#vecs], index[#index])))
+      end
+      table.insert(code, loop)
 
       return ref(vec_out)
    end
