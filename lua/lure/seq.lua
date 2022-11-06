@@ -229,8 +229,9 @@ local function compile(hoas, nb_input)
       -- Body ends with a store to the current hole.  This only
       -- happens in the inner loop where el_out is an element.
       if primitive_type(el_out_type) then
-         table.insert(
-            code, l('vector-set!', vec_out, vec_idx, el_out))
+         -- local cset = l('vector-set!', vec_out, vec_idx, el_out))
+         local cset = l('vector-set!', vecs[1], a2l(index), el_out)
+         table.insert(code, cset)
       end
 
       -- Pop the loop block
@@ -252,12 +253,6 @@ local function compile(hoas, nb_input)
          table.insert(
             code,
             l('vector-alloc', vec_out, vec_out_type))
-      else
-         -- In an interation context: dereference the outer vector.
-         table.insert(
-            code,
-            l('let', vec_out,
-              l('pointer', vecs[#vecs], index[#index])))
       end
       table.insert(code, loop)
 
