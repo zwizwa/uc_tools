@@ -84,6 +84,16 @@ local function progs(c)
       end)
       end)
    end
+   function m.prog10(a)
+      return c.vec(13, function(i)
+      return c.vec(17, function(j)
+      return c.vec(29, function(k)
+      local counter = c.close(0, function(s) return s+1, s end)
+      return i + j + k + counter
+      end)
+      end)
+      end)
+   end
    return m
 end
 
@@ -153,6 +163,7 @@ compile('prog6', 0)
 compile('prog7', 1)
 compile('prog8', 0)
 compile('prog9', 0)
+compile('prog10', 0)
 
 
 
