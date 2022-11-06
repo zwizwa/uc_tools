@@ -69,7 +69,7 @@ local function w_prog(prog)
          if (se.car(c) == 'vector-let-loop') then
             local _, name, index, n, sub_code = se.unpack(c, {n=5})
             w(tab, '(vector-let-loop ', name, " ", index, " ", n, "\n")
-            local saved_tab = tab ; tab = tab .. '    '
+            local saved_tab = tab ; tab = tab .. '  '
             w_seq(w, sub_code)
             tab = saved_tab
             w(tab,')\n')
@@ -113,20 +113,17 @@ local function compile(hoas, nb_input)
    local types = {}
    local state = {}
 
-   -- The current spatial context: current coordinates for set/ref and
-   -- dimensions for definition).  All state that is created (closed)
-   -- inside a spatial context is spatial as well.
+   -- Current spatial context needs to be tracked for 'close', as
+   -- state needs to be instantiated multiple times inside a spatial
+   -- iteration, and set/ref need to be indexed.
    local index = {}
    local dims  = {}
 
-   local function var_name(var_nb, prefix)
-      -- Variables are not ordered, so just represent them as strings.
-      return (prefix or 'r') .. var_nb
-   end
    local function new_var(prefix, typ)
-      local v = var_name(new_var_number(), prefix)
-      -- type will be patched later by access pattern
-      types[v] = typ or "T"
+      assert(prefix)
+      local v = prefix .. new_var_number()
+      -- type might be unknown at this point, typ=nil is allowed
+      types[v] = typ
       return v
    end
 
@@ -137,20 +134,24 @@ local function compile(hoas, nb_input)
       setmetatable(rep, signal_mt)
       return rep
    end
+
    local function project(thing)
       if is_signal(thing) then return thing end
       return signal('lit', thing)
    end
+
    local function ref(var)
       return signal('ref', var)
    end
+
    local function app(op, args_)
-      local var = new_var()
+      local var = new_var('r','val')
       local args = {}
       for i,a in ipairs(args_) do args[i] = project(a, lit) end
       table.insert(code, se.list('let', var, se.cons(op, a2l(args))))
       return ref(var)
    end
+
    local function prim(op, n)
       return function(...)
          local args = {...}
@@ -160,45 +161,70 @@ local function compile(hoas, nb_input)
    end
 
    local function close(init_val, fun)
-      local typ = "T"
+      -- State needs to be instantiated for each iteration in the
+      -- current spatial context.  Determine the type.
+      local typ = "val"
       for i=#dims,1,-1 do
          typ = se.list('vec', typ, dims[i])
       end
+      -- The index used for set/ref
+      local sindex = a2l(index)
+
+      -- Create variable, and track it together with the initial value.
       local svar = new_var('s', typ)
       table.insert(state, se.list(svar, init_val))
-      local sindex = a2l(index)
+
+      -- Bind the reference to the current index and push it into the
+      -- state machine, collecting next state and output
+      -- variables/expressions.
       local sin = ref(svar)
       sin.index = sindex
       local sout, out = fun(sin)
-      -- Pipelined: effect of set! is only visible at the next iteration.
+
+      -- Note that this is pipelined: effect of set! is only visible
+      -- at the next iteration.
       table.insert(code, se.list('state-set!', svar, sindex, sout))
       return out
    end
+
    local function vec(n, fun)
       -- Variable size arrays are not supported, but really should not
       -- be a big deal if they reside on the stack, which is going to
       -- be the case for most code.
       assert(type(n) == 'number')
-      local vec_index   = new_var('i')
-      local vec_out     = new_var('v')
-      local saved_code  = code  ; code = {}
+      local vec_idx = new_var('i','idx')
+      local vec_out = new_var('v', nil)
 
-      -- Spatial context is tracked for 'close'
-      table.insert(index, vec_index)
+      -- Push spatial context
+      table.insert(index, vec_idx)
       table.insert(dims,  n)
 
-      local el_out = fun(ref(vec_index))
+      -- Push code context
+      local saved_code = code ; code = {}
 
+      local el_out = fun(ref(vec_idx))
       assert(el_out.op == 'ref')
+
+      -- The type of the vector is known after evaluation.
       types[vec_out] = se.list('vec', types[el_out.arg], n)
-      table.insert(code, se.list('vector-set!', vec_out, vec_index, el_out))
-      table.insert(saved_code, se.list('vector-let-loop', vec_out, vec_index, n, a2l(code)))
+
+      -- Store the current element
+      table.insert(
+         code, se.list('vector-set!', vec_out, vec_idx, el_out))
+
+      -- Pop code context
+      table.insert(
+         saved_code,
+         se.list('vector-let-loop', vec_out, vec_idx, n, a2l(code)))
       code = saved_code
 
+      -- Pop spatial context
       table.remove(index)
       table.remove(dims)
+
       return ref(vec_out)
    end
+
    local c = {
       add   = prim('add',2),
       add1  = prim('add1',1),
@@ -212,7 +238,7 @@ local function compile(hoas, nb_input)
    local args = {}
    local arg_refs = {}
    for i=1,nb_input do
-      local a = new_var()
+      local a = new_var('a')
       table.insert(args, a)
       table.insert(arg_refs, signal('ref', a))
    end
