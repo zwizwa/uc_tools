@@ -351,7 +351,7 @@ local function compile(hoas, nb_input)
 
    local copy = prim('copy',1)
 
-   local function close(init_val, fun)
+   local function close_tuple(init_vals, fun)
       -- State needs to be instantiated for each iteration in the
       -- current spatial context.  Determine the type.
       function wrap_type(typ)
@@ -364,23 +364,42 @@ local function compile(hoas, nb_input)
 
 
       -- The index used for set/ref
-      local sindex = a2l(index)
+      local svar_ref_index = a2l(index)
 
-      -- Create variable, and track it together with the initial value.
-      local svar = new_var('s', typ)
-      table.insert(state, l(svar, wrap_type(init_val)))
+      local svars = {}
+      local sins  = {}
+      for i=1,#init_vals do
+         -- Create variable
+         local svar = new_var('s', typ)
+         svars[i] = svar
+         -- Track it together with the initial value.
+         table.insert(state, l(svar, wrap_type(init_vals[i])))
+         local svar_ref = ref(svar)
+         -- State is always indexed
+         svar_ref.index = svar_ref_index
+         sins[i] = copy(svar_ref)
+      end
 
-      -- Bind the reference to the current index and push it into the
-      -- state machine, collecting next state and output
-      -- variables/expressions.
-      local sin = ref(svar)
-      sin.index = sindex
-      local sout, out = fun(copy(sin))
+      -- Push state inputs into the state machine, collecting next
+      -- state and output variables/expressions.
+      local souts, out = fun(unpack(sins))
 
       -- Note that this is pipelined: effect of set! is only visible
       -- at the next iteration.
-      table.insert(code, l('state-set!', svar, sindex, sout))
+      for i=1,#init_vals do
+         table.insert(code, l('state-set!', svars[i], svar_ref_index, souts[i]))
+      end
       return out
+   end
+
+   local function close(init_val, fun)
+      return
+         close_tuple(
+            {init_val},
+            function(si)
+               local so, o = fun(si)
+               return {so}, o
+         end)
    end
 
    local function vec(n, fun)
@@ -501,6 +520,7 @@ local function compile(hoas, nb_input)
       aref  = aref,
       vec   = vec,
       close = close,
+      close_tuple = close_tuple,
    }
    signal_mt.__add = c.add
    signal_mt.__call = aref
@@ -536,7 +556,7 @@ local function compile(hoas, nb_input)
       is_out = is_out,
    }
 
-   w_scheme(prog)
+   -- w_scheme(prog)
    w_c(prog)
 
 

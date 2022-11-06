@@ -103,6 +103,17 @@ local function progs(c)
       end)
       end)
    end
+   -- state tuple
+   function m.prog12()
+      return c.vec(13, function(i)
+      local counter = c.close_tuple({0,0},
+         function(s1,s2) return {s2+1, s1+3}, s1 end)
+      return counter + i
+      end)
+   end
+
+   -- TODO: fold
+
    return m
 end
 
@@ -174,6 +185,7 @@ compile('prog8', 0)
 compile('prog9', 0)
 compile('prog10', 0)
 compile('prog11', 1)
+compile('prog12', 0)
 
 
 
