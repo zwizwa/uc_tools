@@ -248,6 +248,20 @@ local function w_c(prog)
          w("\n")
       end
       w("*/\n")
+      local function function_args(var_list)
+         for var, nxt in se.elements(var_list) do
+            local typ = prog.types[var]
+            if typ ~= nil then
+               w(tab, type_expr(typ, var))
+            else
+               w(tab, 'type? ', var)
+            end
+            if (se.is_pair(nxt)) then
+               w(',')
+            end
+            w('\n')
+         end
+      end
       w("void fun(\n");
       tab = '  '
       w(tab,"//state:\n")
@@ -257,18 +271,10 @@ local function w_c(prog)
          w(tab, type_expr(typ, var))
          w(',\n')
       end
-      w(tab, "//args: ")
-      w_expr(w, prog.args)
-      w("\n")
+      w(tab, "//args:\n")
+      function_args(prog.args)
       w(tab, "//out:\n")
-      for var, nxt in se.elements(a2l(prog.out)) do
-         local typ = prog.types[var]
-         w(tab, type_expr(typ, var))
-         if (se.is_pair(nxt)) then
-            w(',')
-         end
-         w('\n')
-      end
+      function_args(a2l(prog.out))
       tab = '';
       w(")\n{\n");
       tab = '  '
@@ -296,7 +302,6 @@ local function compile(hoas, nb_input)
    -- If an index is part of a current iteration, we know the dims.
    local function index_to_dims(idx0)
       for i,idx in ipairs(index) do
-         log_desc({idx=idx,idx0=idx0})
          if idx == idx0 then
             return dims[i]
          end
@@ -476,7 +481,10 @@ local function compile(hoas, nb_input)
             -- FIXME: Not valid when i is computed
             assert(dims[i])
          end
-         local typ = "val" -- FIXME: base type?
+         -- FIXME: base type is unknown here, but can be inferred once
+         -- the value is used.  Use a different representation for
+         -- types so this is easy to patch later.
+         local typ = "val"
          for i=#dims,1,-1 do
             typ = se.list('vec', typ, dims[i])
          end
