@@ -293,6 +293,15 @@ local function compile(hoas, nb_input)
    local index = {}
    local dims  = {}
    local vecs  = {}
+   -- If an index is part of a current iteration, we know the dims.
+   local function index_to_dims(idx0)
+      for i,idx in ipairs(index) do
+         log_desc({idx=idx,idx0=idx0})
+         if idx == idx0 then
+            return dims[i]
+         end
+      end
+   end
 
    local function new_var(prefix, typ)
       assert(prefix)
@@ -461,10 +470,17 @@ local function compile(hoas, nb_input)
 
       local t = types[sig.arg]
       if not t then
-         -- FIXME: Input types are not known.  However it is likely
-         -- possible to map the current index variable to a range and
-         -- reconstruct it that way.
-         types[sig.arg] = se.list('vec-dim', #args)
+         local dims = {}
+         for i, idx in ipairs(args) do
+            dims[i] = index_to_dims(idx.arg)
+            -- FIXME: Not valid when i is computed
+            assert(dims[i])
+         end
+         local typ = "val" -- FIXME: base type?
+         for i=#dims,1,-1 do
+            typ = se.list('vec', typ, dims[i])
+         end
+         types[sig.arg] = typ
       else
          -- Typecheck
       end

@@ -96,7 +96,10 @@ local function progs(c)
    end
    function m.prog11(a)
       return c.vec(13, function(i)
-      return i + a(i)
+      return c.vec(17, function(j)
+      -- return i + j + a(i,j)
+      return i + j + a(j,i) -- transposed
+      end)
       end)
    end
    return m
