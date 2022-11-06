@@ -52,6 +52,8 @@ local function w(...) w_thing({...}) end
 
 local function w_scheme(prog)
 
+   -- FIXME: abstract with-separator
+
    local function w_expr(w, code)
       if is_signal(code) then
          w('(',code.op," ",code.arg)
@@ -164,7 +166,11 @@ local function w_c(prog)
       elseif type(code) == 'table' then
          local op, args = unpack(code)
          local s_args = expr_list(args)
-         return {op,'(',s_args,')'}
+         if op == 'copy' then
+            return s_args
+         else
+            return {op,'(',s_args,')'}
+         end
       else
          return code
       end
@@ -206,11 +212,10 @@ local function w_c(prog)
          elseif (se.car(c) == 'alloc') then
             -- Technically this is a 2nd pass
             local _, var, typ = se.unpack(c, {n=3})
-            if prog.is_out[var] then
-               w('// out: ')
+            if not prog.is_out[var] then
+               w(tab, type_expr(typ, var))
+               w(';\n')
             end
-            w(type_expr(typ, var))
-            w(';\n')
          elseif (se.car(c) == 'vector-set!') then
             local _, var, idxs, expr = se.unpack(c, {n=4})
             w(tab, var)
@@ -236,27 +241,40 @@ local function w_c(prog)
 
    local function w_prog(w, prog)
       w("\n")
-      w("types:\n")
+      w("/* types:\n")
       for k,v in pairs(prog.types) do
          w(k,": ")
          w_expr(w, v)
          w("\n")
       end
-      w("state:\n")
-      for s in se.elements(prog.state) do
-         w_expr(w, s)
-         w("\n")
+      w("*/\n")
+      w("void fun(\n");
+      tab = '  '
+      w(tab,"//state:\n")
+      for state in se.elements(prog.state) do
+         local var, init = se.unpack(state, {n=2})
+         local typ = prog.types[var]
+         w(tab, type_expr(typ, var))
+         w(',\n')
       end
-      w("args: ")
+      w(tab, "//args: ")
       w_expr(w, prog.args)
       w("\n")
-      w("code:\n")
-      w_seq(w, prog.code)
-      w("return:\n")
-      for _,c in ipairs(prog.out) do
-         w_expr(w, c)
+      w(tab, "//out:\n")
+      for var, nxt in se.elements(a2l(prog.out)) do
+         local typ = prog.types[var]
+         w(tab, type_expr(typ, var))
+         if (se.is_pair(nxt)) then
+            w(',')
+         end
          w('\n')
       end
+      tab = '';
+      w(")\n{\n");
+      tab = '  '
+      w_seq(w, prog.code)
+      tab = ''
+      w('}\n')
    end
 
    w_prog(w, prog)
@@ -428,13 +446,40 @@ local function compile(hoas, nb_input)
       return ref(vec_out)
    end
 
+   function aref(sig, ...)
+      local args = {...}
+      assert(sig.op == 'ref')
+      local sig_ref = ref(sig.arg)
+      local index = {}
+      for i,a in ipairs(args) do
+         -- FIXME: This is probably not ok: allow literals
+         assert(a.op == 'ref')
+         index[i] = a.arg
+      end
+      -- log_desc({code_index=code.index, s_index=s_index})
+      sig_ref.index = a2l(index)
+
+      local t = types[sig.arg]
+      if not t then
+         -- FIXME: Input types are not known.  However it is likely
+         -- possible to map the current index variable to a range and
+         -- reconstruct it that way.
+         types[sig.arg] = se.list('vec-dim', #args)
+      else
+         -- Typecheck
+      end
+      return sig_ref
+   end
+
    local c = {
       add   = prim('add',2),
       add1  = prim('add1',1),
+      aref  = aref,
       vec   = vec,
       close = close,
    }
    signal_mt.__add = c.add
+   signal_mt.__call = aref
 
    local prog_fun = hoas(c)
 
