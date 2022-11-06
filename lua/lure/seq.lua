@@ -28,6 +28,12 @@ local function is_signal(thing)
    return type(thing) == 'table' and thing.class == 'signal'
 end
 
+-- FIXME: Represenation is crude
+local function primitive_type(typ)
+   return type(typ) == 'string'
+end
+
+
 
 -- Erlang's iolist
 local function w_thing(thing)
@@ -154,7 +160,7 @@ local function w_c(prog)
          end
          -- code.op can be dropped: both ref and lit are directly represented
          -- return { code.op,"(",code.arg, index, ')' }
-         return {code.arg, index}
+         return {code.arg, s_index}
       elseif type(code) == 'table' then
          local op, args = unpack(code)
          local s_args = expr_list(args)
@@ -162,6 +168,17 @@ local function w_c(prog)
       else
          return code
       end
+   end
+
+   local function type_expr(e, var)
+      local dims = {}
+      local vec, n
+      while not primitive_type(e) do
+         vec, e, n = se.unpack(e,{n=3})
+         assert(vec == 'vec')
+         table.insert(dims, n)
+      end
+      return {e, '_t ', var, indexed(a2l(dims))}
    end
 
 
@@ -175,7 +192,8 @@ local function w_c(prog)
       for c in se.elements(code) do
          if (se.car(c) == 'for-index') then
             local _, index, n, sub_code = se.unpack(c, {n=4})
-            w(tab, 'for(int ', index, '=0; ', index, '<', n,'; ',index,'++) {\n')
+            w(tab, 'for(',prog.types[index],'_t ', index, ' = 0; ',
+              index, ' < ', n,'; ',index,'++) {\n')
             local saved_tab = tab ; tab = tab .. '  '
             w_seq(w, sub_code)
             tab = saved_tab
@@ -189,10 +207,10 @@ local function w_c(prog)
             -- Technically this is a 2nd pass
             local _, var, typ = se.unpack(c, {n=3})
             if prog.is_out[var] then
-               w(';; out: ')
+               w('// out: ')
             end
-            w_expr(w,c)
-            w('\n')
+            w(type_expr(typ, var))
+            w(';\n')
          elseif (se.car(c) == 'vector-set!') then
             local _, var, idxs, expr = se.unpack(c, {n=4})
             w(tab, var)
@@ -242,11 +260,6 @@ local function w_c(prog)
    end
 
    w_prog(w, prog)
-end
-
--- FIXME: Represenation is crude
-local function primitive_type(typ)
-   return type(typ) == 'string'
 end
 
 local function compile(hoas, nb_input)
@@ -304,6 +317,8 @@ local function compile(hoas, nb_input)
       end
    end
 
+   local copy = prim('copy',1)
+
    local function close(init_val, fun)
       -- State needs to be instantiated for each iteration in the
       -- current spatial context.  Determine the type.
@@ -328,7 +343,7 @@ local function compile(hoas, nb_input)
       -- variables/expressions.
       local sin = ref(svar)
       sin.index = sindex
-      local sout, out = fun(sin)
+      local sout, out = fun(copy(sin))
 
       -- Note that this is pipelined: effect of set! is only visible
       -- at the next iteration.
