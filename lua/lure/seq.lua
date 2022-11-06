@@ -45,7 +45,12 @@ local function w_prog(prog)
 
    local function w_expr(w, code)
       if is_signal(code) then
-         w('(',code.op," ",code.arg,')')
+         w('(',code.op," ",code.arg)
+         if code.index then
+            w(" ")
+            w_expr(w, code.index)
+         end
+         w(')')
       elseif se.is_pair(code) then
          w('(')
          for c, nxt in se.elements(code) do
@@ -108,6 +113,12 @@ local function compile(hoas, nb_input)
    local types = {}
    local state = {}
 
+   -- The current spatial context: current coordinates for set/ref and
+   -- dimensions for definition).  All state that is created (closed)
+   -- inside a spatial context is spatial as well.
+   local index = {}
+   local dims  = {}
+
    local function var_name(var_nb, prefix)
       -- Variables are not ordered, so just represent them as strings.
       return (prefix or 'r') .. var_nb
@@ -148,17 +159,19 @@ local function compile(hoas, nb_input)
       end
    end
 
-   -- The current spatial context (coordinates).  All state that is
-   -- created (closed) inside a spatial context is spatial as well.
-   local coord = {}
-
    local function close(init_val, fun)
-      local svar = new_var('s')
+      local typ = "T"
+      for i=#dims,1,-1 do
+         typ = se.list('vec', typ, dims[i])
+      end
+      local svar = new_var('s', typ)
       table.insert(state, se.list(svar, init_val))
+      local sindex = a2l(index)
       local sin = ref(svar)
+      sin.index = sindex
       local sout, out = fun(sin)
       -- Pipelined: effect of set! is only visible at the next iteration.
-      table.insert(code, se.list('state-set!', svar, sout))
+      table.insert(code, se.list('state-set!', svar, sindex, sout))
       return out
    end
    local function vec(n, fun)
@@ -169,27 +182,21 @@ local function compile(hoas, nb_input)
       local vec_index   = new_var('i')
       local vec_out     = new_var('v')
       local saved_code  = code  ; code = {}
-      local nb_state    = #state
 
-      local saved_coord = coord
-
+      -- Spatial context is tracked for 'close'
+      table.insert(index, vec_index)
+      table.insert(dims,  n)
 
       local el_out = fun(ref(vec_index))
+
       assert(el_out.op == 'ref')
       types[vec_out] = se.list('vec', types[el_out.arg], n)
-      -- The 'close' operator doesn't know about vectors.  Lift the
-      -- state data structure, the init, and adust the access for all
-      -- state that was created during evaluation.
-      --
-      -- FIXME: vector context is known, actually!
-
-      for i=nb_state+1,#state do
-         local svar, sinit = se.unpack(state[i],{n=2})
-         state[i] = se.list(svar, se.list('vec', sinit, n))
-      end
       table.insert(code, se.list('vector-set!', vec_out, vec_index, el_out))
       table.insert(saved_code, se.list('vector-let-loop', vec_out, vec_index, n, a2l(code)))
       code = saved_code
+
+      table.remove(index)
+      table.remove(dims)
       return ref(vec_out)
    end
    local c = {

@@ -66,6 +66,7 @@ local function progs(c)
             return i + i + 1
       end)
       -- Later, implement auto-lifting of simple constructs.
+      -- FIXME: This might be a bad idea...
       return a + 1
    end
    function m.prog8(a)
