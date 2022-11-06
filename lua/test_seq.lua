@@ -19,7 +19,6 @@
 -- Library functions will auto-lift numbers to signals.
 
 require 'lure.log'
-local se = require 'lure.se'
 
 -- FIXME: curry the context argument.
 -- FIXME: in should be a single argument
@@ -48,7 +47,7 @@ local function progs(c)
    function m.prog5(a)
       return a + 1
    end
-   function m.prog6(a)
+   function m.prog6()
       return c.vec(3, function(i) return i + 1 end)
    end
    function m.prog7(a)
@@ -72,7 +71,15 @@ local function progs(c)
    function m.prog8(a)
       return c.vec(13, function(i)
       return c.vec(17, function(j)
-      return i + i + 1
+      return i + j + 1
+      end)
+      end)
+   end
+   function m.prog9(a)
+      return c.vec(13, function(i)
+      return c.vec(17, function(j)
+      local counter = c.close(0, function(s) return s+1, s end)
+      return i + j + counter
       end)
       end)
    end
@@ -120,194 +127,16 @@ log_desc({
 -- })
 
 
-local function counter(n)
-   return function()
-      local val = n
-      n = n + 1
-      return val
-   end
-end
-
 
 -- SEMANTICS: COMPILER
 
-local function is_signal(thing)
-   return type(thing) == 'table' and thing.class == 'signal'
-end
-
-
--- FIXME: use se pretty printer
-local function w_prog(prog)
-
-   -- Erlang's iolist
-   local function w_thing(thing)
-      if type(thing) == 'table' then
-         for _, subthing in ipairs(thing) do
-            w_thing(subthing)
-         end
-      else
-         io.stdout:write(thing .. "")
-      end
-   end
-   local function w(...) w_thing({...}) end
-
-   local function w_expr(w, code)
-      if is_signal(code) then
-         w('(',code.op," ",code.arg,')')
-      elseif se.is_pair(code) then
-         w('( ')
-         for c in se.elements(code) do
-            w_expr(w, c) ; w(' ')
-         end
-         w(')')
-      else
-         w(code)
-      end
-   end
-   local tab = ''
-   local function w_seq(w, code)
-      for c in se.elements(code) do
-         if (se.car(c) == 'vector-begin') then
-            local _, name, n, sub_code = se.unpack(c, {n=4})
-            w(tab, '( vector-begin ', name, " ", n, "\n")
-            local saved_tab = tab ; tab = tab .. '    '
-            w_seq(w, sub_code)
-            tab = saved_tab
-            w(tab,')\n')
-         else
-            w(tab)
-            w_expr(w, c)
-            w('\n')
-         end
-      end
-   end
-   local function w_prog(w, prog)
-      w("\n")
-      w("types:\n")
-      for k,v in pairs(prog.types) do
-         w(k,": ")
-         w_expr(w, v)
-         w("\n")
-      end
-      w("init_state: ")
-      w_expr(w, prog.init_state)
-      w("\n")
-      w("nb_input: ", prog.nb_input, "\n")
-      w("code:\n")
-      w_seq(w, prog.code)
-      w("output:\n")
-      for c in se.elements(prog.out) do
-         w_expr(w, c)
-         w('\n')
-      end
-   end
-
-   w_prog(w, prog)
-end
-
-local function compile(prog_name, nb_input)
-   -- State
-   local code = {}
-   local new_var_number = counter(1)
-   local types = {}
-   local new_state = counter(1)
-   local init_state = {}
-
-   local function var_name(var_nb)
-      -- Variables are not ordered, so just represent them as strings.
-      return 'v' .. var_nb
-   end
-   local function new_var(typ)
-      local v = var_name(new_var_number())
-      -- type will be patched later by access pattern
-      types[v] = typ or "T"
-      return v
-   end
-
-   local signal_mt = {} -- patched later for Lua operator overloading
-   local function signal(op, arg)
-      local rep = {op = op, arg = arg}
-      rep.class = 'signal'
-      setmetatable(rep, signal_mt)
-      return rep
-   end
-   local function project(thing)
-      if is_signal(thing) then return thing end
-      return signal('lit', thing)
-   end
-   local function ref(var)
-      return signal('ref', var)
-   end
-   local function app(op, args_)
-      local var = new_var()
-      local args = {}
-      for i,a in ipairs(args_) do args[i] = project(a, lit) end
-      table.insert(code, se.list('let', var, se.cons(op, se.array_to_list(args))))
-      return ref(var)
-   end
-   local function prim(op, n)
-      return function(...)
-         local args = {...}
-         assert(#args == n)
-         return app(op, args)
-      end
-   end
-   local function close(init, fun)
-      local svar = new_state()
-      init_state[svar] = init
-      local sin = ref(svar)
-      local sout, out = fun(sin)
-      table.insert(code, se.list('set-state!', svar, sout))
-      return out
-   end
-   local function vec(n, fun)
-      -- Variable size arrays are not supported, but really should not
-      -- be a big deal if they reside on the stack, which is going to
-      -- be the case for most code.
-      assert(type(n) == 'number')
-      local vec_index = new_var()
-      local vec_out   = new_var()
-      local saved_code = code ; code = {}
-      local el_out = fun(ref(vec_index))
-      assert(el_out.op == 'ref')
-      types[vec_out] = se.list('vec', types[el_out.arg], n)
-      table.insert(code, se.list('vector-set!', vec_out, vec_index, el_out))
-      table.insert(code, se.list('vector-loop!', vec_index, n))
-      table.insert(saved_code, se.list('vector-begin', vec_out, n, se.array_to_list(code)))
-      code = saved_code
-      return ref(vec_out)
-   end
-   local c = {
-      add   = prim('add',2),
-      add1  = prim('add1',1),
-      vec   = vec,
-      close = close,
-   }
-   signal_mt.__add = c.add
-
-   local c_progs = progs(c)
-   local prog_fun = c_progs[prog_name]
-
-   local args = {}
-   for i=1,nb_input do
-      table.insert(args, signal('input',i))
-   end
-   local out = { prog_fun(unpack(args)) }
-
-   -- log_desc({code=code,out=out,init=init_state,nb_input=nb_input})
-
-   local prog = {
-      types = types,
-      init_state = se.array_to_list(init_state),
-      nb_input = nb_input,
-      code = se.array_to_list(code),
-      out = se.array_to_list(out),
-   }
-
-   w_prog(prog)
-
-
-   return prog
+local seq = require('lure.seq')
+local function compile(name, nb_args)
+   seq.compile(
+      function (c)
+         return progs(c)[name]
+      end,
+      nb_args)
 end
 
 compile('prog3', 1)
@@ -315,9 +144,10 @@ compile('prog4', 2)
 compile('prog5', 1)
 compile('prog2', 1)
 compile('prog1', 1)
-compile('prog6', 1)
+compile('prog6', 0)
 compile('prog7', 1)
-compile('prog8', 1)
+compile('prog8', 0)
+compile('prog9', 0)
 
 
 
