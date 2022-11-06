@@ -29,7 +29,6 @@ local function is_signal(thing)
 end
 
 
--- FIXME: use se pretty printer
 local function w_prog(prog)
 
    -- Erlang's iolist
@@ -74,6 +73,14 @@ local function w_prog(prog)
             w_seq(w, sub_code)
             tab = saved_tab
             w(tab,')\n')
+         elseif (se.car(c) == 'alloc') then
+            -- Technically this is a 2nd pass
+            local _, var, typ = se.unpack(c, {n=3})
+            if prog.is_out[var] then
+               w(';; out: ')
+            end
+            w_expr(w,c)
+            w('\n')
          else
             w(tab)
             w_expr(w, c)
@@ -81,6 +88,8 @@ local function w_prog(prog)
          end
       end
    end
+
+
    local function w_prog(w, prog)
       w("\n")
       w("types:\n")
@@ -98,7 +107,7 @@ local function w_prog(prog)
       w("code:\n")
       w_seq(w, prog.code)
       w("return:\n")
-      for c in se.elements(prog.out) do
+      for _,c in ipairs(prog.out) do
          w_expr(w, c)
          w('\n')
       end
@@ -170,16 +179,21 @@ local function compile(hoas, nb_input)
    local function close(init_val, fun)
       -- State needs to be instantiated for each iteration in the
       -- current spatial context.  Determine the type.
-      local typ = "val"
-      for i=#dims,1,-1 do
-         typ = l('vec', typ, dims[i])
+      function wrap_type(typ)
+         for i=#dims,1,-1 do
+            typ = l('vec', typ, dims[i])
+         end
+         return typ
       end
+      local typ = wrap_type("val")
+
+
       -- The index used for set/ref
       local sindex = a2l(index)
 
       -- Create variable, and track it together with the initial value.
       local svar = new_var('s', typ)
-      table.insert(state, l(svar, init_val))
+      table.insert(state, l(svar, wrap_type(init_val)))
 
       -- Bind the reference to the current index and push it into the
       -- state machine, collecting next state and output
@@ -229,7 +243,9 @@ local function compile(hoas, nb_input)
       -- Body ends with a store to the current hole.  This only
       -- happens in the inner loop where el_out is an element.
       if primitive_type(el_out_type) then
+         -- Old approach: using explicit pointers
          -- local cset = l('vector-set!', vec_out, vec_idx, el_out))
+         -- New approach: index into outer nested array
          local cset = l('vector-set!', vecs[1], a2l(index), el_out)
          table.insert(code, cset)
       end
@@ -250,9 +266,19 @@ local function compile(hoas, nb_input)
          -- reference to an output provided by the C function's
          -- caller.  This distinction is not known at this time, but
          -- will be in the second pass.
+         --
+         -- Note that the intermediate vec_out values are still used
+         -- for type inference.
          table.insert(
             code,
-            l('vector-alloc', vec_out, vec_out_type))
+            l('alloc', vec_out, vec_out_type))
+      else
+         -- Old approach: use explicit pointer.
+         -- This should then be referenced by vector-set!
+         -- table.insert(
+         --    code,
+         --    l('let', vec_out,
+         --      l('pointer', vecs[#vecs], index[#index])))
       end
       table.insert(code, loop)
 
@@ -276,16 +302,26 @@ local function compile(hoas, nb_input)
       table.insert(args, a)
       table.insert(arg_refs, signal('ref', a))
    end
-   local out = { prog_fun(unpack(arg_refs)) }
+   local outputs = { prog_fun(unpack(arg_refs)) }
+
+   local out_vars = {}
+   local is_out = {}
+   for i, o in ipairs(outputs) do
+      assert(o.op == 'ref')
+      out_vars[i] = o.arg
+      is_out[o.arg] = true
+   end
 
    -- log_desc({code=code,out=out,init=init,nb_input=nb_input})
+
 
    local prog = {
       types = types,
       state = a2l(state),
       args = a2l(args),
       code = a2l(code),
-      out = a2l(out),
+      out = out_vars,
+      is_out = is_out,
    }
 
    w_prog(prog)
