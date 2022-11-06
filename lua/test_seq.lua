@@ -94,11 +94,12 @@ local function progs(c)
       end)
       end)
    end
+   -- double nested vectors, transposed input, state
    function m.prog11(a)
       return c.vec(13, function(i)
       return c.vec(17, function(j)
-      -- return i + j + a(i,j)
-      return i + j + a(j,i) -- transposed
+      local counter = c.close(0, function(s) return s+1, s end)
+      return counter + i + j + a(j,i)
       end)
       end)
    end

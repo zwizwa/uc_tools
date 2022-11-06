@@ -248,34 +248,34 @@ local function w_c(prog)
          w("\n")
       end
       w("*/\n")
-      local function function_args(var_list)
-         for var, nxt in se.elements(var_list) do
-            local typ = prog.types[var]
-            if typ ~= nil then
-               w(tab, type_expr(typ, var))
-            else
-               w(tab, 'type? ', var)
-            end
-            if (se.is_pair(nxt)) then
-               w(',')
-            end
-            w('\n')
+      local function function_arg(var)
+         local typ = prog.types[var]
+         if typ ~= nil then
+            return type_expr(typ, var)
+         else
+            return {'type? ', var}
          end
       end
+
       w("void fun(\n");
-      tab = '  '
-      w(tab,"//state:\n")
+      local args={}
       for state in se.elements(prog.state) do
          local var, init = se.unpack(state, {n=2})
-         local typ = prog.types[var]
-         w(tab, type_expr(typ, var))
-         w(',\n')
+         table.insert(args, function_arg(var))
       end
-      w(tab, "//args:\n")
-      function_args(prog.args)
-      w(tab, "//out:\n")
-      function_args(a2l(prog.out))
-      tab = '';
+      for var in se.elements(prog.args) do
+         table.insert(args, function_arg(var))
+      end
+      for var in se.elements(a2l(prog.out)) do
+         table.insert(args, function_arg(var))
+      end
+      for arg, nxt in se.elements(a2l(args)) do
+         w('  ', arg)
+         if se.is_pair(nxt) then
+            w(',')
+         end
+         w('\n')
+      end
       w(")\n{\n");
       tab = '  '
       w_seq(w, prog.code)
