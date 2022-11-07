@@ -124,6 +124,21 @@ local function progs(c)
             return s+i -- next state
          end) + 123
    end
+   function m.prog14()
+      return c.fold(
+         17,  -- initial state
+         13,  -- range
+         function(i, s)
+            return c.fold(
+               19, -- initial state
+               29, -- range
+               function(j, t)
+                  local counter = c.close(0, function(s) return s+1, s end)
+                  return s+t+i+j+counter
+               end)
+         end)
+      + 123
+   end
 
    return m
 end
@@ -198,6 +213,7 @@ compile('prog10', 0)
 compile('prog11', 1)
 compile('prog12', 0)
 compile('prog13', 0)
+compile('prog14', 0)
 
 
 
