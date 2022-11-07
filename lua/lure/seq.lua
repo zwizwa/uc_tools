@@ -230,6 +230,12 @@ local function w_c(prog)
             w(" = ")
             w_expr(w,expr)
             w(';\n')
+         elseif (se.car(c) == 'set!') then
+            local _, var, expr = se.unpack(c, {n=3})
+            w(tab, var)
+            w(" = ")
+            w_expr(w,expr)
+            w(';\n')
          else
             w(tab)
             w_expr(w, c)
@@ -296,9 +302,10 @@ local function compile(hoas, nb_input)
    -- Current spatial context needs to be tracked for 'close', as
    -- state needs to be instantiated multiple times inside a spatial
    -- iteration, and set/ref need to be indexed.
-   local index = {}
-   local dims  = {}
-   local vecs  = {}
+   local index  = {}  -- loop index : array(var_name)
+   local dims   = {}  -- corresponding dimx : array(integer)
+   local vindex = {}  -- vector index, subset of loop index : array(var_name)
+   local vecs   = {}  -- vector nesting (each dimension has a ref) : array(refl)
    -- If an index is part of a current iteration, we know the dims.
    local function index_to_dims(idx0)
       for i,idx in ipairs(index) do
@@ -413,9 +420,10 @@ local function compile(hoas, nb_input)
       local vec_out = new_var('v', nil)
 
       -- Push spatial context
-      table.insert(index, vec_idx)
-      table.insert(dims,  n)
-      table.insert(vecs,  vec_out)
+      table.insert(index,  vec_idx)
+      table.insert(vindex, vec_idx)
+      table.insert(dims,   n)
+      table.insert(vecs,   vec_out)
 
       -- Push code context
       local parent_code = code ; code = {}
@@ -440,7 +448,7 @@ local function compile(hoas, nb_input)
          -- Old approach: using explicit pointers
          -- local cset = l('vector-set!', vec_out, vec_idx, el_out))
          -- New approach: index into outer nested array
-         local cset = l('vector-set!', vecs[1], a2l(index), el_out)
+         local cset = l('vector-set!', vecs[1], a2l(vindex), el_out)
          table.insert(code, cset)
       end
 
@@ -450,6 +458,7 @@ local function compile(hoas, nb_input)
 
       -- Pop spatial context
       table.remove(index)
+      table.remove(vindex)
       table.remove(dims)
       table.remove(vecs)
 
@@ -478,6 +487,55 @@ local function compile(hoas, nb_input)
 
       return ref(vec_out)
    end
+
+   -- Similar to vec(), see comments there.
+   -- Differences: no vindex, vecs, vec_out
+   local function fold(init_val, n, fun)
+      assert(type(n) == 'number')
+
+      -- Variables used
+      local vec_idx = new_var('i','idx')
+      local accu    = new_var('c','val')  -- FIXME: type
+
+      -- Push spatial context
+      table.insert(index,  vec_idx)
+      table.insert(dims,   n)
+
+      -- Push code context
+      local parent_code = code ; code = {}
+
+      local el_out = fun(ref(vec_idx), ref(accu))
+
+      assert(el_out.op == 'ref')
+      local el_out_var = el_out.arg
+      local el_out_type = types[el_out_var]
+
+      -- FIXME: only primitive types are supported as return values.
+      -- Essentially, it is currently not clear how to have vectors as
+      -- state variables.
+      assert(primitive_type(el_out_type))
+
+      -- FIXME: store the loop iteration variable
+      local cset = l('set!', accu, el_out)
+      table.insert(code, cset)
+
+      -- Pop the loop block
+      local loop = l('for-index', vec_idx, n, a2l(code))
+      code = parent_code
+
+      -- Pop spatial context
+      table.remove(index)
+      table.remove(dims)
+
+      -- Initialize the loop state.
+      table.insert(
+         code,
+         l('let', accu, init_val))
+      table.insert(code, loop)
+
+      return ref(accu)
+   end
+
 
    function aref(sig, ...)
       local args = {...}
@@ -516,13 +574,18 @@ local function compile(hoas, nb_input)
 
    local c = {
       add   = prim('add',2),
+      sub   = prim('sub',2),
+      mul   = prim('mul',2),
       add1  = prim('add1',1),
       aref  = aref,
       vec   = vec,
+      fold  = fold,
       close = close,
       close_tuple = close_tuple,
    }
    signal_mt.__add = c.add
+   signal_mt.__sub = c.sub
+   signal_mt.__mul = c.mul
    signal_mt.__call = aref
 
    local prog_fun = hoas(c)
