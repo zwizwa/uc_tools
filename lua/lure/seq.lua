@@ -490,12 +490,25 @@ local function compile(hoas, nb_input)
 
    -- Similar to vec(), see comments there.
    -- Differences: no vindex, vecs, vec_out
-   local function fold(init_val, n, fun)
+   local function fold_tuple(init_vals, n, fun)
       assert(type(n) == 'number')
 
       -- Variables used
       local vec_idx = new_var('i','idx')
-      local accu    = new_var('c','val')  -- FIXME: type
+      local accus = {} -- accumulator var
+      local accus_ref = {} -- ref to accumulator var
+      for i=1,#init_vals do
+         accus[i] = new_var('c','val') -- FIXME: type
+         accus_ref[i] = ref(accus[i])
+      end
+
+      -- Initialize the loop state
+      for i=1,#init_vals do
+         table.insert(
+            code,
+            l('let', accus[i], init_vals[i]))
+      end
+
 
       -- Push spatial context
       table.insert(index,  vec_idx)
@@ -504,20 +517,25 @@ local function compile(hoas, nb_input)
       -- Push code context
       local parent_code = code ; code = {}
 
-      local el_out = fun(ref(vec_idx), ref(accu))
+      local accus_copy = {} -- copy of accumulator var (input)
 
-      assert(el_out.op == 'ref')
-      local el_out_var = el_out.arg
-      local el_out_type = types[el_out_var]
+      for i=1,#init_vals do
+         accus_copy[i] = copy(accus_ref[i])
+      end
+      local els_out = {fun(ref(vec_idx), unpack(accus_copy))}
 
-      -- FIXME: only primitive types are supported as return values.
-      -- Essentially, it is currently not clear how to have vectors as
-      -- state variables.
-      assert(primitive_type(el_out_type))
-
-      -- FIXME: store the loop iteration variable
-      local cset = l('set!', accu, el_out)
-      table.insert(code, cset)
+      for i=1,#init_vals do
+         assert(els_out[i].op == 'ref')
+         local el_out_var = els_out[i].arg
+         local el_out_type = types[el_out_var]
+         -- FIXME: only primitive types are supported as return values.
+         -- Essentially, it is currently not clear how to have vectors as
+         -- state variables.
+         assert(primitive_type(el_out_type))
+         -- FIXME: store the loop iteration variable
+         local cset = l('set!', accus[i], els_out[i])
+         table.insert(code, cset)
+      end
 
       -- Pop the loop block
       local loop = l('for-index', vec_idx, n, a2l(code))
@@ -527,14 +545,20 @@ local function compile(hoas, nb_input)
       table.remove(index)
       table.remove(dims)
 
-      -- Initialize the loop state.
-      table.insert(
-         code,
-         l('let', accu, init_val))
+      -- Paste the loop body
       table.insert(code, loop)
 
-      return ref(accu)
+
+      return unpack(accus_ref)
    end
+
+   local function fold(init_val, n, fun)
+      return fold_tuple({init_val}, n, function(idx, accu)
+            local accu_next = fun(idx, accu)
+            return accu_next
+      end)
+   end
+
 
 
    function aref(sig, ...)
@@ -582,6 +606,7 @@ local function compile(hoas, nb_input)
       fold  = fold,
       close = close,
       close_tuple = close_tuple,
+      fold_tuple  = fold_tuple,
    }
    signal_mt.__add = c.add
    signal_mt.__sub = c.sub

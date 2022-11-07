@@ -139,7 +139,15 @@ local function progs(c)
          end)
       + 123
    end
-
+   function m.prog15()
+      local s1, t1 = c.fold_tuple(
+         {17,19},  -- initial state
+         13,  -- range
+         function(i, s, t)
+            return t+i, s+i -- next state
+      end)
+      return s1 + t1 + 123
+   end
    return m
 end
 
@@ -214,6 +222,7 @@ compile('prog11', 1)
 compile('prog12', 0)
 compile('prog13', 0)
 compile('prog14', 0)
+compile('prog15', 0)
 
 
 
