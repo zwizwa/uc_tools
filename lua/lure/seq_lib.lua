@@ -24,6 +24,15 @@ return function(c)
          end)
    end
 
+   -- C code generation does not support scalar values.  This can be
+   -- worked around by wrapping a processor body in a 1-element
+   -- vector.
+   function lib.scalar(thunk)
+      return c.vec(1, function(_) return thunk() end)
+   end
+
+
+
    -- Some notes about audio filters.
    --
    -- To limit bookkeeping, the initial state values are assumed to be

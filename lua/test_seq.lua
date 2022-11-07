@@ -150,9 +150,8 @@ local function progs(c)
       return s1 + t1 + 123
    end
    function m.prog16(a)
-      -- wrap it in a 1 element vector
-      return c.vec(
-         1, function(i)
+      return lib.scalar(
+         function()
             local lp1 = lib.lp1(0.1, 0)
             return lp1(a)
          end)
