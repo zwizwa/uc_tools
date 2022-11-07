@@ -19,6 +19,7 @@
 -- Library functions will auto-lift numbers to signals.
 
 require 'lure.log'
+local seq_lib = require 'lure.seq_lib'
 
 -- FIXME: curry the context argument.
 -- FIXME: in should be a single argument
@@ -27,16 +28,16 @@ require 'lure.log'
 -- of functions, thant to have a collection of functions with a 'c'
 -- parameter, curried or not.
 local function progs(c)
-
+   -- Bind the library to the language semantics.
+   local lib = seq_lib(c)
    local m = {}
    function m.prog1(i)
-      local function counter_sm(s) return s+1, s end
-      local counter = c.close(0, counter_sm)
-      return counter + i
+      local cnt = lib.counter(0)
+      return cnt + i
    end
    function m.prog2()
       function update(s) return c.add1(s), s end
-      return c.close(0, update)
+      return c.rec(0, update)
    end
    function m.prog3(a)
       return c.add1(a)
@@ -79,8 +80,8 @@ local function progs(c)
    function m.prog9(a)
       return c.vec(13, function(i)
       return c.vec(17, function(j)
-      local counter = c.close(0, function(s) return s+1, s end)
-      return i + j + counter
+      local cnt = lib.counter(0)
+      return i + j + cnt
       end)
       end)
    end
@@ -88,8 +89,8 @@ local function progs(c)
       return c.vec(13, function(i)
       return c.vec(17, function(j)
       return c.vec(29, function(k)
-      local counter = c.close(0, function(s) return s+1, s end)
-      return i + j + k + counter
+      local cnt = lib.counter(0)
+      return i + j + k + cnt
       end)
       end)
       end)
@@ -98,15 +99,15 @@ local function progs(c)
    function m.prog11(a)
       return c.vec(13, function(i)
       return c.vec(17, function(j)
-      local counter = c.close(0, function(s) return s+1, s end)
-      return counter + i + j + a(j,i)
+      local cnt = lib.counter(0)
+      return cnt + i + j + a(j,i)
       end)
       end)
    end
    -- state tuple
    function m.prog12()
       return c.vec(13, function(i)
-      local tuple_sm = c.close_tuple(
+      local tuple_sm = c.rec_tuple(
          {0, 0},
          function(s1, s2)
             return {s2 + 1, s1 + 3}, s1
@@ -133,8 +134,8 @@ local function progs(c)
                19, -- initial state
                29, -- range
                function(j, t)
-                  local counter = c.close(0, function(s) return s+1, s end)
-                  return s+t+i+j+counter
+                  local cnt = lib.counter(0)
+                  return s+t+i+j+cnt
                end)
          end)
       + 123
@@ -147,6 +148,14 @@ local function progs(c)
             return t+i, s+i -- next state
       end)
       return s1 + t1 + 123
+   end
+   function m.prog16(a)
+      -- wrap it in a 1 element vector
+      return c.vec(
+         1, function(i)
+            local lp1 = lib.lp1(0.1, 0)
+            return lp1(a)
+         end)
    end
    return m
 end
@@ -166,7 +175,7 @@ local ll = require('lure.lazylist')(ll_metatable)
 local signal_c = {
    add1  = ll.lift(1, function(a)   return a+1 end),
    add   = ll.lift(2, function(a,b) return a+b end),
-   close = ll.close
+   rec = ll.rec
 }
 
 -- Patch the metatable for operator support.
@@ -223,6 +232,7 @@ compile('prog12', 0)
 compile('prog13', 0)
 compile('prog14', 0)
 compile('prog15', 0)
+compile('prog16', 1)
 
 
 

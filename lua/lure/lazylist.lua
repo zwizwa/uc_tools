@@ -65,13 +65,13 @@ local function take(n, lst)
 end
 
 
--- To implement 'causal close', the update function is probed using a
--- signal that does not have a defined tail.  This works as long as
+-- To implement causal recursion, the update function is probed using
+-- a signal that does not have a defined tail.  This works as long as
 -- the tail of the s_out and out signals are never evaluated.  The
--- loop can then be closed using a state variable.
+-- loop can then be recd using a state variable.
 
 -- Implement base routine on state vectors (lua lists).
-local function close_vec(init, update)
+local function rec_vec(init, update)
    local state = init
    local tail_thunk
    tail_thunk = function()
@@ -89,8 +89,8 @@ local function close_vec(init, update)
    return tail_thunk()
 end
 -- Wrapper for single state variable.
-local function close(init, update)
-   return close_vec(
+local function rec(init, update)
+   return rec_vec(
       {init},
       function(states)
          local next_state, out = update(states[1])
@@ -107,8 +107,8 @@ return {
    pure = pure,
    project = project,
    lift = lift,
-   close_vec = close_vec,
-   close = close,
+   rec_vec = rec_vec,
+   rec = rec,
 }
 
 end
