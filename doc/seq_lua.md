@@ -1,3 +1,11 @@
+Introduction
+------------
+
+This is a literal lua file.  Utility functions are here:
+```lua
+l = require('literal')
+```
+
 Pure Signals and Signal Processors
 ----------------------------------
 
@@ -7,13 +15,13 @@ pure functions.
 The following uses Haskell type notation interspersed with some Lua
 example code.
 
-Lower case denote type variables.  Upper case denote concrete types.
-E.g. `t` could represent a concrete `Float` or `Int` type.  Function
-types are denoted as `a->b`, a function that maps values of type `a`
-to values of type `b`.  E.g. `Float->Float` is a function that maps
-`Float` to `Float`, e.g. the `sin` function is of that type.  Tuples
-are used to bundle values of arbitrary types, with the tuple type
-denoted as `(a,b)`.  E.g. `(Float,Int)`.
+Lower case denote type variables.  Upper case denote concrete
+types.  E.g. `t` could represent a concrete `Float` or `Int` type.
+Function types are denoted as `a->b`, a function that maps values
+of type `a` to values of type `b`.  E.g. `Float->Float` is a
+function that maps `Float` to `Float`, e.g. the `sin` function is
+of that type.  Tuples are used to bundle values of arbitrary types,
+with the tuple type denoted as `(a,b)`.  E.g. `(Float,Int)`.
 
 The main idea is that causal signals can be represented by a pure
 update function of type `s->(s,o)`, a function that takes a state
@@ -24,11 +32,13 @@ E.g. `Int->(Int,Int)` could represent the type of a counter with an
 `Int` state and an `Int` output.
 
 ```lua
-function(state)
+function update_counter(state)
    local output = state
    local next_state = state + 1
    return next_state, output
 end
+l.print(update_counter(123))
+=> 124, 123
 ```
 
 Given an initial value of type `s`, the update function can be applied
@@ -91,4 +101,6 @@ Higher order Syntax
 
 
 TODO: examples
+
+
 
