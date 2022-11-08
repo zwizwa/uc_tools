@@ -1,13 +1,11 @@
 Pure Signals and Signal Processors
 ----------------------------------
 
-The point is that signals and signal processors can be represented as
-pure functions.  First we make this point abstractly, then give some
-Lua code as an example.
+Signals and signal processors can be represented as composition of
+pure functions.
 
-The following uses Haskell type notation.  Note that Lua is untyped,
-and it is possible to figure out how the composition works by just
-following the code, but types are really useful to condense the idea.
+The following uses Haskell type notation interspersed with some Lua
+example code.
 
 Lower case denote type variables.  Upper case denote concrete types.
 E.g. `t` could represent a concrete `Float` or `Int` type.  Function
@@ -17,10 +15,10 @@ to values of type `b`.  E.g. `Float->Float` is a function that maps
 are used to bundle values of arbitrary types, with the tuple type
 denoted as `(a,b)`.  E.g. `(Float,Int)`.
 
-The core of the idea is that causal signals can be represented by a
-pure update function of type `s->(s,o)`: given a value for the state
-`s`, such a function would compute the next value for the state `s`
-together with an output.
+The main idea is that causal signals can be represented by a pure
+update function of type `s->(s,o)`, a function that takes a state
+value of type `s` and produces the next state value of type `s`
+together with an output value of type `o`.
 
 E.g. `Int->(Int,Int)` could represent the type of a counter with an
 `Int` state and an `Int` output.
@@ -30,13 +28,14 @@ function(state)
    local output = state
    local next_state = state + 1
    return next_state, output
+end
 ```
-
 
 Given an initial value of type `s`, the update function can be applied
 iteratively on each next `s` it produces, yielding an infinite
-sequence of `o` as a byproduct.  We call this infinite sequence `Sig
-o`, a signal of base type o.
+sequence of `o` as a byproduct.  We call this infinite sequence `Sig o`,
+a signal of base type o.  The point of `seq.lua` is to provide a
+representation of such signals, but for now assume it is possible.
 
 Note that there is no mention of state `s` in `Sig o`.  Once we build
 a signal, we do not need to care about the state that is involved in
