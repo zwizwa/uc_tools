@@ -4,11 +4,6 @@ local l = {}
 local function w(thing)
    io.write(thing)
 end
-function print_val(val)
-   w("=> ")
-   w(val)
-   w("\n")
-end
 function l.print(...)
    local list = se.list(...)
    w("=> ")

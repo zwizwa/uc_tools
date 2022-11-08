@@ -1,7 +1,9 @@
 Introduction
 ------------
 
-This is a literal lua file.  Utility functions are here:
+This is a literal lua file. This is a literal lua file.  Lines
+starting with '=' are program output.
+
 ```lua
 l = require('literal')
 ```
@@ -37,8 +39,10 @@ function update_counter(state)
    local next_state = state + 1
    return next_state, output
 end
-l.print(update_counter(123))
-=> 124, 123
+l.print(update_counter(1))
+=>
+l.print(update_counter(2))
+=>
 ```
 
 Given an initial value of type `s`, the update function can be applied
@@ -96,8 +100,9 @@ ignore for now.  It is a straightforward extension.  The important
 point is how to deal with time and state.
 
 
-Higher order Syntax
--------------------
+Embedded DSLs and Higher order Syntax
+-------------------------------------
+
 
 
 TODO: examples

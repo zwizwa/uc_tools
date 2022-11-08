@@ -4,7 +4,8 @@ require('lure.log')
 
 local m = {}
 
-function m.run(file)
+-- Input is in Lua syntax
+function m.run_lua(file)
    local f = io.open(file, "rb")
    assert(f)
    local next_line = io.lines(file)
@@ -30,8 +31,53 @@ function m.run(file)
    end
 end
 
+
+-- Input is in doc syntax
+function m.run_doc(file)
+   local f = io.open(file, "rb")
+   assert(f)
+   local next_line = io.lines(file)
+
+   local code = nil
+   function eval()
+      local c = table.concat(code) ; code = {}
+      local f = loadstring(c)
+      f()
+      code = {}
+   end
+
+   for line in next_line do
+      if line == '```lua' then
+         code = {} -- Enter code mode
+      elseif line == '```' then
+         eval()
+         code = nil -- Leave code mode
+      elseif line:byte(1) == 61 then
+         -- Dont' print lines containing dash, but trigger evaluation
+         -- instead.
+         line = nil
+         eval()
+      else
+         -- Recorde code when in code mode
+         if code ~= nil then
+            table.insert(code, line)
+            table.insert(code, '\n')
+         end
+      end
+      -- Write it out if it wasn't cancelled.
+      if line ~= nil then
+         io.write(line)
+         io.write('\n')
+      end
+   end
+end
+
+
+
+
 function test()
-   m.run('doc_seq.lua')
+   -- m.run_lua('doc_seq.lua')
+   m.run_doc('../doc/seq_lua.md')
 end
 
 test()
