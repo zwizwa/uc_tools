@@ -114,17 +114,15 @@ print_signal(4, ones)
 => 1
 ```
 
-Finally, the counter signal can be represented.
+Finally, the counter signal can be represented by guarding the
+recursion inside a thunk.
+
 ```lua
-function as_signal(init, update)
-   local state = init
-   local tail_thunk
-   tail_thunk = function()
-      local next_state, output = update(state)
-      state = next_state
-      return signal(output, tail_thunk)
-   end
-   return tail_thunk()
+function as_signal(state, update)
+   local next_state, output = update(state)
+   return signal(
+      output,
+      function() return as_signal(next_state, update) end)
 end
 counter_signal = as_signal(0, update_counter)
 print_signal(4, counter_signal)
@@ -135,10 +133,68 @@ print_signal(4, counter_signal)
 ```
 
 
+Note that there is no mention of state `s` in `Sig o`.  Similarly in
+the `counter_signal` any mention of the state at the "user end" is
+gone; it is all tucked away inside the implementation of `as_signal`.
 
-Note that there is no mention of state `s` in `Sig o`.  Once we build
-a signal, we do not need to care about the state that is involved in
-generating it.
+So what can we do with these signals.  Well, let's try to add them.
+
+```lua
+function add(sig_a, sig_b)
+   local head_a, tail_thunk_a = unpack(sig_a)
+   local head_b, tail_thunk_b = unpack(sig_b)
+   return signal(
+      head_a + head_b,
+      function()
+         return add(tail_thunk_a(), tail_thunk_b())
+      end)
+end
+print_signal(4, add(counter_signal, ones))
+=> 1
+=> 2
+=> 3
+=> 4
+print_signal(4, add(counter_signal, counter_signal))
+=> 0
+=> 2
+=> 4
+=> 6
+```
+
+That seems to work.  Now note that the function `add` only mentions
+`+` in one location.  Let's generalize it by wrapping it like this:
+
+FIXME: This one is rong
+
+```lua
+function lift_2(op)
+   return function add(sig_a, sig_b)
+      local head_a, tail_thunk_a = unpack(sig_a)
+      local head_b, tail_thunk_b = unpack(sig_b)
+      return signal(
+         op(head_a, head_b),
+         function()
+            return add(tail_thunk_a(), tail_thunk_b())
+         end)
+   end
+end
+add = lift_2(function(a,b) return a + b end)
+sub = lift_2(function(a,b) return a - b end)
+mul = lift_2(function(a,b) return a * b end)
+print_signal(4, add(counter_signal, counter_signal))
+=>
+print_signal(4, sub(counter_signal, ones))
+=>
+print_signal(4, mul(counter_signal, counter_signal))
+=>
+```
+
+Here we have a function `lift_2` that can convert a pure function
+operating on signal values to a pure function operating on signals as
+a whole.
+
+
+
 
 This hints at something: it should be possible to have the programmer
 work with just `Sig o`, and not think about state or "processor
