@@ -100,18 +100,17 @@ ones = signal(1, function() return ones end)
 To print it, iteratively print the head then evaluate the tail.
 ```lua
 function print_signal(n, sig)
+   local chunk = {}
    for i=1,n do
       local head, tail_thunk = unpack(sig)
-      l.print(head)
+      chunk[i] = head
       sig = tail_thunk()
    end
+   l.print(unpack(chunk))
 end
-print_signal(4, ones)
+print_signal(5, ones)
 
-=> 1
-=> 1
-=> 1
-=> 1
+=> 1, 1, 1, 1, 1
 ```
 
 Finally, the counter signal can be represented by guarding the
@@ -125,17 +124,19 @@ function as_signal(state, update)
       function() return as_signal(next_state, update) end)
 end
 counter_signal = as_signal(0, update_counter)
-print_signal(4, counter_signal)
-=> 0
-=> 1
-=> 2
-=> 3
+print_signal(5, counter_signal)
+=> 0, 1, 2, 3, 4
 ```
 
 
 Note that there is no mention of state `s` in `Sig o`.  Similarly in
 the `counter_signal` any mention of the state at the "user end" is
 gone; it is all tucked away inside the implementation of `as_signal`.
+
+This hints at something: it should be possible to have the programmer
+work with just `Sig o`, and not think about state or "processor
+instances" at all, performing all the state bookkeeping under the
+hood.
 
 So what can we do with these signals.  Well, let's try to add them.
 
@@ -149,20 +150,14 @@ function add(sig_a, sig_b)
          return add(tail_thunk_a(), tail_thunk_b())
       end)
 end
-print_signal(4, add(counter_signal, ones))
-=> 1
-=> 2
-=> 3
-=> 4
-print_signal(4, add(counter_signal, counter_signal))
-=> 0
-=> 2
-=> 4
-=> 6
+print_signal(5, add(counter_signal, ones))
+=> 1, 2, 3, 4, 5
+print_signal(5, add(counter_signal, counter_signal))
+=> 0, 2, 4, 6, 8
 ```
 
-That seems to work.  Now note that the function `add` only mentions
-`+` in one location.  Let's generalize it by wrapping it like this:
+Now note that the function `add` only mentions `+` in one location.
+Let's generalize it by wrapping it like this:
 
 ```lua
 function lift_2(op)
@@ -181,21 +176,12 @@ end
 add = lift_2(function(a,b) return a + b end)
 sub = lift_2(function(a,b) return a - b end)
 mul = lift_2(function(a,b) return a * b end)
-print_signal(4, add(counter_signal, counter_signal))
-=> 0
-=> 2
-=> 4
-=> 6
-print_signal(4, sub(counter_signal, ones))
-=> -1
-=> 0
-=> 1
-=> 2
-print_signal(4, mul(counter_signal, counter_signal))
-=> 0
-=> 1
-=> 4
-=> 9
+print_signal(5, add(counter_signal, counter_signal))
+=> 0, 2, 4, 6, 8
+print_signal(5, sub(counter_signal, ones))
+=> -1, 0, 1, 2, 3
+print_signal(5, mul(counter_signal, counter_signal))
+=> 0, 1, 4, 9, 16
 ```
 
 Here we have a function `lift_2` that can convert a pure function
@@ -205,10 +191,6 @@ a whole.
 
 
 
-This hints at something: it should be possible to have the programmer
-work with just `Sig o`, and not think about state or "processor
-instances" at all, performing all the state bookkeeping under the
-hood.
 
 So we have signals.  This idea can be extended to update functions of
 type `(s,i)->(s,o)` representing a stateful signal processor that
