@@ -41,13 +41,15 @@ function update_counter(state)
 end
 l.print(update_counter(0))
 => 1, 0
-l.print(update_counter(1))
-=> 2, 1
+l.print(update_counter(100))
+=> 101, 100
 ```
 
 Given an initial value of type `s`, the update function can be applied
 iteratively on each next `s` it produces, yielding an infinite
-sequence of `o` as a byproduct.
+sequence of `o` as a byproduct.  Let's call this infinite sequence
+`Sig o`, a signal of base type o.  One not so useful representation of
+this signal is to print its values.
 
 ```lua
 counter_out={}  -- initial state
@@ -61,10 +63,77 @@ end
 => 2
 ```
 
-Let's call this infinite sequence `Sig o`, a signal of base type o.
-The point of `seq.lua` is to provide an abstract representation of
-such signals that can be used to generate C code.  But let's take it
-slow.
+But we can do much more.  The point of `seq.lua` is to provide an
+abstract representation of such signals that can be used to generate C
+code.  But we need to introduce a couple of ideas first, so let's work
+with just Lua code first.
+
+One way to represent a signal in Lua is by using a lazy list. This can
+be built from a memoization function that caches the evaluation of a
+zero argument function (a thunk).
+```lua
+function memo(thunk)
+   local cache = nil
+   return function()
+      if cache ~= nil then return cache end
+      cache = thunk()
+      return cache
+   end
+end
+```
+
+This memoization function is then used to build a list as a pair of a
+head element, and a thunk that evaluates to the tail.
+
+
+```lua
+function signal(head, tail_thunk)
+   return {head, memo(tail_thunk)}
+end
+```
+
+An infinite sequence of `1` could be built as
+```lua
+ones = signal(1, function() return ones end)
+```
+
+To print it, iteratively print the head then evaluate the tail.
+```lua
+function print_signal(n, sig)
+   for i=1,n do
+      local head, tail_thunk = unpack(sig)
+      l.print(head)
+      sig = tail_thunk()
+   end
+end
+print_signal(4, ones)
+
+=> 1
+=> 1
+=> 1
+=> 1
+```
+
+Finally, the counter signal can be represented.
+```lua
+function as_signal(init, update)
+   local state = init
+   local tail_thunk
+   tail_thunk = function()
+      local next_state, output = update(state)
+      state = next_state
+      return signal(output, tail_thunk)
+   end
+   return tail_thunk()
+end
+counter_signal = as_signal(0, update_counter)
+print_signal(4, counter_signal)
+=> 0
+=> 1
+=> 2
+=> 3
+```
+
 
 
 Note that there is no mention of state `s` in `Sig o`.  Once we build
