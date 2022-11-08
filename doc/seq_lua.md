@@ -10,12 +10,12 @@ and it is possible to figure out how the composition works by just
 following the code, but types are really useful to condense the idea.
 
 Lower case denote type variables.  Upper case denote concrete types.
-E.g. `t` could represent a concrete `Float` or `Int`.  Functions are
-represented using the notation `a->b`, representing a function that
-maps values of type `a` to values of type `b`.  E.g. `Float->Float` is
-a function that maps `Float` to `Float`, e.g. the `sin` function is of
-that type.  Tuples are used to bundle values of arbitrary types, with
-the tuple type denoted as `(a,b)`.  E.g. `(Float,Int)`.
+E.g. `t` could represent a concrete `Float` or `Int` type.  Function
+types are denoted as `a->b`, a function that maps values of type `a`
+to values of type `b`.  E.g. `Float->Float` is a function that maps
+`Float` to `Float`, e.g. the `sin` function is of that type.  Tuples
+are used to bundle values of arbitrary types, with the tuple type
+denoted as `(a,b)`.  E.g. `(Float,Int)`.
 
 The core of the idea is that causal signals can be represented by a
 pure update function of type `s->(s,o)`: given a value for the state
@@ -24,6 +24,14 @@ together with an output.
 
 E.g. `Int->(Int,Int)` could represent the type of a counter with an
 `Int` state and an `Int` output.
+
+```lua
+function(state)
+   local output = state
+   local next_state = state + 1
+   return next_state, output
+```
+
 
 Given an initial value of type `s`, the update function can be applied
 iteratively on each next `s` it produces, yielding an infinite
