@@ -164,29 +164,38 @@ print_signal(4, add(counter_signal, counter_signal))
 That seems to work.  Now note that the function `add` only mentions
 `+` in one location.  Let's generalize it by wrapping it like this:
 
-FIXME: This one is rong
-
 ```lua
 function lift_2(op)
-   return function add(sig_a, sig_b)
+   local sigop
+   function sigop(sig_a, sig_b)
       local head_a, tail_thunk_a = unpack(sig_a)
       local head_b, tail_thunk_b = unpack(sig_b)
       return signal(
          op(head_a, head_b),
          function()
-            return add(tail_thunk_a(), tail_thunk_b())
+            return sigop(tail_thunk_a(), tail_thunk_b())
          end)
    end
+   return sigop
 end
 add = lift_2(function(a,b) return a + b end)
 sub = lift_2(function(a,b) return a - b end)
 mul = lift_2(function(a,b) return a * b end)
 print_signal(4, add(counter_signal, counter_signal))
-=>
+=> 0
+=> 2
+=> 4
+=> 6
 print_signal(4, sub(counter_signal, ones))
-=>
+=> -1
+=> 0
+=> 1
+=> 2
 print_signal(4, mul(counter_signal, counter_signal))
-=>
+=> 0
+=> 1
+=> 4
+=> 9
 ```
 
 Here we have a function `lift_2` that can convert a pure function
