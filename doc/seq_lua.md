@@ -40,9 +40,9 @@ function update_counter(state)
    return next_state, output
 end
 l.print(update_counter(1))
-=>
+=> 2, 1
 l.print(update_counter(2))
-=>
+=> 3, 2
 ```
 
 Given an initial value of type `s`, the update function can be applied
