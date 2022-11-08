@@ -43,12 +43,15 @@ return function(c)
    -- First order lowpass.
    function lib.lp1(coef, init)
       init = init or 0
+      -- This function maps an input stream to an output stream.
+      -- The state signal is only visible inside the update function.
       return function(input)
          return c.rec(
             init,
             function(state)
-               local next_state = state + c * (input - state)
-               return next_state, state
+               local next_state = state + coef * (input - state)
+               local output = state
+               return next_state, output
             end)
       end
    end

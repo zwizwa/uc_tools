@@ -156,6 +156,10 @@ local function progs(c)
             return lp1(a)
          end)
    end
+   -- TODO:
+   -- . proper type inference & checking
+   -- . refactor on top of lure
+   -- . scheme to hoas frontend
    return m
 end
 
