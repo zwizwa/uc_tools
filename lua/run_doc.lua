@@ -1,3 +1,5 @@
+#!./lua.sh
+
 -- Quick & Dirty Interpreter for Literal Lua.
 
 require('lure.log')
@@ -34,6 +36,8 @@ end
 
 -- Input is in doc syntax
 function m.run_doc(file)
+
+   -- Read the entire file so we can overwrite it.
    local f = io.open(file, "rb")
    assert(f)
    local next_line = io.lines(file)
@@ -72,15 +76,11 @@ function m.run_doc(file)
    end
 end
 
-
-
-
-function test()
-   -- m.run_lua('doc_seq.lua')
-   m.run_doc('../doc/seq_lua.md')
-end
-
-test()
+-- function test()
+--    -- m.run_lua('doc_seq.lua')
+--    m.run_doc('../doc/seq_lua.md')
+-- end
+-- test()
 
 return m
 

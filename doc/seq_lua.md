@@ -1,8 +1,8 @@
 Introduction
 ------------
 
-This is a literal lua file. This is a literal lua file.  Lines
-starting with '=' are program output.
+This is a literal lua file.  Lines starting with '=>' are program
+output.
 
 ```lua
 l = require('literal')
@@ -39,17 +39,33 @@ function update_counter(state)
    local next_state = state + 1
    return next_state, output
 end
+l.print(update_counter(0))
+=> 1, 0
 l.print(update_counter(1))
 => 2, 1
-l.print(update_counter(2))
-=> 3, 2
 ```
 
 Given an initial value of type `s`, the update function can be applied
 iteratively on each next `s` it produces, yielding an infinite
-sequence of `o` as a byproduct.  We call this infinite sequence `Sig o`,
-a signal of base type o.  The point of `seq.lua` is to provide a
-representation of such signals, but for now assume it is possible.
+sequence of `o` as a byproduct.
+
+```lua
+counter_out={}  -- initial state
+counter_state=0
+for i=1,3 do
+   counter_state, out = update_counter(counter_state)
+   l.print(out)
+end
+=> 0
+=> 1
+=> 2
+```
+
+Let's call this infinite sequence `Sig o`, a signal of base type o.
+The point of `seq.lua` is to provide an abstract representation of
+such signals that can be used to generate C code.  But let's take it
+slow.
+
 
 Note that there is no mention of state `s` in `Sig o`.  Once we build
 a signal, we do not need to care about the state that is involved in
