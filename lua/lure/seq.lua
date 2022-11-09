@@ -36,21 +36,38 @@ end
 
 
 -- Erlang's iolist
-local function w_thing(thing)
+local function w_iol(w_str, thing)
    if type(thing) == 'table' then
       for _, subthing in ipairs(thing) do
-         w_thing(subthing)
+         w_iol(w_str, subthing)
       end
    else
-      io.stdout:write(thing .. "")
+      w_str(thing .. "")
    end
 end
-local function w(...) w_thing({...}) end
+local function stream_w(stream)
+   return function(...)
+      w_iol(
+         function(str)
+            stream:write(str)
+         end,
+         {...})
+   end
+end
+local function array_w(arr)
+   return function(...)
+      w_iol(
+         function(str)
+            table.insert(arr, str)
+         end,
+         {...})
+   end
+end
 
 
 
 
-local function w_c(prog)
+local function w_c(w, prog)
 
    local expr
    local function expr_list(lst)
@@ -211,7 +228,7 @@ local function w_c(prog)
    w_prog(w, prog)
 end
 
-local function compile(hoas, nb_input)
+local function compile(hoas, nb_input, w)
    -- State
    local code = {}
    local new_var_number = counter(1)
@@ -570,11 +587,11 @@ local function compile(hoas, nb_input)
    }
 
    -- w_scheme(prog)
-   w_c(prog)
+   w_c(w, prog)
 
 
    return prog
 end
 
 
-return { compile = compile }
+return { compile = compile, stream_w = stream_w, array_w = array_w }

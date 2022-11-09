@@ -218,7 +218,8 @@ local function compile(name, nb_args)
       function (c)
          return progs(c)[name]
       end,
-      nb_args)
+      nb_args,
+      seq.stream_w(io.stdout))
 end
 
 compile('prog3', 1)

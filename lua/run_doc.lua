@@ -50,8 +50,17 @@ function m.run_doc(file)
       code = {}
    end
 
+   -- FIXME: This doesn't need "modes".  It's probably simpler to
+   -- factor it out in functions.
    for line in next_line do
-      if line == '```lua' then
+      if line == '```c' then
+         io.write(line)
+         io.write('\n')
+         local f = loadstring("print_c()")
+         f()
+         -- Ignore the existing block
+         while '```' ~= next_line() do end
+      elseif line == '```lua' then
          code = {} -- Enter code mode
       elseif line == '```' then
          eval()

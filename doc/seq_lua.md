@@ -334,10 +334,28 @@ TODO
 Compiling to C
 --------------
 
+First let's set up the compiler infrastructure for 
+
+FIXME: Dump the C code in a string, then extend `run_doc.lua` to pick
+up that string and display it.
+
 We now take the language structure above and generalize it a bit.
 
 ```lua
-local seq = require('lure.seq')
+seq = require('lure.seq')
+-- code is accumulated here
+c_code = {} 
+-- called by document generator to inline c code
+function print_c()
+   local w = seq.stream_w(io.stdout)
+   w(c_code)
+end
+    
+```
+
+Then
+
+```lua
 function counter(c)
    return function()
       return c.rec1(
@@ -349,12 +367,13 @@ function counter(c)
          end)
    end
 end
-seq.compile(counter,0)
+seq.compile(counter,0,seq.array_w(c_code))
 ```
 
 Which produces the following C code.
 
 ```c
+
 /* types:
 r3: val
 s1: val
@@ -369,9 +388,4 @@ void fun(
   val_t r3 = add(r2, 1);
   s1 = r3;
 }
-```
-
-
-
-
-
+```c
