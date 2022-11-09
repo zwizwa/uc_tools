@@ -297,7 +297,10 @@ function lift_2(op)
    end
    return sigop
 end
+-- Redefine these with the new lift_2
 add = lift_2(function(a,b) return a+b end)
+sub = lift_2(function(a,b) return a-b end)
+mul = lift_2(function(a,b) return a*b end)
 print_signal(5, add(1,1))
 => 2, 2, 2, 2, 2
 print_signal(5, add(counter_signal,100))
@@ -316,6 +319,8 @@ function signal(head, tail_thunk)
 end
 print_signal(5, integrate(1) + 200)
 => 200, 201, 202, 203, 204
+print_signal(10, integrate(1) * 200)
+=> 0, 200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800
 ```
 
 

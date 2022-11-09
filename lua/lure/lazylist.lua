@@ -65,28 +65,32 @@ local function take(n, lst)
 end
 
 
--- To implement causal recursion, the update function is probed using
--- a signal that does not have a defined tail.  This works as long as
--- the tail of the s_out and out signals are never evaluated.  The
--- loop can then be recd using a state variable.
+-- Going to admit, this took me a while to figure out how to do
+-- elegantly, but after fumbling about, the principle is really always
+-- the same:
 
--- Implement base routine on state vectors (lua lists).
-local function rec_vec(init, update)
-   local state = init
-   local tail_thunk
-   tail_thunk = function()
-      local s_in = {}
-      for i=1,#state do
-         s_in[i] = signal(state[i], nil)
-      end
-      local s_out, out = update(s_in)
-      for i,si in ipairs(s_out) do
-         state[i] = si.head
-      end
-      local rv = signal(out.head, tail_thunk)
-      return rv
+-- Circular structures are possible by 1. declaring still-undefined
+-- variables and binding to them inside thunks, and 2. patching those
+-- variables before those thunks are evaluated.  The cycle below is in
+-- state_next variable, which is referenced in the tail of state_sigs,
+-- and defined later after passing state_sigs to update.
+
+-- state_init_vals is a table of initial values (not signals!)
+--
+-- update function takes input state signal, produces next state and
+-- output signals.
+--
+local function rec_vec(state_init_vals, update)
+   local state_next -- table of signals
+   local out -- arbitrary output we just pass on
+   local state = {}
+   for key in pairs(state_init_vals) do
+      state[key] = signal(
+         state_init_vals[key],
+         function() return state_next[key] end)
    end
-   return tail_thunk()
+   state_next, out = update(state)
+   return out
 end
 -- Wrapper for single state variable.
 local function rec(init, update)
