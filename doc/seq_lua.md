@@ -112,7 +112,17 @@ print_signal(5, ones)
 => 1, 1, 1, 1, 1
 ```
 
-Finally, the counter signal can be represented by guarding the
+Generalize this by wrapping it in a function parameterized by the
+signal's constant value.
+
+```lua
+function pure(val) return signal(val, function() return pure(val) end) end
+zeros = pure(0)
+print_signal(5, zeros)
+=> 0, 0, 0, 0, 0
+```
+
+Similarly a counter signal can be represented by guarding the
 recursion inside a thunk.
 
 ```lua
@@ -213,16 +223,16 @@ called `rec`, the recursion combinator, and it has type `(Sig s ->
 (Sig s, Sig o) ) -> Sig o`, together with the initial value `s` we
 will still need.
 
-Implementation of lazy operators in a strict language can be tricky,
-but the basic idea is to declare names, then patch values before they
-are evaluated.
+The principle for writing lazy operators is the same as before: put
+evaluations of things-yet-to-be-defined behind thunks, then patch the
+values before those thunks are evaluated.
 
 ```lua
 function rec(state_val, update)
-   local state_tail, out_sig
-   local function out_sig_tail() return rec(state_tail[1], update) end
-   state_tail, out_sig = update(signal(state_val, state_tail))
-   return signal(out_sig[1], out_sig_tail)
+   local state_next_sig, out_sig
+   local state_sig = signal(state_val, function() return state_next_sig end)
+   state_next_sig, out_sig = update(state_sig)
+   return out_sig
 end
 ```
 
@@ -235,7 +245,8 @@ print_signal(5, another_counter)
 => 0, 1, 2, 3, 4
 ```
 
-This then paves the way to encode signal processors as well:
+With construction of recursively defined signals expressed in terms of
+signals, signal processors become quite straightforward:
 
 ```lua
 function integrate(input)
@@ -248,93 +259,32 @@ end
 print_signal(5, integrate(ones))
 => 0, 1, 2, 3, 4
 print_signal(5, integrate(counter_signal))
--- FIXME: This is not correct
-=> 0, 0, 0, 0, 0
+=> 0, 0, 1, 3, 6
 ```
 
+That's about it.
 
+For most of the discussion, especally for audio processors, the
+initial state value can typically be ignored and set to `0` by
+default.
 
+Aside from the recursive constructor, the `seq.lua` language also
+supports nested vectors.  This is fairly straightforward and we'll
+ignore it for now.
 
-
-
-OLD
-
-we can indeed build an operator
-
-
-
-
-So what else do we need?  What about building a filter?  Something
-that looks nice with whole numbers, e.g. an integrator.  Here is where
-it gets interesting and a little confusing.
-
-What we want is the signal version of an update functions of type
-`(s,i)->(s,o)` representing a stateful signal processor that takes
-input of type `i` together with state `s` to output of type `o`
-together with next state `s`.
-
-Now here comes the leap of fate: instead of the type above, let's
-focus on the curried variant `i->(s->(s,o))`.  
-
-
-```lua
-function integrate_update(state, input)
-   local next_state = state + input
-   local out = state
-   return next_state, output
-end
-```
-
-To turn this into a function of type `Sig i -> Sig o` we can do
-something like.
-
-```lua
-
-```
-
-
-
-We can do the following: start with a given signal `Sig i` and an
-initial state value for state `s`. Take the first `i` from `Sig i` and
-feed it into the update function together with the initial state value
-`s`.  Take the `s` that comes out, record the `o`.  Feed the `s` back
-in taking the next `i` from `Sig i` etc.  Again, the output is an
-infinite sequence of `o` represented as `Sig o`.  Effectively what
-we've done here is to create a function `Sig i -> Sig o`, taking an
-infinite sequence of `i` and mapping it to an infinite sequence of
-`o`.
-
-For most of the discussion, the initial state value can be ignored,
-just keep in mind that it is always tracked.  For most applications
-the initial state can even be set to `0`.
-
-So we now have signals `Sig a` and signal processors `Sig i -> Sig o`
-constructed from update functions.  If we now add any pure function
-`i->o` and provide a lifting mechanism (fmap) that produces `Sig i ->
-Sig o` functions, we have a language that is about as expressive as
-Faust.
-
-Now it turns out that update functions of type `(s,i)->(s,o)` are best
-represented as `i->(s->(s,o))`.  This alows the implementation to
-focus on the transformation of `s->(s,o)` to `Sig o`.
-
-Then one last thing.  In order to make things composable, the scalar
-`s->(s,o)` update functions need to be embedded as `Sig s -> (Sig s,
-Sig o)` update functions.  This is the same as long as it is assumed
-that the output `Sig s` is the input `Sig a` shifted one step into the
-future.
-
-The Lua implementation also adds nested vectors to this, which we'll
-ignore for now.  It is a straightforward extension.  The important
-point is how to deal with time and state.
 
 
 Embedded DSLs and Higher order Syntax
 -------------------------------------
 
+TODO
 
 
-TODO: examples
+Compiling to C
+--------------
+
+TODO
+
 
 
 
