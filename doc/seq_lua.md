@@ -328,24 +328,25 @@ print_signal(10, integrate(1) * 200)
 Embedded DSLs and Higher order Syntax
 -------------------------------------
 
-TODO
+TODO: Explain that adding an extra parameter can decouple the user
+code from the semantics.
 
 
 Compiling to C
 --------------
 
-First let's set up the compiler infrastructure for 
-
-FIXME: Dump the C code in a string, then extend `run_doc.lua` to pick
-up that string and display it.
-
-We now take the language structure above and generalize it a bit.
+First let's set up the compiler infrastructure.
 
 ```lua
+-- Load the seq language support.
 seq = require('lure.seq')
--- code is accumulated here
+-- C code will be accumulated here.
 c_code = {} 
--- called by document generator to inline c code
+-- We use this later to invoke the compiler, dumping into c_code array.
+function compile(prog, nb_args)
+   seq.compile(prog, nb_args, seq.array_w(c_code))
+end
+-- This is called by the document generator to inline the code in c_code array.
 function print_c()
    local w = seq.stream_w(io.stdout)
    w(c_code)
@@ -353,12 +354,13 @@ end
     
 ```
 
-Then
+Then we define a counter signal like we did before, parameterized by
+the base language via the `e` parameter.
 
 ```lua
-function counter(c)
+function counter(e)
    return function()
-      return c.rec1(
+      return e.rec1(
          0,
          function(state)
             return
@@ -367,7 +369,7 @@ function counter(c)
          end)
    end
 end
-seq.compile(counter,0,seq.array_w(c_code))
+compile(counter,0)
 ```
 
 Which produces the following C code.
@@ -388,4 +390,4 @@ void fun(
   val_t r3 = add(r2, 1);
   s1 = r3;
 }
-```c
+```

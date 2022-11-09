@@ -58,8 +58,10 @@ function m.run_doc(file)
          io.write('\n')
          local f = loadstring("print_c()")
          f()
+         io.write('```\n')
          -- Ignore the existing block
          while '```' ~= next_line() do end
+         line = nil
       elseif line == '```lua' then
          code = {} -- Enter code mode
       elseif line == '```' then
