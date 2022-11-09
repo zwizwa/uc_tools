@@ -126,13 +126,13 @@ Similarly a counter signal can be represented by guarding the
 recursion inside a thunk.
 
 ```lua
-function as_signal(state, update)
+function update_to_signal(state, update)
    local next_state, output = update(state)
    return signal(
       output,
-      function() return as_signal(next_state, update) end)
+      function() return update_to_signal(next_state, update) end)
 end
-counter_signal = as_signal(0, counter_update)
+counter_signal = update_to_signal(0, counter_update)
 print_signal(5, counter_signal)
 => 0, 1, 2, 3, 4
 ```
@@ -140,7 +140,7 @@ print_signal(5, counter_signal)
 
 Note that there is no mention of state `s` in `Sig o`.  Similarly in
 the `counter_signal` any mention of the state at the "user end" is
-gone; it is all tucked away inside the implementation of `as_signal`.
+gone; it is all tucked away inside the implementation of `update_to_signal`.
 
 This hints at something: it should be possible to have the programmer
 work with just `Sig o`, and not think about state or "processor
@@ -197,7 +197,7 @@ Here we have a function `lift_2` that can convert a pure function
 operating on signal values to a pure function operating on signals as
 a whole.
 
-Let's go back to the function `as_signal`.  This takes an update
+Let's go back to the function `update_to_signal`.  This takes an update
 function `s->(s,o)` operating on scalar values op type `s` and `o` and
 maps it to an infinite signal `Sig o`.
 
@@ -262,7 +262,7 @@ print_signal(5, integrate(counter_signal))
 => 0, 0, 1, 3, 6
 ```
 
-That's about it.
+That's about it for the basics.
 
 For most of the discussion, especally for audio processors, the
 initial state value can typically be ignored and set to `0` by
@@ -271,6 +271,52 @@ default.
 Aside from the recursive constructor, the `seq.lua` language also
 supports nested vectors.  This is fairly straightforward and we'll
 ignore it for now.
+
+To wrap up this section, let's add operator overloading and automatic
+lifting.
+
+Automatic lifting can be done inside the `lift_2` function.
+
+```lua
+function as_signal(thing)
+   if type(thing) == 'number' then return pure(thing) end
+   return thing
+   end
+function lift_2(op)
+   local sigop
+   function sigop(a, b)
+      local sig_a = as_signal(a)
+      local sig_b = as_signal(b)
+      local head_a, tail_thunk_a = unpack(sig_a)
+      local head_b, tail_thunk_b = unpack(sig_b)
+      return signal(
+         op(head_a, head_b),
+         function()
+            return sigop(tail_thunk_a(), tail_thunk_b())
+         end)
+   end
+   return sigop
+end
+add = lift_2(function(a,b) return a+b end)
+print_signal(5, add(1,1))
+=> 2, 2, 2, 2, 2
+print_signal(5, add(counter_signal,100))
+=> 100, 101, 102, 103, 104
+```
+
+
+Operator overloading can be implemented using a Lua metatatable.
+
+```lua
+signal_mt = {__add = add, __sub = sub, __mul = mul }
+function signal(head, tail_thunk)
+   local sig = {head, memo(tail_thunk)}
+   setmetatable(sig, signal_mt)
+   return sig
+end
+print_signal(5, integrate(1) + 200)
+=> 200, 201, 202, 203, 204
+```
 
 
 
