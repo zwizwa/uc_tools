@@ -34,14 +34,14 @@ E.g. `Int->(Int,Int)` could represent the type of a counter with an
 `Int` state and an `Int` output.
 
 ```lua
-function update_counter(state)
+function counter_update(state)
    local output = state
    local next_state = state + 1
    return next_state, output
 end
-l.print(update_counter(0))
+l.print(counter_update(0))
 => 1, 0
-l.print(update_counter(100))
+l.print(counter_update(100))
 => 101, 100
 ```
 
@@ -52,10 +52,9 @@ sequence of `o` as a byproduct.  Let's call this infinite sequence
 this signal is to print its values.
 
 ```lua
-counter_out={}  -- initial state
 counter_state=0
 for i=1,3 do
-   counter_state, out = update_counter(counter_state)
+   counter_state, out = counter_update(counter_state)
    l.print(out)
 end
 => 0
@@ -123,7 +122,7 @@ function as_signal(state, update)
       output,
       function() return as_signal(next_state, update) end)
 end
-counter_signal = as_signal(0, update_counter)
+counter_signal = as_signal(0, counter_update)
 print_signal(5, counter_signal)
 => 0, 1, 2, 3, 4
 ```
@@ -188,14 +187,112 @@ Here we have a function `lift_2` that can convert a pure function
 operating on signal values to a pure function operating on signals as
 a whole.
 
+Let's go back to the function `as_signal`.  This takes an update
+function `s->(s,o)` operating on scalar values op type `s` and `o` and
+maps it to an infinite signal `Sig o`.
+
+For reasons that will become clear later on, we do not want to work in
+both `o` and `Sig o` domains: the scalar domain and the signal domain.
+We want to construct a signal that is recursively defined by only
+talking about signal types.
+
+E.g. given a function of type `Sig s -> (Sig s, Sig o)`, construct a
+signal of type `Sig o`.  Does this even make sense?
+
+Drumroll... yes!
+
+If the two `Sig s` values are thought of as shifted versions of each
+other, the latter one being one time step later than the first one,
+all the individual `s` values in the signals "line up" with each
+other, all connected via the same `s->(s,o)` function.
+
+So essentially, the scalar update function can just be lifted into the
+signal domain, and then reduced by identifying the output and input
+`Sig s` signals as shifted versions of each other.  This operation is
+called `rec`, the recursion combinator, and it has type `(Sig s ->
+(Sig s, Sig o) ) -> Sig o`, together with the initial value `s` we
+will still need.
+
+Implementation of lazy operators in a strict language can be tricky,
+but the basic idea is to declare names, then patch values before they
+are evaluated.
+
+```lua
+function rec(state_val, update)
+   local state_tail, out_sig
+   local function out_sig_tail() return rec(state_tail[1], update) end
+   state_tail, out_sig = update(signal(state_val, state_tail))
+   return signal(out_sig[1], out_sig_tail)
+end
+```
+
+Here's an example using the `add` stream addition operator and the
+`ones` stream of `1` values.
+
+```lua
+another_counter = rec(0, function(state) return add(state, ones), state end)
+print_signal(5, another_counter)
+=> 0, 1, 2, 3, 4
+```
+
+This then paves the way to encode signal processors as well:
+
+```lua
+function integrate(input)
+   return rec(
+      0,
+      function(state)
+         return add(state, input), state
+      end)
+end
+print_signal(5, integrate(ones))
+=> 0, 1, 2, 3, 4
+print_signal(5, integrate(counter_signal))
+-- FIXME: This is not correct
+=> 0, 0, 0, 0, 0
+```
 
 
 
 
-So we have signals.  This idea can be extended to update functions of
-type `(s,i)->(s,o)` representing a stateful signal processor that
-takes input of type `i` together with state `s` to output of type `o`
+
+
+OLD
+
+we can indeed build an operator
+
+
+
+
+So what else do we need?  What about building a filter?  Something
+that looks nice with whole numbers, e.g. an integrator.  Here is where
+it gets interesting and a little confusing.
+
+What we want is the signal version of an update functions of type
+`(s,i)->(s,o)` representing a stateful signal processor that takes
+input of type `i` together with state `s` to output of type `o`
 together with next state `s`.
+
+Now here comes the leap of fate: instead of the type above, let's
+focus on the curried variant `i->(s->(s,o))`.  
+
+
+```lua
+function integrate_update(state, input)
+   local next_state = state + input
+   local out = state
+   return next_state, output
+end
+```
+
+To turn this into a function of type `Sig i -> Sig o` we can do
+something like.
+
+```lua
+
+```
+
+
 
 We can do the following: start with a given signal `Sig i` and an
 initial state value for state `s`. Take the first `i` from `Sig i` and
