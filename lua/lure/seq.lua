@@ -203,16 +203,17 @@ local function w_c(w, prog)
       local args={}
       for state in se.elements(prog.state) do
          local var, init = se.unpack(state, {n=2})
-         table.insert(args, function_arg(var))
+         table.insert(args, {'s', function_arg(var)})
       end
       for var in se.elements(prog.args) do
-         table.insert(args, function_arg(var))
+         table.insert(args, {'i', function_arg(var)})
       end
       for var in se.elements(a2l(prog.out)) do
-         table.insert(args, function_arg(var))
+         table.insert(args, {'o', function_arg(var)})
       end
-      for arg, nxt in se.elements(a2l(args)) do
-         w('  ', arg)
+      for arg_meta, nxt in se.elements(a2l(args)) do
+         local kind, arg = unpack(arg_meta)
+         w('/*',kind,'*/ ', arg)
          if se.is_pair(nxt) then
             w(',')
          end

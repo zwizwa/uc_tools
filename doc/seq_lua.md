@@ -353,10 +353,10 @@ Then we define a counter signal like we did before, parameterized by
 the base language via the `lang` parameter.  The `lure.seq_lib`
 library contains eDSL functions and is also parameterized by the
 `lang` parameter.  The `vec` combinator invocation builds a vector of
-size `10`, with the current loop index passed to a function.  The
-`rec1` combinator invocation instantiates a counter that increments
-`i` on each time step.  The program thus creates a vector of 10
-distinct counters.
+size 10, with the current loop index passed to a function.  The `rec1`
+combinator invocation instantiates a counter that increments by `i` on
+each time step.  The program thus creates a vector of 10 distinct
+counters.
 
 ```lua
 function counter(lang)
@@ -389,8 +389,8 @@ s3: vec(val, 10)
 r5: val
 */
 void fun(
-  val_t s3[10],
-  val_t v2[10]
+/*s*/ val_t s3[10],
+/*o*/ val_t v2[10]
 )
 {
   for(idx_t i1 = 0; i1 < 10; i1++) {
