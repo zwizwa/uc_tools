@@ -340,18 +340,13 @@ First let's set up the compiler infrastructure.
 ```lua
 -- Load the seq language support.
 seq = require('lure.seq')
--- C code will be accumulated here.
+-- C code will be accumulated here to be picked up by document renderer.
 c_code = {} 
 -- We use this later to invoke the compiler, dumping into c_code array.
 function compile(prog, nb_args)
-   seq.compile(prog, nb_args, seq.array_w(c_code))
+   seq.compile(prog, nb_args, c_code)
 end
--- This is called by the document generator to inline the code in c_code array.
-function print_c()
-   local w = seq.stream_w(io.stdout)
-   w(c_code)
-end
-    
+   
 ```
 
 Then we define a counter signal like we did before, parameterized by

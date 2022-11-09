@@ -56,7 +56,8 @@ function m.run_doc(file)
       if line == '```c' then
          io.write(line)
          io.write('\n')
-         local f = loadstring("print_c()")
+         -- FIXME: less hacky
+         local f = loadstring("(seq.stream_w(io.stdout))(c_code)")
          f()
          io.write('```\n')
          -- Ignore the existing block

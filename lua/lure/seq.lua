@@ -228,7 +228,18 @@ local function w_c(w, prog)
    w_prog(w, prog)
 end
 
-local function compile(hoas, nb_input, w)
+local function w_smart(out)
+   if type(out) == 'table'    then return array_w(out) end
+   if type(out) == 'function' then return out end
+   -- Assume it is a stream
+   return stream_w(out)
+end
+
+local function compile(hoas, nb_input, code_output)
+
+   -- Convenient to support different output types here.
+   local w = w_smart(code_output)
+
    -- State
    local code = {}
    local new_var_number = counter(1)
