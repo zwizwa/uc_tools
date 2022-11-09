@@ -359,15 +359,17 @@ the base language via the `e` parameter.
 
 ```lua
 function counter(e)
-   return function()
-      return e.rec1(
-         0,
-         function(state)
-            return
-               state + 1,
-               state
-         end)
-   end
+   lib = require('lure.seq_lib')(e)
+   return lib.scalar(
+      function()
+         return e.rec1(
+            0,
+            function(state)
+               return
+                  state + 1,
+                  state
+            end)
+      end)
 end
 compile(counter,0)
 ```
@@ -377,17 +379,22 @@ Which produces the following C code.
 ```c
 
 /* types:
-r3: val
-s1: val
-r2: val
+i1: idx
+v2: vec(val, 1)
+r4: val
+s3: vec(val, 1)
+r5: val
 */
 void fun(
-  val_t s1,
-  val_t r2
+  val_t s3[1],
+  val_t v2[1]
 )
 {
-  val_t r2 = s1;
-  val_t r3 = add(r2, 1);
-  s1 = r3;
+  for(idx_t i1 = 0; i1 < 1; i1++) {
+    val_t r4 = s3[i1];
+    val_t r5 = add(r4, 1);
+    s3[i1] = r5;
+    v2[i1] = r4;
+  }
 }
 ```
