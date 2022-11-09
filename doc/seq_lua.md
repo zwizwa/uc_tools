@@ -334,7 +334,43 @@ TODO
 Compiling to C
 --------------
 
-TODO
+We now take the language structure above and generalize it a bit.
+
+```lua
+local seq = require('lure.seq')
+function counter(c)
+   return function()
+      return c.rec1(
+         0,
+         function(state)
+            return
+               state + 1,
+               state
+         end)
+   end
+end
+seq.compile(counter,0)
+```
+
+Which produces the following C code.
+
+```c
+/* types:
+r3: val
+s1: val
+r2: val
+*/
+void fun(
+  val_t s1,
+  val_t r2
+)
+{
+  val_t r2 = s1;
+  val_t r3 = add(r2, 1);
+  s1 = r3;
+}
+```
+
 
 
 
