@@ -277,7 +277,7 @@ local function compile(hoas, nb_input)
 
    local copy = prim('copy',1)
 
-   local function rec_tuple(init_vals, fun)
+   local function rec(init_vals, fun)
       -- State needs to be instantiated for each iteration in the
       -- current spatial context.  Determine the type.
       function wrap_type(typ)
@@ -294,16 +294,19 @@ local function compile(hoas, nb_input)
 
       local svars = {}
       local sins  = {}
-      for i=1,#init_vals do
+
+      -- Here 'pairs' is used so that svars, sins and later souts are
+      -- referenced with the same structure as init_vals.
+      for key in pairs(init_vals) do
          -- Create variable
          local svar = new_var('s', typ)
-         svars[i] = svar
+         svars[key] = svar
          -- Track it together with the initial value.
-         table.insert(state, l(svar, wrap_type(init_vals[i])))
+         table.insert(state, l(svar, wrap_type(init_vals[key])))
          local svar_ref = ref(svar)
          -- State is always indexed
          svar_ref.index = svar_ref_index
-         sins[i] = copy(svar_ref)
+         sins[key] = copy(svar_ref)
       end
 
       -- Push state inputs into the state machine, collecting next
@@ -312,15 +315,15 @@ local function compile(hoas, nb_input)
 
       -- Note that this is pipelined: effect of set! is only visible
       -- at the next iteration.
-      for i=1,#init_vals do
-         table.insert(code, l('state-set!', svars[i], svar_ref_index, souts[i]))
+      for key in pairs(init_vals) do
+         table.insert(code, l('state-set!', svars[key], svar_ref_index, souts[key]))
       end
       return out
    end
 
-   local function rec(init_val, fun)
+   local function rec1(init_val, fun)
       return
-         rec_tuple(
+         rec(
             {init_val},
             function(si)
                local so, o = fun(si)
@@ -409,7 +412,7 @@ local function compile(hoas, nb_input)
 
    -- Similar to vec(), see comments there.
    -- Differences: no vindex, vecs, vec_out
-   local function fold_tuple(init_vals, n, fun)
+   local function fold(init_vals, n, fun)
       assert(type(n) == 'number')
 
       -- Variables used
@@ -471,8 +474,8 @@ local function compile(hoas, nb_input)
       return unpack(accus_ref)
    end
 
-   local function fold(init_val, n, fun)
-      return fold_tuple({init_val}, n, function(idx, accu)
+   local function fold1(init_val, n, fun)
+      return fold({init_val}, n, function(idx, accu)
             local accu_next = fun(idx, accu)
             return accu_next
       end)
@@ -523,9 +526,9 @@ local function compile(hoas, nb_input)
       aref  = aref,
       vec   = vec,
       fold  = fold,
-      fold_tuple  = fold_tuple,
-      rec = rec,
-      rec_tuple = rec_tuple,
+      fold1 = fold1,
+      rec   = rec,
+      rec1  = rec1,
    }
    -- Metatable operator overloading.
    signal_mt.__add = c.add
@@ -558,11 +561,11 @@ local function compile(hoas, nb_input)
 
 
    local prog = {
-      types = types,
-      state = a2l(state),
-      args = a2l(args),
-      code = a2l(code),
-      out = out_vars,
+      types  = types,
+      state  = a2l(state),
+      args   = a2l(args),
+      code   = a2l(code),
+      out    = out_vars,
       is_out = is_out,
    }
 

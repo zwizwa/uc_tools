@@ -80,7 +80,7 @@ end
 -- update function takes input state signal, produces next state and
 -- output signals.
 --
-local function rec_vec(state_init_vals, update)
+local function rec(state_init_vals, update)
    local state_next -- table of signals
    local out -- arbitrary output we just pass on
    local state = {}
@@ -93,8 +93,8 @@ local function rec_vec(state_init_vals, update)
    return out
 end
 -- Wrapper for single state variable.
-local function rec(init, update)
-   return rec_vec(
+local function rec1(init, update)
+   return rec(
       {init},
       function(states)
          local next_state, out = update(states[1])
@@ -111,7 +111,7 @@ return {
    pure = pure,
    project = project,
    lift = lift,
-   rec_vec = rec_vec,
+   rec1 = rec1,
    rec = rec,
 }
 

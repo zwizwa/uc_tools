@@ -37,7 +37,7 @@ local function progs(c)
    end
    function m.prog2()
       function update(s) return c.add1(s), s end
-      return c.rec(0, update)
+      return c.rec1(0, update)
    end
    function m.prog3(a)
       return c.add1(a)
@@ -107,7 +107,7 @@ local function progs(c)
    -- state tuple
    function m.prog12()
       return c.vec(13, function(i)
-      local tuple_sm = c.rec_tuple(
+      local tuple_sm = c.rec(
          {0, 0},
          function(s1, s2)
             return {s2 + 1, s1 + 3}, s1
@@ -118,7 +118,7 @@ local function progs(c)
 
    -- fold
    function m.prog13()
-      return c.fold(
+      return c.fold1(
          17,  -- initial state
          13,  -- range
          function(i, s)
@@ -126,11 +126,11 @@ local function progs(c)
          end) + 123
    end
    function m.prog14()
-      return c.fold(
+      return c.fold1(
          17,  -- initial state
          13,  -- range
          function(i, s)
-            return c.fold(
+            return c.fold1(
                19, -- initial state
                29, -- range
                function(j, t)
@@ -141,7 +141,7 @@ local function progs(c)
       + 123
    end
    function m.prog15()
-      local s1, t1 = c.fold_tuple(
+      local s1, t1 = c.fold(
          {17,19},  -- initial state
          13,  -- range
          function(i, s, t)
@@ -178,7 +178,8 @@ local ll = require('lure.lazylist')(ll_metatable)
 local signal_c = {
    add1  = ll.lift(1, function(a)   return a+1 end),
    add   = ll.lift(2, function(a,b) return a+b end),
-   rec = ll.rec
+   rec   = ll.rec,
+   rec1  = ll.rec1,
 }
 
 -- Patch the metatable for operator support.

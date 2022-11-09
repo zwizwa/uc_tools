@@ -11,7 +11,7 @@ return function(c)
       inc  = inc  or 1
       -- The 'rec' or recursion operator creates a stream from an
       -- update function.
-      return c.rec(
+      return c.rec1(
          -- Inital state variable.
          init,
          -- Update function, takes current state...
@@ -46,7 +46,7 @@ return function(c)
       -- This function maps an input stream to an output stream.
       -- The state signal is only visible inside the update function.
       return function(input)
-         return c.rec(
+         return c.rec1(
             init,
             function(state)
                local next_state = state + coef * (input - state)
