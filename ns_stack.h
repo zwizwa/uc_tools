@@ -34,5 +34,10 @@ static inline void NS(_pool_init)(NS(_stack_t) *l, uintptr_t n) {
     NS(_init)(l);
     while(n--) { NS(_push)(l, n); }
 }
-
+static inline int NS(_contains)(NS(_stack_t) *l, NS(_element_t) e) {
+    for (typeof(l->top) i=0; i<l->top; i++) {
+        if (l->stack[i] == e) return 1;
+    }
+    return 0;
+}
 
