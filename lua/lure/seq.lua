@@ -213,7 +213,7 @@ local function w_c(w, prog)
       end
       for arg_meta, nxt in se.elements(a2l(args)) do
          local kind, arg = unpack(arg_meta)
-         w('/*',kind,'*/ ', arg)
+         w('  /*',kind,'*/ ', arg)
          if se.is_pair(nxt) then
             w(',')
          end

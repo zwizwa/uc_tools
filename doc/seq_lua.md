@@ -389,8 +389,8 @@ s3: vec(val, 10)
 r5: val
 */
 void fun(
-/*s*/ val_t s3[10],
-/*o*/ val_t v2[10]
+  /*s*/ val_t s3[10],
+  /*o*/ val_t v2[10]
 )
 {
   for(idx_t i1 = 0; i1 < 10; i1++) {
