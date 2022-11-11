@@ -7,30 +7,41 @@ local function dual(val, diff)
    local n = { val, diff }
    return n
 end
-local function unpack_dual(n)
+local function undual(n)
    return unpack(n)
 end
 
 return function(c)
    local m = {}
-   local function lift2(f)
-      return function(a, b)
-         local a_0, a_e = unpack_dual(a)
-         local b_0, b_e = unpack_dual(b)
-         local r_0, r_e = f(a_0, a_e, b_0, b_e)
-         return dual(r_0, r_e)
+   local function lift1(f)
+      return function(_a)
+         local a,da = undual(_a)
+         return dual(f(a,da))
       end
    end
-   m.add = lift2(function(a_0, a_e, b_0, b_e)
-         return c.add(a_0, b_0),
-                c.add(a_e, b_e) end)
-   m.sub = lift2(function(a_0, a_e, b_0, b_e)
-         return c.sub(a_0, b_0),
-                c.sub(a_e, b_e) end)
-   m.mul = lift2(function(a_0, a_e, b_0, b_e)
-         return c.mul(a_0, b_0),
-                c.add(c.mul(a_0, b_e),
-                      c.mul(b_0, a_e)) end)
+   local function lift2(f)
+      return function(_a, _b)
+         local a,da = undual(_a)
+         local b,db = undual(_b)
+         return dual(f(a,da,b,db))
+      end
+   end
+   m.add = lift2(function(a, da, b, db)
+         return c.add(a, b),
+                c.add(da, db) end)
+   m.sub = lift2(function(a, da, b, db)
+         return c.sub(a, b),
+                c.sub(da, db) end)
+   m.mul = lift2(function(a, da, b, db)
+         return c.mul(a, b),
+                c.add(c.mul(a, db),
+                      c.mul(b, da)) end)
+   m.sin = lift1(function(a, da)
+         return c.sin(a),
+                c.mul(da, c.cos(a)) end)
+   m.cos = lift1(function(a, da)
+         return c.cos(a),
+                c.mul(c.neg(da), c.sin(a)) end)
    return m;
 end
 
