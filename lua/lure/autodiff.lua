@@ -1,11 +1,11 @@
 -- Forward mode automatic differentiation using dual numbers
 -- https://en.wikipedia.org/wiki/Dual_number
+-- https://en.wikipedia.org/wiki/Automatic_differentiation
 
 -- This is a wrapper around a base type, so no fancy representation is
 -- necessary.  Just use a tuple.
 local function dual(val, diff)
-   local n = { val, diff }
-   return n
+   return { val, diff }
 end
 local function undual(n)
    return unpack(n)
@@ -42,6 +42,10 @@ return function(c)
    m.cos = lift1(function(a, da)
          return c.cos(a),
                 c.mul(c.neg(da), c.sin(a)) end)
+   m.exp = lift1(function(a, da)
+         local expa = c.exp(a)
+         return expa,
+                c.mul(da, expa)
    return m;
 end
 

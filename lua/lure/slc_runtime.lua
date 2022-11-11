@@ -191,6 +191,14 @@ end
 rt['table-set!'] = function(tab, key, val)
    tab[key] = val
 end
+rt['table'] = function(lol)
+   local tab = {}
+   for rec in se.elements(lol) do
+      local key, val = se.unpack(rec, {n=2})
+      tab[key] = val
+   end
+   return tab
+end
 rt['compile-qq-pattern'] = function(pat)
    local cns = se.constructor(pat)
    return match.compile(cns)

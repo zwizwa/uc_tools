@@ -3,7 +3,7 @@ return require("lure") -- ; -*- scheme -*-
 [[
 ;; The 'lure' module is the index into the language dialects
 ;; implemented using Lure.  This file is implemented in slc, the
-;; second version of the Lua to Scheme compiler.  The function slc
+;; second version of the Scheme to Lua compiler.  The function slc
 ;; takes a string, compiles it to Lua code and evaluates it.  The
 ;; result is a map containing all top level Scheme definitions in this
 ;; file.  Note that for release it is possible to pre-compile these
