@@ -11,6 +11,10 @@ l = require('literal')
 Pure Signals and Signal Processors
 ----------------------------------
 
+TODO: Focus on the point, which is the recursion operator in the
+signal domain giving processors for free.
+
+
 Signals and signal processors can be represented as composition of
 pure functions.
 
@@ -389,8 +393,8 @@ s3: vec(val, 10)
 r5: val
 */
 void fun(
-  /*s*/ val_t s3[10],
-  /*o*/ val_t v2[10]
+  val_t s3[10],
+  val_t v2[10]
 )
 {
   for(idx_t i1 = 0; i1 < 10; i1++) {
@@ -401,3 +405,5 @@ void fun(
   }
 }
 ```
+
+
