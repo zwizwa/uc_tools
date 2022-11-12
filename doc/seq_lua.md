@@ -51,9 +51,10 @@ This section shows how to build a model for `Sig` in Lua based on lazy
 lists.
 
 The next section will illustrate how this representation can be used
-to compose signal processors that can then be compiled back to
-`(s,i)->(s,o)` update form to be implemented in a low level language
-like C.
+to compose signal processors that can then be compiled back to one
+large `(s,i)->(s,o)` update form to be implemented in a low level
+language like C or Verilog.
+
 
 
 
