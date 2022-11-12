@@ -1,0 +1,11 @@
+-- Applicative style build system
+--
+-- Basic idea here is that build systems based on build rules are not
+-- always a great way to express things.  This attempts to specify a
+-- language that compiles to Makefile, but that does not use generic
+-- build rules.  Instead it defines build functions for individual
+-- files and a collection Functor.
+--
+-- It is then probably possible to later convert the 'fmap'
+-- application into a build rule.
+

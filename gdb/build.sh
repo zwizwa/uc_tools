@@ -88,6 +88,7 @@ case "$TYPE" in
     o)
         assert_vars O C D ARCH FIRMWARE
         dump_closure_to_file ${O}.build
+        # Note that CFLAGS_OPTI is included into CFLAGS here:
         . $UC_TOOLS/gdb/env.$ARCH.sh
         # echo "GCC=$GCC ($(readlink -f $GCC))"
         # $GCC --version
