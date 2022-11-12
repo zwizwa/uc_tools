@@ -19,7 +19,7 @@ return require("lure") -- ; -*- scheme -*-
 ))
 
 ;; Test code.
-;; FIXME: quasiquote & unquote
+;; FIXME: quasiquote unquote doesn't work: `(add ,+)
 (define (run)
   (define rec1 'FIXME)
   (let ((c

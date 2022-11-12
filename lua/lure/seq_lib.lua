@@ -1,6 +1,9 @@
 -- Library of stream processor functions.  The parameter 'c' contains
 -- the language semantics, i.e. it gives access to primitive functions
 -- and special forms.
+
+-- FIXME: Return a map with functions instead.  That makes it possible
+-- to add some metadata.
 return function(c)
    local lib = {}
 

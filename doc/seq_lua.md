@@ -11,13 +11,6 @@ l = require('literal')
 Pure Signals and Signal Processors
 ----------------------------------
 
-TODO: Focus on the point, which is the recursion operator in the
-signal domain giving processors for free.
-
-
-Signals and signal processors can be represented as composition of
-pure functions.
-
 The following uses Haskell type notation interspersed with some Lua
 example code.
 
@@ -29,10 +22,45 @@ function that maps `Float` to `Float`, e.g. the `sin` function is
 of that type.  Tuples are used to bundle values of arbitrary types,
 with the tuple type denoted as `(a,b)`.  E.g. `(Float,Int)`.
 
-The main idea is that causal signals can be represented by a pure
-update function of type `s->(s,o)`, a function that takes a state
-value of type `s` and produces the next state value of type `s`
-together with an output value of type `o`.
+We are interested in recursive signal processing using update
+functions of type `(s,i)->(s,o)` that take input state and input value
+and compute next state and output.  This update function is then
+iterated for each sample value in an input signal `Sig i` to produce
+output signal `Sig o` while passing the state value `s` between
+updates.
+
+The key insight is that expressing update equations in terms of the
+infinite signals allows the construction of a recursion operator that
+can hide state, allowing the programmer to focus on input/output
+behavior without the need to manage stateful objects.
+
+The basic idea here is that a signal `Sig a` is an Applicative
+Functor, i.e. we can lift multi-argument functions from the value
+domain `a` into the signal domain `Sig a`.
+
+In addition, `Sig` supports a recursion operator
+`rec :: (Sig s -> (Sig s, Sig o)) -> Sig o`
+that is used to hide state propagation.
+
+In other words, it is simpler to work with the pure functions `Sig i
+-> Sig o` directly than to carry around update equations of the form
+`(s,i) -> (s,o)`, or work with stateful objects that need explicit
+instantiation.
+
+This section shows how to build a model for `Sig` in Lua based on lazy
+lists.
+
+The next section will illustrate how this representation can be used
+to compose signal processors that can then be compiled back to
+`(s,i)->(s,o)` update form to be implemented in a low level language
+like C.
+
+
+
+Let's start with a representation of a causal signal that can be
+represented by a pure update function of type `s->(s,o)`, a function
+that takes a state value of type `s` and produces the next state value
+of type `s` together with an output value of type `o`.
 
 E.g. `Int->(Int,Int)` could represent the type of a counter with an
 `Int` state and an `Int` output.
@@ -66,12 +94,7 @@ end
 => 2
 ```
 
-But we can do much more.  The point of `seq.lua` is to provide an
-abstract representation of such signals that can be used to generate C
-code.  But we need to introduce a couple of ideas first, so let's work
-with just Lua code first.
-
-One way to represent a signal in Lua is by using a lazy list. This can
+Now instead of printing out the sequence, represent is as a lazy list. This can
 be built from a memoization function that caches the evaluation of a
 zero argument function (a thunk).
 ```lua
@@ -146,10 +169,9 @@ Note that there is no mention of state `s` in `Sig o`.  Similarly in
 the `counter_signal` any mention of the state at the "user end" is
 gone; it is all tucked away inside the implementation of `update_to_signal`.
 
-This hints at something: it should be possible to have the programmer
-work with just `Sig o`, and not think about state or "processor
-instances" at all, performing all the state bookkeeping under the
-hood.
+This shows that it is possible to have the programmer work with just
+`Sig o`, and not think about state or "processor instances" at all,
+performing all the state bookkeeping under the hood.
 
 So what can we do with these signals.  Well, let's try to add them.
 
@@ -205,20 +227,19 @@ Let's go back to the function `update_to_signal`.  This takes an update
 function `s->(s,o)` operating on scalar values op type `s` and `o` and
 maps it to an infinite signal `Sig o`.
 
-For reasons that will become clear later on, we do not want to work in
-both `o` and `Sig o` domains: the scalar domain and the signal domain.
-We want to construct a signal that is recursively defined by only
-talking about signal types.
+As stated before we do not want to work in both the scalar domain `o`
+and the signal domain `Sig o`.  We want to construct a signal that is
+recursively defined by only talking about signal types.
 
-E.g. given a function of type `Sig s -> (Sig s, Sig o)`, construct a
-signal of type `Sig o`.  Does this even make sense?
+So let's build the operator that maps `(Sig s -> (Sig s, Sig o)` to
+`Sig o`.
 
-Drumroll... yes!
-
-If the two `Sig s` values are thought of as shifted versions of each
-other, the latter one being one time step later than the first one,
-all the individual `s` values in the signals "line up" with each
-other, all connected via the same `s->(s,o)` function.
+The operator connects the two `Sig s` types together while inserting a
+shift to make it implementable, the latter one being one time step
+later than the first one.  This way all the individual `s` values in
+the shifted signals "line up" with each other, output connected to
+next input all connected via the same `s->(s,o)` function, threading
+the state through time.
 
 So essentially, the scalar update function can just be lifted into the
 signal domain, and then reduced by identifying the output and input
@@ -250,7 +271,10 @@ print_signal(5, another_counter)
 ```
 
 With construction of recursively defined signals expressed in terms of
-signals, signal processors become quite straightforward:
+signals, signal processors become quite straightforward: we can
+directly use a signal that is presented as a function input in an
+update equation that is closed by `rec`.  This is quite remarkable if
+you think of it for a moment.
 
 ```lua
 function integrate(input)
@@ -393,8 +417,8 @@ s3: vec(val, 10)
 r5: val
 */
 void fun(
-  val_t s3[10],
-  val_t v2[10]
+  /*s*/ val_t s3[10],
+  /*o*/ val_t v2[10]
 )
 {
   for(idx_t i1 = 0; i1 < 10; i1++) {
