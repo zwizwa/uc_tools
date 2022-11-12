@@ -606,4 +606,27 @@ local function compile(hoas, nb_input, code_output)
 end
 
 
-return { compile = compile, stream_w = stream_w, array_w = array_w }
+-- Wrap a 1-element vector around a scalar function, as the C code
+-- generator does not support scalar values.
+function compile1(prog, nb_args, code_out)
+   local function prog1(c)
+      local f = prog(c)
+      return function(...)
+         local args = {...}
+         return c.vec(
+            1,
+            function(ignored_index)
+               return f(unpack(args))
+            end)
+      end
+   end
+   return compile(prog1, nb_args, code_out)
+end
+
+
+return {
+   compile  = compile,
+   compile1 = compile1,
+   stream_w = stream_w,
+   array_w  = array_w,
+}

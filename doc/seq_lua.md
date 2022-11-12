@@ -1,7 +1,7 @@
 Introduction
 ------------
 
-This is a literal lua file.  Lines starting with '=>' are program
+This is a literal Lua file.  Lines starting with '=>' are program
 output.
 
 ```lua
@@ -357,76 +357,102 @@ print_signal(10, integrate(1) * 200)
 Embedded DSLs and Higher order Syntax
 -------------------------------------
 
-TODO: Explain that adding an extra parameter can decouple the user
-code from the semantics.
+The code above shows that the abstract model is implementable.  Now we
+generalize it to be independent of substrate.  Forget for a moment the
+`+` operator overloading, we'll add that in later.  An abstract
+integrator can be defined like
+
+```lua
+function abs_integrator(lang)
+   return function(input)
+      return lang.rec1(
+         0,
+         function(state)
+            local output = state
+            local next_state = lang.add(state, input)
+            return next_state, output
+         end)
+   end
+end
+```
+
+This defines an integrator in terms of two base language operators
+`add` and `rec1`.  The `rec1` is the same as `rec` in the previous
+section, just a different naming convention.  Note that we are using
+only Lua function abstraction and variable binding and nothing else.
+
+This encoding is called higher order abstract syntax (HOAS).  The
+function `abs_integrator` does not have any meaning without the `lang`
+parameter.  That parameter is a table containing functions that
+implement base langauge constructs.  To evaluate the syntax we can
+pass in a `lang_lazylist` object that contains the model we have
+implemented.
+
+```lua
+lang_lazylist = { rec1 = rec, add = add }
+lazylist_integrator = abs_integrator(lang_lazylist)
+print_signal(10, lazylist_integrator(ones))
+=> 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
+```
+
+We have created an embedded domain specific language (eDSL).  The
+language is embedded in Lua, and is domain specific in that it can
+only express pure operations on signals together with a recursion
+operator that allows the expression of recursively defined signals.
+
+
 
 
 Compiling to C
 --------------
 
-First let's set up the compiler infrastructure.
+In this section we take the abstract syntax `abs_integrator` defined
+above, and compile it to C by passing a different `lang`
+implementation.
+
+The code below sets up the compiler and uses it to compile the
+abstract syntax.
 
 ```lua
 -- Load the seq language support.
 seq = require('lure.seq')
 -- C code will be accumulated here to be picked up by document renderer.
 c_code = {} 
--- We use this later to invoke the compiler, dumping into c_code array.
+-- Invoke the compiler, dumping into c_code array.
 function compile(prog, nb_args)
-   seq.compile(prog, nb_args, c_code)
+   seq.compile1(prog, nb_args, c_code)
 end
-   
+-- Compile the 1-argument integrator
+compile(abs_integrator,1)
 ```
 
-Then we define a counter signal like we did before, parameterized by
-the base language via the `lang` parameter.  The `lure.seq_lib`
-library contains eDSL functions and is also parameterized by the
-`lang` parameter.  The `vec` combinator invocation builds a vector of
-size 10, with the current loop index passed to a function.  The `rec1`
-combinator invocation instantiates a counter that increments by `i` on
-each time step.  The program thus creates a vector of 10 distinct
-counters.
+It produces the following C code.  Note that the outermost `for` loop
+is just a wrapper.  The C code generator only supports arrays of
+signals, so the input/output/state signals are wrapped in a 1-element
+array.
 
-```lua
-function counter(lang)
-   lib = require('lure.seq_lib')(lang)
-   return lang.vec(
-      10,
-      function(i)
-         return lang.rec1(
-            0,
-            function(state)
-               return
-                  state + i,
-                  state
-            end)
-      end)
-end
-compile(counter,0)
-```
-
-Which produces the following C code.  It can be seen here that counter
-state is tracked in the array `s3`.
+FIXME: The type inference for the input is broken.
 
 ```c
 
 /* types:
-i1: idx
-v2: vec(val, 10)
-r4: val
-s3: vec(val, 10)
 r5: val
+s4: vec(val, 1)
+r6: val
+v3: vec(val, 1)
+i2: idx
 */
 void fun(
-  /*s*/ val_t s3[10],
-  /*o*/ val_t v2[10]
+  /*s*/ val_t s4[1],
+  /*i*/ type? a1,
+  /*o*/ val_t v3[1]
 )
 {
-  for(idx_t i1 = 0; i1 < 10; i1++) {
-    val_t r4 = s3[i1];
-    val_t r5 = add(r4, i1);
-    s3[i1] = r5;
-    v2[i1] = r4;
+  for(idx_t i2 = 0; i2 < 1; i2++) {
+    val_t r5 = s4[i2];
+    val_t r6 = add(r5, a1);
+    s4[i2] = r6;
+    v3[i2] = r5;
   }
 }
 ```
