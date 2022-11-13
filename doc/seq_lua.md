@@ -379,7 +379,9 @@ end
 This defines an integrator in terms of two base language operators
 `add` and `rec1`.  The `rec1` is the same as `rec` in the previous
 section, just a different naming convention.  Note that we are using
-only Lua function abstraction and variable binding and nothing else.
+only Lua function abstraction, variable binding and dereference, and
+implicitly the Lua argument evaluation order and statement execution
+order, but nothing else.
 
 This encoding is called higher order abstract syntax (HOAS).  The
 function `abs_integrator` does not have any meaning without the `lang`
@@ -457,4 +459,18 @@ void fun(
 }
 ```
 
+
+
+Algebra
+-------
+
+Let's continue on the idea of substrate independence.  Essentially,
+the eDSL is just algebra.  We can use this representation to express
+other things such as:
+
+    - Complex Numbers
+    
+    - Dual Numbers / Automatic differentiation
+
+    - Z Transform
 

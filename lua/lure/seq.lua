@@ -241,11 +241,14 @@ local function compile(hoas, nb_input, code_output)
    -- Convenient to support different output types here.
    local w = w_smart(code_output)
 
-   -- State
+   -- Compiler state variables
    local code = {}
-   local new_var_number = counter(1)
    local types = {}
+   local typevars = {}
    local state = {}
+   local make_id = counter(1)
+
+   -- Compiler nested environment variables
 
    -- Current spatial context needs to be tracked for 'rec', as
    -- state needs to be instantiated multiple times inside a spatial
@@ -254,6 +257,9 @@ local function compile(hoas, nb_input, code_output)
    local dims   = {}  -- corresponding dimx : array(integer)
    local vindex = {}  -- vector index, subset of loop index : array(var_name)
    local vecs   = {}  -- vector nesting (each dimension has a ref) : array(refl)
+
+
+
    -- If an index is part of a current iteration, we know the dims.
    local function index_to_dims(idx0)
       for i,idx in ipairs(index) do
@@ -265,7 +271,7 @@ local function compile(hoas, nb_input, code_output)
 
    local function new_var(prefix, typ)
       assert(prefix)
-      local v = prefix .. new_var_number()
+      local v = prefix .. make_id()
       -- type might be unknown at this point, typ=nil is allowed
       types[v] = typ
       return v
@@ -279,7 +285,8 @@ local function compile(hoas, nb_input, code_output)
       return rep
    end
 
-   local function project(thing)
+   -- Convenience: represent arbitrary Lua values as literal signals.
+   local function as_signal(thing)
       if is_signal(thing) then return thing end
       return signal('lit', thing)
    end
@@ -287,11 +294,39 @@ local function compile(hoas, nb_input, code_output)
    local function ref(var)
       return signal('ref', var)
    end
+   local function is_ref(thing)
+      return is_signal(thing) and thing.op == 'ref'
+   end
+   local function maybe_var(thing)
+      if not is_ref(thing) then return nil end
+      return thing.arg
+   end
+
+   local function op_type(op)
+      -- FIXME: All operations produce value type (typically Float)
+      -- Note that some might produce idx type as well (Int)
+      return 'val'
+   end
+
+   -- Unification is necessary to determine input types.  Type
+   -- variables are stored in typevars table.
+   local function unify(a, b)
+      -- FIXME: Use the se matcher.
+   end
 
    local function app(op, args_)
       local var = new_var('r','val')
+      types[var] = op_type(op)
       local args = {}
-      for i,a in ipairs(args_) do args[i] = project(a, lit) end
+      for i,a in ipairs(args_) do
+         local sig = as_signal(a)
+         args[i] = sig
+         -- Constrain the input type
+         local var = maybe_var(sig)
+         if var then
+            -- FIXME: Yeah this is wrong ey!
+         end
+      end
       table.insert(code, l('let', var, se.cons(op, a2l(args))))
       return ref(var)
    end
@@ -384,8 +419,8 @@ local function compile(hoas, nb_input, code_output)
       -- FIXME: It doesn't make much sense for this to be a 'lit', but
       -- if this ever happens, then wrap it in a var.  For now assume
       -- 'ref'.
-      assert(el_out.op == 'ref')
-      local el_out_var = el_out.arg
+      local el_out_var = maybe_var(el_out)
+      assert(el_out_var)
       local el_out_type = types[el_out_var]
 
       -- The type of the vector is known after evaluation.
@@ -510,6 +545,17 @@ local function compile(hoas, nb_input, code_output)
       end)
    end
 
+   -- Type inference.  Note type inference is straighforward as type
+   -- information flows in the same direction as value information
+   -- because all primitives are monomorphic.  Any kind of polymorphy
+   -- can easily be expressed at "macro level" so we do not need to
+   -- concern ourselves with that in the compiler.  There are two
+   -- exceptions to this: 1. global inputs need to be inferred, and
+   -- this can occur once they are applied to a primitive, and 2. the
+   -- copy operator is polymorphic so we do need to find a way to
+   -- propagate types there.
+   --
+   -- FIXME: Ignore copy for now.
 
 
    function aref(sig, ...)
@@ -524,6 +570,7 @@ local function compile(hoas, nb_input, code_output)
       end
       -- log_desc({code_index=code.index, s_index=s_index})
       sig_ref.index = a2l(index)
+
 
       local t = types[sig.arg]
       if not t then
