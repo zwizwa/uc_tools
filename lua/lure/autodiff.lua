@@ -46,6 +46,7 @@ return function(c)
          local expa = c.exp(a)
          return expa,
                 c.mul(da, expa)
+   end)
    return m;
 end
 

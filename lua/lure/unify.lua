@@ -6,10 +6,16 @@ local match    = se_match.new()
 
 local function var(a) return se.list('var', a) end
 
+-- FIXME: There is a bug in the match parser that doesn't properly
+-- parse this pattern with two dots in it:
+-- "((,cons_a . ,args_a) (,cons_b . ,args_b))"
+-- Going to work around it for now.
+
 local function unify(...)
    return match(
       se.list(...),
-      {{"((var ,a) (var ,b))",
+      {
+       {"((var ,a) (var ,b))",
         function(m)
            return se.list('=', m.a, m.b)
         end},
@@ -21,7 +27,8 @@ local function unify(...)
         function(m)
            return {[m.b] = m.a}
         end},
-       {"((,cons_a . ,args_a) (,cons_b . ,args_b)",
+       -- FIXME: this doesn't match.  bug in matcher?
+       {"((,cons_a . ,args_a) (,cons_b . ,args_b))",
         function(m)
            log_desc({cons_match=m})
            -- Syntax errors are fatal.
@@ -53,11 +60,11 @@ local function test()
    local function check(a, b)
       return log_desc({a,b,unify(a,b)})
    end
-   check(var('x'), var('y'))
-   check(var('x'), 'int')
-   check('int', var('y'))
-   check('int', 'int')
-   check('int', 'float')
+   --check(var('x'), var('y'))
+   --check(var('x'), 'int')
+   --check('int', var('y'))
+   --check('int', 'int')
+   --check('int', 'float')
    check(vec('int',3),vec('int',3))
 end
 
