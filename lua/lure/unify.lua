@@ -21,7 +21,7 @@ local function unify(...)
         function(m)
            return {[m.b] = m.a}
         end},
-       {"((,cons_a . ,args_a) (,cons_b . ,args_b))",
+       {"((,cons_a . ,args_a) (,cons_b . ,args_b)",
         function(m)
            log_desc({cons_match=m})
            -- Syntax errors are fatal.
