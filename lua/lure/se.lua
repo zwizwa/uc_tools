@@ -546,6 +546,24 @@ function se.qq_eval(env, expr)
    return {sub(expr[1]), sub(expr[2])}
 end
 
+-- Define standard quasiquoting expansion as well, i.e. expand to cons
+-- and quote.
+function se.qq(env, expr)
+   if type(expr) ~= 'table' then
+      return env.quote(expr)
+   end
+   if se.is_expr(expr, 'unquote') then
+      local _, unquoted = se.unpack(expr, {n=2})
+      return unquoted
+   end
+   local function sub(expr1)
+      return se.qq(env, expr1)
+   end
+   -- return map(sub, expr)
+   -- This needs to operate on pairs to allow unquoted tails.
+   return env.cons(sub(expr[1]), sub(expr[2]))
+end
+
 
 -- Constructors are used for pattern matching.
 --

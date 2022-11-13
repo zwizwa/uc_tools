@@ -47,7 +47,7 @@ local prim = {
    ['named-let-trampoline'] = true,
    ['quote']  = true,
    ['unquote']  = true,
-   ['quasiquote']  = true,
+   -- ['quasiquote']  = true,
 }
 
 local function expand(stepped)

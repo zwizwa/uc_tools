@@ -64,9 +64,10 @@ local function vec(a,n) return se.list('vec', a, n) end
 
 local function test()
    require('lure.log')
-   local env = {}
    local function check(a, b)
-      return log_desc({a,b,unify_env(env,a,b)})
+      local env = {}
+      local rv = unify_env(env,a,b)
+      return log_desc({a=a,b=b,rv=rv,env=env})
    end
    check(var('x'), var('y'))
    check(var('x'), 'int')
