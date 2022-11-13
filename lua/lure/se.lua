@@ -203,6 +203,7 @@ se.push_cdr = push_cdr
 
 function se:next()
    local char = self.stream:read(1)
+   self.nb_chars = self.nb_chars + 1
    if not char then
       return EOF
    end
@@ -210,7 +211,7 @@ function se:next()
    if char == '\n' then
       self.nb_newlines = self.nb_newlines + 1
    end
-   -- self:log("next: " .. char .. "(" .. char:byte(1) .. ")\n")
+   -- log("next: " .. char .. "(" .. char:byte(1) .. ")\n")
    return char
 end
 
@@ -406,6 +407,7 @@ function se.match(expr, config, body)
    return body(unpack(args))
 end
 
+-- Precondition: the ')' has already been read.
 function se:read_list()
    local objs = {}
    while true do
@@ -413,7 +415,9 @@ function se:read_list()
       if '.' == c then
          self:pop()
          local tail_obj = self:read()
-         assert(')' == self:skip_space())
+         local c1 = self:skip_space()
+         assert(')' == c1)
+         self:pop()
          return self.append(self.array_to_list(objs), tail_obj)
       elseif ')' == c then
          self:pop()
@@ -484,7 +488,7 @@ end
 
 function se.new(stream)
    assert(stream)
-   local obj = { stream = stream, nb_newlines = 0 }
+   local obj = { stream = stream, nb_newlines = 0, nb_chars = 0 }
    setmetatable(obj, { __index = se })
    return obj
 end
