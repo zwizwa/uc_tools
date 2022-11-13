@@ -6,31 +6,38 @@ local match    = se_match.new()
 
 local function var(a) return se.list('var', a) end
 
--- FIXME: There is a bug in the match parser that doesn't properly
--- parse this pattern with two dots in it:
--- "((,cons_a . ,args_a) (,cons_b . ,args_b))"
--- Going to work around it for now.
 
-local function unify(...)
+-- FIXME: The environment updates need to be checked still
+
+local function unify_env(env, a, b)
+   local function unify(x, y) return unify_env(env, x, y) end
    return match(
-      se.list(...),
+      se.list(a, b),
       {
        {"((var ,a) (var ,b))",
         function(m)
-           return se.list('=', m.a, m.b)
+           assert(type(m.a) == 'string')
+           assert(type(m.b) == 'string')
+           -- Store as indirection
+           env[m.a] = var(m.b)
+           env[m.b] = var(m.a)
+           return true
         end},
        {"((var ,a) ,b)",
         function(m)
-           return {[m.a] = m.b}
+           assert(type(m.a) == 'string')
+           env[m.a] = m.b
+           return true
         end},
        {"(,a (var ,b))",
         function(m)
-           return {[m.b] = m.a}
+           assert(type(m.b) == 'string')
+           env[m.b] = m.a
+           return true
         end},
-       -- FIXME: this doesn't match.  bug in matcher?
        {"((,cons_a . ,args_a) (,cons_b . ,args_b))",
         function(m)
-           log_desc({cons_match=m})
+           -- log_desc({cons_match=m})
            -- Syntax errors are fatal.
            assert(type(m.cons_a) == 'string')
            assert(type(m.cons_b) == 'string')
@@ -47,7 +54,7 @@ local function unify(...)
         end},
        {"(,a ,b)",
         function(m)
-           log_desc({else_match=m})
+           -- log_desc({else_match=m})
            -- FIXME: This is a little rough, but works for now.
            return m.a == m.b
         end}})
@@ -57,14 +64,15 @@ local function vec(a,n) return se.list('vec', a, n) end
 
 local function test()
    require('lure.log')
+   local env = {}
    local function check(a, b)
-      return log_desc({a,b,unify(a,b)})
+      return log_desc({a,b,unify_env(env,a,b)})
    end
-   --check(var('x'), var('y'))
-   --check(var('x'), 'int')
-   --check('int', var('y'))
-   --check('int', 'int')
-   --check('int', 'float')
+   check(var('x'), var('y'))
+   check(var('x'), 'int')
+   check('int', var('y'))
+   check('int', 'int')
+   check('int', 'float')
    check(vec('int',3),vec('int',3))
 end
 
