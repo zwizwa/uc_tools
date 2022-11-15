@@ -403,7 +403,6 @@ macro['goto@']   = mcase({"(,label)","(,label)"})
 macro['return@'] = mcase({"(,val)",",val"})
 
 
--- FIXME: Implement quasiquote on top of quasiquoter used in se.match
 macro['quasiquote'] = function(expr, c)
    local _, qq_expr = se.unpack(expr, {n = 2})
    local env = {}

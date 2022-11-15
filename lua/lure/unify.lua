@@ -5,12 +5,25 @@ local se_match = require('lure.se_match')
 local match    = se_match.new()
 
 local function var(a) return se.list('var', a) end
+local function is_var(v) return se.is_expr(v,'var') end
 
 
 -- FIXME: The environment updates need to be checked still
 
 local function unify_env(env, a, b)
    local function unify(x, y) return unify_env(env, x, y) end
+
+   local function unify_var(v, e)
+      assert(type(v) == 'string')
+      assert(not is_var(e))
+      local e0 = env[v]
+      -- Unbound, then bound it to the expression
+      if e0 == nil then env[v] = e ; return true end
+      -- Already bound: unify old and new
+      -- FIXME: This probably gets into loops due to var->var indirection
+      return unify(e0, e)
+   end
+
    return match(
       se.list(a, b),
       {
@@ -18,22 +31,23 @@ local function unify_env(env, a, b)
         function(m)
            assert(type(m.a) == 'string')
            assert(type(m.b) == 'string')
+           -- There isn't any more information
            -- Store as indirection
+           -- FIXME: I need to see examples to make sense of this.
+           -- For now assert
+           assert(not env[m.a])
+           assert(not env[m.b])
            env[m.a] = var(m.b)
            env[m.b] = var(m.a)
            return true
         end},
        {"((var ,a) ,b)",
         function(m)
-           assert(type(m.a) == 'string')
-           env[m.a] = m.b
-           return true
+           return unify_var(m.a, b)
         end},
        {"(,a (var ,b))",
         function(m)
-           assert(type(m.b) == 'string')
-           env[m.b] = m.a
-           return true
+           return unify_var(m.b, a)
         end},
        {"((,cons_a . ,args_a) (,cons_b . ,args_b))",
         function(m)
@@ -60,25 +74,8 @@ local function unify_env(env, a, b)
         end}})
 end
 
-local function vec(a,n) return se.list('vec', a, n) end
-
-local function test()
-   require('lure.log')
-   local function check(a, b)
-      local env = {}
-      local rv = unify_env(env,a,b)
-      return log_desc({a=a,b=b,rv=rv,env=env})
-   end
-   check(var('x'), var('y'))
-   check(var('x'), 'int')
-   check('int', var('y'))
-   check('int', 'int')
-   check('int', 'float')
-   check(vec('int',3),vec('int',3))
-end
-
 return {
-   unify = unify,
-   test = test,
+   unify_env = unify_env,
+   var = var,
 }
 

@@ -58,5 +58,29 @@ end
 --    end
 -- end
 
+function tab:keys()
+   local keys = {}
+   for k, _ in pairs(self) do table.insert(keys, k) end
+   return keys
+end
+function tab:sorted_keys()
+   local keys = tab.keys(self)
+   table.sort(keys)
+   return keys
+end
+
+
+-- BUG?
+-- function tab:sorted_pairs()
+--    local keys = tab.sorted_keys(self)
+--    local iter = ipairs(keys)
+--    log_desc({iter=iter,keys=keys})
+--    return function()
+--       local _, key = iter()
+--       if key ~= nil then
+--          return key, self[key]
+--       end
+--    end
+-- end
 
 return tab
