@@ -123,7 +123,10 @@ static inline uintptr_t monitor_3if_push_key(struct monitor_3if *s, uint8_t key)
     }
     NEXT(s,op);
     // LOG("n=%d, op=%02x\n", s->count, op);
+    // count contains nb bytes after length byte
+    // the first byte is the opcode
     s->count--;
+    // count now countains nb bytes of payload for opcode
     switch(op) {
 
     case ACK: if (s->count != 0) goto err; else goto ack;
@@ -155,6 +158,7 @@ static inline uintptr_t monitor_3if_push_key(struct monitor_3if *s, uint8_t key)
     return 1;
 
   loop_from:
+    // nb bytes after opcode
     if (s->count != 1) goto err;
     // needs s->transfer
     NEXT(s,s->count);
