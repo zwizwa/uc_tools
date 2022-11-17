@@ -14,8 +14,7 @@ return require("lure") -- ; -*- scheme -*-
      (values (+ s i) s))))
 
 (table
- (list
-  (list 'integrate integrate)))
+ `((integrate . ,integrate)))
 ))
 
 ;; Test code.
@@ -24,11 +23,9 @@ return require("lure") -- ; -*- scheme -*-
   (define rec1 'FIXME)
   (let ((c
          (table
-          (list
-           (list 'add +)
-           (list 'sub -)
-           (list 'rec1 rec1)
-           ))))
+          `((add  . ,+)
+            (sub  . ,-)
+            (rec1 . ,rec1)))))
     (log-se-n
      (table-ref (edsl c) 'integrate))
     ))

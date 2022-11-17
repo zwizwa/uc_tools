@@ -191,10 +191,10 @@ end
 rt['table-set!'] = function(tab, key, val)
    tab[key] = val
 end
-rt['table'] = function(lol)
+rt['table'] = function(assoc_list)
    local tab = {}
-   for rec in se.elements(lol) do
-      local key, val = se.unpack(rec, {n=2})
+   for rec in se.elements(assoc_list) do
+      local key, val = unpack(rec)
       tab[key] = val
    end
    return tab
