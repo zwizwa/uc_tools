@@ -18,16 +18,17 @@ void to_flash_stm(struct monitor_3if *s);
 #include "gdbstub_ctrl.h"
 struct gdbstub_ctrl bootloader_stub_ctrl;
 
-/* App uses 64 bytes.  STM minimum is 2 bytes. */
-#define FLASH_BUFSIZE_LOG 6
+/* STM minimum is 2 bytes. */
+#define FLASH_BUFSIZE_LOG 1
 #define FLASH_BUFSIZE (1 << FLASH_BUFSIZE_LOG)
 
 struct monitor {
     struct monitor_3if monitor_3if;
-    uint8_t flash_buf[FLASH_BUFSIZE];
     struct cbuf out; uint8_t out_buf[256];
     uint8_t ds_buf[32];
     uint8_t rs_buf[32];
+    uint8_t flash_buf[FLASH_BUFSIZE];
+    unsigned last_read_was_full:1;
 };
 struct monitor monitor;
 
@@ -44,7 +45,14 @@ void to_flash_stm(struct monitor_3if *s) {
 
 
 uint32_t bootloader_3if_read(uint8_t *buf, uint32_t size) {
-    return cbuf_read(monitor.monitor_3if.out, buf, size);
+    uint32_t n = cbuf_read(monitor.monitor_3if.out, buf, size);
+    if ((n == 0) && monitor.last_read_was_full) {
+        // Pad with empty packet to avoid the bad n=0 case.
+        buf[0] = 0;
+        n=1;
+    }
+    monitor.last_read_was_full = (n == 64);
+    return n;
 }
 void bootloader_3if_write(const uint8_t *buf, uint32_t size) {
     /* This needs to support protocol switching, which is based on

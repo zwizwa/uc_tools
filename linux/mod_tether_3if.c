@@ -15,7 +15,8 @@ struct tether {
        byte (255 bytes) */
     uint8_t buf[256];
 
-    unsigned int verbose;
+    unsigned int verbose:1;
+    unsigned int progress:1;
 };
 
 // FIXME: move these to a header
@@ -45,7 +46,11 @@ void tether_read(struct tether *s) {
   again:
     tether_clear(s);
     assert_read(s->fd, &s->buf[0], 1);
-    if (s->buf[0] == 0) { goto again; /* skip empty packets */ }
+    if (s->buf[0] == 0) {
+        /* This is used for buffer padding. */
+        // LOG("skip empty packet\n");
+        goto again;
+    }
     assert_read(s->fd, &s->buf[1], s->buf[0]);
     tether_log(s, "R: ");
 }
@@ -121,6 +126,7 @@ void tether_assert_ack(struct tether *s) {
 void tether_write_mem(struct tether *s, const uint8_t *buf,
                       uint32_t address, uint32_t nb_bytes,
                       enum PRIM LDx, enum PRIM NxS) {
+    uint32_t total_bytes = nb_bytes;
     tether_cmd_u32(s, LDx, address);
     while (nb_bytes > 0) {
         uint32_t max_chunk = 127;
@@ -131,8 +137,32 @@ void tether_write_mem(struct tether *s, const uint8_t *buf,
         address += chunk;
         nb_bytes -= chunk;
         buf += chunk;
+        if (s->progress) {
+            uint32_t percent = (100 * (total_bytes - nb_bytes)) / total_bytes;
+            LOG("\r%d%\r", percent);
+        }
+    }
+    if (s->progress) {
+        LOG("\r     \r");
     }
 }
+void tether_load(struct tether *s, const char *filename, uint32_t address,
+                 enum PRIM LDx, enum PRIM NxS, enum PRIM NxL) {
+    FILE *f_in;
+    ASSERT(f_in = fopen(filename, "r"));
+    ASSERT(0 == fseek(f_in, 0, SEEK_END));
+    uint32_t in_len = ftell(f_in);
+    uint8_t buf[in_len];
+    ASSERT(0 == fseek(f_in, 0, SEEK_SET));
+    ASSERT(in_len == fread(buf, 1, in_len, f_in));
+    fclose(f_in);
+    tether_write_mem(s, buf, address, in_len, LDx, NxS);
+
+    // FIXME: Implement verify after refactoring tether_dump_mem()
+    // uint8_t buf_ver[in_len];
+}
+
+
 void tether_write_flash(struct tether *s, const uint8_t *buf,
                         uint32_t address, uint32_t nb_bytes) {
     /* This is a constraint imposed by the bootloader.  Data will only
@@ -144,6 +174,20 @@ void tether_write_ram(struct tether *s, const uint8_t *buf,
                       uint32_t address, uint32_t nb_bytes) {
     return tether_write_mem(s, buf, address, nb_bytes, LDA, NAS);
 }
+
+
+
+void tether_load_flash(struct tether *s, const char *filename, uint32_t address) {
+    return tether_load(s, filename, address,\
+                       LDF, NFS, NFL);
+}
+void tether_load_ram(struct tether *s, const char *filename, uint32_t address) {
+    return tether_load(s, filename, address,
+                       LDA, NAS, NAL);
+}
+
+
+
 
 
 
