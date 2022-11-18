@@ -1,14 +1,50 @@
 #ifndef MOD_3IF
 #define MOD_3IF
 
+/* Area occupied by bootloader.  Do not write here. */
+#define MEM_WRITE_FLASH_START 0x08000000
+#define MEM_WRITE_FLASH_ENDX  0x08002800
+
+/* Write to Flash is implemented using the same functions that are
+   used to implement in-app Firmware upgrade (fwstream.h) */
+#define HW_CPU_MHZ 72
+#define MEM_WRITE_LOG(...) // no logging in bootloader
+#include "cycle_counter.h"
+#include "mod_mem_write_stm32f103.c"
+#define TO_FLASH_3IF to_flash_stm
+struct monitor_3if;
+void to_flash_stm(struct monitor_3if *s);
 #include "mod_monitor_3if.c"
 #include "gdbstub_ctrl.h"
 struct gdbstub_ctrl bootloader_stub_ctrl;
 
-struct monitor_3if monitor_3if;
+/* App uses 64 bytes.  STM minimum is 2 bytes. */
+#define FLASH_BUFSIZE_LOG 6
+#define FLASH_BUFSIZE (1 << FLASH_BUFSIZE_LOG)
+
+struct monitor {
+    struct monitor_3if monitor_3if;
+    uint8_t flash_buf[FLASH_BUFSIZE];
+    struct cbuf out; uint8_t out_buf[256];
+    uint8_t ds_buf[32];
+    uint8_t rs_buf[32];
+};
+struct monitor monitor;
+
+void to_flash_stm(struct monitor_3if *s) {
+    struct monitor *m = (void*)s;
+    uint32_t addr = (uint32_t)s->flash;
+    uint32_t i = addr % FLASH_BUFSIZE;
+    m->flash_buf[i] = s->byte;
+    if (i == FLASH_BUFSIZE - 1) {
+        hw_mem_write_log(addr-i, m->flash_buf, FLASH_BUFSIZE);
+    }
+    s->flash++;
+}
+
 
 uint32_t bootloader_3if_read(uint8_t *buf, uint32_t size) {
-    return cbuf_read(monitor_3if.out, buf, size);
+    return cbuf_read(monitor.monitor_3if.out, buf, size);
 }
 void bootloader_3if_write(const uint8_t *buf, uint32_t size) {
     /* This needs to support protocol switching, which is based on
@@ -30,19 +66,19 @@ void bootloader_3if_write(const uint8_t *buf, uint32_t size) {
        E.g. empty SLIP, empty {packet,4} or any string of 2 ASCII
        characters or control characters.
     */
-    if (0 != monitor_3if_write(&monitor_3if, buf, size)) {
+    if (0 != monitor_3if_write(&monitor.monitor_3if, buf, size)) {
         ensure_started(&bootloader_stub_ctrl);
         _config.switch_protocol(buf, size);
         return;
     }
 }
-struct cbuf monitor_3if_out; uint8_t monitor_3if_out_buf[256];
-struct cbuf monitor_3if_out; uint8_t monitor_3if_out_buf[256];
-uint8_t ds_buf[32];
-uint8_t rs_buf[32];
 void bootloader_3if_init(void) {
-    CBUF_INIT(monitor_3if_out);
-    monitor_3if_init(&monitor_3if, &monitor_3if_out, ds_buf, rs_buf);
+    CBUF_INIT(monitor.out);
+    monitor_3if_init(
+        &monitor.monitor_3if,
+        &monitor.out,
+        monitor.ds_buf,
+        monitor.rs_buf);
 }
 
 #endif

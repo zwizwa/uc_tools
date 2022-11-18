@@ -72,6 +72,11 @@ struct monitor_3if {
 #define DS (s->ds)
 #define DS0 (DS[0])
 
+/* This needs to be provided. */
+#ifndef TO_FLASH_3IF
+#define TO_FLASH_3IF(s)
+#endif
+
 /* Machine suspends on input (KEY), and output is buffered (EMIT). */
 
 /* FIXME: Machine should suspend on output as well.  For now we assume
@@ -83,7 +88,7 @@ void from_ram  (struct monitor_3if *s) { s->byte = *(s->ram)++; }
 void from_flash(struct monitor_3if *s) { s->byte = *(s->flash)++; }
 
 void to_ram    (struct monitor_3if *s) { *(s->ram)++ = s->byte; }
-void to_flash  (struct monitor_3if *s) { /* FIXME */; }
+void to_flash  (struct monitor_3if *s) { TO_FLASH_3IF(s); }
 
 void to_state  (struct monitor_3if *s) { ((uint8_t*)s)[s->offset++] = s->byte; }
 
@@ -163,7 +168,7 @@ static inline uintptr_t monitor_3if_push_key(struct monitor_3if *s, uint8_t key)
     // needs s->transfer
     NEXT(s,s->count);
     cbuf_put(s->out, s->count);
-    while(s->count--) { s->transfer(s); cbuf_put(s->out, s->byte);}
+    while(s->count--) { s->transfer(s); cbuf_put(s->out, s->byte); }
     goto next;
 
   to_reg:
