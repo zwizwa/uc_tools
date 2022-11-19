@@ -88,11 +88,10 @@ void tether_cmd_buf(struct tether *s, uint8_t opc, const uint8_t *buf, uintptr_t
 }
 void tether_ack(struct tether *s) { TETHER_WRITE(s, 1, ACK); tether_read(s); }
 
-void tether_dump_mem(struct tether *s, const char *filename,
-                     uint32_t address, uint32_t nb_bytes,
-                     enum PRIM LDx, enum PRIM NxL) {
-    FILE *f;
-    ASSERT(f = fopen(filename, "w+"));
+void tether_read_mem(struct tether *s, uint8_t *buf,
+                      uint32_t address, uint32_t nb_bytes,
+                      enum PRIM LDx, enum PRIM NxL) {
+
     tether_cmd_u32(s, LDx, address);
     while (nb_bytes > 0) {
         /* FIXME: There's a transfer bug when max_chunk > 127.  Some
@@ -102,10 +101,22 @@ void tether_dump_mem(struct tether *s, const char *filename,
         if (s->verbose) { LOG("%08x %d\n", address, chunk); };
         tether_cmd_u8(s, NxL, chunk);
         ASSERT(s->buf[0] == chunk);
-        ASSERT(chunk == fwrite(s->buf+1, 1, chunk, f));
+        memcpy(buf, s->buf+1, chunk);
         address += chunk;
         nb_bytes -= chunk;
+        buf += chunk;
     }
+}
+ 
+
+void tether_dump_mem(struct tether *s, const char *filename,
+                     uint32_t address, uint32_t nb_bytes,
+                     enum PRIM LDx, enum PRIM NxL) {
+    uint8_t buf[nb_bytes];
+    FILE *f;
+    ASSERT(f = fopen(filename, "w+"));
+    tether_read_mem(s, buf, address, nb_bytes, LDx, NxL);
+    ASSERT(nb_bytes == fwrite(buf, 1, nb_bytes, f));
     fclose(f);
 }
 void tether_dump_flash(struct tether *s, const char *filename,
@@ -146,8 +157,23 @@ void tether_write_mem(struct tether *s, const uint8_t *buf,
         LOG("\r     \r");
     }
 }
+
+int tether_verify(struct tether *s, const uint8_t *buf,
+                   uint32_t address, uint32_t in_len,
+                   enum PRIM LDx, enum PRIM NxL) {
+    uint8_t buf_verify[in_len];
+    tether_read_mem(s, buf_verify, address, in_len, LDx, NxL);
+    return 0 == memcmp(buf, buf_verify, in_len);
+}
+int tether_verify_flash(struct tether *s, const uint8_t *buf,
+                        uint32_t address, uint32_t in_len) {
+    return tether_verify(s, buf, address, in_len, LDF, NFL);
+}
+
+
 void tether_load(struct tether *s, const char *filename, uint32_t address,
                  enum PRIM LDx, enum PRIM NxS, enum PRIM NxL) {
+    /* Load the file from storage. */
     FILE *f_in;
     ASSERT(f_in = fopen(filename, "r"));
     ASSERT(0 == fseek(f_in, 0, SEEK_END));
@@ -156,10 +182,21 @@ void tether_load(struct tether *s, const char *filename, uint32_t address,
     ASSERT(0 == fseek(f_in, 0, SEEK_SET));
     ASSERT(in_len == fread(buf, 1, in_len, f_in));
     fclose(f_in);
+    if (tether_verify(s, buf, address, in_len, LDx, NxL)) {
+        /* Do not write to flash if not needed in order to not wear it
+           out on frequent restarts.  Since we're not changing the
+           control block this can be done by straight memory
+           compare. */
+        LOG("%08x already loaded\n", address);
+        return;
+    }
     tether_write_mem(s, buf, address, in_len, LDx, NxS);
-
-    // FIXME: Implement verify after refactoring tether_dump_mem()
-    // uint8_t buf_ver[in_len];
+    if (!tether_verify(s, buf, address, in_len, LDx, NxL)) {
+        LOG("%08x WARNING: verify failed\n", address);
+    }
+    else { // if (s->verbose)
+        LOG("%08x verify ok\n", address);
+    }
 }
 
 
@@ -222,16 +259,4 @@ void tether_open_tty(struct tether *s, const char *dev) {
     // tether_sync(s);
 }
 
-void test(struct tether *s) {
-    // FIXME: Flush read
-    tether_ack(s);
-    tether_cmd_u32(s, LDA, 0x20000000);
-    for(int i=0; i<4; i++) {
-        tether_cmd_u8(s, NAL, 16);
-    }
-    tether_cmd_u32(s, LDF, 0x08000000);
-    for(int i=0; i<4; i++) {
-        tether_cmd_u8(s, NFL, 16);
-    }
-}
 
