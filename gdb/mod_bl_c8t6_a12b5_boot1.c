@@ -36,8 +36,8 @@ void ensure_started(struct gdbstub_ctrl *stub_ctrl);
 #define GDBSTUB_RSP_ENABLED 1
 #endif
 
-#ifndef GDBSTUB_3IF_ENABLED
-#define GDBSTUB_3IF_ENABLED 0
+#ifndef MONITOR_ENABLED
+#define MONITOR_ENABLED 0
 #endif
 
 
@@ -51,15 +51,12 @@ BOOTLOADER_DEFAULT_SERVICE()
 void monitor_init(void) {
 }
 
-#elif GDBSTUB_3IF_ENABLED
+#elif MONITOR_ENABLED
 /* Experimental 3-Instruction Forth */
-#include "mod_3if.c"
-BOOTLOADER_SERVICE(bootloader_3if_read,
-                   bootloader_3if_write,
+#include "mod_monitor.c"
+BOOTLOADER_SERVICE(monitor_read,
+                   monitor_write,
                    NULL)
-static inline void monitor_init(void) {
-    bootloader_3if_init();
-}
 #else
 /* Dummy interface that only attempts to switch protocol to app. */
 #include "mod_switch_protocol.c"

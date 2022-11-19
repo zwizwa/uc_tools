@@ -1,5 +1,5 @@
-#ifndef MOD_3IF
-#define MOD_3IF
+#ifndef MOD_MONITOR
+#define MOD_MONITOR
 
 /* Area occupied by bootloader.  Do not write here. */
 #define MEM_WRITE_FLASH_START 0x08000000
@@ -44,7 +44,7 @@ void to_flash_stm(struct monitor_3if *s) {
 }
 
 
-uint32_t bootloader_3if_read(uint8_t *buf, uint32_t size) {
+uint32_t monitor_read(uint8_t *buf, uint32_t size) {
     uint32_t n = cbuf_read(monitor.monitor_3if.out, buf, size);
     if ((n == 0) && monitor.last_read_was_full) {
         // Pad with empty packet to avoid the bad n=0 case.
@@ -54,7 +54,7 @@ uint32_t bootloader_3if_read(uint8_t *buf, uint32_t size) {
     monitor.last_read_was_full = (n == 64);
     return n;
 }
-void bootloader_3if_write(const uint8_t *buf, uint32_t size) {
+void monitor_write(const uint8_t *buf, uint32_t size) {
     /* This needs to support protocol switching, which is based on
        bootloader protocol being sufficiently different from any
        application protocol.  The following protocols need to be
@@ -80,7 +80,7 @@ void bootloader_3if_write(const uint8_t *buf, uint32_t size) {
         return;
     }
 }
-void bootloader_3if_init(void) {
+void monitor_init(void) {
     CBUF_INIT(monitor.out);
     monitor_3if_init(
         &monitor.monitor_3if,
