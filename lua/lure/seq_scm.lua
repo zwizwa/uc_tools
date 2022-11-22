@@ -2,9 +2,9 @@ return require("lure") -- ; -*- scheme -*-
 ["slc"](
 [[
 
-(define-syntax test-mac
+(define-syntax test-rec1
   (lambda (stx)
-    (return `(begin . ,(cdr stx)))))
+    `(rec1 . ,(cdr stx))))
   
 ;(define-macro (test-mac . args)
 ;  `(begin . ,args))
@@ -17,7 +17,7 @@ return require("lure") -- ; -*- scheme -*-
       (rec1 (ref 'rec1)))
 
 (define (integrate i)
-  (rec1
+  (test-rec1
    (lambda (s)
      (values (+ s i) s))))
 

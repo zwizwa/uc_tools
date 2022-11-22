@@ -40,8 +40,8 @@ function compile_module_slc2(str, config)
    -- Extract macro definitions and compile them to lua functions.
    local macro_exprs, rest_exprs = defm.split(exprs)
    local mc = slc2.new(mconfig)
-   local mlua = mc:compile({'module-begin',macro_exprs})
-   config.macro_module = slc2.eval(mlua)
+   local mlua = mc:compile({'module-begin',macro_exprs}) -- ; log_se(mlua)
+   config.macros = slc2.eval(mlua)
 
    -- Compile the rest of the module
    local c = slc2.new(config)

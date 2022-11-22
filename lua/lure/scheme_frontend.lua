@@ -97,8 +97,15 @@ class.expander = {
    ['var']    = s_id,
    ['pair']   = function(s, expr)
       local car, cdr = unpack(expr)
-      local m = s.macro[car]
-      if m ~= nil then
+      local m  = s.macro[car]
+      local um = s.config.macros and s.config.macros[car]
+      if um ~= nil then
+         -- A user defined macro, e.g. compiled from Scheme source.
+         -- These are pure functions mapping expr to expr.
+         trace("EXP",expr)
+         return um(expr), 'again'
+      elseif m ~= nil then
+         -- One of the hardcoded macros from this module.
          trace("EXP",expr)
          return m(s, expr), 'again'
       else
@@ -490,10 +497,9 @@ function class.init(s)
 end
 
 function class.new(config)
-   -- FIXME: use config.macro_module, see lure.lua slc2
-   -- log_desc({config=config})
-
-   local obj = { config = config }
+   local obj = {
+      config = config,
+   }
    -- log_desc({scheme_frontend_config = config})
    setmetatable(obj, { __index = class })
    obj:init()
