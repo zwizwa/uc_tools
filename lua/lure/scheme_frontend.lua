@@ -490,6 +490,9 @@ function class.init(s)
 end
 
 function class.new(config)
+   -- FIXME: use config.macro_module, see lure.lua slc2
+   -- log_desc({config=config})
+
    local obj = { config = config }
    -- log_desc({scheme_frontend_config = config})
    setmetatable(obj, { __index = class })

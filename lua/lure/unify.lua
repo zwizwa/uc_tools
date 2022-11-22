@@ -19,8 +19,9 @@ local function unify_env(env, a, b)
       local e0 = env[v]
       -- Unbound, then bound it to the expression
       if e0 == nil then env[v] = e ; return true end
-      -- Already bound: unify old and new
-      -- FIXME: This probably gets into loops due to var->var indirection
+      -- FIXME:
+      -- Already bound: here we need to normalize (create a-symmetry
+      -- to avoid loops), define one variable in terms of another one.
       return unify(e0, e)
    end
 

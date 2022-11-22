@@ -1,12 +1,20 @@
 return require("lure") -- ; -*- scheme -*-
 ["slc"](
 [[
-(define (edsl c)
-(let ((+    (table-ref c 'add))
-      (-    (table-ref c 'sub))
-      (rec1 (table-ref c 'rec1)))
 
-;; FIXME: Create a macro facility.
+(define-syntax test-mac
+  (lambda (stx)
+    (return `(begin . ,(cdr stx)))))
+  
+;(define-macro (test-mac . args)
+;  `(begin . ,args))
+  
+(define (edsl semantics)
+  
+(define (ref sym) (table-ref semantics sym))
+(let ((+    (ref 'add))
+      (-    (ref 'sub))
+      (rec1 (ref 'rec1)))
 
 (define (integrate i)
   (rec1
@@ -18,16 +26,15 @@ return require("lure") -- ; -*- scheme -*-
 ))
 
 ;; Test code.
-;; FIXME: quasiquote unquote doesn't work: `(add ,+)
 (define (run)
   (define rec1 'FIXME)
-  (let ((c
+  (let ((semantics
          (table
           `((add  . ,+)
             (sub  . ,-)
             (rec1 . ,rec1)))))
     (log-se-n
-     (table-ref (edsl c) 'integrate))
+     (table-ref (edsl semantics) 'integrate))
     ))
 
 ]])

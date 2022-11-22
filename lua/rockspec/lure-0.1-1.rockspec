@@ -48,6 +48,7 @@ build = {
     ['lure.rvm_debug'] = 'rvm_debug.lua',
     ['lure.rvm'] = 'rvm.lua',
     ['lure.scheme_blockval'] = 'scheme_blockval.lua',
+    ['lure.scheme_defmacro'] = 'scheme_defmacro.lua',
     ['lure.scheme_escape'] = 'scheme_escape.lua',
     ['lure.scheme_eval'] = 'scheme_eval.lua',
     ['lure.scheme_flatten'] = 'scheme_flatten.lua',
@@ -94,6 +95,7 @@ build = {
     ['lure.test_se_match'] = 'test_se_match.lua',
     ['lure.test_slc'] = 'test_slc.lua',
     ['lure.test_smc'] = 'test_smc.lua',
+    ['lure.test_unify'] = 'test_unify.lua',
     ['lure.unify'] = 'unify.lua',
   }
 }

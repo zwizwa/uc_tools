@@ -31,12 +31,21 @@ function compile_module_slc2(str, config)
    local se     = require('lure.se')
    local tab    = require('lure.tab')
    local slc2   = require('lure.slc2')
+   local defm   = require('lure.scheme_defmacro')
    config = config or {}
    tab.copy1({trace = trace}, config)
    tab.copy1(slc2.default_config, config)
    local exprs = se.read_string_multi(str) ; assert(exprs)
+
+   -- Extract macro definitions and compile them to lua functions.
+   local macro_exprs, rest_exprs = defm.split(exprs)
+   local mc = slc2.new(mconfig)
+   local mlua = mc:compile({'module-begin',macro_exprs})
+   config.macro_module = slc2.eval(mlua)
+
+   -- Compile the rest of the module
    local c = slc2.new(config)
-   local lua = c:compile({'module-begin',exprs})
+   local lua = c:compile({'module-begin',rest_exprs})
    return slc2.eval(lua)
 end
 

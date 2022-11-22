@@ -25,6 +25,7 @@ return { modules = {
   'rvm_debug',
   'rvm',
   'scheme_blockval',
+  'scheme_defmacro',
   'scheme_escape',
   'scheme_eval',
   'scheme_flatten',
@@ -71,5 +72,6 @@ return { modules = {
   'test_se_match',
   'test_slc',
   'test_smc',
+  'test_unify',
   'unify',
 }}
