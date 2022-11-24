@@ -331,8 +331,20 @@ local function iolist(expr)
       end
    else
       -- The rest, we assume this is a proper or improper list.
+
+      -- Check quotations first
+      if 2 == se.length(expr) then
+         local sp = se.rev_ticks[se.car(expr)]
+         if nil ~= sp then
+            return {sp, iolist(se.cadr(expr))}
+         end
+      end
+
+      -- It's a regular proper/improper list
+
       local iol = {"("}
       local e = expr
+
       if not is_empty(e) then
          while true do
             if not is_pair(e) then
@@ -438,6 +450,12 @@ se.ticks = {
    [","] = 'unquote',
    ["`"] = 'quasiquote',
 }
+se.rev_ticks = {
+   quote      = "'",
+   quasiquote = "`",
+   unquote    = ",",
+}
+
 
 function se:read()
    local function tagged(tag)

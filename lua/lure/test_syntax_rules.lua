@@ -14,9 +14,8 @@ require('lure.log')
 
 local function run()
    for expr in se.elements(se.read_string_multi(str)) do
-      local _, name, sr_clause = se.unpack(expr, {n=3})
-      local _, literals, rule = se.unpack(sr_clause, {n=3})
-      sr.rule_unquoted(rule)
+      local _, name, sr_macro = se.unpack(expr, {n=3})
+      sr.macro(sr_macro)
    end
 end
 return {

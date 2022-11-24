@@ -19,6 +19,7 @@ local se    = require('lure.se')
 local tab   = require('lure.tab')
 local index = require('lure.index')
 local match = require('lure.match')
+local sr    = require('lure.syntax_rules')
 local macro = {}
 local l = se.list
 local r = se.reverse
@@ -410,5 +411,9 @@ macro['quasiquote'] = function(expr, c)
    function env.quote(a)  return l('quote',a) end
    return se.qq(env, qq_expr)
 end
+
+-- Complex enough to require its own file and test.
+macro['syntax-rules'] = sr.macro
+
 
 return macro
