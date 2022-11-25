@@ -35,9 +35,6 @@ local function expr_unquoted(expr, visit_sym)
       return expr
    end
 end
-
--- FIXME: Make one that maps to mcase from scheme_macros.lua
-
 local function id(x)
    return x
 end
@@ -49,44 +46,36 @@ local function table_ref(tab)
       return l("unquote", l("table-ref", tab, l("quote", var_name)))
    end
 end
-
-
-
 local function compile(des, con, ref)
-
-   -- log_se(des) ; log("\n")
-   local syms = {}
-   local function collect(sym) syms[sym] = true ; return uq end
+   -- Every symbol in the destructor is treated as a pattern variable.
+   -- FIXME: Add literals.
+   local vars = {}
+   local function collect(sym)
+      vars[sym] = true
+      return uq
+   end
    local compiled_des = expr_unquoted(des, collect)
-   -- log_se(compiled_des) ; log("\n")
-   -- log_desc({syms=syms})
 
-   -- log_se(con) ; log("\n")
+   -- In the constructor, every occurance of a variable is
+   -- dereferenced, and everything else is treated as a literal.  We
+   -- can't distinguish variable references from variable binding
+   -- here, so FIXME: tag all introduced symbols so they can be
+   -- renamed later if necessary.  This is not hygienic yet!
    local free = {}
    local function sym_or_free(sym)
-      -- Dereferemce os if symbol is bound in destern
-      if syms[sym] then return ref end
-      -- Otherwise don't quote, and collect it as unbound.  This list
-      -- of introduced symbols should later be handled differently.
-      -- It seems that we need to distinguish between two things: is
-      -- this an identifier (variable or macro) that is present in the
-      -- environment or not.  If not, we can assume that we are
-      -- introducing it and rename it (otherwise it would be an
-      -- unbound variable).
+      if vars[sym] then return ref end
       free[sym] = true
       return id
    end
    local compiled_con = expr_unquoted(con, sym_or_free)
-   -- log_se(compiled_con) ; log("\n")
-   -- log_desc({free=free})
 
-   return { syms = syms,
+   return { vars = vars,
             free = free,
             des = compiled_des,
             con = compiled_con }
 end
 
--- Compile it to:
+-- Compile a full syntax-rules expression to
 -- compile-qq-pattern: compiles quasi-quoted patterns to matcher's representation
 -- match-qq-pattern: invoke matcher with compiled patterns and handler clauses
 
@@ -94,6 +83,7 @@ local function macro(expr, config)
    assert(config and config.state and config.state.gensym)
    local function gensym() return config.state:gensym() end
    local _, literals, rules = se.unpack(expr, {n=2, tail=true})
+   assert(literals == se.empty)
    local patcomp = {} -- compiled patterns
    local clauses = {} -- match patterns
    for rule in se.elements(rules) do
