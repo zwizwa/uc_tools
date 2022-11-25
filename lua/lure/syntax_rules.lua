@@ -48,14 +48,14 @@ local function rule_unquoted(expr)
       return l("unquote", l("table-ref", m, l("quote", x)))
    end
 
-   log_se(pat) ; log("\n")
+   -- log_se(pat) ; log("\n")
    local syms = {}
    local function collect(sym) syms[sym] = true ; return uq end
    local uq_pat = expr_unquoted(pat, collect)
-   log_se(uq_pat) ; log("\n")
-   log_desc({syms=syms})
+   -- log_se(uq_pat) ; log("\n")
+   -- log_desc({syms=syms})
 
-   log_se(new) ; log("\n")
+   -- log_se(new) ; log("\n")
    local free = {}
    local function sym_or_free(sym)
       -- Dereferemce os if symbol is bound in pattern
@@ -71,15 +71,15 @@ local function rule_unquoted(expr)
       return id
    end
    local uq_new = expr_unquoted(new, sym_or_free)
-   log_se(uq_new) ; log("\n")
-   log_desc({free=free})
+   -- log_se(uq_new) ; log("\n")
+   -- log_desc({free=free})
    local rv_exp =
       l("lambda",l("expr"),
         l("match","expr",
           uq_pat,
           l("lambda", l(m),
             l("quasiquote", uq_new))))
-   log_se(rv_exp) ; log("\n")
+   -- log_se(rv_exp) ; log("\n")
    return rv_exp
 end
 
