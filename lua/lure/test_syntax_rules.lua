@@ -12,10 +12,18 @@ local se = require('lure.se')
 local sr = require('lure.syntax_rules')
 require('lure.log')
 
+local config = {
+   state = {
+      gensym = function()
+         return 'fake-gensym'
+      end
+   }
+}
+
 local function run()
    for expr in se.elements(se.read_string_multi(str)) do
       local _, name, sr_macro = se.unpack(expr, {n=3})
-      sr.macro(sr_macro)
+      sr.macro(sr_macro, config)
    end
 end
 return {

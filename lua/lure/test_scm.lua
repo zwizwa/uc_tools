@@ -65,8 +65,12 @@ return require("lure") -- ; -*- scheme -*-
 (define (test_foldr) (assert (= 6 (foldr + 0 '(1 2 3)))))
 (define (test_map)   (assert (equal? '(2 3 4) (map (lambda (x) (+ x 1)) '(1 2 3)))))
   
-(define (match-add e) (match-qq e ((add ,a ,b) (+ a b))))
-(define (test_match)  (assert (= 3 (match-add '(add 1 2)))))
+
+;; FIXME: match-qq is removed in favor of syntax-rules
+;(define (match-add e) (match-qq e ((add ,a ,b) (+ a b))))
+;(define (test_match)  (assert (= 3 (match-add '(add 1 2)))))
+
+
 
 
 ;; Dynamic binding
@@ -92,7 +96,7 @@ return require("lure") -- ; -*- scheme -*-
   (test_map)
   (test_par)
   
-  (test_match)
+  ;(test_match)
   )
   
 

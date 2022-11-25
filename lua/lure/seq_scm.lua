@@ -2,10 +2,15 @@ return require("lure") -- ; -*- scheme -*-
 ["slc"](
 [[
 
-(define-syntax test-rec1
+(define-syntax test-rec1_
   (lambda (stx)
     `(rec1 . ,(cdr stx))))
-  
+
+(define-syntax test-rec1
+  (syntax-rules ()
+    ((_ body) (rec1 body))))
+
+
 ;(define-macro (test-mac . args)
 ;  `(begin . ,args))
   

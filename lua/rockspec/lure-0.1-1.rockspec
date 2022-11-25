@@ -74,6 +74,7 @@ build = {
     ['lure.smc_cspc'] = 'smc_cspc.lua',
     ['lure.smc'] = 'smc.lua',
     ['lure.string_dsl'] = 'string_dsl.lua',
+    ['lure.syntax_rules'] = 'syntax_rules.lua',
     ['lure.tab'] = 'tab.lua',
     ['lure.test_autodiff'] = 'test_autodiff.lua',
     ['lure.test_backend_c'] = 'test_backend_c.lua',
@@ -95,6 +96,7 @@ build = {
     ['lure.test_se_match'] = 'test_se_match.lua',
     ['lure.test_slc'] = 'test_slc.lua',
     ['lure.test_smc'] = 'test_smc.lua',
+    ['lure.test_syntax_rules'] = 'test_syntax_rules.lua',
     ['lure.test_unify'] = 'test_unify.lua',
     ['lure.unify'] = 'unify.lua',
   }

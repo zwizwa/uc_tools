@@ -51,6 +51,7 @@ return { modules = {
   'smc_cspc',
   'smc',
   'string_dsl',
+  'syntax_rules',
   'tab',
   'test_autodiff',
   'test_backend_c',
@@ -72,6 +73,7 @@ return { modules = {
   'test_se_match',
   'test_slc',
   'test_smc',
+  'test_syntax_rules',
   'test_unify',
   'unify',
 }}

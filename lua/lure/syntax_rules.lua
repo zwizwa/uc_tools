@@ -12,6 +12,7 @@
 
 local se = require('lure.se')
 local l = se.list
+local a2l = se.array_to_list
 
 
 -- Convert a matching pattern to the syntax used by se_match.
@@ -35,30 +36,35 @@ local function expr_unquoted(expr, visit_sym)
    end
 end
 
-local function rule_unquoted(expr)
-   local pat, new = se.unpack(expr, {n=2})
-   local function id(x)
-      return x
-   end
-   local function uq(x)
-      return l("unquote", x)
-   end
-   local m = "m"
-   local function ref(x)
-      return l("unquote", l("table-ref", m, l("quote", x)))
-   end
+-- FIXME: Make one that maps to mcase from scheme_macros.lua
 
-   -- log_se(pat) ; log("\n")
+local function id(x)
+   return x
+end
+local function uq(x)
+   return l("unquote", x)
+end
+local function table_ref(tab)
+   return function(var_name)
+      return l("unquote", l("table-ref", tab, l("quote", var_name)))
+   end
+end
+
+
+
+local function compile(des, con, ref)
+
+   -- log_se(des) ; log("\n")
    local syms = {}
    local function collect(sym) syms[sym] = true ; return uq end
-   local uq_pat = expr_unquoted(pat, collect)
-   -- log_se(uq_pat) ; log("\n")
+   local compiled_des = expr_unquoted(des, collect)
+   -- log_se(compiled_des) ; log("\n")
    -- log_desc({syms=syms})
 
-   -- log_se(new) ; log("\n")
+   -- log_se(con) ; log("\n")
    local free = {}
    local function sym_or_free(sym)
-      -- Dereferemce os if symbol is bound in pattern
+      -- Dereferemce os if symbol is bound in destern
       if syms[sym] then return ref end
       -- Otherwise don't quote, and collect it as unbound.  This list
       -- of introduced symbols should later be handled differently.
@@ -70,23 +76,96 @@ local function rule_unquoted(expr)
       free[sym] = true
       return id
    end
-   local uq_new = expr_unquoted(new, sym_or_free)
-   -- log_se(uq_new) ; log("\n")
+   local compiled_con = expr_unquoted(con, sym_or_free)
+   -- log_se(compiled_con) ; log("\n")
    -- log_desc({free=free})
+
+   return { syms = syms,
+            free = free,
+            des = compiled_des,
+            con = compiled_con }
+end
+
+-- Compile it to:
+-- compile-qq-pattern: compiles quasi-quoted patterns to matcher's representation
+-- match-qq-pattern: invoke matcher with compiled patterns and handler clauses
+
+local function macro(expr, config)
+   assert(config and config.state and config.state.gensym)
+   local function gensym() return config.state:gensym() end
+   local _, literals, rules = se.unpack(expr, {n=2, tail=true})
+   local patcomp = {} -- compiled patterns
+   local clauses = {} -- match patterns
+   for rule in se.elements(rules) do
+      local des, con  = se.unpack(rule, {n=2})
+      local patvar    = gensym()
+      local table_var = gensym()
+      local compiled  = compile(des, con, table_ref(table_var))
+      table.insert(
+         patcomp,
+         l(patvar,
+           l("compile-qq-pattern",
+             l("quote", compiled.des))))
+      table.insert(
+         clauses,
+         l("cons",
+           patvar,
+           l("lambda", l(table_var),
+             l("quasiquote", compiled.con))))
+   end
+   local expr_var = gensym()
    local rv_exp =
-      l("lambda",l("expr"),
-        l("match","expr",
-          uq_pat,
-          l("lambda", l(m),
-            l("quasiquote", uq_new))))
+      l("let",
+        a2l(patcomp),
+        l("lambda",l(expr_var),
+          l("match-qq-patterns", expr_var,
+            {"list", a2l(clauses)})))
    -- log_se(rv_exp) ; log("\n")
    return rv_exp
 end
 
-local function macro(expr)
-   local _, literals, rule = se.unpack(expr, {n=3})
-   return rule_unquoted(rule)
-end
+
+-- FIXME: older scheme macro attempt.  can probably be removed
+
+-- -- FIXME: Fix configurable macros by using syntax scope + lexical
+-- -- scope during expansion.
+
+-- -- (let ((v (table-ref m (quote v)))))
+-- macro['match-qq'] = function(expr, c)
+--    need_gensym(c)
+--    local _, match_expr, clauses = se.unpack(expr, {n = 2, tail = true})
+--    local mod_bs = se.empty
+
+--    local function compile(clause)
+--       local pattern, handle = se.unpack(clause, {n = 1, tail = true})
+--       local cpat = match.compile(se.constructor(pattern))
+--       local var_list = se.empty
+--       for var in pairs(cpat.vars) do
+--          var_list = {var.var, var_list}
+--       end
+--       local m = c.state:gensym()  -- table containing matches
+--       local function make_binding(var_name)
+--          return l(var_name, l('table-ref', m, l('quote', var_name)))
+--       end
+--       local bindings = se.map(make_binding, var_list)
+--       -- The cpat is not printable, so we have to rebuild it at
+--       -- runtime.  Use module-level variables for this.
+--       local patvar = c.state:gensym()
+--       local mod_binding =
+--          l(patvar,
+--            l(c.compile_qq_pattern or 'compile-qq-pattern',
+--              l('quote', pattern)))
+--       mod_bs = {mod_binding, mod_bs}
+--       local handler  = l('lambda',l(m),{'let',{bindings,handle}})
+--       return l('cons',patvar,handler)
+--    end
+--    local compiled_clauses = se.map(compile, clauses)
+--    return l('module-let', mod_bs,
+--             l(c.match_qq_patterns or 'match-qq-patterns', match_expr,
+--               {'list',compiled_clauses}))
+-- end
+
+
 
 
 return {
@@ -94,3 +173,5 @@ return {
    expr_unquoted = expr_unquoted,
    macro = macro
 }
+
+

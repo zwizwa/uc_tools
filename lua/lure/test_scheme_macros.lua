@@ -113,7 +113,7 @@ local function test()
    t("(let* ((a 1) (b 2)) a b)")
    t("(or a b)")
    t("(and a b)")
-   t("(match-qq expr ((add ,a ,b) (+ a b)))")
+   -- t("(match-qq expr ((add ,a ,b) (+ a b)))")  -- use syntax-rules instead, or a more explicit constructor
    t("(letrec@ ((a (lambda (n) (b n))) (b (lambda (n) (a (+ n 1))))) (a 0))")
    t("(parameterize ((a new_a)) (body))")
    t("(syntax-rules () ((_ (s i) body) (lambda (i) (rec1 (lambda (s) body)))))")

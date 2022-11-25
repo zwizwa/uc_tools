@@ -217,43 +217,6 @@ local function qq_pattern_iolist(obj)
    return se.iolist(l('qq_pattern', obj.expr))
 end
 
--- FIXME: Fix configurable macros by using syntax scope + lexical
--- scope during expansion.
-
--- (let ((v (table-ref m (quote v)))))
-macro['match-qq'] = function(expr, c)
-   need_gensym(c)
-   local _, match_expr, clauses = se.unpack(expr, {n = 2, tail = true})
-   local mod_bs = se.empty
-
-   local function compile(clause)
-      local pattern, handle = se.unpack(clause, {n = 1, tail = true})
-      local cpat = match.compile(se.constructor(pattern))
-      local var_list = se.empty
-      for var in pairs(cpat.vars) do
-         var_list = {var.var, var_list}
-      end
-      local m = c.state:gensym()  -- table containing matches
-      local function make_binding(var_name)
-         return l(var_name, l('table-ref', m, l('quote', var_name)))
-      end
-      local bindings = se.map(make_binding, var_list)
-      -- The cpat is not printable, so we have to rebuild it at
-      -- runtime.  Use module-level variables for this.
-      local patvar = c.state:gensym()
-      local mod_binding =
-         l(patvar,
-           l(c.compile_qq_pattern or 'compile-qq-pattern',
-             l('quote', pattern)))
-      mod_bs = {mod_binding, mod_bs}
-      local handler  = l('lambda',l(m),{'let',{bindings,handle}})
-      return l('cons',patvar,handler)
-   end
-   local compiled_clauses = se.map(compile, clauses)
-   return l('module-let', mod_bs,
-            l(c.match_qq_patterns or 'match-qq-patterns', match_expr,
-              {'list',compiled_clauses}))
-end
 
 
 -- Insert a module-level binding.  Expressions are evaluated in module scope.
@@ -371,6 +334,20 @@ local function mcase(...)
    end
 end
 
+-- -- FIXME: use match-qq instead
+
+-- -- This takes an s-expression containing a list of destructor,
+-- -- constructor clauses and returns a syntax transformer.
+-- function compile_matcher(expr)
+--    local clauses = {}
+--    for clause in se.cdr(expr) do
+--       local des, con = se.unpack(clause, {n=2})
+--       table.insert(clauses, {des, con})
+--    end
+--    return mcase(unpack(clauses))
+-- end
+
+
 -- FIXME: Maybe implement defmacro and get rid of this intermediate abstraction.
 macro["or"]   = mcase({"(,1 ,2)", "(let ((,tmp ,1)) (if ,tmp ,tmp ,2))"})
 macro["and"]  = mcase({"(,1 ,2)", "(let ((,tmp ,1)) (if (not ,tmp) ,tmp ,2))"})
@@ -411,6 +388,7 @@ macro['quasiquote'] = function(expr, c)
    function env.quote(a)  return l('quote',a) end
    return se.qq(env, qq_expr)
 end
+
 
 -- Complex enough to require its own file and test.
 macro['syntax-rules'] = sr.macro
