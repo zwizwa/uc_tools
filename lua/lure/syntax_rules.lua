@@ -80,7 +80,9 @@ end
 -- match-qq-pattern: invoke matcher with compiled patterns and handler clauses
 
 local function macro(expr, config)
-   assert(config and config.state and config.state.gensym)
+   assert(config and config.state and config.state.gensym and config.state.env)
+   -- log_desc({syntax_rules_state_env = config.state.env})
+   -- log_se(config.state.env)
    local function gensym() return config.state:gensym() end
    local _, literals, rules = se.unpack(expr, {n=2, tail=true})
    assert(literals == se.empty)

@@ -16,9 +16,12 @@ local config = {
    state = {
       gensym = function()
          return 'fake-gensym'
-      end
+      end,
+      env = se.empty,
    }
 }
+assert(config.state.gensym)
+assert(config.state.env)
 
 local function run()
    for expr in se.elements(se.read_string_multi(str)) do

@@ -16,7 +16,12 @@ end
 function module_define(s, var, expr)
 end
 
-local state = { n = 0, gensym = gensym, module_define = module_define }
+local state = {
+   n = 0,
+   gensym = gensym,
+   module_define = module_define,
+   env = se.empty,
+}
 local function cfg(c)
    c.state = state
    c.void = '#<void>'

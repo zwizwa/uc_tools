@@ -491,7 +491,7 @@ end
 function class.init(s)
    s.count = 0
    s.free_variables = {}
-   s.env = {}
+   s.env = se.empty
    s.module_bindings = {}
    s.lib_ref = nil
 end
