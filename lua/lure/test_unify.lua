@@ -1,3 +1,7 @@
+-- Note: this is likely not complete.  Just use it in the seq type
+-- inference, then a sequence of unifications doesn't work, add it
+-- here as a test and debug.
+
 local se       = require('lure.se')
 local unify    = require('lure.unify')
 local tab      = require('lure.tab')
@@ -16,8 +20,8 @@ local function run()
    end
 
    local function uni(env,a,b)
-      log("\n")
-      local rv = unify.unify_env(env,a,b)
+      log("uni:\n")
+      local rv = unify.unify(env,a,b)
       log_se_tab({a=a,b=b})
       log_se_tab(env)
       return rv
@@ -33,15 +37,25 @@ local function run()
 
    -- Accumulating tests
    local env
+   local function log_env()
+      log("env:\n")
+      for k,v in pairs(env) do
+         log(k .. " = ")
+         log_se(v)
+         log("\n")
+      end
+   end
+   local function log_eval(type_expr)
+      log("eval:\n")
+      log_se(type_expr) ; log("\n")
+      log_se(unify.eval(env, type_expr)) ; log("\n")
+   end
 
    env = {}
    uni(env, var('x'), vec('int',3))
    uni(env, var('y'), vec('int',3))
-   for k,v in pairs(env) do
-      log(k .. " = ")
-      log_se(v)
-      log("\n")
-   end
+   log_env()
+
 
    -- Some actual tests with asserts.
    env = {}
@@ -60,6 +74,24 @@ local function run()
    -- first integrate it in seq.lua and see where it goes wrong, then
    -- add cases here and fixe the algo.
 
+   -- A practical case:
+   --
+   log("\n-- array input:\n")
+   env = {}
+   -- The type variable we're resolving is t_vec, the type of the
+   -- input array.
+   --
+   -- First unification happens on scalar 'copy', which fixes the
+   -- array structure (dereferenced inside a loop), but leaves the
+   -- base type unspecified.
+   assert(true == uni(env, vec(vec(var('t_copy'),3),4), var('t_vec')))
+   --
+   -- Second unification happens when that copied variable is used as
+   -- an input to a monomorphic function.
+   assert(true == uni(env, var('t_copy'), 'Float'))
+   log_env()
+   -- Eval
+   log_eval(var('t_vec'))
 
 end
 

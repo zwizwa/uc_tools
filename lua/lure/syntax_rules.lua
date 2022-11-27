@@ -1,3 +1,5 @@
+-- See https://small.r7rs.org/attachment/r7rs.pdf Section 4.3
+
 -- FIXME: I don't know what I'm doing yet, but it seems syntax-rules
 -- is useful enough even if it is incomplete.
 
