@@ -2,24 +2,21 @@
 #define MOD_I2C_BITBANG
 
 /* I2C Master bitbang implementation. */
+#include "mod_i2c_macros.c"
 
-/* These are expected to be available in the C namespace:
-   struct i2c_bus
-   i2c_write_sda()
-   i2c_write_scl()
-   i2c_read_sda()
-   i2c_read_scl()
-*/
+
+/* These are expected to be available in the C namespace. */
+struct i2c_port;
+static inline void i2c_write_sda(struct i2c_port *p, int v);
+static inline void i2c_write_scl(struct i2c_port *p, int v);
+static inline int  i2c_read_sda(struct i2c_port *p);
+static inline int  i2c_read_scl(struct i2c_port *p);
 
 #include "sm.h"
 #include "sm_def.h"
 #include "slice.h"
 
-#ifndef I2C_STRETCH
-#define I2C_STRETCH 1
-#endif
 
-#define I2C_DEBUG_SPACING 0
 
 /* By default this is off.  It is defined e.g. in the host and target
    test applications or can be enabled for ad-hoc debugging. */
@@ -36,6 +33,8 @@
 
 #define I2C_R 1
 #define I2C_W 0
+
+
 
 /* A note on design: the async generators / protothreads / state
    machines (sm.h) rely on computed goto for suspension, and cannot be
@@ -70,56 +69,11 @@
 // #define I2C_WHILE(s,cond) while(cond)
 #define I2C_WHILE(s,cond) SM_WHILE(s,cond)
 
-#define I2C_DELAY(s) {                                                  \
-        s->timeout = cycle_counter_future_time(I2C_HALF_PERIOD_TICKS);  \
-        SM_WAIT(s, cycle_counter_expired(s->timeout));                  \
-    }
-#define I2C_NDELAY(s,n_init) \
-    {int n = n_init; while(n--) I2C_DELAY(s); }
+#define I2C_WAIT SM_WAIT
 
 
-#define I2C_WAIT_STRETCH(s) {                                           \
-        /* PRE: SCL released */                                         \
-        if (I2C_STRETCH) I2C_WHILE(s, !i2c_read_scl(s->port));          \
-    }
-#define I2C_WRITE_SCL_1(s) {                     \
-        i2c_write_scl(s->port,1);                \
-        I2C_WAIT_STRETCH(s);                     \
-    }
 
-/* FIXME: The deblock warning events should be logged or at least
-   counted.  At the moment it is not clear how to integrate warnings
-   into the rest of the application framework.  Maybe treat deblog as
-   an error on start that is upstream interpreted as warning: can
-   continue, but log. */
 
-#define I2C_DEBLOCK(s) {                                                \
-        for(s->clock=0; s->clock<16; s->clock++) {                      \
-            int sda1 = i2c_read_sda(s->port);                           \
-            int scl1 = i2c_read_scl(s->port);                           \
-            if (sda1 && scl1) break;                                    \
-            i2c_write_scl(s->port,0); I2C_DELAY(s);                     \
-            i2c_write_scl(s->port,1); I2C_DELAY(s);  /* no stretch */   \
-        }                                                               \
-        if (s->clock) {                                                 \
-            I2C_LOG("m: WARNING: deblock clocks=%d\n", s->clock);       \
-            /* LOG(" (%d)", s->clock); */                               \
-        }                                                               \
-    }
-
-#define I2C_START(s) {                                                  \
-        /* PRE: */                                                      \
-        /* - idle:   SDA=1,SCL=1 */                                     \
-        /* - repeat: SDA=?,SCL=0 */                                     \
-        /* For repeated start: bring lines high without causing a stop. */ \
-        i2c_write_sda(s->port,1); I2C_DELAY(s);                          \
-        I2C_WRITE_SCL_1(s); I2C_DELAY(s);                               \
-        /* START transition = SDA 1->0 while SCL=1 */                   \
-        i2c_write_sda(s->port,0); I2C_DELAY(s);                         \
-        /* Bring clock line low for first bit */                        \
-        i2c_write_scl(s->port,0); I2C_DELAY(s);                         \
-        /* POST: SDA=0, SCL=0 */                                        \
-}
 
 /* Deblock is most useful right before start, so inline it into the
    start state machine. */
@@ -140,23 +94,6 @@ sm_status_t i2c_start_tick(struct i2c_start_state *s) {
     SM_HALT(s);
 }
 
-#define I2C_SEND_BIT(s, val) {  \
-        /* PRE: SDA=?, SCL=0 */                                         \
-        i2c_write_sda(s->port,val); I2C_DELAY(s);  /* set + propagate */ \
-        I2C_WRITE_SCL_1(s);        I2C_DELAY(s);  /* set + wait read */ \
-        i2c_write_scl(s->port,0);                                       \
-        /* POST: SDA=x, SCL=0 */                                        \
-}
-
-#define I2C_RECV_BIT(s, lval) {                                         \
-        /* PRE: SDA=?, SCL=0 */                                         \
-        i2c_write_sda(s->port,1); I2C_DELAY(s);  /* release, allow slave write */ \
-        I2C_WRITE_SCL_1(s); I2C_DELAY(s);  /* slave write propagation */ \
-        lval = i2c_read_sda(s->port);                                   \
-        i2c_write_scl(s->port,0);                                       \
-        /* POST: SDA=1, SCL=0 */                                        \
-    }
-
 void i2c_info_busy(void *s, const char *tag) {
     if (i2c_read_sda(s)) {
         I2C_LOG("\nWARNING: %s: SDA=0\n", tag);
@@ -174,14 +111,6 @@ struct i2c_stop_state {
 void i2c_stop_init(struct i2c_stop_state *s, struct i2c_port *port) {
     s->port = port;
     s->next = 0;
-}
-#define I2C_STOP(s) {                                     \
-        /* PRE: SDA=?, SCL=0 */                           \
-        i2c_write_sda(s->port,0); I2C_DELAY(s);           \
-        I2C_WRITE_SCL_1(s); I2C_DELAY(s);                 \
-        /* STOP transition = SDA 0->1 while SCL=1 */      \
-        i2c_write_sda(s->port,1);  I2C_DELAY(s);          \
-        /* POST: SDA=1, SCL=1  (unless held by slave) */  \
 }
 sm_status_t i2c_stop_tick(struct i2c_stop_state *s) {
     SM_RESUME(s); I2C_STOP(s); SM_HALT(s);
