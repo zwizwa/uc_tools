@@ -34,6 +34,18 @@ static inline int  i2c_read_sda(struct i2c_port *p);
 static inline int  i2c_read_scl(struct i2c_port *p);
 
 
+/* Set default clock rate to 100kHz maximum.  If this runs in a main
+   polling loop, the effective clock rate is possibly lower.  E.g. the
+   app that drives this results in 10kHz effective frequency. */
+#ifndef I2C_HALF_PERIOD_TICKS
+#define I2C_HALF_PERIOD_TICKS (5 * 72)
+#endif
+
+#define I2C_R 1
+#define I2C_W 0
+
+
+
 
 #ifndef I2C_STRETCH
 #define I2C_STRETCH 1
@@ -142,7 +154,7 @@ static inline int  i2c_read_scl(struct i2c_port *p);
 #define I2C_RECV_BYTE(s) {                              \
         for (s->clock=7; s->clock>=0; s->clock--) {     \
             I2C_RECV_BIT(s, s->bitval);                 \
-            s->val |= s->bitval << s->clock;            \
+            s->byte |= s->bitval << s->clock;           \
         }                                               \
         I2C_SPACING_NDELAY(s, 2);                       \
         I2C_SEND_BIT(s, s->nack);                       \

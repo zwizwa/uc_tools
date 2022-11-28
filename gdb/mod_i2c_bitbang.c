@@ -17,17 +17,6 @@
 #define I2C_LOG(...)
 #endif
 
-/* Set default clock rate to 100kHz maximum.  If this runs in a main
-   polling loop, the effective clock rate is possibly lower.  E.g. the
-   app that drives this results in 10kHz effective frequency. */
-#ifndef I2C_HALF_PERIOD_TICKS
-#define I2C_HALF_PERIOD_TICKS (5 * 72)
-#endif
-
-#define I2C_R 1
-#define I2C_W 0
-
-
 
 /* A note on design: the async generators / protothreads / state
    machines (sm.h) rely on computed goto for suspension, and cannot be
@@ -139,7 +128,7 @@ struct i2c_recv_byte_state {
     struct i2c_port *port;
     uint32_t timeout;
     int8_t clock;
-    uint8_t val;
+    uint8_t byte;
     uint8_t nack;
     uint8_t bitval;
 };
@@ -221,7 +210,7 @@ static inline void i2c_transmit_init(
         for(s->i = 0; s->i < (slice)->len; s->i++) {                    \
             int nack = s->i >= (slice)->len - 1;                        \
             SM_SUB_CATCH(s, i2c_recv_byte, s->port, nack);              \
-            (slice)->buf[s->i] = s->sub.i2c_recv_byte.val;              \
+            (slice)->buf[s->i] = s->sub.i2c_recv_byte.byte;             \
         }                                                               \
     }
 

@@ -132,7 +132,7 @@ int recv_byte(struct i2c_port *bus, int nack) {
     struct i2c_recv_byte_state s;
     i2c_recv_byte_init(&s, bus, nack);
     while(SM_WAITING == i2c_recv_byte_tick(&s));
-    return s.val;
+    return s.byte;
 }
 
 void i2c_start(struct i2c_port *bus) {
