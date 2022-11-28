@@ -139,6 +139,18 @@ static inline int  i2c_read_scl(struct i2c_port *p);
         I2C_RECV_BIT(s, s->nack);                       \
     }
 
+#define I2C_RECV_BYTE(s) {                              \
+        for (s->clock=7; s->clock>=0; s->clock--) {     \
+            I2C_RECV_BIT(s, s->bitval);                 \
+            s->val |= s->bitval << s->clock;            \
+        }                                               \
+        I2C_SPACING_NDELAY(s, 2);                       \
+        I2C_SEND_BIT(s, s->nack);                       \
+    }
+
+
+/* Byte level code. */
+
 
 
 

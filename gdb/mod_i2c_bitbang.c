@@ -150,14 +150,7 @@ void i2c_recv_byte_init(struct i2c_recv_byte_state *s, struct i2c_port *port, ui
 }
 sm_status_t i2c_recv_byte_tick(struct i2c_recv_byte_state *s) {
     SM_RESUME(s);
-    for (s->clock=7; s->clock>=0; s->clock--) {
-        I2C_RECV_BIT(s, s->bitval);
-        s->val |= s->bitval << s->clock;
-    }
-#if I2C_DEBUG_SPACING
-    I2C_NDELAY(s, 2);
-#endif
-    I2C_SEND_BIT(s, s->nack);
+    I2C_RECV_BYTE(s);
     SM_HALT(s);
 }
 
