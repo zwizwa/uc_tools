@@ -2,15 +2,8 @@
 #define MOD_I2C_BITBANG
 
 /* I2C Master bitbang implementation. */
-#include "mod_i2c_macros.c"
+#include "mod_i2c_bitbang_macros.c"
 
-
-/* These are expected to be available in the C namespace. */
-struct i2c_port;
-static inline void i2c_write_sda(struct i2c_port *p, int v);
-static inline void i2c_write_scl(struct i2c_port *p, int v);
-static inline int  i2c_read_sda(struct i2c_port *p);
-static inline int  i2c_read_scl(struct i2c_port *p);
 
 #include "sm.h"
 #include "sm_def.h"
@@ -131,15 +124,12 @@ void i2c_send_byte_init(struct i2c_send_byte_state *s, struct i2c_port *port, ui
     s->port = port;
     s->byte = byte;
 }
+
+
+
 sm_status_t i2c_send_byte_tick(struct i2c_send_byte_state *s) {
     SM_RESUME(s);
-    for (s->clock=7; s->clock>=0; s->clock--) {
-        I2C_SEND_BIT(s, (s->byte >> s->clock)&1);
-    }
-#if I2C_DEBUG_SPACING
-    I2C_NDELAY(s, 2);
-#endif
-    I2C_RECV_BIT(s, s->nack);
+    I2C_SEND_BYTE(s);
     /* Returns 0 on correct ack, 1 on nack. */
     SM_HALT_STATUS(s, s->nack);
 }

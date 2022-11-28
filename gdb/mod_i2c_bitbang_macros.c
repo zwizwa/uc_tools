@@ -26,13 +26,20 @@
 
 */
 
+/* These are expected to be available in the C namespace. */
+struct i2c_port;
+static inline void i2c_write_sda(struct i2c_port *p, int v);
+static inline void i2c_write_scl(struct i2c_port *p, int v);
+static inline int  i2c_read_sda(struct i2c_port *p);
+static inline int  i2c_read_scl(struct i2c_port *p);
+
+
+
 #ifndef I2C_STRETCH
 #define I2C_STRETCH 1
 #endif
 
 #define I2C_DEBUG_SPACING 0
-
-
 
 #define I2C_WAIT_STRETCH(s) {                                           \
         /* PRE: SCL released */                                         \
@@ -50,6 +57,14 @@
     }
 #define I2C_NDELAY(s,n_init) \
     {int n = n_init; while(n--) I2C_DELAY(s); }
+
+#if I2C_DEBUG_SPACING
+#define I2C_SPACING_NDELAY(s, n) I2C_NDELAY(s, n);
+#else
+#define I2C_SPACING_NDELAY(s, n)
+#endif
+
+
 
 
 /* FIXME: The deblock warning events should be logged or at least
@@ -112,6 +127,18 @@
         i2c_write_sda(s->port,1);  I2C_DELAY(s);          \
         /* POST: SDA=1, SCL=1  (unless held by slave) */  \
 }
+
+
+
+/* Returns 0 on correct ack, 1 on nack. */
+#define I2C_SEND_BYTE(s) {                              \
+        for (s->clock=7; s->clock>=0; s->clock--) {     \
+            I2C_SEND_BIT(s, (s->byte >> s->clock)&1);   \
+        }                                               \
+        I2C_SPACING_NDELAY(s, 2);                       \
+        I2C_RECV_BIT(s, s->nack);                       \
+    }
+
 
 
 
