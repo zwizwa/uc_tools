@@ -163,6 +163,25 @@ static inline int  i2c_read_scl(struct i2c_port *p);
 
 /* Byte level code. */
 
+/* Transfer to/from s->slice. */
+#define I2C_SEND_BYTES(s,_slice)                                        \
+    for(s->i = 0; s->i < (_slice)->len; s->i++) {                       \
+        s->byte = (_slice)->buf[s->i];                                  \
+        I2C_SEND_BYTE(s);                                               \
+        if (s->nack) { goto nack; }                                     \
+    }
+#define I2C_RECV_BYTES(s,_slice)                                        \
+    for(s->i = 0; s->i < (_slice)->len; s->i++) {                       \
+        s->nack = s->i >= (_slice)->len - 1;                            \
+        I2C_RECV_BYTE(s);                                               \
+        (_slice)->buf[s->i] = s->byte;                                  \
+    }
+
+/* Receive/transmit goes on top of this, but is probably best
+   hard-coded against the top level state machine implementation.
+   See Nano app */
+
+
 
 
 
