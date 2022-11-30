@@ -1,7 +1,7 @@
 /* Config. */
 #define EMU
 #define I2C_HALF_PERIOD_TICKS 1
-#define LOG_I2C LOG
+#define I2C_LOG LOG
 
 #include "cycle_counter.h"
 #include <stdint.h>
@@ -35,32 +35,6 @@ void cycle_counter_next(void) {
 
 
 
-/* Note that simulating the wire-and requires some effort.
-
-   We need to keep track of the output state of each of the I2C ports,
-   and combine the values on every read. */
-
-struct i2c_port {
-    uint8_t bits;
-};
-struct i2c_ports {
-    struct i2c_port m, s;
-} i2c_ports;
-void i2c_ports_init(struct i2c_ports *p) {
-    // Both high impedance.
-    p->m.bits = 0b11;
-    p->s.bits = 0b11;
-}
-
-int i2c_read_bus(void) {
-    return i2c_ports.m.bits & i2c_ports.s.bits;
-}
-void i2c_write_port(struct i2c_port *port, uint8_t mask, int bitval) {
-    port->bits &= ~mask;
-    if (bitval) port->bits |= mask;
-}
-
-
 /* Tracker / slave. */
 #include "gdb/mod_i2c_track.c"
 
@@ -68,18 +42,9 @@ void i2c_write_port(struct i2c_port *port, uint8_t mask, int bitval) {
 #include "gdb/mod_i2c_bitbang.c"
 #include "gdb/mod_i2c_info.c"
 
-static inline int i2c_read_sda(struct i2c_port *s) {
-    return !!(i2c_read_bus() & I2C_TRACK_SDA);
-}
-static inline int i2c_read_scl(struct i2c_port *s) {
-    return !!(i2c_read_bus() & I2C_TRACK_SCL);
-}
-static inline void i2c_write_sda(struct i2c_port *s, int bitval) {
-    i2c_write_port(s, I2C_TRACK_SDA, bitval);
-}
-static inline void i2c_write_scl(struct i2c_port *s, int bitval) {
-    i2c_write_port(s, I2C_TRACK_SCL, bitval);
-}
+/* I2C bus with 2 ports. */
+#include "mod_test_i2c_ms.c"
+
 
 
 
@@ -95,11 +60,12 @@ static inline void i2c_write_scl(struct i2c_port *s, int bitval) {
 struct i2c_track i2c_track = {};
 struct i2c_info  i2c_info = {};
 
-int main(void) {
+void test_v1(void) {
+
     i2c_ports_init(&i2c_ports);
     i2c_track_init(&i2c_track, &i2c_ports.s);
     LOG("test: %s\n", __FILE__);
-    //LOG_I2C("t: C D\nt: ---\n");
+    //I2C_LOG("t: C D\nt: ---\n");
     info_byte_count = 0xff;
 
     for (int i=0; i<2; i++) {
@@ -107,7 +73,7 @@ int main(void) {
         for(;;) {
             sm_status_t status1 = i2c_info_tick(&i2c_info);
             i2c_track.bus = i2c_read_bus();
-            LOG_I2C("t: %d %d\n",
+            I2C_LOG("t: %d %d\n",
                     i2c_read_scl(&i2c_ports.m),
                     i2c_read_sda(&i2c_ports.m));
             sm_status_t status2 = i2c_track_tick(&i2c_track);
@@ -119,5 +85,17 @@ int main(void) {
             cycle_counter_next();
         }
     }
-    return 0;
+}
+
+/* FIXME: The v1 implementation uses undefined behavior in the macros
+   (can't mix statement expressions and computed goto).  There is a v2
+   re-implementation which is just a collection of macros and only
+   used in proprietary app.  Make a test that emulates an eeprom. */
+void test_v2(void) {
+}
+
+
+int main(void) {
+    test_v1();
+    test_v2();
 }

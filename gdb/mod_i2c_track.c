@@ -3,13 +3,14 @@
 
 /* I2C tracker / slave
 
-   This needs to respond immediately so is run from interrupt.  We use
-   the EXTI mechanism, and implement the state machine in sm_cond.h
-   conditional style, which means it will always always evaluate the
-   state of the pins and will not rely on the information provided by
-   the interrupt mechanism.  I.e. the state machine is essentially
-   just polling mode, and the events are used to poll on _possible_
-   state change.
+   This needs to respond immediately so it should probably run from
+   interrupt, e.g. the EXTI mechanism.
+
+   The state machine is implemented in sm_cond.h conditional style,
+   which means it will always always evaluate the state of the pins
+   and will not rely on events passed in by the interrupt mechanism.
+   I.e. the state machine is essentially just polling mode, and the
+   events are used to poll on _possible_ state change.
 */
 
 #include "sm.h"
@@ -121,7 +122,7 @@ uint32_t i2c_track_tick(struct i2c_track *s) {
                         // if the address matches.
                         uint16_t receive = s->sreg & 1;
                         uint16_t addr    = (s->sreg >> 1) & 0x7f;
-                        I2C_LOG("addr = 0x%02x\n", addr);
+                        I2C_LOG("s: addr = 0x%02x\n", addr);
                         if (0x10 == addr) { // FIXME
                             i2c_write_sda(s->i2c_port,0); // ack
                         }
