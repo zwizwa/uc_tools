@@ -67,7 +67,7 @@ struct i2c_start_state {
 };
 void i2c_start_init(struct i2c_start_state *s, struct i2c_port *port) {
     s->next = 0;
-    s->port = 0;
+    s->port = port;
 }
 sm_status_t i2c_start_tick(struct i2c_start_state *s) {
     SM_RESUME(s);

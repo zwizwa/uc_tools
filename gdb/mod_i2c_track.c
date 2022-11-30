@@ -23,6 +23,12 @@
 
 // 3.0 Abstract machine
 
+struct i2c_port;
+static inline void i2c_write_sda(struct i2c_port *p, int v);
+static inline void i2c_write_scl(struct i2c_port *p, int v);
+static inline int  i2c_read_sda(struct i2c_port *p);
+static inline int  i2c_read_scl(struct i2c_port *p);
+
 #define I2C_TRACK_SCL (1<<1)
 #define I2C_TRACK_SDA (1<<0)
 

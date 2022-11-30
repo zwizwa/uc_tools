@@ -40,48 +40,45 @@ void cycle_counter_next(void) {
    We need to keep track of the output state of each of the I2C ports,
    and combine the values on every read. */
 
-struct i2c_ports {
-    uint8_t m, s;
-} i2c_ports;
 struct i2c_port {
+    uint8_t bits;
 };
+struct i2c_ports {
+    struct i2c_port m, s;
+} i2c_ports;
 void i2c_ports_init(struct i2c_ports *p) {
     // Both high impedance.
-    p->m = 0b11;
-    p->s = 0b11;
+    p->m.bits = 0b11;
+    p->s.bits = 0b11;
 }
 
 int i2c_read_bus(void) {
-    return i2c_ports.m & i2c_ports.s;
+    return i2c_ports.m.bits & i2c_ports.s.bits;
 }
-void i2c_write_port(uint8_t *port, uint8_t mask, int bitval) {
-    *port &= ~mask;
-    if (bitval) *port |= mask;
+void i2c_write_port(struct i2c_port *port, uint8_t mask, int bitval) {
+    port->bits &= ~mask;
+    if (bitval) port->bits |= mask;
 }
-int i2c_read_sda(struct i2c_port *);
-int i2c_read_scl(struct i2c_port *);
 
 
 /* Tracker / slave. */
-#define i2c_write_sda(port,bitval)  i2c_write_port(&i2c_ports.s, I2C_TRACK_SDA, bitval)
-#define i2c_write_scl(port,bitval)  i2c_write_port(&i2c_ports.s, I2C_TRACK_SCL, bitval)
 #include "gdb/mod_i2c_track.c"
-#undef  i2c_write_sda
-#undef  i2c_write_scl
 
 /* Master impl + info packet write. */
-#define i2c_write_sda(port,bitval)  i2c_write_port(&i2c_ports.m, I2C_TRACK_SDA, bitval)
-#define i2c_write_scl(port,bitval)  i2c_write_port(&i2c_ports.m, I2C_TRACK_SCL, bitval)
 #include "gdb/mod_i2c_bitbang.c"
 #include "gdb/mod_i2c_info.c"
-#undef  i2c_write_sda
-#undef  i2c_write_scl
 
-int i2c_read_sda(struct i2c_port *s) {
+static inline int i2c_read_sda(struct i2c_port *s) {
     return !!(i2c_read_bus() & I2C_TRACK_SDA);
 }
-int i2c_read_scl(struct i2c_port *s) {
+static inline int i2c_read_scl(struct i2c_port *s) {
     return !!(i2c_read_bus() & I2C_TRACK_SCL);
+}
+static inline void i2c_write_sda(struct i2c_port *s, int bitval) {
+    i2c_write_port(s, I2C_TRACK_SDA, bitval);
+}
+static inline void i2c_write_scl(struct i2c_port *s, int bitval) {
+    i2c_write_port(s, I2C_TRACK_SCL, bitval);
 }
 
 
@@ -95,23 +92,24 @@ int i2c_read_scl(struct i2c_port *s) {
 
 #define LOG_ASSERT(cond) do { LOG(#cond "\n"); ASSERT(cond); } while(0)
 
-int main(void) {
-    struct i2c_track i2c_track = {};
-    struct i2c_info  i2c_info = {};
-    struct i2c_port *bus =  NULL;  // DUMMY, we use global bus
+struct i2c_track i2c_track = {};
+struct i2c_info  i2c_info = {};
 
+int main(void) {
     i2c_ports_init(&i2c_ports);
-    i2c_track_init(&i2c_track, bus);
+    i2c_track_init(&i2c_track, &i2c_ports.s);
     LOG("test: %s\n", __FILE__);
     //LOG_I2C("t: C D\nt: ---\n");
     info_byte_count = 0xff;
 
     for (int i=0; i<2; i++) {
-        i2c_info_init(&i2c_info, bus, 10);
+        i2c_info_init(&i2c_info, &i2c_ports.m, 10);
         for(;;) {
             sm_status_t status1 = i2c_info_tick(&i2c_info);
             i2c_track.bus = i2c_read_bus();
-            LOG_I2C("t: %d %d\n", i2c_read_scl(bus), i2c_read_sda(bus));
+            LOG_I2C("t: %d %d\n",
+                    i2c_read_scl(&i2c_ports.m),
+                    i2c_read_sda(&i2c_ports.m));
             sm_status_t status2 = i2c_track_tick(&i2c_track);
             ASSERT(SM_WAITING == status2);
 
