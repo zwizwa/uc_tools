@@ -84,7 +84,7 @@ void test_v1(void) {
             I2C_LOG("t: %d %d\n",
                     i2c_read_scl(&i2c_ports.m),
                     i2c_read_sda(&i2c_ports.m));
-            sm_status_t status2 = i2c_track_tick(&i2c_track);
+            sm_status_t status2 = i2c_track_poll(&i2c_track);
             ASSERT(SM_WAITING == status2);
 
             if (SM_WAITING != status1) break;

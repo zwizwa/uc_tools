@@ -50,7 +50,7 @@ void exti9_5_isr(void) {
     hw_exti_do_ack(8);
     hw_exti_do_ack(9);
     isr_count++;
-    i2c_track_tick(&i2c_track);
+    i2c_track_poll(&i2c_track);
 }
 // This extends hw_exti_arm() for multi-event setup.
 static inline void hw_exti_do_arm(uint32_t gpio, uint32_t pin, uint32_t trigger) {

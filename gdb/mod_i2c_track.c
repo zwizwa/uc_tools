@@ -88,7 +88,7 @@ void i2c_track_init(struct i2c_track *s, struct i2c_port *i2c_port) {
    - we transmit during master data read
 */
 
-uint32_t i2c_track_tick(struct i2c_track *s) {
+uint32_t i2c_track_poll(struct i2c_track *s) {
     s->bus_bits =
         (i2c_read_sda(s->i2c_port) * I2C_TRACK_SDA) +
         (i2c_read_scl(s->i2c_port) * I2C_TRACK_SCL);
