@@ -80,6 +80,13 @@ static inline int i2c_read_sda(struct i2c_port *s) {
 static inline int i2c_read_scl(struct i2c_port *s) {
     return hw_gpio_read(I2C_GPIO, I2C_PIN_SCL);
 }
+static inline uint32_t i2c_port_future_time(struct i2c_port *s, uint32_t ticks) {
+    return cycle_counter_future_time(ticks);
+}
+static inline uint32_t i2c_port_timeout_expired(struct i2c_port *s, uint32_t timeout) {
+    return cycle_counter_expired(timeout);
+}
+
 
 #endif
 

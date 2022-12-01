@@ -22,7 +22,7 @@ int info_read(uint8_t *buf, uint32_t len) {
 #define INFOF_H
 
 uint32_t cycle_counter_;
-uint32_t cycle_counter() {
+uint32_t cycle_counter(void) {
     return cycle_counter_;
 }
 /* Note that cycle_counter_expired() uses strict comparison.  See
@@ -32,10 +32,19 @@ uint32_t cycle_counter() {
 void cycle_counter_next(void) {
     cycle_counter_ += 1 + I2C_HALF_PERIOD_TICKS;
 }
+struct i2c_port;
+static inline uint32_t i2c_port_future_time(struct i2c_port *s, uint32_t ticks) {
+    return cycle_counter_future_time(ticks);
+}
+static inline uint32_t i2c_port_timeout_expired(struct i2c_port *s, uint32_t timeout) {
+    return cycle_counter_expired(timeout);
+}
+
 
 
 
 /* Tracker / slave. */
+#define I2C_TRACK_LOG(s, ...) LOG(__VA_ARGS__)
 #include "gdb/mod_i2c_track.c"
 
 /* Master impl + info packet write. */
@@ -72,7 +81,6 @@ void test_v1(void) {
         i2c_info_init(&i2c_info, &i2c_ports.m, 10);
         for(;;) {
             sm_status_t status1 = i2c_info_tick(&i2c_info);
-            i2c_track.bus = i2c_read_bus();
             I2C_LOG("t: %d %d\n",
                     i2c_read_scl(&i2c_ports.m),
                     i2c_read_sda(&i2c_ports.m));

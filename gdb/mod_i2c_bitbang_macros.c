@@ -33,6 +33,17 @@ static inline void i2c_write_scl(struct i2c_port *p, int v);
 static inline int  i2c_read_sda(struct i2c_port *p);
 static inline int  i2c_read_scl(struct i2c_port *p);
 
+/* Timing needs to be kept abstract.
+   See one of the many implementations.
+
+   This is parameterized by i2c_port because these macros do not know
+   the type of 's'.  Typically its straightforward enough to implement
+   the backreference from port to system.  And on STM this is just a
+   global entity (ARM cycle counter).
+*/
+static inline uint32_t i2c_port_future_time(struct i2c_port *s, uint32_t ticks);
+static inline uint32_t i2c_port_timeout_expired(struct i2c_port *s, uint32_t timeout);
+
 
 /* Set default clock rate to 100kHz maximum.  If this runs in a main
    polling loop, the effective clock rate is possibly lower.  E.g. the
@@ -63,10 +74,11 @@ static inline int  i2c_read_scl(struct i2c_port *p);
     }
 
 
-#define I2C_DELAY(s) {                                                  \
-        s->timeout = cycle_counter_future_time(I2C_HALF_PERIOD_TICKS);  \
-        I2C_WAIT(s, cycle_counter_expired(s->timeout));                  \
+#define I2C_DELAY(s) {                                                 \
+        s->timeout = i2c_port_future_time(s->port, I2C_HALF_PERIOD_TICKS);   \
+        I2C_WAIT(s, i2c_port_timeout_expired(s->port, s->timeout));             \
     }
+
 #define I2C_NDELAY(s,n_init) \
     {int n = n_init; while(n--) I2C_DELAY(s); }
 

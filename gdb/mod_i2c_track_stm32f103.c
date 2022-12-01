@@ -1,6 +1,7 @@
 #ifndef MOD_I2C_TRACK_STM32F103
 #define MOD_I2C_TRACK_STM32F103
 
+#define I2C_TRACK_LOG(s,...) infof(__VA_ARGS__)
 #include "mod_i2c_track.c"
 
 
@@ -44,13 +45,11 @@ static inline void hw_exti_do_ack(uint32_t pin) {
 }
 static uint32_t isr_count;
 void exti9_5_isr(void) {
-    void *s = NULL;
     /* We just need to be woken up on change, so it's ok if this
        handles a simultaneous change on 8 and 9.  */
     hw_exti_do_ack(8);
     hw_exti_do_ack(9);
     isr_count++;
-    i2c_track.bus = (i2c_read_scl(s) << 1) | i2c_read_sda(s);
     i2c_track_tick(&i2c_track);
 }
 // This extends hw_exti_arm() for multi-event setup.

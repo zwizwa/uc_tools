@@ -48,27 +48,7 @@ void enable_cycle_counter(void);
 
 #endif
 
-
-
-/* Generic routines. */
-static inline int32_t cycle_counter_diff(uint32_t expiration_time, uint32_t cc_cur) {
-    /* Mixing unsigned and signed ints is tricky.  To make it more
-       explicit, split the two operations that are used: */
-
-    /* 1. Unsigned overflow is defined behavior in C.  It does what
-       one would expect: wrap around.  */
-    uint32_t udiff = expiration_time - cc_cur;
-
-    /* 2. Converting unsigned to signed is defined as well. */
-    int32_t idiff = udiff;
-
-    /* So this number is negative if cc_cur has passed expiration time
-       as long as it doesn't overflow.  For a 72MHz counter that is
-       about half a minute. */
-    return idiff;
-}
-
-
+#include "cycle_counter_generic.h"
 
 static inline int32_t cycle_counter_remaining(uint32_t expiration_time) {
     return cycle_counter_diff(expiration_time, cycle_counter());
@@ -82,7 +62,7 @@ static inline int32_t cycle_counter_expired(uint32_t expiration_time) {
     return cycle_counter_remaining(expiration_time) < 0;
 }
 static inline uint32_t cycle_counter_future_time(uint32_t udiff) {
-    return cycle_counter() + udiff;
+    return cycle_counter_future(cycle_counter(), udiff);
 }
 
 #define CYCLE_COUNTER_EXPIRED(state) \
