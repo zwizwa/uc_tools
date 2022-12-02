@@ -4,7 +4,7 @@
 
 */
 
-#define I2C_LOG LOG
+#define I2C_LOG(port,...) LOG(__VA_ARGS__)
 
 #define PRODUCT "i2c_test"
 #include "mod_lab.c"

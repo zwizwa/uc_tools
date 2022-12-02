@@ -1,7 +1,7 @@
 /* Config. */
 #define EMU
 #define I2C_HALF_PERIOD_TICKS 1
-#define I2C_LOG LOG
+#define I2C_LOG(port,...) LOG(__VA_ARGS__)
 
 #include "cycle_counter.h"
 #include <stdint.h>
@@ -81,7 +81,8 @@ void test_v1(void) {
         i2c_info_init(&i2c_info, &i2c_ports.m, 10);
         for(;;) {
             sm_status_t status1 = i2c_info_tick(&i2c_info);
-            I2C_LOG("t: %d %d\n",
+            I2C_LOG(&i2c_ports.m,
+                    "t: %d %d\n",
                     i2c_read_scl(&i2c_ports.m),
                     i2c_read_sda(&i2c_ports.m));
             sm_status_t status2 = i2c_track_poll(&i2c_track);

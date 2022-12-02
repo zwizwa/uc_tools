@@ -88,8 +88,9 @@ static inline uint32_t i2c_port_timeout_expired(struct i2c_port *s, uint32_t tim
 #define I2C_SPACING_NDELAY(s, n)
 #endif
 
-
-
+#ifndef I2C_LOG
+#define I2C_LOG(...)
+#endif
 
 /* FIXME: The deblock warning events should be logged or at least
    counted.  At the moment it is not clear how to integrate warnings
@@ -106,7 +107,7 @@ static inline uint32_t i2c_port_timeout_expired(struct i2c_port *s, uint32_t tim
             i2c_write_scl(s->port,1); I2C_DELAY(s);  /* no stretch */   \
         }                                                               \
         if (s->clock) {                                                 \
-            I2C_LOG("m: WARNING: deblock clocks=%d\n", s->clock);       \
+            I2C_LOG(s->port, "m: WARNING: deblock clocks=%d\n", s->clock); \
             /* LOG(" (%d)", s->clock); */                               \
         }                                                               \
     }
@@ -164,6 +165,7 @@ static inline uint32_t i2c_port_timeout_expired(struct i2c_port *s, uint32_t tim
     }
 
 #define I2C_RECV_BYTE(s) {                              \
+        s->byte = 0;                                    \
         for (s->clock=7; s->clock>=0; s->clock--) {     \
             I2C_RECV_BIT(s, s->bitval);                 \
             s->byte |= s->bitval << s->clock;           \
@@ -179,6 +181,7 @@ static inline uint32_t i2c_port_timeout_expired(struct i2c_port *s, uint32_t tim
 #define I2C_SEND_BYTES(s,_slice)                                        \
     for(s->i = 0; s->i < (_slice)->len; s->i++) {                       \
         s->byte = (_slice)->buf[s->i];                                  \
+        if (0) { I2C_LOG(s->port, "i2c send byte %02x\n", s->byte); }   \
         I2C_SEND_BYTE(s);                                               \
         if (s->nack) { goto nack; }                                     \
     }
@@ -186,6 +189,7 @@ static inline uint32_t i2c_port_timeout_expired(struct i2c_port *s, uint32_t tim
     for(s->i = 0; s->i < (_slice)->len; s->i++) {                       \
         s->nack = s->i >= (_slice)->len - 1;                            \
         I2C_RECV_BYTE(s);                                               \
+        if (0) { I2C_LOG(s->port, "i2c recv byte %02x\n", s->byte); }   \
         (_slice)->buf[s->i] = s->byte;                                  \
     }
 
