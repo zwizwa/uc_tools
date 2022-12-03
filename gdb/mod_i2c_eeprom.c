@@ -190,7 +190,7 @@ uint32_t i2c_eeprom_poll(struct i2c_eeprom *s) {
             uint16_t data = (s->sreg >> 1) & 0xFF;
             uint16_t ack  = s->sreg & 1;
             (void)ack;
-            I2C_EEPROM_LOG(s, "s: 0x%02x %d\n", data, ack);
+            I2C_EEPROM_LOG(s, "s: 0x%02x ack=%d byte=%d\n", data, ack, s->byte);
             if (s->byte > 0 && (EEPROM_ADDR == s->cur_addr)) {
                 if (s->receive) {
                     // We are transmitting
