@@ -73,7 +73,6 @@ void test_v1(void) {
 
     i2c_ports_init(&i2c_ports);
     i2c_track_init(&i2c_track, &i2c_ports.s);
-    LOG("test: %s\n", __FILE__);
     //I2C_LOG("t: C D\nt: ---\n");
     info_byte_count = 0xff;
 
@@ -81,10 +80,12 @@ void test_v1(void) {
         i2c_info_init(&i2c_info, &i2c_ports.m, 10);
         for(;;) {
             sm_status_t status1 = i2c_info_tick(&i2c_info);
-            I2C_LOG(&i2c_ports.m,
-                    "t: %d %d\n",
-                    i2c_read_scl(&i2c_ports.m),
-                    i2c_read_sda(&i2c_ports.m));
+            if (0) {
+                I2C_LOG(&i2c_ports.m,
+                        "t: %d %d\n",
+                        i2c_read_scl(&i2c_ports.m),
+                        i2c_read_sda(&i2c_ports.m));
+            }
             sm_status_t status2 = i2c_track_poll(&i2c_track);
             ASSERT(SM_WAITING == status2);
 
@@ -96,15 +97,19 @@ void test_v1(void) {
     }
 }
 
-/* FIXME: The v1 implementation uses undefined behavior in the macros
-   (can't mix statement expressions and computed goto).  There is a v2
-   re-implementation which is just a collection of macros and only
-   used in proprietary app.  Make a test that emulates an eeprom. */
+#define I2C_EEPROM_LOG(s, ...) LOG(__VA_ARGS__)
+#include "gdb/mod_i2c_eeprom.c"
+
+struct i2c_eeprom i2c_eeprom = {};
+
 void test_v2(void) {
+    // FIXME: Test is in closed app code
 }
 
 
 int main(void) {
+    LOG("test: %s\n", __FILE__);
+
     test_v1();
     test_v2();
 }
