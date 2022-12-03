@@ -153,7 +153,7 @@ uint32_t i2c_eeprom_poll(struct i2c_eeprom *s) {
                     }
                 }
                 else { // Data bit
-                    if (s->receive) {
+                    if (s->receive && (EEPROM_ADDR == s->cur_addr)) {
                         // Assert line when master is receiving
                         int data_bit = (s->eeprom[s->offset] >> (7 - s->bit)) & 1;
                         i2c_write_sda(s->i2c_port,data_bit);
@@ -191,7 +191,7 @@ uint32_t i2c_eeprom_poll(struct i2c_eeprom *s) {
             uint16_t ack  = s->sreg & 1;
             (void)ack;
             I2C_EEPROM_LOG(s, "s: 0x%02x %d\n", data, ack);
-            if (s->byte > 0) {
+            if (s->byte > 0 && (EEPROM_ADDR == s->cur_addr)) {
                 if (s->receive) {
                     // We are transmitting
                     s->offset++;
