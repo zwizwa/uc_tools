@@ -24,6 +24,7 @@
 #include "sm.h"
 #include "sm_def.h"
 
+#define I2C_TICKS_PER_US 72
 #include "mod_i2c_bitbang.c"
 #include "mod_i2c_track_stm32f103.c"
 

@@ -1,5 +1,6 @@
 /* Config. */
 #define EMU
+#define I2C_TICKS_PER_US 72
 #define I2C_HALF_PERIOD_TICKS 1
 #define I2C_LOG(port,...) LOG(__VA_ARGS__)
 

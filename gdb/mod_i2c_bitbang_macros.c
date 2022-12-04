@@ -44,12 +44,16 @@ static inline int  i2c_read_scl(struct i2c_port *p);
 static inline uint32_t i2c_port_future_time(struct i2c_port *s, uint32_t ticks);
 static inline uint32_t i2c_port_timeout_expired(struct i2c_port *s, uint32_t timeout);
 
+#ifndef I2C_TICKS_PER_US
+#error need I2C_TICKS_PER_US
+// #define I2C_TICKS_PER_US 72
+#endif
 
 /* Set default clock rate to 100kHz maximum.  If this runs in a main
    polling loop, the effective clock rate is possibly lower.  E.g. the
    app that drives this results in 10kHz effective frequency. */
 #ifndef I2C_HALF_PERIOD_TICKS
-#define I2C_HALF_PERIOD_TICKS (5 * 72)
+#define I2C_HALF_PERIOD_TICKS (5 * I2C_TICKS_PER_US)
 #endif
 
 #define I2C_R 1
@@ -74,10 +78,14 @@ static inline uint32_t i2c_port_timeout_expired(struct i2c_port *s, uint32_t tim
     }
 
 
-#define I2C_DELAY(s) {                                                 \
-        s->timeout = i2c_port_future_time(s->port, I2C_HALF_PERIOD_TICKS);   \
-        I2C_WAIT(s, i2c_port_timeout_expired(s->port, s->timeout));             \
+#define I2C_SLEEP_TICKS(s, ticks) {                                     \
+        s->timeout = i2c_port_future_time(s->port, ticks);              \
+        I2C_WAIT(s, i2c_port_timeout_expired(s->port, s->timeout));     \
     }
+
+#define I2C_DELAY(s) \
+    I2C_SLEEP_TICKS(s, I2C_HALF_PERIOD_TICKS)
+
 
 #define I2C_NDELAY(s,n_init) \
     {int n = n_init; while(n--) I2C_DELAY(s); }
