@@ -77,6 +77,10 @@ void tether_cmd_u8(struct tether *s, uint8_t opc, uint8_t val) {
     TETHER_WRITE(s, 2, opc, val);
     tether_read(s);
 }
+void tether_cmd(struct tether *s, uint8_t opc) {
+    TETHER_WRITE(s, 1, opc);
+    tether_read(s);
+}
 void tether_cmd_buf(struct tether *s, uint8_t opc, const uint8_t *buf, uintptr_t size) {
     ASSERT(size <= 254);
     tether_clear(s);
@@ -86,7 +90,22 @@ void tether_cmd_buf(struct tether *s, uint8_t opc, const uint8_t *buf, uintptr_t
     tether_write_flush(s);
     tether_read(s);
 }
-void tether_ack(struct tether *s) { TETHER_WRITE(s, 1, ACK); tether_read(s); }
+void tether_ack(struct tether *s) {
+    tether_cmd(s, ACK);
+}
+void tether_exec(struct tether *s, uint32_t addr) {
+    /* Load code register.  FIXME: We're only doing ARM Thumb, so make
+       sure the thumb bit is set in the function pointer.  The monitor
+       does not do that. */
+    addr |= 1;
+    tether_cmd_u32(s, LDC, addr);
+    /* Jump to subroutine. */
+    tether_cmd(s, JSR);
+}
+void tether_jsr(struct tether *s) {
+    tether_cmd(s, JSR);
+}
+
 
 void tether_read_mem(struct tether *s, uint8_t *buf,
                       uint32_t address, uint32_t nb_bytes,
@@ -164,7 +183,7 @@ int tether_verify(struct tether *s, const uint8_t *buf,
     uint8_t buf_verify[in_len];
     tether_read_mem(s, buf_verify, address, in_len, LDx, NxL);
     return 0 == memcmp(buf, buf_verify, in_len);
-}
+} 
 int tether_verify_flash(struct tether *s, const uint8_t *buf,
                         uint32_t address, uint32_t in_len) {
     return tether_verify(s, buf, address, in_len, LDF, NFL);
