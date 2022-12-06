@@ -10,15 +10,14 @@ MEMORY /* STM32F103x8 */
 	ram (rwx) : ORIGIN = 0x20002000, LENGTH = 0x3000 /* 20kB total */
 }
 
-EXTERN (main)
-
 /* Define sections. */
 SECTIONS
 {
 	.text : {
 		_stext = .;
+                KEEP (*(.run))     /* Startup code goes first. */
 		*(.text*)          /* Program code */
-                KEEP (*(.keep))    /* Test code */
+                KEEP (*(.keep))    /* Code that might not be accessible */
 		. = ALIGN(4);
 		*(.rodata*)        /* Read-only data */
 		. = ALIGN(4);
