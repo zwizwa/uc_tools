@@ -24,10 +24,26 @@ struct run_3if {
     uint8_t *ds;
 };
 
+#include "hw_stm32f103.h"
+
+// See lab_board.c
+#define RELAY_A GPIOA,3
+#define RELAY_B GPIOA,4
+#define RELAY_C GPIOA,5
+#define RELAY_D GPIOA,6
+
 /* Goes into a separate section so linker script can place it into a
    predictable location, e.g. start of RAM segment. */
 __attribute__((section(".run")))
 int run(struct run_3if *s) {
-    *s->ds++ = 123;
+    // Toggle relay = config gpio output, set, delay, unset
+    hw_gpio_config(RELAY_A, HW_GPIO_CONFIG_OUTPUT);
+    hw_gpio_config(RELAY_B, HW_GPIO_CONFIG_OUTPUT);
+
+    hw_gpio_low(RELAY_A);
+    hw_gpio_low(RELAY_B);
+    hw_busywait_us(1000000);
+    hw_gpio_high(RELAY_A);
+    hw_gpio_high(RELAY_B);
     return 0;
 }
