@@ -1,4 +1,5 @@
-#!/usr/bin/lua
+#!./lua.sh
+
 -- Tested with:
 -- LuaJIT 2.0.4 -- Copyright (C) 2005-2015 Mike Pall. http://luajit.org/
 

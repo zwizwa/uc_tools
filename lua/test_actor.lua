@@ -1,4 +1,4 @@
-#!/usr/bin/lua
+#!./lua.sh
 
 -- This tests the actor library in isolation.  It does not have any
 -- bindings to i/o events, which is what you always want in a

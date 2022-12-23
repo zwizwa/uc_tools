@@ -1,4 +1,4 @@
-#!/usr/bin/lua
+#!./lua.sh
 local uv        = require('lluv')
 local mixin     = require('lib.mixin')
 local actor     = require('lib.actor')

@@ -1,4 +1,4 @@
-#!/usr/bin/lua
+#!./lua.sh
 
 local prompt = require('prompt')
 local function log(str) io.stderr:write(str) end

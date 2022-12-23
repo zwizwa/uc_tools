@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # Stub script for do.erl
 DIR=/i/exo/uc_tools/lua
 echo "Entering directory: $DIR"

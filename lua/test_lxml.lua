@@ -1,4 +1,4 @@
-#!/usr/bin/lua
+#!./lua.sh
 local lxml = require('lib.lxml')
 
 local function t(e)

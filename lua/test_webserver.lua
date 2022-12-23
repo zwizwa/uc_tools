@@ -1,4 +1,5 @@
-#!/usr/bin/lua
+#!./lua.sh
+
 local uv        = require('lluv')
 local webserver = require('lib.webserver')
 local mixin     = require('lib.mixin')

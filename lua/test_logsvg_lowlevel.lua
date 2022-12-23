@@ -1,4 +1,4 @@
-#!/usr/bin/lua
+#!./lua.sh
 
 -- Low level test for for the logsvg module.  Mostly intended to debug
 -- robustness against bad log formatting.

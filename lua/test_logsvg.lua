@@ -1,4 +1,4 @@
-#!/usr/bin/lua
+#!./lua.sh
 
 -- Test for the logsvg module, which converts a list of time-stamped
 -- logs to an SVG with proportional time display.  For now this is

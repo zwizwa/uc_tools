@@ -1,4 +1,4 @@
-#!/usr/bin/lua
+#!./lua.sh
 
 -- Note: this was an old attempt.
 -- See test_se_match.lua and test_hoas_match.lua for better versions.

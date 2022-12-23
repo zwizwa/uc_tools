@@ -1,4 +1,5 @@
-#!/usr/bin/lua
+#!./lua.sh
+
 local elfutils = require("lib.elfutils")
 
 -- Logging.

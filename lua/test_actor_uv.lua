@@ -1,4 +1,4 @@
-#!/usr/bin/lua
+#!./lua.sh
 
 -- This tests the actor.lua library bound to the libuv i/o framework.
 -- See test_actor.lua for pure tests.
