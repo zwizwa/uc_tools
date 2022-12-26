@@ -48,7 +48,7 @@ fi
 # Proceed with rest, redirecting output, only printing tail on failure.
 LOG_OUT=$(readlink -f ./test_lure.out)
 LOG_ERR=$(readlink -f ./test_lure.err)
-lua -e "require ('lure.test').run()" >$LOG_OUT 2>$LOG_ERR
+./lua.sh -e "require ('lure.test').run()" >$LOG_OUT 2>$LOG_ERR
 ERR=$?
 if [ "$ERR" != 0 ]; then
     # tail -n 30 $LOG
@@ -68,7 +68,7 @@ set -e
 # Generate the rockspec
 VER=0.1
 ROCKSPEC=$(readlink -f ./rockspec/lure-$VER-1.rockspec)
-echo "require('lure.test').gen_rockspec('$VER')" | lua | unix2dos > $ROCKSPEC
+echo "require('lure.test').gen_rockspec('$VER')" | ./lua.sh | unix2dos > $ROCKSPEC
 
 
 # Diff the rockspec
