@@ -3,8 +3,8 @@
 // Lua5.1 wrapper for elfutils libelf/libdw.
 // apt-get install liblua5.1-0-dev libdw-dev libelf-dev
 
-// Very ad-hoc, implements minimal functionality needed for
-// instrumentation:
+// Very ad-hoc, many missing cases.  Implements minimal functionality
+// needed for instrumentation:
 
 // This was originally developed for a Lua test system that
 // orchestrates a network of target devices, and reads out state as

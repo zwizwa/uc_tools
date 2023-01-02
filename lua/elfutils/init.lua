@@ -1,6 +1,10 @@
 -- This is support code for the C module elfutils_lua51.c
 -- See comments in that file.
 
+-- Very ad-hoc, many missing cases.  Implements minimal
+-- functionality needed for instrumentation:
+
+
 -- Logging.
 local prompt
 local function log(str)
@@ -236,7 +240,9 @@ end
 function type_reader.base_type(env, type, addr)
    -- log_desc(type)
    assert(type.byte_size)
+
    -- FIXME: Assume it's an uint.
+   -- log_desc({type=type})
    return read_le_word(env, addr, type.byte_size)
 end
 
@@ -263,6 +269,22 @@ function type_reader.pointer_type(env, type, addr)
    end
 end
 
+local function maybe_bitfield_unpack(type, element_val)
+   if type.bit_size == nil then
+      assert(type.bit_offset == nil)
+      return element_val
+   else
+      assert(type.bit_offset ~= nil)
+      assert(element_val >= 0) -- FIXME: Implement signed
+      -- logf("unpack bitfield %d %d\n", type.bit_offset, type.bit_size)
+      return
+         bit.band(
+            bit.lshift(1, type.bit_size) - 1,
+            bit.rshift(element_val, type.bit_offset))
+   end
+end
+
+
 function type_reader.structure_type(env, type, addr)
    assert(type.tag == "structure_type")
    assert(type.children)
@@ -272,9 +294,16 @@ function type_reader.structure_type(env, type, addr)
       assert(member.tag == "member")
       assert(member.type)
       assert(member.name)
+
+      -- FIXME: Where should the bitfield unpack actually happen?  I
+      -- seem to find bitfield annotation only in member names
+
+
       local function reader()
          local element_addr = addr + member.data_member_location
          local element_val = read_type(env, member.type, element_addr)
+         element_val = maybe_bitfield_unpack(member, element_val)
+
          -- log(string.format("struct 0x%x %d %s\n", element_addr, member.data_member_location, member.name))
          -- The choice here is to preserve the order and have a more
          -- verbose representation, or just use an unordered Lua table.
@@ -380,6 +409,9 @@ function elfutils.array_read_elements(env, array_addr, element_type, nb_el)
    end
    return array
 end
+
+
+
 
 -- This can read both actual array_type, but also pointer_type
 -- interpreted as array, where user needs to provide nb_el.
