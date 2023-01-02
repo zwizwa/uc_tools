@@ -173,13 +173,16 @@ end
 local type_deref = {
    typedef = true,
 }
+local flat_types = {
+   base_type = true,
+   structure_type = true,
+}
 function flatten_type(type)
    if type_deref[type.tag] then
       return flatten_type(type.type)
    else
+      assert(flat_types[type.tag])
       assert(type.byte_size)
-      assert(type.tag == "base_type")
-      -- log("flat type:\n"); log_desc(type)
       return type
    end
 end
@@ -387,13 +390,20 @@ end
 
 function elfutils.array_read_elements(env, array_addr, element_type, nb_el)
    assert(array_addr)
-   -- log_desc(element_type)
-   assert(element_type.byte_size) -- FIXME: is this always defined?
+   element_type = flatten_type(element_type)
+   local element_size = element_type.byte_size
+   -- while nil == element_size do
+   --    if element_type.tag == "typedef" then
+   --       element_type = element_type.type
+   --    else
+   --       element_size = element_type.byte_size
+   --       assert(element_size)
+   --    end
+   -- end
    assert(element_type.tag)
    local tag = element_type.tag -- FIXME: this should probably be collapsed
    local array = {}
    for i=0,nb_el-1 do
-      local element_size = element_type.byte_size
       function reader()
          local element_addr = array_addr + i * element_size
          -- log(string.format("array %d 0x%x\n", i, element_addr))
