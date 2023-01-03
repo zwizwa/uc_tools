@@ -291,12 +291,18 @@ end
 function type_reader.structure_type(env, type, addr)
    assert(type.tag == "structure_type")
    assert(type.children)
-   -- log_desc(type)
+   if env.prune_struct and env.prune_struct[type.name] then
+      return '<pruned>'
+   end
    local struct = {}
    for i,member in ipairs(type.children) do
       assert(member.tag == "member")
       assert(member.type)
       assert(member.name)
+
+      --if member.name == 'buf_pool' then
+      --   log_desc({buf_pool_type_tag=member.type.tag})
+      --end
 
       -- FIXME: Where should the bitfield unpack actually happen?  I
       -- seem to find bitfield annotation only in member names
@@ -370,14 +376,13 @@ function elfutils.array_upper_bound(type)
    -- FIXME: This is likely not universal.  Works for now.
    -- FIXME: access this by type instead of index=1
    local t1 = type.children[1]
-   if t1.type and t1.type.name == "sizetype" then
+   if t1.tag == "subrange_type" then
+      assert(t1.upper_bound)
+      return t1.upper_bound
+   elseif t1.type and t1.type.name == "sizetype" then
       local upper_bound = t1.upper_bound
       assert(upper_bound)
       return upper_bound
-   elseif t1.tag == "subrange_type" then
-      -- FIXME: What is this case?  A reference to an array without
-      -- type info maybe?
-      return 0
    else
       log_desc(type)
       error("array_upper_bound_bad_type")
@@ -426,6 +431,7 @@ end
 -- This can read both actual array_type, but also pointer_type
 -- interpreted as array, where user needs to provide nb_el.
 function elfutils.read_array(env, name, nb_el)
+   -- log_desc({read_array=name, nb_el=nb_el})
    assert(env)
    assert(env.elf)
    local die = C.die_find_variable(env.elf, name)
@@ -435,7 +441,7 @@ function elfutils.read_array(env, name, nb_el)
    if node.type.tag == "array_type" then
       -- Plain array
       array_addr = node.location
-      -- log_desc(node)
+      -- log_desc({array_node=node})
       local upper_bound = elfutils.array_upper_bound(node.type)
       assert(upper_bound)
       if not nb_el then
