@@ -291,27 +291,22 @@ end
 function type_reader.structure_type(env, type, addr)
    assert(type.tag == "structure_type")
    assert(type.children)
-   if env.prune_struct and env.prune_struct[type.name] then
-      return '<pruned>'
-   end
    local struct = {}
    for i,member in ipairs(type.children) do
       assert(member.tag == "member")
       assert(member.type)
       assert(member.name)
 
-      --if member.name == 'buf_pool' then
-      --   log_desc({buf_pool_type_tag=member.type.tag})
-      --end
-
-      -- FIXME: Where should the bitfield unpack actually happen?  I
-      -- seem to find bitfield annotation only in member names
-
-
       local function reader()
          local element_addr = addr + member.data_member_location
-         local element_val = read_type(env, member.type, element_addr)
-         element_val = maybe_bitfield_unpack(member, element_val)
+         local element_val
+         if env.prune_member and env.prune_member[member.name] then
+            element_val = env.prune_member[member.name]
+         else
+            element_val = read_type(env, member.type, element_addr)
+            element_val = maybe_bitfield_unpack(member, element_val)
+         end
+
 
          -- log(string.format("struct 0x%x %d %s\n", element_addr, member.data_member_location, member.name))
          -- The choice here is to preserve the order and have a more
