@@ -46,15 +46,11 @@ int kill(pid_t pid, int sig);
 #define LOG(...) infof(__VA_ARGS__)
 #endif // __linux__
 
-/* In bare metal microcontroller context there is no universal way to
-   handle this so we take the following approach: implement abort as
-   an endless loop.  This will trigger the watchdog timer. */
-static inline void abort_busyloop(void) __attribute__ ((noreturn));
-static inline void abort_busyloop(void) {
-  loop:
-    goto loop;
-}
 #ifndef ABORT
+extern void (*abort_callback)(void);
+void abort_busyloop(void)
+__attribute__ ((noinline))
+__attribute__ ((noreturn));
 #define ABORT abort_busyloop()
 #endif
 

@@ -1,6 +1,23 @@
 #ifndef MOD_INFO_BUF
 #define MOD_INFO_BUF
 
+#if 1
+/* FIXME: The default ABORT from macros.h uses this.
+
+   It could be put in another file.  It just needs to be in the
+   library, so library code can be made to abort in an app-specific
+   way.  The default implementation is an infinite loop, which then
+   can be pre-empted by a watchdog timer, or the abort_cb can be set
+   to install an abort handler at run time. */
+void (*abort_callback)(void);
+
+void abort_busyloop(void) {
+    if (abort_callback) abort_callback();
+  loop:
+    goto loop;
+}
+#endif
+
 /* Implementation of the base functionality needed by infof.c */
 
 #include "info_buf.h"
@@ -79,6 +96,7 @@ static inline void __attribute__((always_inline)) info_write_byte_no_check(uint8
     info_buf.buf[offset] = b;
 }
 
+#if 1 // old behavior: keep oldest
 KEEP int info_write(uint8_t *buf, uintptr_t size) {
     /* Do one check, then write the buffer if it fits in a tight loop. */
     uint32_t room = INFO_SIZE - (info_buf.hdr.write_next - info_buf.hdr.read_next);
@@ -92,6 +110,21 @@ KEEP int info_write(uint8_t *buf, uintptr_t size) {
     }
     return 0;
 }
+#else // new behavior: keep newest, which is most useful for crash logs
+KEEP int info_write(uint8_t *buf, uintptr_t size) {
+    uint32_t room = INFO_SIZE - (info_buf.hdr.write_next - info_buf.hdr.read_next);
+    if (room < size) {
+        // Discard old logs
+        uint32_t to_discard = size - room;
+        info_buf.hdr.read_next += to_discard;
+    }
+    // Now that there's room, write message.
+    for(uintptr_t i=0; i<size; i++) {
+        info_write_byte_no_check(buf[i]);
+    }
+    return 0;
+}
+#endif
 
 /* This might not be necessary. */
 int info_bin(uint32_t stamp, uint8_t *buf, uintptr_t size) {
