@@ -289,6 +289,7 @@ end
 
 
 function type_reader.structure_type(env, type, addr)
+   assert(addr)
    assert(type.tag == "structure_type")
    assert(type.children)
    local struct = {}
@@ -464,11 +465,28 @@ function elfutils.read_array(env, name, nb_el)
    end
 end
 
+
+local function find_variable_node(elf, name)
+   assert(elf)
+   assert(name)
+   local dies = {C.die_find_variable(elf, name)}
+   for i=1,#dies do
+      local die = dies[i]
+      local node = elfutils.die_unpack(die)
+      if nil ~= node.location then
+         return node
+      else
+         -- Probably node.external = 1
+         -- It's in a different compilation unit.
+      end
+   end
+   return nil
+end
+
 function elfutils.read_variable(env, name)
    assert(env)
    assert(env.elf)
-   local die = C.die_find_variable(env.elf, name)
-   local node = elfutils.die_unpack(die)
+   local node = find_variable_node(env.elf, name)
 
    assert(node.type)
    assert(node.location)

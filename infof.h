@@ -20,6 +20,7 @@ int info_flushed(void);
 uint32_t info_bytes(void);
 uint32_t info_read(uint8_t *buf, uint32_t len);
 uint32_t info_read_crlf(uint8_t *buf, uint32_t len);
+void info_read_history(uint8_t *buf, uint32_t len);
 
 uint32_t info_bytes(void);
 

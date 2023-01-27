@@ -186,6 +186,15 @@ KEEP uint32_t info_read(uint8_t *buf, uint32_t len) {
     }
 }
 
+/* Ignore the read head and get all past log data up to write head.
+   Do not update any pointers.  This is used for crash logs. */
+void info_read_history(uint8_t *buf, uint32_t len) {
+    uint32_t start = info_buf.hdr.write_next - len;
+    for(uint32_t i = 0; i<len; i++) {
+        *buf++ = info_buf.buf[(start + i) & INFO_MASK];
+    }
+}
+
 KEEP uint32_t info_read_crlf(uint8_t *buf, uint32_t len) {
     uint32_t nb = 0;
     for(;;) {

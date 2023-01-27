@@ -9,6 +9,8 @@
 #include "assert_write.h"
 #include "assert_read.h"
 
+const char *tether_3if_tag = "";
+
 struct tether {
     int fd;
     /* Max transfer is size byte + max size indicated by that size
@@ -206,7 +208,7 @@ void tether_load(struct tether *s, const char *filename, uint32_t address,
            out on frequent restarts.  Since we're not changing the
            control block this can be done by straight memory
            compare. */
-        LOG("%08x already loaded\n", address);
+        LOG("%s%08x was loaded\n", tether_3if_tag, address);
         return;
     }
     tether_write_mem(s, buf, address, in_len, LDx, NxS);
@@ -214,7 +216,7 @@ void tether_load(struct tether *s, const char *filename, uint32_t address,
         LOG("%08x WARNING: verify failed\n", address);
     }
     else { // if (s->verbose)
-        LOG("%08x verify ok\n", address);
+        LOG("%s%08x verify ok\n", tether_3if_tag, address);
     }
 }
 
