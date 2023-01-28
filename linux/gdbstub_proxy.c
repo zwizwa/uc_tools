@@ -46,7 +46,7 @@ uint8_t mem_read(uint32_t addr) {
     }
     if ((addr >= 0x08000000) &&
         (addr <  0x08020000)) {
-        return ram[addr - 0x08000000];
+        return rom[addr - 0x08000000];
     }
     return 0x55;
 }
