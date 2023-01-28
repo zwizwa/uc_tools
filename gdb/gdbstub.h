@@ -47,6 +47,9 @@ extern const struct gdbstub_io *io;
 #define GDBSTUB_REG_INIT {[13] = 0x20005000}
 #define GDBSTUB_NB_REGS 26
 
+/* see gdb-7.12.1/gdb/regformats/reg-arm.dat */
+
+
 struct gdbstub {
     struct gdbstub_ctrl *ctrl;
     struct packet *req;

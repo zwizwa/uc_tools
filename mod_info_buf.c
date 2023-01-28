@@ -11,7 +11,7 @@
    to install an abort handler at run time. */
 void (*abort_callback)(void);
 
-void abort_busyloop(void) {
+void abort_busyloop(void) { 
     if (abort_callback) abort_callback();
   loop:
     goto loop;

@@ -239,6 +239,7 @@ static int32_t cmd_continue(struct gdbstub *stub, const uint8_t *cmd, uint32_t n
 static int32_t cmd_get_registers(struct gdbstub *stub, const uint8_t *cmd, uint32_t n) {
     rsp_begin(stub->rpl);
     for (uint32_t i = 0; i < GDBSTUB_NB_REGS; i++) {
+        LOG("reg %d %08x\n", i, stub->reg[i]);
         int32_t rv = packet_save_u32_hex_cs(stub->rpl, stub->reg[i]);
         if (rv) return rv;
     }
@@ -402,9 +403,12 @@ static uint32_t rsp_check_interpret(struct gdbstub *stub) {
     }
 }
 void gdbstub_interpret(struct gdbstub *stub) {
+    LOG("req:%s\n", stub->req->buf);
+
     /* Packet is complete */
     int rv = rsp_check_interpret(stub);
     if (rv < 0) {
+        LOG("error reply %d\n", rv);
         /* GDB error reply. */
         packet_init(stub->req);
         packet_init(stub->rpl);
@@ -413,6 +417,8 @@ void gdbstub_interpret(struct gdbstub *stub) {
     else {
         /* Interpretation OK. */
     }
+
+    LOG("rpl:%s\n", stub->rpl->buf);
 }
 
 
