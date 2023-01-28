@@ -21,7 +21,8 @@ struct gdbstub_config _config;
 
 GDBSTUB_INSTANCE(gdbstub, gdbstub_default_commands);
 
-uint8_t mem[0x5000] = {};
+uint8_t ram[0x5000] = {};
+uint8_t rom[0x20000] = {};
 
 
 // All write access is stubbed out.
@@ -39,9 +40,15 @@ int32_t mem_write32(uint32_t addr, uint32_t val) {
 }
 
 uint8_t mem_read(uint32_t addr) {
-    if (addr <   0x20000000) return 0x55;
-    if (addr >=  0x20005000) return 0x55;
-    return mem[addr - 0x20000000];
+    if ((addr >= 0x20000000) &&
+        (addr <  0x20005000)) {
+        return ram[addr - 0x20000000];
+    }
+    if ((addr >= 0x08000000) &&
+        (addr <  0x08020000)) {
+        return ram[addr - 0x08000000];
+    }
+    return 0x55;
 }
 
 void serve(int fd_in, int fd_out) {
@@ -67,20 +74,29 @@ void serve(int fd_in, int fd_out) {
 
 int main(int argc, char **argv) {
     ASSERT(argc >= 2);
+    FILE *f;
 
     /* Load the SRAM image */
-    FILE *f;
     ASSERT(NULL != (f = fopen(argv[1], "r")));
-    uint32_t rv = fread(mem, 1, sizeof(mem), f);
-    ASSERT(sizeof(mem) == rv);
+    LOG("ram: %s\n", argv[1]);
+    uint32_t rv = fread(ram, 1, sizeof(ram), f);
+    ASSERT(sizeof(ram) == rv);
     fclose(f);
+
+    /* If available, load the Flash image */
+    if ((argc >= 3) && (f = fopen(argv[2], "r"))) {
+        LOG("rom: %s\n", argv[2]);
+        uint32_t rv = fread(rom, 1, sizeof(rom), f);
+        ASSERT(sizeof(rom) == rv);
+        fclose(f);
+    }
 
     /* uc abort routine dumps 12 registers at the end of RAM
        containing r4 to pc */
-    uint32_t reg_dump = 4 * 12;
+    uint32_t reg_dump_nb_bytes = 4 * 12;
     memcpy(gdbstub.reg + 4,
-           mem + sizeof(mem) - reg_dump,
-           reg_dump);
+           ram + sizeof(ram) - reg_dump_nb_bytes,
+           reg_dump_nb_bytes);
 
     /* The GDB server doesn't produce any events by itself, so we can
        block on file descriptor, pass to GDB server, read its response
