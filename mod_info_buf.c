@@ -96,7 +96,7 @@ static inline void __attribute__((always_inline)) info_write_byte_no_check(uint8
     info_buf.buf[offset] = b;
 }
 
-#if 1 // old behavior: keep oldest
+#if 0 // old behavior: keep oldest
 KEEP int info_write(uint8_t *buf, uintptr_t size) {
     /* Do one check, then write the buffer if it fits in a tight loop. */
     uint32_t room = INFO_SIZE - (info_buf.hdr.write_next - info_buf.hdr.read_next);

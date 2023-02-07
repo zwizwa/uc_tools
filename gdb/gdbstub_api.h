@@ -217,9 +217,18 @@ struct gdbstub_config {
     /* 19: Optional tag or flags for code handling firmware images. */
     uint32_t fwtag;
 
-    /* 20: Reserved */
-    void *reserved_20[32-20];
+    /* 20: This slot can be used to point to any othere data in the
+       partition.  The fields flash_start and flash_endx must be zero
+       such that partition_config_valid() returns NULL. */
+    void *data;
+
+    /* 21: Reserved */
+    void *reserved_21[32-21];
 };
+
+/* Note that gstub_config can only be used directly on a 32-bit
+   platform where uintptr_t is uint32_t.  For access on build host,
+   cast the struct to uint32_t array and use these indices. */
 
 /* Indices for uint32_t array overlayed on top of config block.  For
    use in preparing binary firmware images.  See bin2fw.c */

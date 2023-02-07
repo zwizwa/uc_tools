@@ -15,8 +15,9 @@
 
 */
 
+/* Logging is off by default to not interfere with core dumps. */
 #ifndef MEM_WRITE_LOG
-#define MEM_WRITE_LOG infof
+#define MEM_WRITE_LOG(...)
 #endif
 
 
