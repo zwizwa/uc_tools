@@ -1,3 +1,6 @@
+#ifndef ASSERT_MMAP_H
+#define ASSERT_MMAP_H
+
 #include "macros.h"
 
 static inline const void *assert_mmap_rdonly(
@@ -13,3 +16,5 @@ static inline const void *assert_mmap_rdonly(
     *psize = size;
     return mem;
 }
+
+#endif
