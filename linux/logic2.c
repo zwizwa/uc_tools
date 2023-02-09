@@ -8,7 +8,11 @@
    inconvenient.  To produce a streaming version that can pipe data to
    stdout, use a software timer to drive the iteration over the
    diff-encoded signals.  Seems interesting to solve it as this
-   generalizes to other diff logic formats like vcd. */
+   generalizes to other diff logic formats like vcd.  A natural second
+   step is to skip the binary intermediate and drive an analyzer
+   directly.  So it makes sense to wrute this as an iterator: schedule
+   the next change, and tick().  Taking it further yet again: make a
+   diff format that compresses a bit better. */
 
 #include "macros.h"
 #include "assert_mmap.h"  // read
