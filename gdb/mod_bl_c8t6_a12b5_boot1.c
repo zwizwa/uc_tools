@@ -68,13 +68,29 @@ void monitor_init(void) {
 #endif
 
 
+/* This used to on by default.  It worked well for a while on Blue
+   Pill boards, but it's really not ok to hog a GPIO in the
+   bootloader, so this is now disabled by default. */
+#ifndef GDBSTUB_BLUEPILL_LED
+#define GDBSTUB_BLUEPILL_LED 0
+#endif
 
-
+#if GDBSTUB_BLUEPILL_LED
 #define LED GPIOC,13
 static uint32_t counter = 0;
 void bootloader_tick(void) {
     bootloader_blink_tick(LED, &counter);
 }
+void bootloader_hw_init(void) {
+    hw_gpio_config(LED,HW_GPIO_CONFIG_OUTPUT);
+}
+#else
+void bootloader_tick(void) {
+    bootloader_poll();
+}
+void bootloader_hw_init(void) {
+}
+#endif
 
 
 
@@ -83,7 +99,8 @@ void bootloader_tick(void) {
 int main(void) {
     rcc_clock_setup_in_hse_8mhz_out_72mhz();
     rcc_periph_clock_enable(RCC_GPIOC);
-    hw_gpio_config(LED,HW_GPIO_CONFIG_OUTPUT);
+
+    bootloader_hw_init();
 
     /* For modded board: 1k5 between A12 and B5 with the original R10
        pullup removed.  We set B5 high here to assert the pullup and
