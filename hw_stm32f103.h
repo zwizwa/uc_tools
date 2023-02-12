@@ -1340,6 +1340,10 @@ INLINE void hw_exti_disable_request(struct hw_exti c) {
     EXTI_IMR &= ~exti;  // Interrupt Mask Register
     EXTI_EMR &= ~exti;  // Event Mask Register
 }
+INLINE void hw_exti_trigger_swi(struct hw_exti c) {
+    uint32_t exti = 1 << c.pin;
+    EXTI_SWIER = exti;  // Trigger the event
+}
 
 INLINE void hw_exti_arm(struct hw_exti c) {
     uint32_t exti = 1 << c.pin;
