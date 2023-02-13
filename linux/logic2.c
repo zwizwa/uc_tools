@@ -1,3 +1,6 @@
+// NOTE: use logic2_csv.c -- CSV format is already "joined" making the
+// converter much simpler.
+
 /* Convert Logic2 Binary Export format to flat 8 channel binary at 2 MHz */
 // See also https://sigrok.org/wiki/File_format:Saleae
 
