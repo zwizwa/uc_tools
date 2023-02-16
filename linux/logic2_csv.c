@@ -53,8 +53,8 @@ int main(int argc, const char **argv) {
         for(;;) {
             uint8_t c = *data++;
             if (c == 0xa) break;
-            if (c == ',') next_bus <<= 1;
-            next_bus |= 1 & (c - '0');
+            if (c == ',') next_bus >>= 1;
+            else next_bus |= ((1 & (c - '0')) << 7);
         }
 
         // FIXME: process
