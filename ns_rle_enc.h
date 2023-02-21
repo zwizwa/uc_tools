@@ -13,7 +13,7 @@ struct NS(_state) {
     uintptr_t count;
     NS(_t) last;
     NS(_t) in[1024*1024];
-    NS(_t) out[64*1024];
+    uint8_t out[64*1024];
     uintptr_t out_i;
 };
 
@@ -27,12 +27,12 @@ static inline uintptr_t NS(_in)(struct NS(_state) *s) {
     return rv / sizeof(NS(_t));
 }
 
-static inline void NS(_out)(struct NS(_state) *s, uint8_t bus) {
+static inline void NS(_out)(struct NS(_state) *s, uint8_t byte) {
     if (s->out_i == sizeof(s->out)) {
         NS(_write)(s);
         s->out_i = 0;
     }
-    s->out[s->out_i++] = bus;
+    s->out[s->out_i++] = byte;
 }
 static inline void rle_enc_count(struct NS(_state) *s, uintptr_t sr) {
     for(;;) {
