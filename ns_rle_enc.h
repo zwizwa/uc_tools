@@ -1,5 +1,3 @@
-#ifndef NS_RLE_ENC_H
-#define NS_RLE_ENC_H
 
 /* Format is:
    - data word
@@ -90,4 +88,3 @@ static inline int NS(_loop)(struct NS(_state) *s) {
     }
 }
 
-#endif

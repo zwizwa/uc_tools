@@ -1,6 +1,3 @@
-#ifndef NS_RLE_DEC_H
-#define NS_RLE_DEC_H
-
 /* Format is:
    - data word
    - repeat count - 1 in LEB128 unsigned
@@ -71,6 +68,3 @@ static inline void NS(_loop)(struct NS(_state) *s) {
         NS(_write)(s);
     }
 }
-
-
-#endif
