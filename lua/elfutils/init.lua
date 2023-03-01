@@ -272,18 +272,26 @@ function type_reader.pointer_type(env, type, addr)
    end
 end
 
+
+
 local function maybe_bitfield_unpack(type, element_val)
+   -- log_desc({type=type})
    if type.bit_size == nil then
       assert(type.bit_offset == nil)
       return element_val
    else
+      -- log_desc({type=type})
       assert(type.bit_offset ~= nil)
       assert(element_val >= 0) -- FIXME: Implement signed
-      -- logf("unpack bitfield %d %d\n", type.bit_offset, type.bit_size)
-      return
-         bit.band(
-            bit.lshift(1, type.bit_size) - 1,
-            bit.rshift(element_val, type.bit_offset))
+      -- logf("unpack bitfield offset=%d size=%d element_val=%d\n", type.bit_offset, type.bit_size, element_val)
+
+      -- DW_AT_bit_offset: The bit offset attribute describes the
+      -- offset in bits of the high order bit of a value of the given
+      -- type from the high order bit of the storage unit used to
+      -- contain that value.  ( WTF! )
+      local mask  = bit.lshift(1, type.bit_size) - 1
+      local shift = 8 * type.byte_size - type.bit_size - type.bit_offset
+      return bit.band(mask, bit.rshift(element_val, shift))
    end
 end
 
