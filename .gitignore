@@ -30,4 +30,4 @@ a.out.wasm
 **/.DS_Store
 test_*.txt
 .gdb*
-
+push.sh
