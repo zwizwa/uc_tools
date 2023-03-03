@@ -1,9 +1,10 @@
 #!./lua.sh
 require('lure.log')
-local read_cat = require('lib.read_cat')
+local read_cat = require('lib.read_cat')()
 local function tokenize(str)
-   local rv = read_cat.tokenize(read_cat.string_to_stream(str))
+   local rv = read_cat.tokenize(read_cat.characters(str))
    log_desc({'tokenize',str,rv})
+   return rv
 end
 
 tokenize('123')
@@ -23,8 +24,8 @@ tokenize("(")
 tokenize("()")
 tokenize("(123)")
 
-local function parse(words, will_error)
-   local stream = read_cat.array_to_stream(words)
+local function parse(words)
+   local stream = read_cat.elements(words)
    local ok, rv = pcall(read_cat.parse, stream)
    log_desc({'parse',words,ok,rv})
 end
@@ -35,5 +36,14 @@ parse({'begin', '123', 'abc', 'end'})
 parse({'begin', '123', 'abc', 'end', 'def'})
 parse({'begin', '123'})
 parse({'quote'})
+
+
+local function read(str)
+   parse(tokenize(str))
+end
+
+read('(1 2 3) run')
+read('(')
+read("'")
 
 

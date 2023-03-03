@@ -1,12 +1,22 @@
--- Reader for a nested concatenative language.  Based on arrays
--- instead of s-expressions.
+-- Part of uc_tools/lua
+-- https://opensource.org/licenses/MIT
+-- COPYRIGHT HOLDER = Tom Schouten
+-- YEAR = 2023
 
--- Reader is split into tokenizer and parser, which makes it more
--- straightforward to express.
+-- Reader for a nested concatenative language.
 
-require('lure.log')
+return function(maybe_cfg)
 
-local function string_to_stream(str)
+-- Config defaults
+local cfg = maybe_cfg or {}
+local wrap_code = cfg.code or function(code) return {tag='code', code=code} end
+local wrap_data = cfg.data or function(data) return {tag='data', data=data} end
+local log_desc  = cfg.log_desc or function() end
+
+local m = {}
+
+-- Iterator for characters in a string.
+function m.characters(str)
    local i = 1
    local function next_char()
       if i > #str then return nil end
@@ -17,7 +27,8 @@ local function string_to_stream(str)
    return next_char
 end
 
-local function array_to_stream(array)
+-- Iterator like ipairs but without index
+function m.elements(array)
    local i = 1
    local function next_el()
       if i > #array then return nil end
@@ -29,7 +40,7 @@ local function array_to_stream(array)
    return next_el
 end
 
-local function tokenize(next_char)
+function m.tokenize(next_char)
    local words = {}
    local chars = {}
    local function end_word(next_word)
@@ -74,7 +85,7 @@ local function tokenize(next_char)
 
 end
 
-local function parse(next_word, need_end)
+function m.parse(next_word, need_end)
    local function need_next_word()
       local word = next_word()
       if word == nil then error('no quoted word') end
@@ -93,23 +104,16 @@ local function parse(next_word, need_end)
          end
          break
       end
-      if     word == 'quote' then insert({need_next_word()})
-      elseif word == 'begin' then insert(parse(next_word, true))
+      if     word == 'quote' then insert(wrap_data(need_next_word()))
+      elseif word == 'begin' then insert(m.parse(next_word, true))
       elseif word == 'end'   then break
       else                        insert(word)
       end
    end
-   return syntax
+   return wrap_code(syntax)
 end
 
 
-local function read_string(str)
-   return read_stream(string_to_stream(str))
-end
+return m
 
-return {
-   string_to_stream = string_to_stream,
-   array_to_stream = array_to_stream,
-   tokenize = tokenize,
-   parse = parse,
-}
+end
