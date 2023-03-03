@@ -12,15 +12,12 @@ local script_dir = cfg.script_dir or nil -- optional
 local plugin_dir = cfg.plugin_dir or nil -- optional
 local log_desc = cfg.log_desc or function() end
 
-local read
-if cfg.read_cat then
-   -- Instantiate it
-   read = cfg.read_cat({
-         -- Config
-   })
-end
+assert(cfg.read_cat)
+local read = cfg.read_cat({
+      -- Config
+})
 
-local forth = {}
+local cat = {}
 
 local function push(self, v)
    assert(v)
@@ -37,7 +34,8 @@ local function execute(self, f)
    return f(self)
 end
 
-local function interpret(self, w)
+function cat:interpret()
+   local w = self:pop()
 
    -- New style literals
    if type(w) == 'table' then
@@ -47,12 +45,6 @@ local function interpret(self, w)
 
    -- All the rest are strings
    assert(type(w) == 'string')
-
-   -- Old style quoted string literals
-   -- FIXME: Remove this in favor of new style literals
-   if w:sub(1,1) == "'" then
-      return push(self, w:sub(2))
-   end
 
    -- Number literals
    local val = tonumber(w)
@@ -73,7 +65,7 @@ local function interpret(self, w)
       if f ~= nil then
          f:close()
          push(self, script)
-         return self:load()
+         return self:interpret_file()
       end
    end
 
@@ -100,6 +92,8 @@ local function interpret(self, w)
 
 end
 
+
+
 function lookup(self, w)
    -- It's useful to have an extra level here: user can add
    -- dictionarys to the mixins array.
@@ -119,27 +113,27 @@ function lookup(self, w)
          if val ~= nil then return val end
       end
    end
-   val = forth[w]
+   val = cat[w]
    if val ~= nil then return val end
    return nil
 end
 
-function forth.new(env)
+function cat.new(env)
    obj = { ds = {}, env = env, mixins = {} }
    setmetatable(obj, {__index = lookup })
    -- obj isn't always needed so pass it as second value
-   return function(w) interpret(obj, w) end, obj
+   return obj
 end
 
-function forth:pop()
+function cat:pop()
    local n = #self.ds
    local rv = self.ds[n]
    table.remove(self.ds, n)
    return rv
 end
 
-function forth:ps() log_desc(self.ds) end
-function forth:p()  log_desc(self:pop()) end
+function cat:ps() log_desc(self.ds) end
+function cat:p()  log_desc(self:pop()) end
 local function op2(fun)
    return
       function(self)
@@ -148,50 +142,39 @@ local function op2(fun)
          push(self, fun(a,b))
       end
 end
-forth['+'] = op2(function(a,b) return a+b end)
-forth['-'] = op2(function(a,b) return a-b end)
+cat['+'] = op2(function(a,b) return a+b end)
+cat['-'] = op2(function(a,b) return a-b end)
 
-local function line_words(line)
-   if read then
-      -- Optionally use the syntax implemented by read_cat.
-      local tokens = read.tokenize(read.characters(line))
-      local syntax = read.parse(read.elements(tokens))
-      -- log_desc(syntax)
-      -- The output syntax is quoted code. Unpack outer code quotation.
-      assert(syntax and syntax.tag == 'code')
-      return read.elements(syntax.code)
-   else
-      return line:gmatch("%S+")
+local function parse_string(str)
+   local tokens = read.tokenize(read.characters(str))
+   local syntax = read.parse(read.elements(tokens))
+   -- log_desc(syntax)
+   -- The parser output is quoted code. Unpack outer code quotation.
+   assert(syntax and syntax.tag == 'code')
+   return read.elements(syntax.code)
+end
+
+function cat:interpret_string()
+   local line = self:pop()
+   for w in parse_string(line) do
+      push(self, w)
+      self:interpret()
    end
 end
 
--- The line syntax is defined operationally, i.e. whatever this routine returns.
-function forth.interpret_line(line, interpret)
-   -- The base syntax is very simple: whitespace separates words.
-   for w in line_words(line) do
-      -- A word starting with the comment character causes the rest of
-      -- the line to be ignored.  FIXME: Remove after integrating parser.
-      if type(w) == 'string' and w:sub(1,1) == '#' then
-         break
-      end
-      interpret(w)
-   end
-end
-
-function forth.interpret_file(script, interpret)
+function cat:interpret_file()
+   local script = self:pop()
    assert(script)
-   -- Make sure it exists
    local f = io.open(script, "rb")
    if f == nil then
       error("Can't open command file '" .. script .. "'\n")
       exit(1)
    end
+   local str = f:read("*all")
    f:close()
-   -- Convert it to words.
-   for line in io.lines(script) do
-      forth.interpret_line(line, interpret)
-   end
+   push(self, str)
+   self:interpret_string()
 end
 
-return forth
+return cat
 end
