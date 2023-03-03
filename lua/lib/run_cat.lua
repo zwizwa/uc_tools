@@ -25,13 +25,15 @@ local function push(self, v)
    return rv
 end
 
-local function execute(self, f)
-   -- execute dictionary method
+function cat:execute()
+   local f = self:pop()
    assert(f)
-   assert(type(f) == 'function')
-   -- typically words return nil, but we propagate anyway in
-   -- case user has different ideas.
-   return f(self)
+   if type(f) == 'function' then
+      return f(self)
+   elseif type(f) == 'table' and f.tag == 'code' then
+      push(self, f.code)
+      return self:interpret_words()
+   end
 end
 
 function cat:interpret()
@@ -39,8 +41,15 @@ function cat:interpret()
 
    -- New style literals
    if type(w) == 'table' then
-      assert(w.tag)
-      return push(self, w[w.tag])
+      if (w.tag == 'data') then
+         -- Unquote data
+         return push(self, w.data)
+      elseif (w.tag == 'code') then
+         -- Keep it quoted
+         return push(self, w)
+      else
+         error("unknown tag '" .. (w.tag or 'nil') .. "'")
+      end
    end
 
    -- All the rest are strings
@@ -55,7 +64,8 @@ function cat:interpret()
    -- Dictionary words
    local f = self[w]
    if f then
-      return execute(self, f)
+      push(self, f)
+      return self:execute()
    end
 
    -- Command script
@@ -145,18 +155,25 @@ end
 cat['+'] = op2(function(a,b) return a+b end)
 cat['-'] = op2(function(a,b) return a-b end)
 
-local function parse_string(str)
+function cat:parse_string()
+   local str = self:pop()
+   assert(str)
    local tokens = read.tokenize(read.characters(str))
    local syntax = read.parse(read.elements(tokens))
-   -- log_desc(syntax)
+   -- log_desc({str=str,syntax=syntax})
    -- The parser output is quoted code. Unpack outer code quotation.
    assert(syntax and syntax.tag == 'code')
-   return read.elements(syntax.code)
+   push(self, syntax.code)
 end
 
 function cat:interpret_string()
-   local line = self:pop()
-   for w in parse_string(line) do
+   self:parse_string()
+   self:interpret_words()
+end
+
+function cat:interpret_words()
+   local words = self:pop()
+   for w in read.elements(words) do
       push(self, w)
       self:interpret()
    end
@@ -167,8 +184,7 @@ function cat:interpret_file()
    assert(script)
    local f = io.open(script, "rb")
    if f == nil then
-      error("Can't open command file '" .. script .. "'\n")
-      exit(1)
+      error("Can't open file '" .. script .. "'\n")
    end
    local str = f:read("*all")
    f:close()
