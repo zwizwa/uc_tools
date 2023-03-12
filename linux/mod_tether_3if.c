@@ -1,4 +1,4 @@
- /* Connect to a 3if monitor. */
+/* Connect to a 3if monitor. */
 
 /* For debugging, it seems simplest to just let the device dump flash
    at startup.  Then handle whatever interpretation is necessary later

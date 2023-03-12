@@ -26,7 +26,6 @@ struct monitor {
     struct monitor_3if monitor_3if;
     struct cbuf out; uint8_t out_buf[256];
     uint8_t ds_buf[32];
-    uint8_t rs_buf[32];
     uint8_t flash_buf[FLASH_BUFSIZE];
     unsigned last_read_was_full:1;
 };
@@ -45,6 +44,10 @@ void to_flash_stm(struct monitor_3if *s) {
 
 
 uint32_t monitor_read(uint8_t *buf, uint32_t size) {
+    if (monitor.monitor_3if.poll) {
+        // Optional poll routine.
+        monitor.monitor_3if.poll(&monitor.monitor_3if);
+    }
     uint32_t n = cbuf_read(monitor.monitor_3if.out, buf, size);
     if ((n == 0) && monitor.last_read_was_full) {
         // Pad with empty packet to avoid the bad n=0 case.
@@ -85,8 +88,7 @@ void monitor_init(void) {
     monitor_3if_init(
         &monitor.monitor_3if,
         &monitor.out,
-        monitor.ds_buf,
-        monitor.rs_buf);
+        monitor.ds_buf);
 }
 
 #endif
