@@ -32,6 +32,7 @@ enum PRIM { MONITOR_3IF_FOR_PRIM(PRIM_ENUM_INIT) };
 
 
 int fd = -1;
+
 void tether_log(struct tether *s, const char *tag) {
     if (!s->verbose) return;
     uint8_t len = s->buf[0];
@@ -47,13 +48,15 @@ void tether_clear(struct tether *s) {
 void tether_read(struct tether *s) {
   again:
     tether_clear(s);
-    assert_read(s->fd, &s->buf[0], 1);
+    assert_read_fixed(s->fd, &s->buf[0], 1);
     if (s->buf[0] == 0) {
         /* This is used for buffer padding. */
-        // LOG("skip empty packet\n");
+        if (s->verbose) {
+            LOG("skip empty packet\n");
+        }
         goto again;
     }
-    assert_read(s->fd, &s->buf[1], s->buf[0]);
+    assert_read_fixed(s->fd, &s->buf[1], s->buf[0]);
     tether_log(s, "R: ");
 }
 void tether_write_flush(struct tether *s) {
@@ -95,6 +98,16 @@ void tether_cmd_buf(struct tether *s, uint8_t opc, const uint8_t *buf, uintptr_t
 void tether_ack(struct tether *s) {
     tether_cmd(s, ACK);
 }
+/* Flush any async messages. */
+void tether_flush(struct tether *s, void (*handle)(struct tether *)) {
+    TETHER_WRITE(s, 1, ACK);
+    for(;;) {
+        tether_read(s);
+        if ((s->buf[0] == 1) &&
+            (s->buf[1] == 0)) break;
+        handle(s);
+    }
+}
 void tether_exec(struct tether *s, uint32_t addr) {
     /* Load code register.  FIXME: We're only doing ARM Thumb, so make
        sure the thumb bit is set in the function pointer.  The monitor
@@ -115,9 +128,7 @@ void tether_read_mem(struct tether *s, uint8_t *buf,
 
     tether_cmd_u32(s, LDx, address);
     while (nb_bytes > 0) {
-        /* FIXME: There's a transfer bug when max_chunk > 127.  Some
-           signed/unsigned confusion? */
-        uint32_t max_chunk = 127;
+        uint32_t max_chunk = 255;
         uint32_t chunk = (nb_bytes > max_chunk) ? max_chunk : nb_bytes;
         if (s->verbose) { LOG("%08x %d\n", address, chunk); };
         tether_cmd_u8(s, NxL, chunk);
@@ -128,7 +139,6 @@ void tether_read_mem(struct tether *s, uint8_t *buf,
         buf += chunk;
     }
 }
- 
 
 void tether_dump_mem(struct tether *s, const char *filename,
                      uint32_t address, uint32_t nb_bytes,

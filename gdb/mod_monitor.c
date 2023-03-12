@@ -24,10 +24,11 @@ struct gdbstub_ctrl bootloader_stub_ctrl;
 
 struct monitor {
     struct monitor_3if monitor_3if;
-    struct cbuf out; uint8_t out_buf[256];
+    uint8_t out_buf[256 + 16];
+    struct cbuf out;
     uint8_t ds_buf[32];
     uint8_t flash_buf[FLASH_BUFSIZE];
-    unsigned last_read_was_full:1;
+    uint8_t last_read_was_full:1;
 };
 struct monitor monitor;
 
@@ -42,7 +43,6 @@ void to_flash_stm(struct monitor_3if *s) {
     s->flash++;
 }
 
-
 uint32_t monitor_read(uint8_t *buf, uint32_t size) {
     if (monitor.monitor_3if.poll) {
         // Optional poll routine.
@@ -50,7 +50,7 @@ uint32_t monitor_read(uint8_t *buf, uint32_t size) {
     }
     uint32_t n = cbuf_read(monitor.monitor_3if.out, buf, size);
     if ((n == 0) && monitor.last_read_was_full) {
-        // Pad with empty packet to avoid the bad n=0 case.
+        // Pad with zero-size framing to avoid the bad n=0 case.
         buf[0] = 0;
         n=1;
     }

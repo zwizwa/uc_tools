@@ -241,6 +241,23 @@ void monitor_3if_init(struct monitor_3if *s,
       poll() routine will remain active and it can be used to produce
       async messages, e.g. called from USB poll routine.
 
+   Note that poll() needs to leave room for the ACK reply sent by 3if
+   monitor.  Otherwise protocol will get stuck.
+
+
+   The poll() mechanism was added in this way to keep a strict
+   synchronous request/response protocol as the base which is all that
+   is needed for firmware update.
+
+   The poll() mechanism allows implementation of a bi-directional
+   message bridge in the following way: host uploads a handler
+   function that will enable a poll routine.  Host then waits for any
+   notifications coming from target.  In response to a notification it
+   will read messages from a memory buffer, and runs the handler again
+   to re-enable a poll routine.  If host needs to send a message, it
+   can place it into a buffer and pass a parameter to the handler
+   routine to further handle the message and re-enable poll again.
+
 */
 
 

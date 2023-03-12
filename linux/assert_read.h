@@ -36,6 +36,7 @@ static inline ssize_t assert_read_fixed(int fd, void *vbuf, size_t nb) {
         ssize_t rv = assert_read(fd, buf+got, nb-got);
         ASSERT(rv > 0);
         got += rv;
+        // LOG("got=%d, rv=%d, nb=%d\n", got, rv, nb);
     }
     ASSERT_EQ(got, nb);
     return got;
