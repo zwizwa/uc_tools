@@ -42,9 +42,11 @@ void tether_log(struct tether *s, const char *tag) {
     }
     LOG("\n");
 }
+
 void tether_clear(struct tether *s) {
     memset(s->buf, 0, sizeof(s->buf));
 }
+
 void tether_read(struct tether *s) {
   again:
     tether_clear(s);
@@ -59,16 +61,19 @@ void tether_read(struct tether *s) {
     assert_read_fixed(s->fd, &s->buf[1], s->buf[0]);
     tether_log(s, "R: ");
 }
+
 void tether_write_flush(struct tether *s) {
     tether_log(s, "W: ");
     assert_write((s)->fd, s->buf, s->buf[0]+1);
 }
+
 void tether_write(struct tether *s, uint8_t *buf) {
     /* First byte contains size. */
     tether_clear(s);
     memcpy((s)->buf, buf, buf[0]+1);
     tether_write_flush(s);
 }
+
 #define TETHER_WRITE(s, ...) do {                              \
         uint8_t buf[] = { __VA_ARGS__ };                       \
         tether_write(s, buf);                                  \
@@ -78,14 +83,17 @@ void tether_cmd_u32(struct tether *s, uint8_t opc, uint32_t val) {
     TETHER_WRITE(s, 5, opc, val, val>>8, val>>16, val>>24);
     tether_read(s);
 }
+
 void tether_cmd_u8(struct tether *s, uint8_t opc, uint8_t val) {
     TETHER_WRITE(s, 2, opc, val);
     tether_read(s);
 }
+
 void tether_cmd(struct tether *s, uint8_t opc) {
     TETHER_WRITE(s, 1, opc);
     tether_read(s);
 }
+
 void tether_cmd_buf(struct tether *s, uint8_t opc, const uint8_t *buf, uintptr_t size) {
     ASSERT(size <= 254);
     tether_clear(s);
@@ -95,9 +103,11 @@ void tether_cmd_buf(struct tether *s, uint8_t opc, const uint8_t *buf, uintptr_t
     tether_write_flush(s);
     tether_read(s);
 }
+
 void tether_ack(struct tether *s) {
     tether_cmd(s, ACK);
 }
+
 /* Flush any async messages. */
 void tether_flush(struct tether *s, void (*handle)(struct tether *)) {
     TETHER_WRITE(s, 1, ACK);
@@ -108,6 +118,7 @@ void tether_flush(struct tether *s, void (*handle)(struct tether *)) {
         handle(s);
     }
 }
+
 void tether_exec(struct tether *s, uint32_t addr) {
     /* Load code register.  FIXME: We're only doing ARM Thumb, so make
        sure the thumb bit is set in the function pointer.  The monitor
@@ -117,10 +128,10 @@ void tether_exec(struct tether *s, uint32_t addr) {
     /* Jump to subroutine. */
     tether_cmd(s, JSR);
 }
+
 void tether_jsr(struct tether *s) {
     tether_cmd(s, JSR);
 }
-
 
 void tether_read_mem(struct tether *s, uint8_t *buf,
                       uint32_t address, uint32_t nb_bytes,
@@ -128,7 +139,10 @@ void tether_read_mem(struct tether *s, uint8_t *buf,
 
     tether_cmd_u32(s, LDx, address);
     while (nb_bytes > 0) {
-        uint32_t max_chunk = 255;
+        /* 255 is max here, but 254 avoids padding, and this way the
+           size is the same as write, which needs an extra command
+           byte. */
+        uint32_t max_chunk = 254;
         uint32_t chunk = (nb_bytes > max_chunk) ? max_chunk : nb_bytes;
         if (s->verbose) { LOG("%08x %d\n", address, chunk); };
         tether_cmd_u8(s, NxL, chunk);
@@ -150,10 +164,12 @@ void tether_dump_mem(struct tether *s, const char *filename,
     ASSERT(nb_bytes == fwrite(buf, 1, nb_bytes, f));
     fclose(f);
 }
+
 void tether_dump_flash(struct tether *s, const char *filename,
                        uint32_t address, uint32_t nb_bytes) {
     return tether_dump_mem(s, filename, address, nb_bytes, LDF, NFL);
 }
+
 void tether_dump_ram(struct tether *s, const char *filename,
                      uint32_t address, uint32_t nb_bytes) {
     return tether_dump_mem(s, filename, address, nb_bytes, LDA, NAL);
@@ -164,14 +180,14 @@ void tether_assert_ack(struct tether *s) {
     ASSERT(s->buf[1] == 0);
 }
 
-
 void tether_write_mem(struct tether *s, const uint8_t *buf,
                       uint32_t address, uint32_t nb_bytes,
                       enum PRIM LDx, enum PRIM NxS) {
     uint32_t total_bytes = nb_bytes;
     tether_cmd_u32(s, LDx, address);
     while (nb_bytes > 0) {
-        uint32_t max_chunk = 127;
+        /* 255 is max packet size, 1 for command. */
+        uint32_t max_chunk = 254;
         uint32_t chunk = (nb_bytes > max_chunk) ? max_chunk : nb_bytes;
         if (s->verbose) { LOG("%08x %d\n", address, chunk); };
         tether_cmd_buf(s, NxS, buf, chunk);
@@ -195,12 +211,12 @@ int tether_verify(struct tether *s, const uint8_t *buf,
     uint8_t buf_verify[in_len];
     tether_read_mem(s, buf_verify, address, in_len, LDx, NxL);
     return 0 == memcmp(buf, buf_verify, in_len);
-} 
+}
+
 int tether_verify_flash(struct tether *s, const uint8_t *buf,
                         uint32_t address, uint32_t in_len) {
     return tether_verify(s, buf, address, in_len, LDF, NFL);
 }
-
 
 void tether_load(struct tether *s, const char *filename, uint32_t address,
                  enum PRIM LDx, enum PRIM NxS, enum PRIM NxL) {
@@ -238,12 +254,11 @@ void tether_write_flash(struct tether *s, const uint8_t *buf,
     ASSERT(0 == (nb_bytes % 64));
     return tether_write_mem(s, buf, address, nb_bytes, LDF, NFS);
 }
+
 void tether_write_ram(struct tether *s, const uint8_t *buf,
                       uint32_t address, uint32_t nb_bytes) {
     return tether_write_mem(s, buf, address, nb_bytes, LDA, NAS);
 }
-
-
 
 void tether_load_flash(struct tether *s, const char *filename, uint32_t address) {
     return tether_load(s, filename, address,\
@@ -253,8 +268,6 @@ void tether_load_ram(struct tether *s, const char *filename, uint32_t address) {
     return tether_load(s, filename, address,
                        LDA, NAS, NAL);
 }
-
-
 
 
 
