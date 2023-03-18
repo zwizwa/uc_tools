@@ -1,6 +1,8 @@
 #!/bin/sh
 
-# Variant of x8, for use with dual-partition firmware on 128k Flash STM32F103
+# Variant of x8a, for use with dual-partition firmware on 128k Flash STM32F103
+# This uses both partitions for code.
+
 #
 # gdbstub:     0x08000000 - 0x08003000
 # trampoline:  0x08003000 - 0x08004000
@@ -15,19 +17,9 @@
 [ -z "$MAIN_LD" ] && MAIN_LD=$(dirname $0)/stm32f1.ld.sh
 [ -z "$END_LD" ]  && END_LD=$(dirname $0)/stm32f1_end.ld.sh 
 
-case $(basename $0) in
-    x8b.f103.ld.sh)
-        CONFIG=0x08012000
-        ORIGIN=0x08012800
-        # LENGTH=0xD800 # From ORIGIN to end of Flash
-        LENGTH=0xD400 # Leave room for 1k log dump
-        ;;
-    *)
-        CONFIG=0x08004000
-        ORIGIN=0x08004800
-        LENGTH=0xD800 # From ORIGIN to beginning of partition B
-        ;;
-esac
+CONFIG=0x08004000
+ORIGIN=0x08004800
+LENGTH=0x1B400 # From ORIGIN to end of Flash, minus 1k for log.
 
 export CONFIG
 export ORIGIN
