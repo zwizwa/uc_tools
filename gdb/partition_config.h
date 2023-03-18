@@ -25,12 +25,12 @@ struct partition_config_log {
 
 /* Default for stm32f103 with 2 partitions.
    These are hardcoded in the x8a and x8b linker files. */
-#define PARTITION_CONFIG_PARTITION_INIT(addr) \
+#define PARTITION_CONFIG_DEFAULT_PARTITION_INIT(addr) \
   { .max_size = 0xE000, .page_logsize = 10, .config = (void*)(addr) } \
 
 #define PARTITION_CONFIG_DEFAULT_INIT {                     \
-        PARTITION_CONFIG_PARTITION_INIT(0x08004000),        \
-        PARTITION_CONFIG_PARTITION_INIT(0x08012000),        \
+        PARTITION_CONFIG_DEFAULT_PARTITION_INIT(0x08004000),        \
+        PARTITION_CONFIG_DEFAULT_PARTITION_INIT(0x08012000),        \
 }
 
 // TODO: implement status codes.

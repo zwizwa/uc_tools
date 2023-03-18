@@ -48,7 +48,10 @@
 
 /* We are specialized to the partitions provided in the linker files,
    so these are hardcoded. */
-static const struct partition_config part[] = PARTITION_CONFIG_DEFAULT_INIT;
+#ifndef PARTITION_CONFIG_INIT
+#define PARTITION_CONFIG_INIT PARTITION_CONFIG_DEFAULT_INIT
+#endif
+static const struct partition_config part[] = PARTITION_CONFIG_INIT;
 
 /* Instantiate these functions so they won't be inlined, making them
    available for manual interaction in gdb. */
