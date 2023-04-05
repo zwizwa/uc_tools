@@ -27,6 +27,21 @@
    was done originally to make Lua decoding simpler and is good enough
    in practice. */
 
+/* Derive the logging prefix byte from the packet struct defined by
+   FIRMWARE_TRACE_DEF_STRUCT.  The byte is high bit 1 + low 7 bits encoding the */
+#define FIRMWARE_TRACE_PREFIX(msg) \
+    (0x80 | (sizeof(msg) - 5))
+
+typedef uint8_t  firmware_trace_prefix_t;
+typedef uint32_t firmware_trace_timestamp_t;
+typedef uint8_t  firmware_trace_tag_t;
+struct firmware_trace_hdr {
+    firmware_trace_prefix_t    prefix;
+    firmware_trace_timestamp_t timestamp;
+    firmware_trace_tag_t       tag;
+} __attribute__((__packed__));
+
+
 
 /* Passed to iteration macro to define struct, wrapper function decl and struct init. */
 #define FIRMWARE_TRACE_DEF_STRUCT_FIELD(name) firmware_trace_##name##_t name;
@@ -49,7 +64,7 @@
         firmware_trace_##type##_spec(FIRMWARE_TRACE_DEF_FUNCTION_ARG)) { \
         if (!firmware_trace_enabled(s, trace_tag_##type)) return;       \
         struct firmware_trace_dmx msg = {                               \
-            .hdr = { .prefix = 0x80 | (sizeof(msg) - 5),                \
+            .hdr = { .prefix = FIRMWARE_TRACE_PREFIX(msg),              \
                      .tag = trace_tag_##type },                         \
             firmware_trace_##type##_spec(FIRMWARE_TRACE_STRUCT_FIELD_INIT) \
         };                                                              \
@@ -60,20 +75,13 @@
     FIRMWARE_TRACE_DEF_STRUCT(type)   \
     FIRMWARE_TRACE_DEF_FUNCTION(type) \
 
-typedef uint8_t firmware_trace_tag_t;
 
-struct firmware_trace_hdr {
-    uint8_t _pad[2]; // To make timestamp write padded
-    uint8_t prefix;  // Prefix byte.  High bit is 1, lower 7 bits encode size.
-    firmware_trace_tag_t tag;
-    uint32_t timestamp;
-} __attribute__((__packed__));
 
 
 static inline void firmware_trace_send(
     firmware_trace_t *s, struct firmware_trace_hdr *msg);
 
 static inline int firmware_trace_enabled(
-    struct rtcore *s, firmware_trace_tag_t tag);
+    firmware_trace_t *s, firmware_trace_tag_t tag);
 
 #endif
