@@ -28,9 +28,18 @@ function log_parse.new(config)
                -- is binary
                local hex = str:sub(1,8)
                local bin = str:sub(10, #str)
-               str = hex .. " " .. bin_to_string(bin) .. "\n"
+               local from_bin = bin_to_string(bin)
+               if from_bin == nil then
+                  -- bin_to_string() can be used to filter
+                  -- if it returns nil we suppress the log message
+                  str = nil
+               else
+                  str = hex .. " " .. from_bin .. "\n"
+               end
             end
-            table.insert(out_strs, str)
+            if str ~= nil then
+               table.insert(out_strs, str)
+            end
          end
          return out_strs
       end
