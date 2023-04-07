@@ -63,7 +63,7 @@ struct firmware_trace_hdr {
         firmware_trace_t *s                                             \
         firmware_trace_##type##_spec(FIRMWARE_TRACE_DEF_FUNCTION_ARG)) { \
         if (!firmware_trace_enabled(s, trace_tag_##type)) return;       \
-        struct firmware_trace_dmx msg = {                               \
+        struct firmware_trace_##type msg = {                            \
             .hdr = { .prefix = FIRMWARE_TRACE_PREFIX(msg),              \
                      .tag = trace_tag_##type },                         \
             firmware_trace_##type##_spec(FIRMWARE_TRACE_STRUCT_FIELD_INIT) \

@@ -254,20 +254,21 @@ function type_reader.pointer_type(env, type, addr)
    -- dereference if needed.
    assert(type)
    assert(type.byte_size)
+
    -- log_desc(type)
    local addr = read_le_word(env, addr, type.byte_size)
+
+   -- FIXME: The app this is used for has a single nested data
+   -- structure, so we never need to follow any pointers.  Maybe make
+   -- pointer following configurable.  For now just return address.
+
    if env.lazy then
       -- We don't actually know if it is a pointer or an array!  For
       -- now assume it is just a single object and fix arrays when
       -- need arises.
-      return type_reader.structure_type(env, type.type, addr)
+      -- return type_reader.structure_type(env, type.type, addr)
+      return addr
    else
-      -- Here it's not clear to me what to do.  Basically this case is
-      -- not consistent with lazy operation, which follows the
-      -- pointer.  However old behavor relies on this.  The feeling I
-      -- get is that it is best to make everything lazy: in that case
-      -- we don't have to deal with loops here.  User will have to
-      -- take that into account...
       return addr
    end
 end
@@ -298,7 +299,11 @@ end
 
 function type_reader.structure_type(env, type, addr)
    assert(addr)
-   assert(type.tag == "structure_type")
+
+   if type.tag ~= "structure_type" then
+      log_desc(type)
+      error("unexpected tag: " .. type.tag)
+   end
    assert(type.children)
    local struct = {}
    for i,member in ipairs(type.children) do
