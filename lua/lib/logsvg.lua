@@ -232,7 +232,8 @@ function logsvg.read_log_parse(filename, config)
             {file = filename,
              -- The default {} does not perform any winding in C code.
              wind = config.wind or {}, -- {0},
-             next = nxt })
+             next = nxt,
+             dir = config.dir })
    end
 
    -- FIXME: Let the C code do the scanning.

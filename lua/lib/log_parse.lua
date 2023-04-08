@@ -48,12 +48,11 @@ function log_parse.new(config)
    return obj
 end
 
-
 function log_parse.messages(config)
    assert(config)
    assert(config.next)
    assert(config.file)
-   local filename = config.file
+   local filename = (config.dir or "") .. config.file
    local nxt = config.next
    -- FIXME: C code only supports a single byte prefix atm.
    local wind_prefix = config and config.wind and config.wind[1]
@@ -63,13 +62,15 @@ function log_parse.messages(config)
    else
       file = C.new_log_file(filename)
    end
-   log_desc({filename = filename, file = file})
+   -- log_desc({log_parse_messdages = {filename = filename, file = file}})
    local parse = C.new_log_parse()
    if wind_prefix then
       local offset = C.wind_prefix(parse, file, wind_prefix)
-      io.stderr:write(filename .. ": wind offset = " .. offset .. "\n")
+      io.stderr:write(config.file .. ": wind offset = " .. offset .. "\n")
    else
-      io.stderr:write(filename .. ": not winding\n")
+      -- Don't complain here.  For logsvg the default is to use a
+      -- regexp and do the wind in Lua.
+      -- io.stderr:write(config.file .. ": not winding\n")
    end
    return function() return nxt(parse, file) end
 end
