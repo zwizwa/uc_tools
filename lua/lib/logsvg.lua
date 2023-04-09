@@ -217,6 +217,7 @@ function logsvg.read_log_parse(filename, config)
    local wraps = 0;
 
    local nxt = log_parse.next_ts_string
+
    -- If there is a binary to string converter supplied, we can use
    -- the iterator that doesn't convert the binaries to hex.
    if bin_to_string then nxt = log_parse.next_ts_raw end
@@ -240,8 +241,10 @@ function logsvg.read_log_parse(filename, config)
    for n, logline, is_bin in sequence do
 
       -- User can plug in binary log message parser
+      -- It can return a decoded Lua message that is also passed to the filter.
+      local decoded = nil
       if is_bin and bin_to_string then
-         logline = bin_to_string(logline)
+         logline, decoded = bin_to_string(logline)
       end
 
       if max_lines and #lines > max_lines then return lines end
@@ -264,12 +267,13 @@ function logsvg.read_log_parse(filename, config)
          last = n
 
          local keep = true
-         if config.drop_res then
-            for _,re in ipairs(config.drop_res) do
-               if string.match(logline, re) then
-                  keep = false
-                  break
-               end
+         if config.filter then
+            -- Filter returns a truth value.  If that is a string it
+            -- is the new logline.
+            keep = config.filter(logline, decoded)
+            local typ = type(filter_rv)
+            if type(keep) == 'string' then
+               logline = keep
             end
          end
          if keep then
