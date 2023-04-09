@@ -237,8 +237,7 @@ function logsvg.read_log_parse(filename, config)
              dir = config.dir })
    end
 
-   -- FIXME: Let the C code do the scanning.
-   for n, logline, is_bin in sequence do
+   for timestamp, logline, is_bin in sequence do
 
       -- User can plug in binary log message parser
       -- It can return a decoded Lua message that is also passed to the filter.
@@ -249,22 +248,30 @@ function logsvg.read_log_parse(filename, config)
 
       if max_lines and #lines > max_lines then return lines end
       -- log_desc({n = n, logline = logline})
-      assert(n)
+      assert(timestamp)
       assert(logline)
       if not last then
          if string.match(logline, sync_re) then
-            log("sync:" .. n .. ":" .. filename .. "\n")
-            last  = n
-            first = n
+            log("sync:" .. timestamp .. ":" .. filename .. "\n")
+            last  = timestamp
+            first = timestamp
          end
       end
       if last then
-         local diff = n - last
+         if timestamp == 0 then
+            -- Zero encodes a missing timestamp.  This needs to be
+            -- filled in, otherwise adjusted_timestamp will see a time
+            -- jump.
+            timestamp = last
+         end
+
+         local diff = timestamp - last
          if (diff < 0) then
             wraps = wraps + 1
          end
-         local adjusted_n = n - first + wraps * 0x100000000
-         last = n
+         local adjusted_timestamp = timestamp - first + wraps * 0x100000000
+         last = timestamp
+         -- logf("adjusted_timestamp %08x %d %d\n", timestamp, wraps, adjusted_timestamp)
 
          local keep = true
          if config.filter then
@@ -278,7 +285,9 @@ function logsvg.read_log_parse(filename, config)
             end
          end
          if keep then
-            table.insert(lines, {adjusted_n, adjusted_n, logline})
+            local annotated_line = {adjusted_timestamp, adjusted_timestamp, logline}
+            -- log_desc(annotated_line)
+            table.insert(lines, annotated_line)
          end
       end
    end
@@ -341,9 +350,9 @@ function logsvg.read_log(filename, config)
          if (diff < 0) then
             wraps = wraps + 1
          end
-         local adjusted_n = n - first + wraps * 0x100000000
+         local adjusted_timestamp = n - first + wraps * 0x100000000
          last = n
-         table.insert(lines, {adjusted_n, adjusted_n, logline})
+         table.insert(lines, {adjusted_timestamp, adjusted_timestamp, logline})
       end
    end
    return lines
