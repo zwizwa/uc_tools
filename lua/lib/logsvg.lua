@@ -269,11 +269,12 @@ function logsvg.read_log_parse(filename, config)
          local keep = true
          if config.filter then
             -- Filter returns a truth value.  If that is a string it
-            -- is the new logline.
+            -- replaces the logline.
             keep = config.filter(logline, decoded)
-            local typ = type(filter_rv)
-            if type(keep) == 'string' then
+            local typ = type(keep)
+            if typ == 'string' then
                logline = keep
+               keep = true
             end
          end
          if keep then
