@@ -237,8 +237,6 @@ struct devices {
 */
 
 
-#ifndef REGISTERS_IMPL
-#define dev (*((volatile struct devices*)0x40000000))
-#endif
+#define REGISTERS_STM32F103_DEV ((volatile struct devices*)0x40000000)
 
 #endif

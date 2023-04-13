@@ -250,26 +250,26 @@ function type_reader.base_type(env, type, addr)
 end
 
 function type_reader.pointer_type(env, type, addr)
-   -- FIXME: Data structure should probably preserve type, so we can
-   -- dereference if needed.
    assert(type)
    assert(type.byte_size)
 
-   -- log_desc(type)
-   local addr = read_le_word(env, addr, type.byte_size)
-
-   -- FIXME: The app this is used for has a single nested data
-   -- structure, so we never need to follow any pointers.  Maybe make
-   -- pointer following configurable.  For now just return address.
+   -- log_desc({type_reader_pointer_type = type})
+   local pointed_addr = read_le_word(env, addr, type.byte_size)
+   -- log_desc({addr=addr,pointed=pointed})
 
    if env.lazy then
-      -- We don't actually know if it is a pointer or an array!  For
-      -- now assume it is just a single object and fix arrays when
-      -- need arises.
-      -- return type_reader.structure_type(env, type.type, addr)
-      return addr
+      local function read_it()
+         local val = read_type(env, type.type, pointed_addr)
+         return val
+      end
+      return read_it
    else
-      return addr
+      -- If not lazy, we return the pointer value.  Pointers can
+      -- introduce reference loops so we cannot just read it here.
+      --
+      -- FIXME: Should this return type also?
+      -- return pointed, type
+      return pointed_addr
    end
 end
 
@@ -483,6 +483,7 @@ local function find_variable_node(elf, name)
    assert(elf)
    assert(name)
    local dies = {C.die_find_variable(elf, name)}
+   -- log_desc({find_variable_node_dies = dies})
    for i=1,#dies do
       local die = dies[i]
       local node = elfutils.die_unpack(die)
@@ -496,10 +497,26 @@ local function find_variable_node(elf, name)
    return nil
 end
 
+function elfutils.find_structure_type(env, name)
+   assert(env)
+   assert(env.elf)
+   local dies = {C.die_find_structure_type(env.elf, name)}
+   for i=1,#dies do
+      local die = dies[i]
+      local node = elfutils.die_unpack(die)
+      -- log_desc({find_structure_type_node=node})
+      return node
+   end
+end
+
+
 function elfutils.read_variable(env, name)
    assert(env)
    assert(env.elf)
    local node = find_variable_node(env.elf, name)
+   if not node then
+      error('Node "' .. name .. '" not found')
+   end
 
    assert(node.type)
    assert(node.location)
@@ -514,6 +531,9 @@ function elfutils.read_variable(env, name)
       return read_it()
    end
 end
+
+
+
 
 
 
