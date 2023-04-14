@@ -262,7 +262,7 @@ function type_reader.pointer_type(env, type, addr)
          local val = read_type(env, type.type, pointed_addr)
          return val
       end
-      return read_it
+      return { read = read_it, val = pointed_addr }
    else
       -- If not lazy, we return the pointer value.  Pointers can
       -- introduce reference loops so we cannot just read it here.
