@@ -4,19 +4,23 @@ local gdbstub_lua51 = require('gdbstub_lua51')
 
 local m = {}
 
--- Note that I wrote this a long time ago and only used it for
--- webserver.lua which has been used in a logsvg viewer tool.  The
--- code below is cloned from that tool.
-
 function m.start(scheduler, tcp_port)
    assert(scheduler)
    assert(tcp_port)
    local stub = gdbstub_lua51.stub_new()
+
+   -- Memory access callbacks
+   local mem = {}
+   --function mem.flash_erase(addr, size) return 0 end
+   --function mem.flash_write(addr, bytes) return 0 end
+   --function mem.write(addr, byte) end
+   --function mem.write32(addr, word) end
+   function mem.read(addr) return 0xAA end
+
    local serv_obj = {
       ip = '0.0.0.0',
       port = tcp_port,
       mode = 'raw',
-      stub = stub,
    }
    function serv_obj:connection()
       local c = {}
@@ -25,11 +29,11 @@ function m.start(scheduler, tcp_port)
             local msg = self:recv()
             local from, req = unpack(msg)
             assert(from == self.socket)
-            log_desc({req=req})
-            gdbstub_lua51.stub_write(stub, req)
-            local rpl = gdbstub_lua51.stub_read(stub)
+            -- log_desc({req=req})
+            gdbstub_lua51.stub_write(stub, mem, req)
+            local rpl = gdbstub_lua51.stub_read(stub, mem)
             if rpl then
-               log_desc({rpl=rpl})
+               -- log_desc({rpl=rpl})
                self.socket:write(rpl)
             end
          end

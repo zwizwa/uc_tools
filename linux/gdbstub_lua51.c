@@ -43,18 +43,18 @@ struct stub {
     struct packet rpl; uint8_t rpl_buf[GDBSTUB_PACKET_BUFFER_SIZE];
     struct gdbstub_ctrl ctrl;
     struct gdbstub stub;
+    int cb_index; // Lua stack index of callback table
 };
-#define STUB_BUF_INIT(s,pkt) do {                      \
+#define STUB_PKT_INIT(s,pkt) do {                      \
         (s)->stub.pkt = &(s)->pkt;                     \
         (s)->pkt.buf = (s)->pkt##_buf;                 \
         (s)->pkt.size = sizeof((s)->pkt##_buf);        \
     } while(0)
-
 static void stub_init(struct stub *s) {
     ASSERT(s);
     memset(s,0,sizeof(*s));
-    STUB_BUF_INIT(s,req);
-    STUB_BUF_INIT(s,rpl);
+    STUB_PKT_INIT(s,req);
+    STUB_PKT_INIT(s,rpl);
     s->stub.ctrl = &s->ctrl;
     s->stub.commands = gdbstub_default_commands;
     uint32_t reg[GDBSTUB_NB_REGS] = GDBSTUB_REG_INIT;
@@ -77,18 +77,20 @@ static const char *string_L(lua_State *L, int index, size_t *len) {
 
 /* Protocol read/write */
 static int stub_write_cmd(lua_State *L) {
-    struct stub_ud *ud = stub_L(L, 1);
+    struct stub_ud *ud = stub_L(L, -3);
+    ud->base.cb_index = -2;
     size_t len = 0;
-    const char *str = string_L(L, 2, &len);
+    const char *str = string_L(L, -1, &len);
     stub_ud_ctx = ud;
-    LOG("stub gets %d\n", len);
+    //LOG("stub gets %d\n", len);
     gdbstub_write(&ud->base.stub, (const void*)str, len);
     return 0;
 }
 static int stub_read_cmd(lua_State *L) {
-    struct stub_ud *ud = stub_L(L, -1);
+    struct stub_ud *ud = stub_L(L, -2);
+    ud->base.cb_index = -1;
     uint32_t n_stub = gdbstub_read_ready(&ud->base.stub);
-    LOG("stub has %d\n", n_stub);
+    //LOG("stub has %d\n", n_stub);
     if (!n_stub) { return 0; } // nil means no data
     uint8_t buf[n_stub];
     stub_ud_ctx = ud;
@@ -98,10 +100,12 @@ static int stub_read_cmd(lua_State *L) {
 }
 
 
-/* Called by stub.  We bind it to gdbstub_ub_ctx in the context of a Lua call. */
+
+/* Called by stub.  We bind it to gdbstub_ub_ctx in the context of a
+   Lua call.  All _cmd functions have the memory callbacks on position
+   2 on the stack. */
 
 /* lua_call(ud->L, <nb_args>, <nb_rv> */
-
 
 int32_t flash_erase(uint32_t addr, uint32_t size) {
     return 0;
@@ -116,16 +120,21 @@ int32_t mem_write32(uint32_t addr, uint32_t val) {
     return E_OK;
 }
 uint8_t mem_read(uint32_t addr) {
-    return 0x55;
+    struct stub_ud *ud = stub_ud_ctx;
+    lua_State *L = ud->L;
+    lua_getfield(L, ud->base.cb_index, "read");
+    lua_pushnumber(L, addr);
+    lua_call(L, 1 /* nb arg */, 1 /* nb rv */);
+    lua_Number byte = number_L(L, -1);
+    lua_pop(L, 1); /* remove so stack doesn't keep growing on next call */
+    return byte;
 }
 
 int luaopen_gdbstub_lua51 (lua_State *L) {
     new_lua_metatable(L, stub_T, stub_gc);
-
     lua_newtable(L);
     DEF_CFUN(stub_new);
     DEF_CFUN(stub_read);
     DEF_CFUN(stub_write);
-#undef CMD
     return 1;
 }
