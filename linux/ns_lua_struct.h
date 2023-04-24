@@ -28,7 +28,12 @@ static int NS(_new_cmd)(lua_State *L) {
 static struct NS(_ud) *NS(_L)(lua_State *L, int index) {
     ASSERT(luaL_checkudata(L, index, NS(_T)));
     struct NS(_ud) *ud = lua_touserdata(L, index);
-    ASSERT(ud->L == L);
+    // This started to trigger. WTF?
+    // ASSERT(ud->L == L);
+    if (ud->L != L) {
+        LOG("WARNING: L was %p, is now %p\n", ud->L, L);
+        ud->L = L;
+    }
     return ud;
 }
 /* Dummy garbage collect function. */

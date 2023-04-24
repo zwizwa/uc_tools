@@ -20,6 +20,12 @@
 #include "gdbstub.h"
 #include "lua_tools.h"
 
+#include "gdb/rsp_packet.c"
+#include "gdb/gdbstub.c"
+const char gdbstub_memory_map[] = GDBSTUB_MEMORY_MAP_STM32F103CB;
+struct gdbstub_config _config;
+
+
 
 /* The gdbstub.h was originally for use on a microcontroller.  The
    memory read/write/erase commands assume a global instance.  Here we
@@ -30,111 +36,73 @@ struct stub_ud;
 struct stub_ud *stub_ud_ctx;
 
 
-
+/* Data structure wrapper. */
 #define stub_T  "gdbstub.stub"
-
 struct stub {
     struct packet req; uint8_t req_buf[GDBSTUB_PACKET_BUFFER_SIZE];
     struct packet rpl; uint8_t rpl_buf[GDBSTUB_PACKET_BUFFER_SIZE];
     struct gdbstub_ctrl ctrl;
     struct gdbstub stub;
 };
+#define STUB_BUF_INIT(s,pkt) do {                      \
+        (s)->stub.pkt = &(s)->pkt;                     \
+        (s)->pkt.buf = (s)->pkt##_buf;                 \
+        (s)->pkt.size = sizeof((s)->pkt##_buf);        \
+    } while(0)
 
 static void stub_init(struct stub *s) {
     ASSERT(s);
     memset(s,0,sizeof(*s));
-
-    s->stub.ctrl     = &s->ctrl;
-    s->stub.req      = &s->req;
-    s->stub.rpl      = &s->rpl;
+    STUB_BUF_INIT(s,req);
+    STUB_BUF_INIT(s,rpl);
+    s->stub.ctrl = &s->ctrl;
     s->stub.commands = gdbstub_default_commands;
-
     uint32_t reg[GDBSTUB_NB_REGS] = GDBSTUB_REG_INIT;
-    memcpy(s->stub.req, reg, sizeof(reg));
-
+    memcpy(s->stub.reg, reg, sizeof(reg));
 }
-
-#if 0
-static struct stub *push_gdbstub(lua_State *L, short int tcp_port) {
-    struct stub *ud = lua_newuserdata(L, sizeof(*ud));
-    ASSERT(ud);
-    memset(ud,0,sizeof(*ud));
-
-    ud->tcp_port      = tcp_port;
-
-    ud->stub.ctrl     = &ud->ctrl;
-    ud->stub.req      = &ud->req;
-    ud->stub.rpl      = &ud->rpl;
-    ud->stub.commands = gdbstub_default_commands;
-
-    uint32_t reg[GDBSTUB_NB_REGS] = GDBSTUB_REG_INIT;
-    memcpy(ud->stub.req, reg, sizeof(reg));
-
-    luaL_getmetatable(L, gdbstub_T);
-    lua_setmetatable(L, -2);
-    return ud;
-}
-static int gdbstub_new_cmd(lua_State *L) {
-    short int tcp_port = L_number(L, 1);
-    struct stub *ud = push_gdbstub(L, tcp_port);
-    (void)ud;
-    return 1;
-}
-static struct stub *gdbstub_L(lua_State *L, int index) {
-    ASSERT(luaL_checkudata(L, index, gdbstub_T));
-    struct stub *ud = lua_touserdata(L, index);
-    return ud;
-}
-static int gdbstub_gc(lua_State *L) {
-    struct stub *ud = gdbstub_L(L, -1);
-    (void)ud; // Just a stub
-    return 0;
-}
-#endif
-
-
 #define NS(name) CONCAT(stub,name)
 #include "ns_lua_struct.h"
 #undef NS
 
-
-void *buf;
-int nb;
-
+/* Stack read + type check */
+static inline const lua_Number number_L(lua_State *L, int index) {
+    ASSERT(lua_isnumber(L, index));
+    lua_Number n = lua_tonumber(L, index);
+    return n;
+}
 static const char *string_L(lua_State *L, int index, size_t *len) {
     ASSERT(lua_isstring(L, index));
     return lua_tolstring(L, index, len);
 }
+
+/* Protocol read/write */
 static int stub_write_cmd(lua_State *L) {
     struct stub_ud *ud = stub_L(L, 1);
     size_t len = 0;
     const char *str = string_L(L, 2, &len);
     stub_ud_ctx = ud;
+    LOG("stub gets %d\n", len);
     gdbstub_write(&ud->base.stub, (const void*)str, len);
-    stub_ud_ctx = NULL;
     return 0;
 }
 static int stub_read_cmd(lua_State *L) {
     struct stub_ud *ud = stub_L(L, -1);
     uint32_t n_stub = gdbstub_read_ready(&ud->base.stub);
+    LOG("stub has %d\n", n_stub);
     if (!n_stub) { return 0; } // nil means no data
     uint8_t buf[n_stub];
     stub_ud_ctx = ud;
     gdbstub_read(&ud->base.stub, buf, n_stub);
-    stub_ud_ctx = NULL;
     lua_pushlstring(L, (const char*)buf, n_stub);
     return 1;
 }
 
 
-static int name_cmd(lua_State *L) {
-    const char *str = "gdbstub_lua51";
-    lua_pushstring(L, str);
-    return 1;
-}
+/* Called by stub.  We bind it to gdbstub_ub_ctx in the context of a Lua call. */
+
+/* lua_call(ud->L, <nb_args>, <nb_rv> */
 
 
-/* Wrappers that bind gdbstub_ub_ctx. */
 int32_t flash_erase(uint32_t addr, uint32_t size) {
     return 0;
 }
@@ -155,7 +123,6 @@ int luaopen_gdbstub_lua51 (lua_State *L) {
     new_lua_metatable(L, stub_T, stub_gc);
 
     lua_newtable(L);
-    DEF_CFUN(name);
     DEF_CFUN(stub_new);
     DEF_CFUN(stub_read);
     DEF_CFUN(stub_write);
