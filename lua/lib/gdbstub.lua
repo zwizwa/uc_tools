@@ -5,25 +5,16 @@ local m = {}
 
 local gdbstub_lua51 = require('gdbstub_lua51')
 
+-- Note that the whole point of this is producing a wrapper around
+-- target memory read, where target is not directly accessible so we
+-- need to use some kind of RPC mechanism to retrieve the memory
+-- contents.  In my setup, the wait-for-reply is implemented using Lua
+-- coroutines.  However, coroutine yield does not work from a C call,
+-- so the implementation that used Lua callbacks has been removed, in
+-- favor of exposing the packet decoder and handling some packets in
+-- Lua.
 
--- Note that you can't have coroutine yield from inside a C call, so
--- memory read command 'm' is implemented separately.  To this end
--- some of the internals are exposed in gdbstub_lua51
-
-local parse = {}
-function parse.m(packet)
-   -- E.g. m5555560d,8 Memory read
-   if packet:byte(1) ~= 109 then return end -- m
-   assert(packet:byte(10) == 44) -- ,
-   local addr_str = packet:sub(2,9) ; local addr = tonumber(addr_str, 16)
-   local nb_str   = packet:sub(11)
-   local nb       = tonumber(nb_str, 10)
-   -- log_desc({addr_str = addr_str, nb_str = nb_str})
-   -- log_desc({addr = addr, nb = nb})
-   return nil
-end
-
-function m.start(scheduler, tcp_port, callbacks)
+function m.start(scheduler, tcp_port, mem)
    assert(scheduler)
    assert(tcp_port)
    local C = gdbstub_lua51
@@ -34,6 +25,46 @@ function m.start(scheduler, tcp_port, callbacks)
       port = tcp_port,
       mode = 'raw',
    }
+
+   local function hex_sub(packet,from,to)
+      local str = packet:sub(from, to)
+      return tonumber(str, 16)
+   end
+   local function rpl_bytes(bytes, nb)
+      C.rpl_begin(stub)
+      for i=1,nb do
+         -- FIXME: Implement error handling.  For now just return
+         -- obvious junk.  Not 0x00 and not 0xFF.
+         local byte = bytes[i] or 0x55
+         C.rpl_hex_cs(stub, byte)
+      end
+      C.rpl_end(stub)
+   end
+
+   -- If these return true, a response has been generated.
+   local parse = {}
+   function parse.m(p)
+      -- E.g. m5555560d,8 Memory read
+      if p:byte(1) ~= 109 then return false end -- m
+      assert(p:byte(10) == 44) -- ,
+      local addr  = hex_sub(p,2,9)
+      local nb    = hex_sub(p,11)
+      local bytes = mem.read(addr, nb) or { error = 'read failed' }
+      -- log_desc({bytes = bytes})
+      rpl_bytes(bytes, nb)
+      return true
+   end
+   local function do_parse(packet)
+      for name, fun in pairs(parse) do
+         if fun(packet) then
+            -- One of our handlers produced a reply.
+            break
+         end
+      end
+      -- Note of the handlers took it. Let the C code handle it
+      C.stub_interpret(stub)
+   end
+
    function serv_obj:connection()
       local c = {}
       function c:connect()
@@ -41,33 +72,15 @@ function m.start(scheduler, tcp_port, callbacks)
             local msg = self:recv()
             local from, req = unpack(msg)
             assert(from == self.socket)
-            -- log_desc({req=req})
-
-            -- We're not using stub_write here, but instead feed the
-            -- decoder directly so we can implement certain packets
-            -- separately.
-            if false then
-               C.stub_write(stub, callbacks, req)
-            else
-               for i=1,#req do
-                  local status, packet = C.stub_putchar(stub, req:byte(i))
-                  local parsed
-                  if status == 0 then
-                     -- We get a copy to do some local dispatch.
-                     log_desc({packet=packet})
-                     local parsed
-                     if parse.m(packet) then
-                        --
-                     else
-                        -- Let it handle internally.
-                        C.stub_interpret(stub, callbacks)
-                     end
-                  else
-                     -- FIXME: Handle errors
-                  end
+            for i=1,#req do
+               local status, packet = C.stub_putchar(stub, req:byte(i))
+               if status == 0 then
+                  do_parse(packet)
+               else
+                  -- FIXME: error handling
                end
             end
-            local rpl = C.stub_read(stub, callbacks)
+            local rpl = C.stub_read(stub)
             if rpl then
                -- log_desc({rpl=rpl})
                self.socket:write(rpl)
