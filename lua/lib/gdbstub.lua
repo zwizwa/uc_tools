@@ -58,7 +58,7 @@ function m.start(scheduler, tcp_port, mem)
       for name, fun in pairs(parse) do
          if fun(packet) then
             -- One of our handlers produced a reply.
-            break
+            return
          end
       end
       -- Note of the handlers took it. Let the C code handle it
