@@ -22,6 +22,12 @@
 #include "macros.h"
 #include <stdint.h>
 
+/* Code in gdbstub.c uses LOG() for logging without any other
+   parameterization.  This is very verbose.  It's only needed for
+   protocol debugging so turn it off by default. */
+#undef LOG
+#define LOG(...)
+
 #include "gdbstub.h"
 #include "lua_tools.h"
 

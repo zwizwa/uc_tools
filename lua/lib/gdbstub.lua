@@ -90,7 +90,7 @@ function m.start(scheduler, tcp_port, target)
    function parse.c(p)
       if p:byte(1) ~= 99 then return false end -- c
       -- Get function pointer and arguments
-      local fn = bit.bor(C.reg_read(15), 1)
+      local fn = bit.bor(C.reg_read(stub,15), 1)
       local r0 = C.reg_read(stub,0)
       local r1 = C.reg_read(stub,1)
       local r2 = C.reg_read(stub,2)
@@ -98,7 +98,7 @@ function m.start(scheduler, tcp_port, target)
       -- log_desc({exec={fn,r0,r1,r2,r3}})
       local rv = target.exec(fn, r0, r1, r2, r3)
       -- Save return value
-      C.stub_return(stub, rv)
+      C.stub_return(stub, rv or 0)
       -- Emulate breakpoint trigger. See also gdbstub.c
       rpl_signal(5) -- SIGTRAP
       return true
