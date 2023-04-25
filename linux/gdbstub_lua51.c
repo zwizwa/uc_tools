@@ -1,17 +1,22 @@
-/* The GDB stub proxy as a Lua module.
-   Derived from gdbstub_proxy.c
+/* Expose gdbstub.c functionality to Lua
 
-   We don't handle the stdio or TTY or TCP end where GDB will
-   connection.  That will need to be provided at the Lua end,
-   e.g. using libuv.  We only provide read/write to the stub state
-   machine.
+   This Lua implementation preserves most of the original gdbstub
+   on-target semantics, which was intended to provide access to GDB
+   for memory readout and code execution while an application's main
+   loop is running.  The main difference with the on-target version is
+   that we run the GDB RSP protocol at the host end, and only rely on
+   abstract memory read and code execution RPC mechanism on the
+   target.  This makes it much easer to integrate the functionality in
+   an existing application.  This resembles the 3-instruction Forth
+   mechanism as is used in the bootloader.
 
-   The end goal here is to integrate this into an existing Lua app
-   that has i/o connection to a number of devices.  I want to reuse
-   that to expose a monitor for each of the devices, so I can play
-   with live code load to SRAM while the thing is running its
-   application.
+   See also gdbstub_proxy.c (which uses gdbstub.c to expose a memory
+   dump as a gdbstub) and the original gdbstub.c on-target
+   implementation in uc_tools.
 
+   The Lua end of this is in gdbstub.lua which implements the TCP
+   server where GDB will connect, and overrides some commands to allow
+   for coroutine-based RPC.
 */
 
 #include "macros.h"
@@ -111,7 +116,14 @@ static int rpl_begin_cmd(lua_State *L) {
     rsp_begin(ud->base.stub.rpl);
     return 0;
 }
-static int rpl_hex_cs_cmd(lua_State *L) {
+static int rpl_save_cs_cmd(lua_State *L) {
+    struct stub_ud *ud = stub_L(L, 1);
+    uint8_t byte = number_L(L, 2);
+    int32_t rv = packet_save_cs(ud->base.stub.rpl, byte);
+    lua_pushnumber(L, rv);
+    return 1;
+}
+static int rpl_save_hex_cs_cmd(lua_State *L) {
     struct stub_ud *ud = stub_L(L, 1);
     uint8_t byte = number_L(L, 2);
     int32_t rv = packet_save_hex_cs(ud->base.stub.rpl, byte);
@@ -123,6 +135,26 @@ static int rpl_end_cmd(lua_State *L) {
     rsp_end(ud->base.stub.rpl);
     return 0;
 }
+
+
+/* To implement function exection from gdb, reuse most of the
+   mechanism from the original on-target gdbstub, but override the "c"
+   (continue) command in Lua.  The function below can be used to
+   retreive the function arguments from registers r0,r1,r2,r3 */
+static int reg_read_cmd(lua_State *L) {
+    struct stub_ud *ud = stub_L(L, 1);
+    uintptr_t reg_nb = number_L(L, 2);
+    ASSERT(reg_nb < GDBSTUB_NB_REGS);
+    lua_pushnumber(L, ud->base.stub.reg[reg_nb]);
+    return 1;
+}
+static int stub_return_cmd(lua_State *L) {
+    struct stub_ud *ud = stub_L(L, 1);
+    uint32_t rv = number_L(L, 2);
+    gdbstub_fake_stop_at_breakpoint(&ud->base.stub, rv);
+    return 0;
+}
+
 
 
 
@@ -158,7 +190,10 @@ int luaopen_gdbstub_lua51 (lua_State *L) {
     DEF_CFUN(stub_putchar);
     DEF_CFUN(stub_interpret);
     DEF_CFUN(rpl_begin);
-    DEF_CFUN(rpl_hex_cs);
+    DEF_CFUN(rpl_save_cs);
+    DEF_CFUN(rpl_save_hex_cs);
     DEF_CFUN(rpl_end);
+    DEF_CFUN(reg_read);
+    DEF_CFUN(stub_return);
     return 1;
 }

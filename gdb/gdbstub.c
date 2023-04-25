@@ -26,6 +26,9 @@
    - Switching between several stubs in one gdb session seems to cause
      problems.  Best to launch one gdb session per stub.
 
+   - There is a Lua wrapper for this which runs the stub code on host
+     and relies only on abstract memory read and execute RPC.
+
    [ts]
 */
 
@@ -223,14 +226,17 @@ static int32_t cmd_signal(struct gdbstub *stub, const uint8_t *cmd, uint32_t n) 
    pointed to by reg[13].
 */
 
+static inline void gdbstub_fake_stop_at_breakpoint(struct gdbstub *stub, uint32_t rv) {
+    stub->reg[0] = rv;
+    stub->reg[15] = stub->breakpoint + 1;
+}
 
 typedef uint32_t (*gen_func)(uint32_t a, uint32_t b, uint32_t c, uint32_t d);
 static int32_t cmd_continue(struct gdbstub *stub, const uint8_t *cmd, uint32_t n) {
     if (stub->breakpoint) {
         gen_func fn = (gen_func)(unsigned long)(stub->reg[15]|1);
-        stub->reg[0] = fn(stub->reg[0],stub->reg[1],stub->reg[2],stub->reg[3]);
-        // Fake stop at breakpoint
-        stub->reg[15] = stub->breakpoint + 1;
+        uint32_t rv = fn(stub->reg[0],stub->reg[1],stub->reg[2],stub->reg[3]);
+        gdbstub_fake_stop_at_breakpoint(stub, rv);
     }
     return cmd_signal(stub, cmd, n);
 }

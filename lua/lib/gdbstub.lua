@@ -14,7 +14,7 @@ local gdbstub_lua51 = require('gdbstub_lua51')
 -- favor of exposing the packet decoder and handling some packets in
 -- Lua.
 
-function m.start(scheduler, tcp_port, mem)
+function m.start(scheduler, tcp_port, target)
    assert(scheduler)
    assert(tcp_port)
    local C = gdbstub_lua51
@@ -61,20 +61,46 @@ function m.start(scheduler, tcp_port, mem)
          -- FIXME: Implement error handling.  For now just return
          -- obvious junk.  Not 0x00 and not 0xFF.
          local byte = bytes[i] or 0x55
-         C.rpl_hex_cs(stub, byte)
+         C.rpl_save_hex_cs(stub, byte)
       end
+      C.rpl_end(stub)
+   end
+   local function rpl_signal(signo)
+      C.rpl_begin(stub)
+      C.rpl_save_cs(stub, 83) -- S
+      C.rpl_save_hex_cs(stub, signo)
       C.rpl_end(stub)
    end
 
    -- If these return true, a response has been generated.
    local parse = {}
+   -- Memory read, E.g. m5555560d,8
    function parse.m(p)
-      -- E.g. m5555560d,8 Memory read
       if p:byte(1) ~= 109 then return false end -- m
       local addr,nb = unpack(hex_csv(p,2))
-      local bytes   = mem.read(addr, nb) or { error = 'read failed' }
+      local bytes   = target.read(addr, nb) or { error = 'read failed' }
       -- log_desc({bytes = bytes})
       rpl_bytes(bytes, nb)
+      return true
+   end
+   -- Continue execution.  This is only to support GDB's call and
+   -- print commands which can call target code.  Generic breakpoints
+   -- and code resume is not supported (and doesn't make much sense in
+   -- the context).
+   function parse.c(p)
+      if p:byte(1) ~= 99 then return false end -- c
+      -- Get function pointer and arguments
+      local fn = bit.bor(C.reg_read(15), 1)
+      local r0 = C.reg_read(stub,0)
+      local r1 = C.reg_read(stub,1)
+      local r2 = C.reg_read(stub,2)
+      local r3 = C.reg_read(stub,3)
+      -- log_desc({exec={fn,r0,r1,r2,r3}})
+      local rv = target.exec(fn, r0, r1, r2, r3)
+      -- Save return value
+      C.stub_return(stub, rv)
+      -- Emulate breakpoint trigger. See also gdbstub.c
+      rpl_signal(5) -- SIGTRAP
       return true
    end
    local function do_parse(packet)
