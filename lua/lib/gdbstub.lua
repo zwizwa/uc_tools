@@ -30,6 +30,31 @@ function m.start(scheduler, tcp_port, mem)
       local str = packet:sub(from, to)
       return tonumber(str, 16)
    end
+   local function hex_csv(packet,i)
+      local chars = {}
+      local csv = {}
+      local function collect()
+         local hex = table.concat(chars)
+         table.insert(csv, tonumber(hex, 16))
+         chars = {}
+      end
+      while true do
+         -- log_desc({i=i,chars=chars,csv=csv})
+         local byte = packet:byte(i)
+         if not byte then
+            collect()
+            return csv
+         else
+            local char = string.char(byte)
+            if char == ',' then
+               collect()
+            else
+               table.insert(chars, char)
+            end
+         end
+         i = i + 1
+      end
+   end
    local function rpl_bytes(bytes, nb)
       C.rpl_begin(stub)
       for i=1,nb do
@@ -46,10 +71,8 @@ function m.start(scheduler, tcp_port, mem)
    function parse.m(p)
       -- E.g. m5555560d,8 Memory read
       if p:byte(1) ~= 109 then return false end -- m
-      assert(p:byte(10) == 44) -- ,
-      local addr  = hex_sub(p,2,9)
-      local nb    = hex_sub(p,11)
-      local bytes = mem.read(addr, nb) or { error = 'read failed' }
+      local addr,nb = unpack(hex_csv(p,2))
+      local bytes   = mem.read(addr, nb) or { error = 'read failed' }
       -- log_desc({bytes = bytes})
       rpl_bytes(bytes, nb)
       return true
@@ -86,6 +109,11 @@ function m.start(scheduler, tcp_port, mem)
                self.socket:write(rpl)
             end
          end
+      end
+      function c:halt()
+         -- FIXME: Added here because actor_uv calls it when peer
+         -- closes TCP connection I don't remember if this is supposed
+         -- to clean something up.
       end
       -- mixin.add(c, mixin_class)
       return c
