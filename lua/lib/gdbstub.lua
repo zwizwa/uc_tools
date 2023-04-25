@@ -1,21 +1,33 @@
 local actor_uv      = require('lib.actor_uv')
 local actor         = require('lib.actor')
-local gdbstub_lua51 = require('gdbstub_lua51')
 
 local m = {}
 
-function m.start(scheduler, tcp_port)
+local gdbstub_lua51 = require('gdbstub_lua51')
+
+
+-- Note that you can't have coroutine yield from inside a C call, so
+-- memory read command 'm' is implemented separately.  To this end
+-- some of the internals are exposed in gdbstub_lua51
+
+local parse = {}
+function parse.m(packet)
+   -- E.g. m5555560d,8 Memory read
+   if packet:byte(1) ~= 109 then return end -- m
+   assert(packet:byte(10) == 44) -- ,
+   local addr_str = packet:sub(2,9) ; local addr = tonumber(addr_str, 16)
+   local nb_str   = packet:sub(11)
+   local nb       = tonumber(nb_str, 10)
+   -- log_desc({addr_str = addr_str, nb_str = nb_str})
+   -- log_desc({addr = addr, nb = nb})
+   return nil
+end
+
+function m.start(scheduler, tcp_port, callbacks)
    assert(scheduler)
    assert(tcp_port)
-   local stub = gdbstub_lua51.stub_new()
-
-   -- Memory access callbacks
-   local mem = {}
-   --function mem.flash_erase(addr, size) return 0 end
-   --function mem.flash_write(addr, bytes) return 0 end
-   --function mem.write(addr, byte) end
-   --function mem.write32(addr, word) end
-   function mem.read(addr) return 0xAA end
+   local C = gdbstub_lua51
+   local stub = C.stub_new()
 
    local serv_obj = {
       ip = '0.0.0.0',
@@ -30,8 +42,32 @@ function m.start(scheduler, tcp_port)
             local from, req = unpack(msg)
             assert(from == self.socket)
             -- log_desc({req=req})
-            gdbstub_lua51.stub_write(stub, mem, req)
-            local rpl = gdbstub_lua51.stub_read(stub, mem)
+
+            -- We're not using stub_write here, but instead feed the
+            -- decoder directly so we can implement certain packets
+            -- separately.
+            if false then
+               C.stub_write(stub, callbacks, req)
+            else
+               for i=1,#req do
+                  local status, packet = C.stub_putchar(stub, req:byte(i))
+                  local parsed
+                  if status == 0 then
+                     -- We get a copy to do some local dispatch.
+                     log_desc({packet=packet})
+                     local parsed
+                     if parse.m(packet) then
+                        --
+                     else
+                        -- Let it handle internally.
+                        C.stub_interpret(stub, callbacks)
+                     end
+                  else
+                     -- FIXME: Handle errors
+                  end
+               end
+            end
+            local rpl = C.stub_read(stub, callbacks)
             if rpl then
                -- log_desc({rpl=rpl})
                self.socket:write(rpl)
@@ -45,4 +81,7 @@ function m.start(scheduler, tcp_port)
 end
 
 
+
+
 return m
+

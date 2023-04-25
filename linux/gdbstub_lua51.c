@@ -43,7 +43,7 @@ struct stub {
     struct packet rpl; uint8_t rpl_buf[GDBSTUB_PACKET_BUFFER_SIZE];
     struct gdbstub_ctrl ctrl;
     struct gdbstub stub;
-    int cb_index; // Lua stack index of callback table
+    int callbacks_index; // Lua stack index of callback table
 };
 #define STUB_PKT_INIT(s,pkt) do {                      \
         (s)->stub.pkt = &(s)->pkt;                     \
@@ -76,19 +76,29 @@ static const char *string_L(lua_State *L, int index, size_t *len) {
 }
 
 /* Protocol read/write */
+// FIXME: Can probably be removed in favor of putchar and interpret.
 static int stub_write_cmd(lua_State *L) {
     struct stub_ud *ud = stub_L(L, -3);
-    ud->base.cb_index = -2;
+    ud->base.callbacks_index = -2;
     size_t len = 0;
     const char *str = string_L(L, -1, &len);
     stub_ud_ctx = ud;
     //LOG("stub gets %d\n", len);
     gdbstub_write(&ud->base.stub, (const void*)str, len);
+    ud->base.callbacks_index = 0; // invalid
+    return 0;
+}
+static int stub_interpret_cmd(lua_State *L) {
+    struct stub_ud *ud = stub_L(L, -2);
+    ud->base.callbacks_index = -1;
+    stub_ud_ctx = ud;
+    //LOG("stub gets %d\n", len);
+    gdbstub_interpret(&ud->base.stub);
     return 0;
 }
 static int stub_read_cmd(lua_State *L) {
     struct stub_ud *ud = stub_L(L, -2);
-    ud->base.cb_index = -1;
+    ud->base.callbacks_index = -1;
     uint32_t n_stub = gdbstub_read_ready(&ud->base.stub);
     //LOG("stub has %d\n", n_stub);
     if (!n_stub) { return 0; } // nil means no data
@@ -96,14 +106,35 @@ static int stub_read_cmd(lua_State *L) {
     stub_ud_ctx = ud;
     gdbstub_read(&ud->base.stub, buf, n_stub);
     lua_pushlstring(L, (const char*)buf, n_stub);
+    ud->base.callbacks_index = 0; // invalid
     return 1;
 }
+
+
+/* The packet decoder is exposed so we can handle some commands in
+   Lua, e.g. to work around "can't yield from C". */
+static int stub_putchar_cmd(lua_State *L) {
+    struct stub_ud *ud = stub_L(L, -2);
+    char c = number_L(L, -1);
+    struct packet *req = ud->base.stub.req;
+    int rv = rsp_decode_putchar(req, c);
+    lua_pushnumber(L, rv);
+    if (rv == E_BUSY) return 1;
+    lua_pushlstring(L, (const char*)req->buf, req->wr);
+    return 2;
+}
+
+
+
 
 
 
 /* Called by stub.  We bind it to gdbstub_ub_ctx in the context of a
    Lua call.  All _cmd functions have the memory callbacks on position
-   2 on the stack. */
+   2 on the stack.  Note that the Lua function called cannot yield a
+   coroutine from a C call (e.g. fetching a packet from a bus).  In
+   order to work around this, some of the lower level functions are
+   exposed, so the coroutine call can remain in Lua. */
 
 /* lua_call(ud->L, <nb_args>, <nb_rv> */
 
@@ -122,7 +153,7 @@ int32_t mem_write32(uint32_t addr, uint32_t val) {
 uint8_t mem_read(uint32_t addr) {
     struct stub_ud *ud = stub_ud_ctx;
     lua_State *L = ud->L;
-    lua_getfield(L, ud->base.cb_index, "read");
+    lua_getfield(L, ud->base.callbacks_index, "read");
     lua_pushnumber(L, addr);
     lua_call(L, 1 /* nb arg */, 1 /* nb rv */);
     lua_Number byte = number_L(L, -1);
@@ -136,5 +167,7 @@ int luaopen_gdbstub_lua51 (lua_State *L) {
     DEF_CFUN(stub_new);
     DEF_CFUN(stub_read);
     DEF_CFUN(stub_write);
+    DEF_CFUN(stub_putchar);
+    DEF_CFUN(stub_interpret);
     return 1;
 }
