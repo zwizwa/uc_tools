@@ -822,13 +822,25 @@ INLINE void hw_spi_nodma_init(struct hw_spi_nodma c) {
     rcc_periph_clock_enable(c.rcc_spi);
     hw_spi_nodma_reset(c);
 }
-INLINE void hw_spi_nodma_wr(struct hw_spi_nodma c, uint8_t byte) {
-    while (!(SPI_SR(c.spi) & SPI_SR_TXE));
+INLINE int hw_spi_nodma_wr_ready(struct hw_spi_nodma c) {
+    return !!(SPI_SR(c.spi) & SPI_SR_TXE);
+}
+INLINE void hw_spi_nodma_wr_no_wait(struct hw_spi_nodma c, uint8_t byte) {
     SPI_DR(c.spi) = byte;
 }
-INLINE uint8_t hw_spi_nodma_rd(struct hw_spi_nodma c) {
-    while (!(SPI_SR(c.spi) & SPI_SR_RXNE));
+INLINE void hw_spi_nodma_wr(struct hw_spi_nodma c, uint8_t byte) {
+    while (!hw_spi_nodma_wr_ready(c));
+    hw_spi_nodma_wr_no_wait(c, byte);
+}
+INLINE int hw_spi_nodma_rd_ready(struct hw_spi_nodma c) {
+    return !!(SPI_SR(c.spi) & SPI_SR_RXNE);
+}
+INLINE uint8_t hw_spi_nodma_rd_no_wait(struct hw_spi_nodma c) {
     return SPI_DR(c.spi);
+}
+INLINE uint8_t hw_spi_nodma_rd(struct hw_spi_nodma c) {
+    while (!hw_spi_nodma_rd_ready(c));
+    return hw_spi_nodma_rd_no_wait(c);
 }
 INLINE uint8_t hw_spi_nodma_rdwr(struct hw_spi_nodma c, uint8_t byte) {
     hw_spi_nodma_wr(c, byte);
