@@ -25,7 +25,15 @@ function m.start(scheduler, tcp_port, target)
       port = tcp_port,
       mode = 'raw',
    }
-
+   local function hex_to_str(hex)
+      local chars = {}
+      for i=1,#hex,2 do
+         local digits = hex:sub(i,i+1)
+         local byte = tonumber(digits, 16)
+         table.insert(chars, string.char(byte))
+      end
+      return table.concat(chars)
+   end
    local function hex_sub(packet,from,to)
       local str = packet:sub(from, to)
       return tonumber(str, 16)
@@ -65,6 +73,11 @@ function m.start(scheduler, tcp_port, target)
       end
       C.rpl_end(stub)
    end
+   local function rpl_string(str)
+      local bytes = {}
+      for i=1,#str do bytes[i] = str:byte(i) end
+      return rpl_bytes(bytes,#str)
+   end
    local function rpl_signal(signo)
       C.rpl_begin(stub)
       C.rpl_save_cs(stub, 83) -- S
@@ -103,6 +116,13 @@ function m.start(scheduler, tcp_port, target)
       rpl_signal(5) -- SIGTRAP
       return true
    end
+   function parse.qRcmd(p)
+      if p:sub(1,6) ~= "qRcmd," then return false end
+      local cmd_hex = p:sub(7)
+      rpl_string(target.command(hex_to_str(cmd_hex)))
+      return true
+   end
+
    local function do_parse(packet)
       for name, fun in pairs(parse) do
          if fun(packet) then
