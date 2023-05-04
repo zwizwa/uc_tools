@@ -42,6 +42,10 @@ static inline int  i2c_read_scl(struct i2c_port *p);
 #define I2C_WAIT_C1Dx_HI(s)    SM_WAIT(s,   s->bus_bits &  0b10)
 #define I2C_WAIT_C0Dx_LO(s)    SM_WAIT(s, !(s->bus_bits &  0b10))
 
+#ifndef I2C_EEPROM_NB_DEVS
+#define I2C_EEPROM_NB_DEVS 1
+#endif
+
 struct i2c_eeprom;
 struct i2c_eeprom {
     void *next;
@@ -55,7 +59,7 @@ struct i2c_eeprom {
     uint8_t cur_addr;  // currently addressed
     uint8_t offset;
     unsigned int receive:1;
-    uint8_t eeprom[256];
+    uint8_t eeprom[256 * I2C_EEPROM_NB_DEVS];
 };
 struct i2c_eeprom i2c_eeprom;
 void i2c_eeprom_init(struct i2c_eeprom *s, struct i2c_port *i2c_port) {
@@ -93,6 +97,15 @@ void i2c_eeprom_init(struct i2c_eeprom *s, struct i2c_port *i2c_port) {
 */
 
 #define EEPROM_ADDR 0x54
+
+int i2c_eeprom_addr_match(struct i2c_eeprom *s) {
+    if (s->cur_addr < EEPROM_ADDR) return 0;
+    if (s->cur_addr >= (EEPROM_ADDR + I2C_EEPROM_NB_DEVS)) return 0;
+    return 1;
+}
+uint32_t i2c_eeprom_page(struct i2c_eeprom *s) {
+    return 256 * (s->cur_addr - EEPROM_ADDR);
+}
 
 uint32_t i2c_eeprom_poll(struct i2c_eeprom *s) {
     s->bus_bits =
@@ -133,7 +146,7 @@ uint32_t i2c_eeprom_poll(struct i2c_eeprom *s) {
                         s->receive  = s->sreg & 1;
                         s->cur_addr = (s->sreg >> 1) & 0x7f;
                         I2C_EEPROM_LOG(s, "s: addr = 0x%02x\n", s->cur_addr);
-                        if (EEPROM_ADDR == s->cur_addr) {
+                        if (i2c_eeprom_addr_match(s)) {
                             i2c_write_sda(s->i2c_port,0); // ack
                         }
                         else {
@@ -142,7 +155,7 @@ uint32_t i2c_eeprom_poll(struct i2c_eeprom *s) {
                     }
                     else {
                         // Use s->cur_addr and s->receive on subsequent bytes
-                        if (s->receive || EEPROM_ADDR != s->cur_addr) {
+                        if (s->receive || (!i2c_eeprom_addr_match(s))) {
                             i2c_write_sda(s->i2c_port,1); // nack
                         }
                         else {
@@ -153,9 +166,9 @@ uint32_t i2c_eeprom_poll(struct i2c_eeprom *s) {
                     }
                 }
                 else { // Data bit
-                    if (s->receive && (EEPROM_ADDR == s->cur_addr)) {
+                    if (s->receive && i2c_eeprom_addr_match(s)) {
                         // Assert line when master is receiving
-                        int data_bit = (s->eeprom[s->offset] >> (7 - s->bit)) & 1;
+                        int data_bit = (s->eeprom[i2c_eeprom_page(s) + s->offset] >> (7 - s->bit)) & 1;
                         i2c_write_sda(s->i2c_port,data_bit);
                     }
                     else {
@@ -191,7 +204,7 @@ uint32_t i2c_eeprom_poll(struct i2c_eeprom *s) {
             uint16_t ack  = s->sreg & 1;
             (void)ack;
             I2C_EEPROM_LOG(s, "s: 0x%02x ack=%d byte=%d\n", data, ack, s->byte);
-            if (s->byte > 0 && (EEPROM_ADDR == s->cur_addr)) {
+            if (s->byte > 0 && i2c_eeprom_addr_match(s)) {
                 if (s->receive) {
                     // We are transmitting
                     s->offset++;
@@ -205,7 +218,7 @@ uint32_t i2c_eeprom_poll(struct i2c_eeprom *s) {
                     }
                     else {
                         I2C_EEPROM_LOG(s, "s: write 0x%02x at %d\n", data, s->offset);
-                        s->eeprom[s->offset++] = data;
+                        s->eeprom[i2c_eeprom_page(s) + s->offset++] = data;
                     }
                 }
             }
