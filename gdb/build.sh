@@ -186,7 +186,9 @@ case "$TYPE" in
         dump_closure_to_file ${DASM}.build
         . $UC_TOOLS/gdb/env.$ARCH.sh
         rm -f $DASM
-        $OBJDUMP -d $ELF >$DASM
+        # Just put the summary in this file as well.
+        $OBJDUMP -x $ELF >$DASM
+        $OBJDUMP -d $ELF >>$DASM
         ;;
     hex)
         assert_vars ARCH ELF HEX
