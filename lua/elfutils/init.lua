@@ -304,9 +304,9 @@ function type_reader.structure_type(env, type, addr)
       log_desc(type)
       error("unexpected tag: " .. type.tag)
    end
-   assert(type.children)
+   local children = type.children or {}
    local struct = {}
-   for i,member in ipairs(type.children) do
+   for i,member in ipairs(children) do
       assert(member.tag == "member")
       assert(member.type)
       assert(member.name)
@@ -386,8 +386,12 @@ function elfutils.array_upper_bound(type)
    -- FIXME: access this by type instead of index=1
    local t1 = type.children[1]
    if t1.tag == "subrange_type" then
-      assert(t1.upper_bound)
-      return t1.upper_bound
+      if t1.upper_bound then
+         return t1.upper_bound
+      else
+         -- Array has no size.
+         return 0
+      end
    elseif t1.type and t1.type.name == "sizetype" then
       local upper_bound = t1.upper_bound
       assert(upper_bound)
