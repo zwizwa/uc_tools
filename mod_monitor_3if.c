@@ -114,6 +114,10 @@ void pop_stack (struct monitor_3if *s) { s->byte = *--(s->ds); }
 #define NEXT(s,var)                             \
     NEXT_LABEL(s,var,GENSYM(label_))
 
+#ifndef MONITOR_3IF_LOG
+#define MONITOR_3IF_LOG(...)
+#endif
+
 static inline uintptr_t monitor_3if_push_key(struct monitor_3if *s, uint8_t key) {
     enum PRIM op;
     if (s->next) goto *(s->next);
@@ -129,7 +133,7 @@ static inline uintptr_t monitor_3if_push_key(struct monitor_3if *s, uint8_t key)
     s->poll = NULL;
 
     NEXT(s,op);
-    // LOG("n=%d, op=%02x\n", s->count, op);
+    MONITOR_3IF_LOG(s, "n=%d, op=%02x\n", s->count, op);
     // count contains nb bytes after length byte
     // the first byte is the opcode
     s->count--;
