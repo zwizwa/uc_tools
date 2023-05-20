@@ -3,14 +3,7 @@
 
 #include <stdint.h>
 #include "cbuf.h"
-struct run_3if;
-struct run_3if {
-    uint8_t *ds;
-    void (*poll)(struct run_3if *);
-    struct cbuf *out;
-};
-void    push (struct run_3if *s, uint8_t val) { *(s->ds)++ = val; }
-uint8_t pop  (struct run_3if *s) { return *--(s->ds); }
+#include "run_3if.h"
 
 #include "hw_stm32f103.h"
 #include "uct_byteswap.h"
@@ -19,10 +12,6 @@ uint8_t pop  (struct run_3if *s) { return *--(s->ds); }
 
 uint8_t data[1000] = {1,2,3};
 
-/* The purpose of poll() is to put a notification in s->out if there
-   is room.  Notifications are intended to be small; think of them as
-   interrupts.  Host will perform action in response, e.g. read out
-   buffer from target memory. */
 void poll(struct run_3if *s) {
 
     // FIXME: If the total number of bytes written here is >62 the
@@ -51,8 +40,9 @@ void poll(struct run_3if *s) {
 }
 
 /* Goes into a separate section so linker script can place it into a
-   predictable location, e.g. start of RAM segment. */
-__attribute__((section(".run")))
+   predictable location, e.g. start of RAM segment.  For code in Flash
+   there is a field reserved in struct gdbstub_config */
+RUN_3IF_SECTION
 int run(struct run_3if *s) {
     s->poll = poll;
     return 0;
