@@ -48,14 +48,22 @@ extern struct gdbstub_config config;
 #define MEM_WRITE_FLASH_ENDX  ((uint32_t)config.flash_endx)
 #endif
 
+#ifndef MEM_WRITE_PARTITIONS_START
+#define MEM_WRITE_PARTITIONS_START 0x08004000
+#endif
+
+#ifndef MEM_WRITE_PARTITIONS_ENDX
+#define MEM_WRITE_PARTITIONS_ENDX 0x08020000
+#endif
+
 int32_t hw_mem_write(uint32_t addr, const uint8_t *buf, uint32_t len) {
 
     const uint32_t block_size = 1024; // FIXME: hardcoded
     /* Memory protection.  Only allow access to partitions, to code
        that is not runing. */
     /* FIXME: propery define status codes? */
-    if (addr     < 0x08004000) return -2; // before start of partitions
-    if (addr+len > 0x08020000) return -3; // after end of partitions
+    if (addr     < MEM_WRITE_PARTITIONS_START) return -2; // before start of partitions
+    if (addr+len > MEM_WRITE_PARTITIONS_ENDX)  return -3; // after end of partitions
 
     /* This is no longer block-aligned, so do block alignment here. */
     uint32_t endx = ((((MEM_WRITE_FLASH_ENDX)-1)/block_size)+1)*block_size;
