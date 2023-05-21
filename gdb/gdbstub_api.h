@@ -222,8 +222,11 @@ struct gdbstub_config {
        such that partition_config_valid() returns NULL. */
     void *data;
 
-    /* 21: Reserved */
-    void *reserved_21[32-21];
+    /* 21: Alternative to swiching protocol: app presents read/write. */
+    const struct gdbstub_io *io;
+
+    /* 22: Reserved */
+    void *reserved_22[32-22];
 };
 
 /* Note that gstub_config can only be used directly on a 32-bit
