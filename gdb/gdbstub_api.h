@@ -158,6 +158,9 @@ struct info_buf;
 struct swd_tether;
 struct gdbstub_control;
 
+struct cmd_3if;
+typedef void (*cmd_3if)(struct cmd_3if *);
+
 struct gdbstub_config {
 
     /*  0: USB strings */
@@ -225,8 +228,13 @@ struct gdbstub_config {
     /* 21: Alternative to swiching protocol: app presents read/write. */
     const struct gdbstub_io *io;
 
-    /* 22: Reserved */
-    void *reserved_22[32-22];
+    /* 22: Interpreter extensions for 3if.  It is assumed that
+       firmware and tether application know the layout of this
+       array. */
+    const cmd_3if *cmd_3if;
+
+    /* 23: Reserved */
+    void *reserved_23[32-23];
 };
 
 /* Note that gstub_config can only be used directly on a 32-bit
@@ -239,6 +247,7 @@ struct gdbstub_config {
 #define GDBSTUB_CONFIG_INDEX_FLASH_START 15
 #define GDBSTUB_CONFIG_INDEX_FLASH_ENDX  16
 #define GDBSTUB_CONFIG_INDEX_FWTAG       19
+#define GDBSTUB_CONFIG_INDEX_CMD_3IF     22
 
 extern struct gdbstub_config _config; // FLASH
 

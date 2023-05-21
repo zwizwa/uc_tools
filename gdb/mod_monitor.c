@@ -1,9 +1,13 @@
 #ifndef MOD_MONITOR
 #define MOD_MONITOR
 
-/* Area occupied by bootloader.  Do not write here. */
+/* These regions are used to exclude the currently running code.
+   These com from gdbstuib_config.  When this code runs in the
+   bootloader, these boundaries are not relevant.  Define them such
+   that they protect the bootloader region. */
 #define MEM_WRITE_FLASH_START 0x08000000
-#define MEM_WRITE_FLASH_ENDX  0x08002800
+#define MEM_WRITE_FLASH_ENDX  (0x08002800 - 1024)
+
 
 /* Write to Flash is implemented using the same functions that are
    used to implement in-app Firmware upgrade (fwstream.h) */
