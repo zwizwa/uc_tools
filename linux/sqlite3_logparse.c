@@ -37,7 +37,19 @@ struct logparse_cursor {
     sqlite3_vtab_cursor base;
     struct log_parse lp;
     uint32_t rowid;
+
+    /* Callbacks are invoked in the extent as part of xNext calling
+       log_parse_continue().  Those callbacks will save the current
+       framing here, later picked up by xColumn */
+    const uint8_t *line;
+    uintptr_t len;
+    uint32_t ts;
+    uint8_t bin:1;
+
+    /* xNext calling log_parse_continue() can determine end-of-file
+       condition, which is saved ere and picked up by xEof */
     uint8_t eof:1;
+
 };
 
 static struct logparse_cursor *logparse_cursor(sqlite3_vtab_cursor *p) {
@@ -46,28 +58,29 @@ static struct logparse_cursor *logparse_cursor(sqlite3_vtab_cursor *p) {
 static struct logparse_table *logparse_table(sqlite3_vtab *p) {
     return (void*)p;
 }
-
-#if 0
-static uintptr_t mmap_file_offset(struct logparse_cursor *cur) {
-    struct logparse_table *tab = logparse_table(cur->base.pVtab);
-    const uint8_t *start = tab->file.buf;
-    return cur->lp.in_mark - start;
-}
-#endif
-
-
 static log_parse_status_t ts_line_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len) {
-    LOG("ts_line_cb %08x\n", ts);
+    //LOG("ts_line_cb %08x %p %d\n", ts, line, len);
+    struct logparse_cursor *cur = STRUCT_FROM_FIELD(struct logparse_cursor, lp, s);
+    cur->ts = ts;
+    cur->len = len;
+    cur->line = line;
+    cur->bin = 0;
     return LOG_PARSE_STATUS_YIELD;
 }
 static log_parse_status_t ts_bin_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len) {
-    LOG("ts_bin_cb %08x\n", ts);
+    //LOG("ts_bin_cb %08x %p %d\n", ts, line, len);
+    struct logparse_cursor *cur = STRUCT_FROM_FIELD(struct logparse_cursor, lp, s);
+    cur->ts = ts;
+    cur->len = len;
+    cur->line = line;
+    cur->bin = 1;
     return LOG_PARSE_STATUS_YIELD;
 }
+
 static struct log_parse_cbs cbs = {
     .line    = ts_line_cb,
     .ts_line = ts_line_cb,
@@ -116,8 +129,8 @@ static int xConnect(
     int rv = sqlite3_declare_vtab(
         db,
         "CREATE TABLE x("
-        "id INTEGER PRIMARY KEY,"
-        "val INTEGER,"
+        "ts   INTEGER,"
+        "line TEXT,"
         "schema HIDDEN"
         ")");
     ASSERT(rv == SQLITE_OK);
@@ -142,6 +155,40 @@ static int xBestIndex(sqlite3_vtab *pVTab, sqlite3_index_info *pII) {
     return SQLITE_OK;
 }
 
+static int xClose(sqlite3_vtab_cursor *pCur) {
+    //LOG("xClose\n");
+    sqlite3_free(pCur);
+    return SQLITE_OK;
+}
+static int xEof(sqlite3_vtab_cursor *pCur) {
+    int eof = logparse_cursor(pCur)->eof;
+    //LOG("xEof %d\n", eof);
+    return eof;
+}
+static int xFilter(sqlite3_vtab_cursor *pCur, int idxNum, const char *idxStr,
+                   int argc, sqlite3_value **argv) {
+    //LOG("xFilter\n");
+    return SQLITE_OK;
+}
+static int xNext(sqlite3_vtab_cursor *pCur) {
+    //LOG("xNext\n");
+    struct logparse_cursor *cur = logparse_cursor(pCur);
+    //struct logparse_table *tab = logparse_table(cur->base.pVtab);
+    struct log_parse *lp = &cur->lp;
+
+    log_parse_status_t s = log_parse_continue(lp);
+    //LOG("xNext %d\n", s);
+    if (s == LOG_PARSE_STATUS_YIELD) {
+        /* It found something and passed it to callback. */
+        cur->eof = 0;
+    }
+    else {
+        /* It ran off the end, get some more. */
+        cur->eof = 1;
+        cur->rowid++;
+    }
+    return SQLITE_OK;
+}
 static int xOpen(sqlite3_vtab *pVTab, sqlite3_vtab_cursor **ppCursor) {
     //LOG("xOpen\n");
     struct logparse_table *tab = logparse_table(pVTab);
@@ -163,53 +210,30 @@ static int xOpen(sqlite3_vtab *pVTab, sqlite3_vtab_cursor **ppCursor) {
     /* Callbacks invoked on parsed log messages. */
     lp->cb = &cbs;
 
+    /* SQLITE will call xEof xColumn then xNext xEof xColumn etc...
+       So we need to call it once here to get started. */
+    xNext(&cur->base);
+
     *ppCursor = &cur->base;
     return SQLITE_OK;
 }
-static int xClose(sqlite3_vtab_cursor *pCur) {
-    //LOG("xClose\n");
-    sqlite3_free(pCur);
-    return SQLITE_OK;
-}
-static int xEof(sqlite3_vtab_cursor *pCur) {
-    //return logparse_cursor(pCur)->rowid > 10;
-    int eof = logparse_cursor(pCur)->eof;
-    LOG("xEof %d\n", eof);
-    return eof;
-}
-static int xFilter(sqlite3_vtab_cursor *pCur, int idxNum, const char *idxStr,
-                   int argc, sqlite3_value **argv) {
-    //LOG("xFilter\n");
-    return SQLITE_OK;
-}
-static int xNext(sqlite3_vtab_cursor *pCur) {
-    //LOG("xNext\n");
-    struct logparse_cursor *cur = logparse_cursor(pCur);
-    //struct logparse_table *tab = logparse_table(cur->base.pVtab);
-    struct log_parse *lp = &cur->lp;
-
-    log_parse_status_t s = log_parse_continue(lp);
-    LOG("xNext %d\n", s);
-    if (s == LOG_PARSE_STATUS_YIELD) {
-        /* It found something and passed it to callback. */
-        cur->eof = 0;
-    }
-    else {
-        /* It ran off the end, get some more. */
-        cur->eof = 1;
-        cur->rowid++;
-    }
-    return SQLITE_OK;
-}
 static int xColumn(sqlite3_vtab_cursor *pCur, sqlite3_context *db, int N) {
-    //LOG("xColumn %d\n", N);
+    // LOG("xColumn %d\n", N);
     ASSERT(N < 2);
-    int id = logparse_cursor(pCur)->rowid;
+    struct logparse_cursor *cur = logparse_cursor(pCur);
     if (N == 0) {
-        sqlite3_result_int(db, id);
+        sqlite3_result_int(db, cur->ts);
     }
     else if (N == 1) {
-        sqlite3_result_int(db, id*id);
+        // SQLITE_STATIC means sqlite will not copy the data.  This
+        // works as long as the file is mapped, which should be the
+        // case always.
+        uintptr_t len = cur->len;
+        if ((len > 0) && (cur->line[len-1] == '\n')) {
+            // Strip the newline
+            len--;
+        }
+        sqlite3_result_text(db, (char*)cur->line, len, SQLITE_STATIC);
     }
     return SQLITE_OK;
 }

@@ -5,4 +5,4 @@
 CREATE VIRTUAL TABLE temp.lp USING logparse('test_logparse.trace');
 
 .schema
-SELECT id,val from temp.lp
+SELECT * from temp.lp
