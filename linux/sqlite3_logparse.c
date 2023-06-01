@@ -44,6 +44,8 @@ struct logparse_cursor {
     const uint8_t *line;
     uintptr_t len;
     uint32_t ts;
+    uint32_t ts_prev;
+    uint32_t ts_wraps;
     uint8_t bin:1;
 
     /* xNext calling log_parse_continue() can determine end-of-file
@@ -58,27 +60,38 @@ static struct logparse_cursor *logparse_cursor(sqlite3_vtab_cursor *p) {
 static struct logparse_table *logparse_table(sqlite3_vtab *p) {
     return (void*)p;
 }
-static log_parse_status_t ts_line_cb(
-    struct log_parse *s, uint32_t ts,
-    const uint8_t *line, uintptr_t len) {
+static log_parse_status_t ts_cb(struct log_parse *s, uint32_t ts,
+                                const uint8_t *line, uintptr_t len,
+                                int bin) {
     //LOG("ts_line_cb %08x %p %d\n", ts, line, len);
     struct logparse_cursor *cur = STRUCT_FROM_FIELD(struct logparse_cursor, lp, s);
+    cur->ts_prev = cur->ts;
     cur->ts = ts;
     cur->len = len;
     cur->line = line;
-    cur->bin = 0;
+    cur->bin = bin;
+    if (cur->ts_prev > cur->ts) {
+        /* Counter wrapped.  This function is called exactly once per
+           line so we can keep track of the number of wraps by
+           incrementing here.  Note that microcontroller needs to
+           ensure there are enough log messages such that there is not
+           more than one counter wrap per wrap we can detect this
+           way. */
+        //LOG("ts_wrap %x %x\n", cur->ts_prev, cur->ts);
+        cur->ts_wraps++;
+    }
     return LOG_PARSE_STATUS_YIELD;
+}
+
+static log_parse_status_t ts_line_cb(
+    struct log_parse *s, uint32_t ts,
+    const uint8_t *line, uintptr_t len) {
+    return ts_cb(s,ts,line,len,0);
 }
 static log_parse_status_t ts_bin_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len) {
-    //LOG("ts_bin_cb %08x %p %d\n", ts, line, len);
-    struct logparse_cursor *cur = STRUCT_FROM_FIELD(struct logparse_cursor, lp, s);
-    cur->ts = ts;
-    cur->len = len;
-    cur->line = line;
-    cur->bin = 1;
-    return LOG_PARSE_STATUS_YIELD;
+    return ts_cb(s,ts,line,len,1);
 }
 
 static struct log_parse_cbs cbs = {
@@ -130,6 +143,7 @@ static int xConnect(
         db,
         "CREATE TABLE x("
         "ts   INTEGER,"
+        "bin  INTEGER,"
         "line TEXT,"
         "schema HIDDEN"
         ")");
@@ -194,6 +208,7 @@ static int xOpen(sqlite3_vtab *pVTab, sqlite3_vtab_cursor **ppCursor) {
     struct logparse_table *tab = logparse_table(pVTab);
     struct logparse_cursor *cur = sqlite3_malloc(sizeof(*cur));
     memset(cur,0,sizeof(*cur));
+    ASSERT(cur->ts_prev == 0);
     struct log_parse *lp = &cur->lp;
 
     /* Connect log_parse to the memory-mapped file.
@@ -217,23 +232,32 @@ static int xOpen(sqlite3_vtab *pVTab, sqlite3_vtab_cursor **ppCursor) {
     *ppCursor = &cur->base;
     return SQLITE_OK;
 }
-static int xColumn(sqlite3_vtab_cursor *pCur, sqlite3_context *db, int N) {
+static int xColumn(sqlite3_vtab_cursor *pCur, sqlite3_context *c, int N) {
     // LOG("xColumn %d\n", N);
-    ASSERT(N < 2);
     struct logparse_cursor *cur = logparse_cursor(pCur);
-    if (N == 0) {
-        sqlite3_result_int(db, cur->ts);
+    switch(N) {
+    case 0: {
+        uint64_t ts = cur->ts_wraps;
+        ts = (ts << 32) + cur->ts;
+        sqlite3_result_int64(c, ts);
+        break;
     }
-    else if (N == 1) {
-        // SQLITE_STATIC means sqlite will not copy the data.  This
-        // works as long as the file is mapped, which should be the
-        // case always.
+    case 1: {
+        sqlite3_result_int(c, cur->bin);
+        break;
+    }
+    case 2: {
+        // SQLITE_STATIC means the pointers are stable so sqlite will
+        // not copy the data.  This works as long as the file is
+        // mapped, which should be the case always.
         uintptr_t len = cur->len;
         if ((len > 0) && (cur->line[len-1] == '\n')) {
             // Strip the newline
             len--;
         }
-        sqlite3_result_text(db, (char*)cur->line, len, SQLITE_STATIC);
+        sqlite3_result_text(c, (char*)cur->line, len, SQLITE_STATIC);
+        break;
+    }
     }
     return SQLITE_OK;
 }
@@ -267,7 +291,26 @@ static sqlite3_module Module = {
     NULL,               /* xRename */
 };
 
+void inc(sqlite3_context *c, int argc, sqlite3_value **argv) {
+    // LOG("inc\n");
+    ASSERT(argc == 1);
+    sqlite3_result_int(c, 1 + sqlite3_value_int(argv[0]));
+}
+
 int sqlite3_logparse_init(sqlite3 *db, char **err, const sqlite3_api_routines *api) {
     SQLITE_EXTENSION_INIT2(api);
-    return sqlite3_create_module(db, "logparse", &Module, 0);
+    ASSERT(
+        SQLITE_OK ==
+        sqlite3_create_function(
+            db, "inc", 1,
+            SQLITE_UTF8 | SQLITE_DETERMINISTIC, 
+            NULL,  // sqlite3_user_data()
+            inc,   // xFunc,
+            NULL,  // xStep,
+            NULL   // xFinal
+            ));
+    ASSERT(
+        SQLITE_OK ==
+        sqlite3_create_module(db, "logparse", &Module, 0));
+    return SQLITE_OK;
 }
