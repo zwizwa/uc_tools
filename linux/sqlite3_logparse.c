@@ -31,11 +31,14 @@ SQLITE_EXTENSION_INIT1
 struct logparse_table {
     sqlite3_vtab base;
     struct mmap_file file;
+    uint8_t synced:1;
 };
 
 struct logparse_cursor {
     sqlite3_vtab_cursor base;
     struct log_parse lp;
+    struct log_parse_cbs lp_cbs;
+
     uint32_t rowid;
 
     /* Callbacks are invoked in the extent as part of xNext calling
@@ -60,16 +63,10 @@ static struct logparse_cursor *logparse_cursor(sqlite3_vtab_cursor *p) {
 static struct logparse_table *logparse_table(sqlite3_vtab *p) {
     return (void*)p;
 }
-static log_parse_status_t ts_cb(struct log_parse *s, uint32_t ts,
-                                const uint8_t *line, uintptr_t len,
-                                int bin) {
-    //LOG("ts_line_cb %08x %p %d\n", ts, line, len);
-    struct logparse_cursor *cur = STRUCT_FROM_FIELD(struct logparse_cursor, lp, s);
+
+static void logparse_cursor_update_ts(struct logparse_cursor *cur, uint32_t ts) {
     cur->ts_prev = cur->ts;
     cur->ts = ts;
-    cur->len = len;
-    cur->line = line;
-    cur->bin = bin;
     if (cur->ts_prev > cur->ts) {
         /* Counter wrapped.  This function is called exactly once per
            line so we can keep track of the number of wraps by
@@ -80,6 +77,16 @@ static log_parse_status_t ts_cb(struct log_parse *s, uint32_t ts,
         //LOG("ts_wrap %x %x\n", cur->ts_prev, cur->ts);
         cur->ts_wraps++;
     }
+}
+static log_parse_status_t ts_cb(struct log_parse *s, uint32_t ts,
+                                const uint8_t *line, uintptr_t len,
+                                int bin) {
+    //LOG("ts_line_cb %08x %p %d\n", ts, line, len);
+    struct logparse_cursor *cur = STRUCT_FROM_FIELD(struct logparse_cursor, lp, s);
+    cur->len = len;
+    cur->line = line;
+    cur->bin = bin;
+    logparse_cursor_update_ts(cur, ts);
     return LOG_PARSE_STATUS_YIELD;
 }
 
@@ -93,13 +100,6 @@ static log_parse_status_t ts_bin_cb(
     const uint8_t *line, uintptr_t len) {
     return ts_cb(s,ts,line,len,1);
 }
-
-static struct log_parse_cbs cbs = {
-    .line    = ts_line_cb,
-    .ts_line = ts_line_cb,
-    .ts_bin  = ts_bin_cb,
-};
-
 
 // The xConnect method is very similar to xCreate. It has the same
 // parameters and constructs a new sqlite3_vtab structure just like
@@ -203,10 +203,9 @@ static int xNext(sqlite3_vtab_cursor *pCur) {
     }
     return SQLITE_OK;
 }
-static int xOpen(sqlite3_vtab *pVTab, sqlite3_vtab_cursor **ppCursor) {
-    //LOG("xOpen\n");
-    struct logparse_table *tab = logparse_table(pVTab);
-    struct logparse_cursor *cur = sqlite3_malloc(sizeof(*cur));
+
+static void logparse_cursor_init(struct logparse_cursor *cur,
+                                 struct logparse_table *tab) {
     memset(cur,0,sizeof(*cur));
     ASSERT(cur->ts_prev == 0);
     struct log_parse *lp = &cur->lp;
@@ -223,11 +222,33 @@ static int xOpen(sqlite3_vtab *pVTab, sqlite3_vtab_cursor **ppCursor) {
     lp->in_len = tab->file.size;
 
     /* Callbacks invoked on parsed log messages. */
-    lp->cb = &cbs;
+    cur->lp_cbs.line    = ts_line_cb;
+    cur->lp_cbs.ts_line = ts_line_cb;
+    cur->lp_cbs.ts_bin  = ts_bin_cb;
+    lp->cb = &cur->lp_cbs;
 
     /* SQLITE will call xEof xColumn then xNext xEof xColumn etc...
        So we need to call it once here to get started. */
     xNext(&cur->base);
+}
+
+static int xOpen(sqlite3_vtab *pVTab, sqlite3_vtab_cursor **ppCursor) {
+    //LOG("xOpen\n");
+    struct logparse_table *tab = logparse_table(pVTab);
+    struct logparse_cursor *cur = sqlite3_malloc(sizeof(*cur));
+
+    if (!tab->synced) {
+        /* If the timebase is not yet synchronized, perform a scan
+           here first to find the sync message and record the sync
+           offset in the vtab so xColumn can present time-shifted
+           timestamps.  This is done here lazily so we can re-use the
+           cursor data structure. */
+        logparse_cursor_init(cur,tab);
+        tab->synced = 1;
+    }
+
+    logparse_cursor_init(cur,tab);
+
 
     *ppCursor = &cur->base;
     return SQLITE_OK;

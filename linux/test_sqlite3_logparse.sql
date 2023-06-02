@@ -12,8 +12,8 @@ CREATE VIRTUAL TABLE temp.lp1 USING logparse('/i/tom/rdm-bridge/uc_trace/console
 -- SELECT * from temp.lp
 -- SELECT * from temp.lp limit 100;
 
---SELECT count(*) from temp.lp; -- half a second on 86M,
---SELECT count(*) from temp.lp1;
+SELECT count(*) from temp.lp; -- half a second on 86M,
+SELECT count(*) from temp.lp1;
 
 
 -- Using a temporary table makes it maybe 3 times as fast.
@@ -21,4 +21,5 @@ CREATE VIRTUAL TABLE temp.lp1 USING logparse('/i/tom/rdm-bridge/uc_trace/console
 --SELECT count(*) from temp_lp;
 --SELECT count(*) from temp_lp;
 
-SELECT broem(123);
+-- example C function
+SELECT inc(123);
