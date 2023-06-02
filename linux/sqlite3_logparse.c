@@ -31,6 +31,7 @@ SQLITE_EXTENSION_INIT1
 struct logparse_table {
     sqlite3_vtab base;
     struct mmap_file file;
+    int64_t ts_sync;
     uint8_t synced:1;
 };
 
@@ -78,6 +79,11 @@ static void logparse_cursor_update_ts(struct logparse_cursor *cur, uint32_t ts) 
         cur->ts_wraps++;
     }
 }
+int64_t logparse_cursor_ts(struct logparse_cursor *cur) {
+    int64_t ts = cur->ts_wraps;
+    ts = (ts << 32) + cur->ts;
+    return ts;
+}
 static log_parse_status_t ts_cb(struct log_parse *s, uint32_t ts,
                                 const uint8_t *line, uintptr_t len,
                                 int bin) {
@@ -90,6 +96,7 @@ static log_parse_status_t ts_cb(struct log_parse *s, uint32_t ts,
     return LOG_PARSE_STATUS_YIELD;
 }
 
+/* Callbacks for normal iteration */
 static log_parse_status_t ts_line_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len) {
@@ -99,6 +106,37 @@ static log_parse_status_t ts_bin_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len) {
     return ts_cb(s,ts,line,len,1);
+}
+
+/* Callback for sync scan */
+
+static log_parse_status_t ts_bin_sync_cb(
+    struct log_parse *s, uint32_t ts,
+    const uint8_t *line, uintptr_t len) {
+    LOG("sync_cb %08x %d\n", ts, len);
+
+
+    log_parse_status_t rv = ts_cb(s,ts,line,len,1);
+    (void)rv; // we return something else
+    struct logparse_cursor *cur = STRUCT_FROM_FIELD(struct logparse_cursor, lp, s);
+    struct logparse_table *tab = logparse_table(cur->base.pVtab);
+    if ((len == 2) &&
+        (line[0] == 0) &&
+        (line[1] == 0)) {
+        goto got_sync;
+    }
+    else if ((len == 7) &&
+             (!strncmp("ping 0\n", (char*)line, 7))) {
+        /* This one is easier to test with a text file. */
+        goto got_sync;
+    }
+    else {
+        return LOG_PARSE_STATUS_CONTINUE;
+    }
+  got_sync:
+    tab->ts_sync = logparse_cursor_ts(cur);
+    LOG("got sync %x\n", tab->ts_sync);
+    return LOG_PARSE_STATUS_YIELD;
 }
 
 // The xConnect method is very similar to xCreate. It has the same
@@ -206,8 +244,13 @@ static int xNext(sqlite3_vtab_cursor *pCur) {
 
 static void logparse_cursor_init(struct logparse_cursor *cur,
                                  struct logparse_table *tab) {
+    /* All integer values are initialized to 0. */
     memset(cur,0,sizeof(*cur));
-    ASSERT(cur->ts_prev == 0);
+
+    /* SQLite will set this when xOpen finishes, but we rely on it
+       during sync scan so initialize it here. */
+    cur->base.pVtab = &tab->base;
+
     struct log_parse *lp = &cur->lp;
 
     /* Connect log_parse to the memory-mapped file.
@@ -244,6 +287,25 @@ static int xOpen(sqlite3_vtab *pVTab, sqlite3_vtab_cursor **ppCursor) {
            timestamps.  This is done here lazily so we can re-use the
            cursor data structure. */
         logparse_cursor_init(cur,tab);
+        cur->lp_cbs.line    = ts_bin_sync_cb;
+        cur->lp_cbs.ts_line = ts_bin_sync_cb;
+        cur->lp_cbs.ts_bin  = ts_bin_sync_cb;
+        struct log_parse *lp = &cur->lp;
+        log_parse_status_t s = log_parse_continue(lp);
+        switch(s) {
+        case LOG_PARSE_STATUS_END:
+            LOG("no sync\n");
+            break;
+        case LOG_PARSE_STATUS_YIELD:
+            LOG("no sync\n");
+            LOG("sync %d\n", s);
+
+            break;
+
+        default: ERROR("unexpected status %d\n", s);
+        }
+        /* This means sync was attempted.  If there was no sync
+           message found the sync offset is 0. */
         tab->synced = 1;
     }
 
@@ -253,13 +315,14 @@ static int xOpen(sqlite3_vtab *pVTab, sqlite3_vtab_cursor **ppCursor) {
     *ppCursor = &cur->base;
     return SQLITE_OK;
 }
+
 static int xColumn(sqlite3_vtab_cursor *pCur, sqlite3_context *c, int N) {
     // LOG("xColumn %d\n", N);
     struct logparse_cursor *cur = logparse_cursor(pCur);
     switch(N) {
     case 0: {
-        uint64_t ts = cur->ts_wraps;
-        ts = (ts << 32) + cur->ts;
+        struct logparse_table *tab = logparse_table(cur->base.pVtab);
+        uint64_t ts = logparse_cursor_ts(cur) - tab->ts_sync;
         sqlite3_result_int64(c, ts);
         break;
     }
