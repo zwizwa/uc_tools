@@ -270,9 +270,6 @@ static void logparse_cursor_init(struct logparse_cursor *cur,
     cur->lp_cbs.ts_bin  = ts_bin_cb;
     lp->cb = &cur->lp_cbs;
 
-    /* SQLITE will call xEof xColumn then xNext xEof xColumn etc...
-       So we need to call it once here to get started. */
-    xNext(&cur->base);
 }
 
 static int xOpen(sqlite3_vtab *pVTab, sqlite3_vtab_cursor **ppCursor) {
@@ -308,6 +305,9 @@ static int xOpen(sqlite3_vtab *pVTab, sqlite3_vtab_cursor **ppCursor) {
 
     logparse_cursor_init(cur,tab);
 
+    /* SQLITE will call xEof xColumn then xNext xEof xColumn etc...
+       So we need to call it once here to get started. */
+    xNext(&cur->base);
 
     *ppCursor = &cur->base;
     return SQLITE_OK;
