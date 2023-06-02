@@ -75,7 +75,7 @@ static void logparse_cursor_update_ts(struct logparse_cursor *cur, uint32_t ts) 
            ensure there are enough log messages such that there is not
            more than one counter wrap per wrap we can detect this
            way. */
-        //LOG("ts_wrap %x %x\n", cur->ts_prev, cur->ts);
+        //LOG("ts_wrap 0x%x 0x%x\n", cur->ts_prev, cur->ts);
         cur->ts_wraps++;
     }
 }
@@ -87,7 +87,7 @@ int64_t logparse_cursor_ts(struct logparse_cursor *cur) {
 static log_parse_status_t ts_cb(struct log_parse *s, uint32_t ts,
                                 const uint8_t *line, uintptr_t len,
                                 int bin) {
-    //LOG("ts_line_cb %08x %p %d\n", ts, line, len);
+    //LOG("ts_line_cb 0x%08x %p %d\n", ts, line, len);
     struct logparse_cursor *cur = STRUCT_FROM_FIELD(struct logparse_cursor, lp, s);
     cur->len = len;
     cur->line = line;
@@ -113,7 +113,7 @@ static log_parse_status_t ts_bin_cb(
 static log_parse_status_t ts_bin_sync_cb(
     struct log_parse *s, uint32_t ts,
     const uint8_t *line, uintptr_t len) {
-    LOG("sync_cb %08x %d\n", ts, len);
+    LOG("sync_cb 0x%08x %d\n", ts, len);
 
 
     log_parse_status_t rv = ts_cb(s,ts,line,len,1);
@@ -135,7 +135,7 @@ static log_parse_status_t ts_bin_sync_cb(
     }
   got_sync:
     tab->ts_sync = logparse_cursor_ts(cur);
-    LOG("got sync %x\n", tab->ts_sync);
+    LOG("got sync 0x%x\n", tab->ts_sync);
     return LOG_PARSE_STATUS_YIELD;
 }
 
@@ -297,12 +297,9 @@ static int xOpen(sqlite3_vtab *pVTab, sqlite3_vtab_cursor **ppCursor) {
             LOG("no sync\n");
             break;
         case LOG_PARSE_STATUS_YIELD:
-            LOG("no sync\n");
-            LOG("sync %d\n", s);
-
             break;
-
-        default: ERROR("unexpected status %d\n", s);
+        default:
+            ERROR("unexpected status %d\n", s);
         }
         /* This means sync was attempted.  If there was no sync
            message found the sync offset is 0. */
