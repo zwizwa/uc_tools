@@ -1,4 +1,4 @@
-#include "memory.h"
+#include "uct_memory.h"
 #include "gdbstub.h"
 
 extern const uint32_t flash_page_size_log;

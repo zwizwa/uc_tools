@@ -1,5 +1,5 @@
-#ifndef MEMORY_H
-#define MEMORY_H
+#ifndef UCT_MEMORY_H
+#define UCT_MEMORY_H
 
 #include <stdint.h>
 #include <libopencm3/stm32/flash.h>
