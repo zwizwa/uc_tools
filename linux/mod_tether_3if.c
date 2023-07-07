@@ -321,7 +321,7 @@ void tether_sync(struct tether *s) {
     /* Send a bunch of zeros to recover from protocol sync loss.  This
        finalizes any command that is in progress and will then fall
        into skipping empty packets. */
-    write(s->fd, buf, sizeof(buf));
+    assert_write(s->fd, buf, sizeof(buf));
 
     /* Read again, this time blocking. */
     rv = read(s->fd, buf, sizeof(buf));
