@@ -2,6 +2,7 @@
 #define METASTRUCT_H
 
 #include "macros.h"
+#include <stdint.h>
 
 /* STRUCTS */
 
