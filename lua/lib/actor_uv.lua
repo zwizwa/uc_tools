@@ -128,4 +128,83 @@ function actor_uv:write_socket(socket, data)
 end
 
 
+
+function actor_uv.spawn_process(scheduler, executable, args, body, push_wrap)
+   assert(executable)
+   assert(args)
+
+   -- Packetizing stdout is best done before sending to the task.
+   if push_wrap == nil then
+      push_wrap = function(buf, push)
+         push(buf)
+         return ""
+      end
+   end
+
+   -- Task data
+   local task = {
+      rx_buf = "",
+      stdin  = uv.pipe(),
+      stdout = uv.pipe(),
+      stderr = uv.pipe(),
+   }
+   -- We then add task behavior mixin.
+   actor_uv.task(scheduler, task)
+
+   local function error_handler(handle, err, status, signal)
+      -- Note: No documentation was found about the libuv error
+      -- handler API, but there seem to be two cases that occur in
+      -- practice: an error happens during startup, e.g. executable
+      -- not found, or the process dies. e.g. due to a bug or fatal
+      -- error in the program.
+      handle:close()
+      log_desc({error_handler = {err=err,status=status,signal=signal}})
+   end
+
+   -- Create libuv process handle
+   task.handle = uv.spawn({
+         file = executable,
+         stdio = {
+            { stream = task.stdin,  flags = uv.CREATE_PIPE + uv.READABLE_PIPE },
+            { stream = task.stdout, flags = uv.CREATE_PIPE + uv.WRITABLE_PIPE },
+            { stream = task.stderr, flags = uv.CREATE_PIPE + uv.WRITABLE_PIPE }
+         },
+         args = args
+   }, error_handler)
+
+   -- Spawn the task.  It can use task:recv() to pop the mailbox,
+   -- which will give tagged {port, ...} messages for incoming pipe
+   -- data.  It can also write to task.stdin
+   scheduler:spawn(body, task)
+
+   -- Anything coming in on stdout gets sent to the task.
+   task.stdout:start_read(
+      function(_,err,data)
+         -- log_desc({stdout=data})
+         if not err then
+            local function push_packet(packet)
+               task:send_and_schedule({"stdout",packet})
+            end
+            task.rx_buf = push_wrap(task.rx_buf .. data, push_packet)
+         else
+            error('actor_uv_process_stdout_err')
+         end
+      end)
+
+   -- Anything coming in on stderr gets logged.
+   task.stderr:start_read(
+      function(_,err,data)
+         if not err then
+            task:send_and_schedule({"stderr",data})
+         else
+            error('actor_uv_process_stderr_err')
+         end
+      end)
+
+
+   return task
+
+
+end
+
 return actor_uv
