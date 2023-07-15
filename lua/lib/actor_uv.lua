@@ -129,21 +129,22 @@ end
 
 
 
-function actor_uv.spawn_process(scheduler, executable, args, body, push_wrap)
+-- Note that the reason we parameterize push here is that sometimes it
+-- is simpler to split a packet before sending it to the task,
+-- i.e. such that the task only sees complete packets, and maybe some
+-- other routing can be performed that is specific to the binary
+-- encoding of the incoming data.
+
+function actor_uv.spawn_process(scheduler, executable, args, body, push)
    assert(executable)
    assert(args)
 
-   -- Packetizing stdout is best done before sending to the task.
-   if push_wrap == nil then
-      push_wrap = function(buf, push)
-         push(buf)
-         return ""
-      end
+   if nil == push then
+      push = function(data, push_packet) push_packet(data) end
    end
 
    -- Task data
    local task = {
-      rx_buf = "",
       stdin  = uv.pipe(),
       stdout = uv.pipe(),
       stderr = uv.pipe(),
@@ -182,10 +183,10 @@ function actor_uv.spawn_process(scheduler, executable, args, body, push_wrap)
       function(_,err,data)
          -- log_desc({stdout=data})
          if not err then
-            local function push_packet(packet)
-               task:send_and_schedule({"stdout",packet})
-            end
-            task.rx_buf = push_wrap(task.rx_buf .. data, push_packet)
+            push(data,
+                 function(packet)
+                    task:send_and_schedule({"stdout",packet})
+                 end)
          else
             error('actor_uv_process_stdout_err')
          end
