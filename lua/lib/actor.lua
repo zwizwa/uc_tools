@@ -28,11 +28,16 @@ function actor.scheduler:schedule()
    while self:schedule_one() do end
 end
 
+function actor.scheduler:self()
+   return self.current_task
+end
+
 function actor.scheduler:schedule_one()
    for task,_true in pairs(self.hot) do
       -- Remove from hot list before scheduling.  If task sends itself
       -- a message it will get moved back to the hot list.
       self:remove(task)
+      self.current_task = task
       if not task:resume() then
          -- If task died, make sure it is not on the hot list.
          self:remove(task)
