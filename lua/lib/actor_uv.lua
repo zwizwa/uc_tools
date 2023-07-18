@@ -31,6 +31,8 @@ function actor_uv.send_after(task, msg, ms, t)
    return t
 end
 
+-- FIXME: It's probably ok to put a timer object inside the actor_uv
+-- object and reuse that.
 function actor_uv:sleep(ms)
    local t = uv.timer()
    -- A token is needed for use in the recv filter.  If we create our
@@ -38,6 +40,21 @@ function actor_uv:sleep(ms)
    local msg0 = t
    actor_uv.send_after(self, msg0, ms, t)
    self:recv(function(msg) return msg0 == msg end)
+end
+
+function actor_uv:recv_with_timeout(timeout_ms, filter)
+   if not filter then filter = function(_) return true end end
+   local t = uv.timer()
+   local msg0 = {"timeout"} -- pointer is unique tag, can be used with '=='
+   actor_uv.send_after(self, msg0, timeout_ms, t)
+   local msg = self:recv(function(msg) return (msg0 == msg) or filter(msg) end)
+   if msg ~= msg0 then
+      -- We got a proper reply, so cancel the timer.  FIXME: Does this
+      -- need to check that the timer didn't queue a message?
+      t:stop()
+      t:close()
+   end
+   return msg
 end
 
 -- Create a task with actor_uv behavior mixed in.
