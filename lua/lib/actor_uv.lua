@@ -45,7 +45,8 @@ end
 function actor_uv:recv_with_timeout(timeout_ms, filter)
    if not filter then filter = function(_) return true end end
    local t = uv.timer()
-   local msg0 = {"timeout"} -- pointer is unique tag, can be used with '=='
+   -- msg0 pointer is unique tag, can be used with '=='
+   local msg0 = {"timer", timeout_us}
    actor_uv.send_after(self, msg0, timeout_ms, t)
    local msg = self:recv(function(msg) return (msg0 == msg) or filter(msg) end)
    if msg ~= msg0 then
