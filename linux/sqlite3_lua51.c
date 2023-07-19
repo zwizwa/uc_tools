@@ -1,13 +1,5 @@
-// This is erl_tools/c_src/sqlite3.c
-//
-// Will be modifying this into something that can be included in Lua
-// while sticking to the erl_tools API as much as possible.  Inital
-// version recorded verbatim to track changes.
-
-// What does this need to be?  A lua wrapper seems to be most
-// appropriate.
-
 // (c) 2018 Tom Schouten -- see LICENSE file
+// Derived from erl_tools/c_src/sqlite3.c
 
 #include <stdint.h>
 #include <stdio.h>
@@ -43,7 +35,6 @@ static const char *string_L(lua_State *L, int index, size_t *len) {
 struct db {
     sqlite3 *db;
     sqlite3_stmt *stmt;
-    jmp_buf error_jmp_buf;
 };
 void db_init(struct db *db) {
 }
@@ -52,90 +43,50 @@ void db_init(struct db *db) {
 #include "ns_lua_struct.h"
 #undef NS
 
-
-
 // https://www.sqlite.org/c_interface.html
 // https://www.sqlite.org/quickstart.html
-
-
-/* Use the generalized right fold over the erlang term format provided
-   in bert.[ch] to iterate over the data primitives in the order they
-   appear in the stream.
-
-   Ignore tuple and list structure, and primitive atoms except for
-   atom and binary, effectively flattening and filtering the input
-   into a sequence of binaries and atoms:
-
-   E.g. {<<"insert into config (var,val) values (?,?)">>,
-         [{text,<<"myvar">>},
-          {blob,<<"myval">>}]}
-
-   Flattens to these constructor calls in sequence:
-
-     binary(<query string>)
-     atom('text'),
-     binary(<<"myvar">>)
-     atom('blob')
-     binary(<<"myval">>)
-
-   The meaning of an atom is then to set the sqlite3 binding type of
-   the subsequent binary.  After that, the binding type is restored to
-   text.  Binaries are collected in a arg list.
-
-   The first binary is the query string.  The remaining binaries are
-   arg bindings. */
-
-struct slice {
-    const uint8_t *buf;
-    uint32_t len;
-};
-
-
-void sql_error(struct db *db, int rv) {
-    const char *msg = sqlite3_errmsg(db->db);
-    LOG("sql_error %d %s\n", rv, msg);
-    longjmp(db->error_jmp_buf, 1);
-}
-
-struct sql_row {
-    struct slice *col;
-    uint32_t nb_cols;
-};
 
 int db_query_cmd(lua_State *L) {
     struct db *db = &db_L(L, 1)->base;
     ASSERT(lua_istable(L, 2));
 
     /* The table is an array with first element the query string, and
-       other elements containing blobs. */
-    struct slice query[10] = {};  // FIXME: max size hardcoded
-    int query_len = 0;
-    for(int i=0;i<ARRAY_SIZE(query);i++) {
-        // LOG("get element %d\n", i);
-        lua_rawgeti(L, 2, i+1);
+       other elements containing query arguments. */
+    lua_rawgeti(L, 2, 1);
+    size_t query_len;
+    const char *query = string_L(L, -1, &query_len);
+
+    /* First term is the query string. */
+    int rv = sqlite3_prepare_v2(db->db, query, query_len, &db->stmt, NULL);
+    if (rv != SQLITE_OK) {
+        goto error;
+    }
+
+    /* Subsequent terms are query arguments.  Note that it does matter
+       whether we bind blobs or strings.  For now, just use strings as
+       default and later add blob support, e.g. {"blob", <luastring>} */
+    int arg_nb = 0;
+    for(;;) {
+        size_t arg_len;
+        lua_rawgeti(L, 2, arg_nb + 2);
         if (lua_isnil(L, -1)) break;
-        size_t len;
-        query[i].buf = (const uint8_t*)string_L(L, -1, &len);
-        query[i].len = len;
-        query_len++;
+        /* Only Lua string arguments are supported for now. */
+        const char *arg = string_L(L, -1, &arg_len);
+        // sqlite_bind_blob: TODO, maybe other types?
+        if (SQLITE_OK != sqlite3_bind_text(
+                db->stmt, arg_nb + 1, arg, arg_len,
+                /* Strings will be stable during this Lua function
+                   call.  Not sure if SQLITE will hang on to them, so
+                   don't use SQLITE_STATIC here. */
+                SQLITE_TRANSIENT)) {
+            goto error;
+        }
+        arg_nb++;
     }
 
     /* All results are included in table of rows. */
     lua_newtable(L);
 
-    /* First term is the query string. */
-    int rv = sqlite3_prepare_v2(
-        db->db, (const char*)query[0].buf, query[0].len, &db->stmt, NULL);
-    if (rv != SQLITE_OK) {
-        sql_error(db, rv);
-    }
-
-    /* Subsequent terms are optional blob values to bind to the
-       statement. */
-    for(uint32_t i=1; i<query_len; i++) {
-        const struct slice *a = &query[i];
-        sqlite3_bind_blob(db->stmt, i, a->buf, a->len, SQLITE_STATIC /*ok?*/);
-    }
 
     /* Step through the query results, sending out rows as list of
        binaries. */
@@ -151,10 +102,8 @@ int db_query_cmd(lua_State *L) {
             /* Get rows converted to binary */
             int nb_cols = sqlite3_column_count(db->stmt);
 
-            ASSERT(nb_cols > 0);
-            // if (!nb_cols) break;  // FIXME: This is probably not correct.
-
             for (int col=0; col<nb_cols; col++) {
+                /* Return everything as blobs / Lua strings */
                 const char *data = sqlite3_column_blob(db->stmt, col);
                 size_t len       = sqlite3_column_bytes(db->stmt, col);
                 lua_pushnumber(L, col+1);
@@ -169,14 +118,23 @@ int db_query_cmd(lua_State *L) {
             break;
         }
         else {
-            sql_error(db, rv);
+            goto error;
         }
         row++;
     }
     sqlite3_finalize(db->stmt);
     db->stmt=NULL;
-
     return 1;
+
+  error:
+    {
+        const char *msg = sqlite3_errmsg(db->db);
+        LOG("sql_error %d %s\n", rv, msg);
+        lua_pushboolean(L, 0);
+        lua_pushstring(L, msg);
+        return 2;
+    }
+
 }
 
 
