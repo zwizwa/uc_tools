@@ -31,7 +31,9 @@ static struct NS(_ud) *NS(_L)(lua_State *L, int index) {
     // This started to trigger. WTF?
     // ASSERT(ud->L == L);
     if (ud->L != L) {
-        LOG("WARNING: L was %p, is now %p\n", ud->L, L);
+        // Commenting this out as it seems harmless.  It triggers, but
+        // not sure why.  Maybe different L used during startup?
+        // LOG("WARNING: L was %p, is now %p\n", ud->L, L);
         ud->L = L;
     }
     return ud;

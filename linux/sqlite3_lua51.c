@@ -37,6 +37,7 @@ struct db {
     sqlite3_stmt *stmt;
 };
 void db_init(struct db *db) {
+    memset(db, 0, sizeof(*db));
 }
 #define db_T "uc_tools.sqlite3"
 #define NS(name) CONCAT(db,name)
@@ -144,6 +145,7 @@ int db_open_cmd(lua_State *L) {
     if (db->db) {
         LOG("closing previous db\n");
         sqlite3_close(db->db);
+        db->db = NULL;
     }
     if ((SQLITE_OK != sqlite3_open(db_file, &db->db))) {
         LOG("%s: %s\n", db_file, sqlite3_errmsg(db->db));
