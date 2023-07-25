@@ -4,23 +4,39 @@
 #include "macros.h"
 #include <stdint.h>
 #include <unistd.h>
+#include <time.h>
 
 static inline void assert_write(int fd, const uint8_t *buf, size_t len) {
     size_t written = 0;
     while(written < len) {
         ssize_t rv;
         while ((rv = write(fd, buf + written, len - written)) <= 0) {
-            /* FIXME: i/o is still non-blocking.  I don't remember why
-               this was, because in theory the poll() should ensure we
-               never end up in a blocking read. */
-            //if (EAGAIN == errno) {
-            //    LOG(warning);
-            //    sleep();
-            //}
-            //else {
-                ERROR("write(%d,%p,%d) == %d, errno=%d, strerror=\"%s\"\n",
+            ERROR("assert_write: write(%d,%p,%d) == %d, errno=%d, strerror=\"%s\"\n",
+                  fd, buf, (int)len, (int)rv, (int)errno, strerror(errno));
+        }
+        written += rv;
+    }
+}
+
+
+/* For non-blocking devices, retry on EAGAIN after sleep. */
+static inline void assert_write_nb(int fd, const uint8_t *buf, size_t len, int sleep_ns) {
+    size_t written = 0;
+    while(written < len) {
+        ssize_t rv;
+        while ((rv = write(fd, buf + written, len - written)) <= 0) {
+            if (EAGAIN == errno) {
+                // LOG(warning);
+                struct timespec ts = {
+                    .tv_sec = 0,
+                    .tv_nsec = sleep_ns
+                };
+                nanosleep(&ts, NULL);
+            }
+            else {
+                ERROR("assert_write: write(%d,%p,%d) == %d, errno=%d, strerror=\"%s\"\n",
                       fd, buf, (int)len, (int)rv, (int)errno, strerror(errno));
-            //}
+            }
         }
         written += rv;
     }

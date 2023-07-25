@@ -527,7 +527,8 @@ static ssize_t packetn_write(struct packetn_port *p, uint8_t *buf, ssize_t len) 
     uint8_t packet[packet_len];
     packetn_packet_write_size(p, len, &packet[0]);
     memcpy(&packet[p->len_bytes], buf, len);
-    assert_write(fd, packet, packet_len);
+    int sleep_ns = 1000000;
+    assert_write_nb(fd, packet, packet_len, sleep_ns);
     //LOG("packetn_write %d (done)\n", len);
     return len + p->len_bytes;
 }
@@ -1368,6 +1369,7 @@ int packet_forward_main(int argc, char **argv) {
     };
     ASSERT(port[0] = port_open(argv[1]));
     ASSERT(port[1] = port_open(argv[2]));
+    // LOG("starting packet loop %s %s\n", argv[1], argv[2]);
     packet_loop(packet_forward, &ctx);
     return 0;
 }

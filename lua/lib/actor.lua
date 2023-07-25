@@ -137,8 +137,8 @@ function actor.task:resume()
       self:exit()
       local statusmsg = coroutine.status(co)
       local traceback = debug.traceback(co)
-      log("coroutine_resume: status=" .. statusmsg .. "\n")
-      log(rv .. "\n") -- error message
+      log("actor.task:resume: status=" .. statusmsg .. "\n")
+      if nil ~= rv then log(rv .. "\n") end
       log(traceback)
       log("\n")
    else
