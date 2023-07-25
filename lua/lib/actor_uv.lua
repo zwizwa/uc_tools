@@ -196,30 +196,28 @@ function actor_uv.spawn_process(scheduler, executable, args, body, push)
    -- data.  It can also write to task.stdin
    scheduler:spawn(body, task)
 
-   -- Anything coming in on stdout gets sent to the task.
-   task.stdout:start_read(
-      function(_,err,data)
-         -- log_desc({stdout=data})
+   -- Anything coming in on stdout gets sent to the task.  Note that
+   -- we cannot call error() in the uv callbacks, as that is the main
+   -- Lua thread, and errors there will terminate the Linux process.
+   -- So any error is propagated to the task, which then can be
+   -- handled, or the task can die with error() inside its coroutine
+   -- such that the scheduler can pick up the coroutine crash and call
+   -- any registered monitors.
+   local function read_callback(tag_from)
+      return function(_,err,data)
          if not err then
             push(data,
                  function(packet)
-                    task:send_and_schedule({"stdout",packet})
+                    task:send_and_schedule({tag_from,packet})
                  end)
          else
-            error('actor_uv_process_stdout_err')
+            task:send_and_schedule({"error",{tag_from, err, data}})
          end
-      end)
+      end
+   end
 
-   -- Anything coming in on stderr gets logged.
-   task.stderr:start_read(
-      function(_,err,data)
-         if not err then
-            task:send_and_schedule({"stderr",data})
-         else
-            error('actor_uv_process_stderr_err')
-         end
-      end)
-
+   task.stdout:start_read(read_callback("stdout"))
+   task.stderr:start_read(read_callback("stderr"))
 
    return task
 
