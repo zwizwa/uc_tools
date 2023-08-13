@@ -31,6 +31,12 @@ struct ramblings_table {
     struct mmap_file file;
 };
 
+struct entry {
+    const char *title; uintptr_t title_len;
+    const char *date;  uintptr_t date_len;
+    const char *body;  uintptr_t body_len;
+};
+
 struct ramblings_cursor {
     sqlite3_vtab_cursor base;
 
@@ -44,10 +50,15 @@ struct ramblings_cursor {
 
        The header text before the first entry is ignored. */
 
-    uintptr_t entry;
+    uintptr_t entry_current;
     uintptr_t entry_next;
 
+    /* Parse of the current entry. */
+    struct entry entry;
+
 };
+
+
 
 static struct ramblings_cursor *ramblings_cursor(sqlite3_vtab_cursor *p) {
     return (void*)p;
@@ -98,7 +109,9 @@ static int xConnect(
     int rv = sqlite3_declare_vtab(
         db,
         "CREATE TABLE x("
-        "entry TEXT,"
+        "title TEXT,"
+        "date TEXT,"
+        "body TEXT,"
         "schema HIDDEN"
         ")");
     ASSERT(rv == SQLITE_OK);
@@ -130,7 +143,7 @@ static int xClose(sqlite3_vtab_cursor *pCur) {
 }
 static int xEof(sqlite3_vtab_cursor *pCur) {
     struct ramblings_cursor *cur = ramblings_cursor(pCur);
-    int eof = cur->entry == cur->buf_len;
+    int eof = cur->entry_current == cur->buf_len;
     //LOG("xEof %d\n", eof);
     return eof;
 }
@@ -161,6 +174,7 @@ void scan_next(struct ramblings_cursor *cur) {
     MATCH(5, 'r');
     MATCH(6, 'y');
     MATCH(7, ':');
+    MATCH(8, ' ');
 #undef MATCH
 
     c+=2;
@@ -174,12 +188,54 @@ void scan_next(struct ramblings_cursor *cur) {
     cur->entry_next = cur->buf_len;
 }
 
+void parse_entry(struct ramblings_cursor *cur) {
+    const char *c      = cur->buf + cur->entry_current;
+    const char *c_endx = cur->buf + cur->entry_next;
+    const char *line;
+  next_line:
+    line = c;
+  next_char:
+    if(c >= c_endx) goto done;
+    if(*c == '\n') {
+        int n = c - line;
+        if (n == 0) {
+            /* End of header. */
+            c++;
+            cur->entry.body = c;
+            cur->entry.body_len = c_endx - c;
+            goto done;
+        }
+        /* Non-empty line. */
+        if ((n >= 7) && (0 == memcmp(line, "Entry: ", 7))) {
+            cur->entry.title = line + 7;
+            cur->entry.title_len = n - 7;
+        }
+        else if ((n >= 6) && (0 == memcmp(line, "Date: ", 6))) {
+            cur->entry.date = line + 6;
+            cur->entry.date_len = n - 6;
+        }
+        c++;
+        goto next_line;
+    }
+    c++;
+    goto next_char;
+
+  done:
+    return;
+}
+
 
 static int xNext(sqlite3_vtab_cursor *pCur) {
     // LOG("xNext\n");
     struct ramblings_cursor *cur = ramblings_cursor(pCur);
-    cur->entry = cur->entry_next;
+    cur->entry_current = cur->entry_next;
     scan_next(cur);
+    if (cur->entry_current != cur->buf_len) {
+        parse_entry(cur);
+    }
+    else {
+        memset(&cur->entry, 0, sizeof(cur->entry));
+    }
     return SQLITE_OK;
 }
 
@@ -235,9 +291,46 @@ static int xColumn(sqlite3_vtab_cursor *pCur, sqlite3_context *c, int N) {
     struct ramblings_cursor *cur = ramblings_cursor(pCur);
     switch(N) {
     case 0: {
-        const char *entry = cur->buf + cur->entry;
-        int len = cur->entry_next - cur->entry;
-        sqlite3_result_text(c, entry, len, SQLITE_STATIC);
+        sqlite3_result_text(c, cur->entry.title, cur->entry.title_len, SQLITE_STATIC);
+        break;
+    }
+    case 1: {
+#if 0
+        sqlite3_result_text(c, cur->entry.date, cur->entry.date_len, SQLITE_STATIC);
+#else
+        /* Convert it to something sqlite can understand. */
+        char buf[] = "YYYY-MM-DD HH:MM:SS";
+        const char *d = cur->entry.date;
+        int n = cur->entry.date_len;
+        if (n == 0) break; // FIXME eof issue
+
+        /* This is rigid, but prob will never change.  Can't see how
+           to do this in a cleaner way without being much less
+           efficient. */
+        memcpy(buf,      d + n - 4, 4);
+        memcpy(buf +  8, d + 8,     2);
+        memcpy(buf + 11, d + 11,    8);
+        if (buf[8] == ' ') { buf[8] = '0'; };
+        const char *m = d + 4;
+        char *m1 = buf + 5;
+        if      (!memcmp(m,"Jan",3)) { memcpy(m1, "01", 2); }
+        else if (!memcmp(m,"Feb",3)) { memcpy(m1, "02", 2); }
+        else if (!memcmp(m,"Mar",3)) { memcpy(m1, "03", 2); }
+        else if (!memcmp(m,"Apr",3)) { memcpy(m1, "04", 2); }
+        else if (!memcmp(m,"May",3)) { memcpy(m1, "05", 2); }
+        else if (!memcmp(m,"Jun",3)) { memcpy(m1, "06", 2); }
+        else if (!memcmp(m,"Jul",3)) { memcpy(m1, "07", 2); }
+        else if (!memcmp(m,"Aug",3)) { memcpy(m1, "08", 2); }
+        else if (!memcmp(m,"Sep",3)) { memcpy(m1, "09", 2); }
+        else if (!memcmp(m,"Oct",3)) { memcpy(m1, "10", 2); }
+        else if (!memcmp(m,"Nov",3)) { memcpy(m1, "11", 2); }
+        else if (!memcmp(m,"Dec",3)) { memcpy(m1, "12", 2); }
+        sqlite3_result_text(c, buf, 19, SQLITE_TRANSIENT);
+#endif
+        break;
+    }
+    case 2: {
+        sqlite3_result_text(c, cur->entry.body, cur->entry.body_len, SQLITE_STATIC);
         break;
     }
     }
@@ -285,7 +378,7 @@ int sqlite3_ramblings_init(sqlite3 *db, char **err, const sqlite3_api_routines *
         SQLITE_OK ==
         sqlite3_create_function(
             db, "inc", 1,
-            SQLITE_UTF8 | SQLITE_DETERMINISTIC, 
+            SQLITE_UTF8 | SQLITE_DETERMINISTIC,
             NULL,  // sqlite3_user_data()
             inc,   // xFunc,
             NULL,  // xStep,
