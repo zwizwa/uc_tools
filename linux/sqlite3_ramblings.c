@@ -29,6 +29,7 @@ SQLITE_EXTENSION_INIT1
 struct ramblings_table {
     sqlite3_vtab base;
     struct mmap_file file;
+    const char *filename;
 };
 
 struct entry {
@@ -50,8 +51,8 @@ struct ramblings_cursor {
 
        The header text before the first entry is ignored. */
 
-    uintptr_t entry_current;
-    uintptr_t entry_next;
+    uintptr_t entry_start;
+    uintptr_t entry_endx;
 
     /* Parse of the current entry. */
     struct entry entry;
@@ -85,7 +86,7 @@ static int xConnect(
     char **pzErr){
     // LOG("xConnect\n");
     for(int i=0; i<argc; i++) {
-        LOG("arg%d %s\n", i, argv[i]);
+        // LOG("arg%d %s\n", i, argv[i]);
     }
     // "ramblings" "temp" "lp" "dev1.bin"
 
@@ -97,10 +98,11 @@ static int xConnect(
     // contain quotes. FIXME: Is there a reusable parser for this?
     ASSERT(argc >= 4);
     int n = strlen(argv[3])-2+1;
-    char filename[n];
+    char *filename = malloc(n);
+    pNew->filename = filename;
     memcpy(filename, argv[3]+1, n-1);
     filename[n-1] = 0;
-    LOG("ramblings %s\n", filename);
+    // LOG("ramblings %s\n", filename);
 
     mmap_file_open_ro(&pNew->file, filename);
     ASSERT(pNew->file.buf);
@@ -112,6 +114,9 @@ static int xConnect(
         "title TEXT,"
         "date TEXT,"
         "body TEXT,"
+        "file TEXT,"
+        "start INTEGER,"
+        "endx  INTEGER,"
         "schema HIDDEN"
         ")");
     ASSERT(rv == SQLITE_OK);
@@ -143,7 +148,7 @@ static int xClose(sqlite3_vtab_cursor *pCur) {
 }
 static int xEof(sqlite3_vtab_cursor *pCur) {
     struct ramblings_cursor *cur = ramblings_cursor(pCur);
-    int eof = cur->entry_current == cur->buf_len;
+    int eof = cur->entry_start == cur->buf_len;
     //LOG("xEof %d\n", eof);
     return eof;
 }
@@ -155,7 +160,7 @@ static int xFilter(sqlite3_vtab_cursor *pCur, int idxNum, const char *idxStr,
 
 
 void scan_next(struct ramblings_cursor *cur) {
-    const char *c     = cur->buf + cur->entry_next;
+    const char *c     = cur->buf + cur->entry_endx;
     const char *c_max = cur->buf + cur->buf_len;
     goto next0;
 
@@ -181,16 +186,16 @@ void scan_next(struct ramblings_cursor *cur) {
 
     /* c points points at 'Entry:' now.  This is a good place to start
        scanning next (FIXME). */
-    cur->entry_next = c - cur->buf;
+    cur->entry_endx = c - cur->buf;
     return;
 
   eof:
-    cur->entry_next = cur->buf_len;
+    cur->entry_endx = cur->buf_len;
 }
 
 void parse_entry(struct ramblings_cursor *cur) {
-    const char *c      = cur->buf + cur->entry_current;
-    const char *c_endx = cur->buf + cur->entry_next;
+    const char *c      = cur->buf + cur->entry_start;
+    const char *c_endx = cur->buf + cur->entry_endx;
     const char *line;
   next_line:
     line = c;
@@ -228,9 +233,9 @@ void parse_entry(struct ramblings_cursor *cur) {
 static int xNext(sqlite3_vtab_cursor *pCur) {
     // LOG("xNext\n");
     struct ramblings_cursor *cur = ramblings_cursor(pCur);
-    cur->entry_current = cur->entry_next;
+    cur->entry_start = cur->entry_endx;
     scan_next(cur);
-    if (cur->entry_current != cur->buf_len) {
+    if (cur->entry_start != cur->buf_len) {
         parse_entry(cur);
     }
     else {
@@ -261,7 +266,9 @@ static int xOpen(sqlite3_vtab *pVTab, sqlite3_vtab_cursor **ppCursor) {
     ramblings_cursor_init(cur,tab);
 
     /* SQLITE will call xEof xColumn then xNext xEof xColumn etc...
-       So we need to call it once here to get started. */
+       We need to call these two in order to set up the correct
+       initial cursor state. */
+    scan_next(cur);
     xNext(&cur->base);
 
     *ppCursor = &cur->base;
@@ -289,6 +296,8 @@ static int xOpen(sqlite3_vtab *pVTab, sqlite3_vtab_cursor **ppCursor) {
 static int xColumn(sqlite3_vtab_cursor *pCur, sqlite3_context *c, int N) {
     // LOG("xColumn %d\n", N);
     struct ramblings_cursor *cur = ramblings_cursor(pCur);
+    struct ramblings_table *tab = (void*)cur->base.pVtab;
+
     switch(N) {
     case 0: {
         sqlite3_result_text(c, cur->entry.title, cur->entry.title_len, SQLITE_STATIC);
@@ -331,6 +340,18 @@ static int xColumn(sqlite3_vtab_cursor *pCur, sqlite3_context *c, int N) {
     }
     case 2: {
         sqlite3_result_text(c, cur->entry.body, cur->entry.body_len, SQLITE_STATIC);
+        break;
+    }
+    case 3: {
+        sqlite3_result_text(c, tab->filename, -1, SQLITE_STATIC);
+        break;
+    }
+    case 4: {
+        sqlite3_result_int(c, cur->entry_start);
+        break;
+    }
+    case 5: {
+        sqlite3_result_int(c, cur->entry_endx);
         break;
     }
     }
