@@ -55,6 +55,8 @@
 
 STM_ELF := \
 	gdb/bl_c8t6_a12b5_boot1.core.f103.elf \
+
+STM_ELF_FIXME := \
 	gdb/pdap.x8.f103.elf \
 
 STM_HEX_BIN := \
@@ -62,6 +64,10 @@ STM_HEX_BIN := \
 
 HOST_ELF := \
 	linux/gdbstub_connect.dynamic.host.elf \
+	linux/sqlite3_logparse.dynamic.host.so \
+	linux/sqlite3_ramblings.dynamic.host.so \
+
+
 
 ALL_ELF := $(STM_HEX_BIN) $(STM_ELF) $(KLSTR_ELF) $(HOST_ELF)
 
@@ -226,8 +232,8 @@ gdb/lib.f103.a: $(LIB_F103_A_OBJECTS) rules.mk
 	export ARCH=host ; \
 	export BUILD=linux/build.sh ; \
 	export C=$< ; \
-	export CFLAGS_EXTRA="-O3 -Igdb/ -Ilinux/" ; \
-	export D=$(patsubst %.o,%d,$@) ; \
+	export CFLAGS=\ -std=gnu99\ -Ilinux/\ -Igdb/\ -DVERSION="\"$(GIT_VERSION)\""; \
+	export D=$(patsubst %.o,%.d,$@) ; \
 	export FIRMWARE=$$(basename $< .c) ; \
 	export O=$@ ; \
 	export TYPE=o ; \
@@ -271,7 +277,7 @@ linux/lib.host.a: $(LIB_HOST_A_OBJECTS)
 	export BUILD=linux/build.sh ; \
 	export SO=$@ ; \
 	export LD=linux/dynamic.host.ld ; \
-	export LDLIBS="-ldw -lelf" ; \
+	export LDLIBS="-lsqlite3" ; \
 	export MAP=$(patsubst %.so,%.map,$@) ; \
 	export O=$< ; \
 	export TYPE=so ; \

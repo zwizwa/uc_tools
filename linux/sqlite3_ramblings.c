@@ -1,5 +1,6 @@
 // Wrap a ramblings log as an sqlite3 table.
 
+
 // See examples:
 // https://github.com/ralight/sqlite3-pcre/blob/master/pcre.c
 // https://www.sqlite.org/loadext.html -> 4.1
@@ -35,15 +36,16 @@ struct ramblings_cursor {
 
     uint32_t rowid;
 
-    const char *buf; uintptr_t buf_len; uintptr_t buf_offset;
+    const char *buf;
+    uintptr_t buf_len;
 
-    /* Index into mmapped data. */
-    const char *date;  uintptr_t date_len;
-    const char *title; uintptr_t title_len;
+    /* The current entry is bounded by 2 indices: start of entry and
+       start of the next entry or end-of-buffer.
 
-    /* xNext calling log_parse_continue() can determine end-of-file
-       condition, which is saved ere and picked up by xEof */
-    uint8_t eof:1;
+       The header text before the first entry is ignored. */
+
+    uintptr_t entry;
+    uintptr_t entry_next;
 
 };
 
@@ -96,9 +98,7 @@ static int xConnect(
     int rv = sqlite3_declare_vtab(
         db,
         "CREATE TABLE x("
-        "ts   INTEGER,"
-        "bin  INTEGER,"
-        "line TEXT,"
+        "entry TEXT,"
         "schema HIDDEN"
         ")");
     ASSERT(rv == SQLITE_OK);
@@ -129,7 +129,8 @@ static int xClose(sqlite3_vtab_cursor *pCur) {
     return SQLITE_OK;
 }
 static int xEof(sqlite3_vtab_cursor *pCur) {
-    int eof = ramblings_cursor(pCur)->eof;
+    struct ramblings_cursor *cur = ramblings_cursor(pCur);
+    int eof = cur->entry == cur->buf_len;
     //LOG("xEof %d\n", eof);
     return eof;
 }
@@ -140,11 +141,10 @@ static int xFilter(sqlite3_vtab_cursor *pCur, int idxNum, const char *idxStr,
 }
 
 
-static int xNext(sqlite3_vtab_cursor *pCur) {
-    LOG("xNext\n");
-    struct ramblings_cursor *cur = ramblings_cursor(pCur);
-    const char *c     = cur->buf + cur->buf_offset - 1;
+void scan_next(struct ramblings_cursor *cur) {
+    const char *c     = cur->buf + cur->entry_next;
     const char *c_max = cur->buf + cur->buf_len;
+    goto next0;
 
 #define MATCH(i,char) { \
     if (unlikely(c >= c_max)) goto eof; \
@@ -152,6 +152,7 @@ static int xNext(sqlite3_vtab_cursor *pCur) {
 }
   next:
     c++;
+  next0:
     MATCH(0, '\n');
     MATCH(1, '\n');
     MATCH(2, 'E');
@@ -166,17 +167,19 @@ static int xNext(sqlite3_vtab_cursor *pCur) {
 
     /* c points points at 'Entry:' now.  This is a good place to start
        scanning next (FIXME). */
-    cur->buf_offset = c - cur->buf;
-
-    // FIXME
-    cur->date  = c; cur->date_len = 1;
-    cur->title = c; cur->title_len = 20;
-
-    return SQLITE_OK;
-
+    cur->entry_next = c - cur->buf;
+    return;
 
   eof:
-    cur->eof = 1;
+    cur->entry_next = cur->buf_len;
+}
+
+
+static int xNext(sqlite3_vtab_cursor *pCur) {
+    // LOG("xNext\n");
+    struct ramblings_cursor *cur = ramblings_cursor(pCur);
+    cur->entry = cur->entry_next;
+    scan_next(cur);
     return SQLITE_OK;
 }
 
@@ -232,13 +235,9 @@ static int xColumn(sqlite3_vtab_cursor *pCur, sqlite3_context *c, int N) {
     struct ramblings_cursor *cur = ramblings_cursor(pCur);
     switch(N) {
     case 0: {
-        // Timestamp.
-        sqlite3_result_text(c, cur->date, cur->date_len, SQLITE_STATIC);
-        break;
-    }
-    case 1: {
-        // Title
-        sqlite3_result_text(c, cur->title, cur->title_len, SQLITE_STATIC);
+        const char *entry = cur->buf + cur->entry;
+        int len = cur->entry_next - cur->entry;
+        sqlite3_result_text(c, entry, len, SQLITE_STATIC);
         break;
     }
     }
