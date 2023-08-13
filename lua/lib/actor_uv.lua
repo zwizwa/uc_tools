@@ -31,6 +31,8 @@ function actor_uv.send_after(task, msg, ms, t)
    return t
 end
 
+-- FIXME: It's probably ok to put a timer object inside the actor_uv
+-- object and reuse that.
 function actor_uv:sleep(ms)
    local t = uv.timer()
    -- A token is needed for use in the recv filter.  If we create our
@@ -38,6 +40,22 @@ function actor_uv:sleep(ms)
    local msg0 = t
    actor_uv.send_after(self, msg0, ms, t)
    self:recv(function(msg) return msg0 == msg end)
+end
+
+function actor_uv:recv_with_timeout(timeout_ms, filter)
+   if not filter then filter = function(_) return true end end
+   local t = uv.timer()
+   -- msg0 pointer is unique tag, can be used with '=='
+   local msg0 = {"timer", timeout_us}
+   actor_uv.send_after(self, msg0, timeout_ms, t)
+   local msg = self:recv(function(msg) return (msg0 == msg) or filter(msg) end)
+   if msg ~= msg0 then
+      -- We got a proper reply, so cancel the timer.  FIXME: Does this
+      -- need to check that the timer didn't queue a message?
+      t:stop()
+      t:close()
+   end
+   return msg
 end
 
 -- Create a task with actor_uv behavior mixed in.
@@ -127,5 +145,83 @@ function actor_uv:write_socket(socket, data)
    self:recv(function(msg) return socket == msg end)
 end
 
+
+
+-- Note that the reason we parameterize push here is that sometimes it
+-- is simpler to split a packet before sending it to the task,
+-- i.e. such that the task only sees complete packets, and maybe some
+-- other routing can be performed that is specific to the binary
+-- encoding of the incoming data.
+
+function actor_uv.spawn_process(scheduler, executable, args, body, push)
+   assert(executable)
+   assert(args)
+
+   if nil == push then
+      push = function(data, push_packet) push_packet(data) end
+   end
+
+   -- Task data
+   local task = {
+      stdin  = uv.pipe(),
+      stdout = uv.pipe(),
+      stderr = uv.pipe(),
+   }
+   -- We then add task behavior mixin.
+   actor_uv.task(scheduler, task)
+
+   local function error_handler(handle, err, status, signal)
+      -- Note: No documentation was found about the libuv error
+      -- handler API, but there seem to be two cases that occur in
+      -- practice: an error happens during startup, e.g. executable
+      -- not found, or the process dies. e.g. due to a bug or fatal
+      -- error in the program.
+      handle:close()
+      log_desc({error_handler = {err=err,status=status,signal=signal}})
+   end
+
+   -- Create libuv process handle
+   task.handle = uv.spawn({
+         file = executable,
+         stdio = {
+            { stream = task.stdin,  flags = uv.CREATE_PIPE + uv.READABLE_PIPE },
+            { stream = task.stdout, flags = uv.CREATE_PIPE + uv.WRITABLE_PIPE },
+            { stream = task.stderr, flags = uv.CREATE_PIPE + uv.WRITABLE_PIPE }
+         },
+         args = args
+   }, error_handler)
+
+   -- Spawn the task.  It can use task:recv() to pop the mailbox,
+   -- which will give tagged {port, ...} messages for incoming pipe
+   -- data.  It can also write to task.stdin
+   scheduler:spawn(body, task)
+
+   -- Anything coming in on stdout gets sent to the task.  Note that
+   -- we cannot call error() in the uv callbacks, as that is the main
+   -- Lua thread, and errors there will terminate the Linux process.
+   -- So any error is propagated to the task, which then can be
+   -- handled, or the task can die with error() inside its coroutine
+   -- such that the scheduler can pick up the coroutine crash and call
+   -- any registered monitors.
+   local function read_callback(tag_from)
+      return function(_,err,data)
+         if not err then
+            push(data,
+                 function(packet)
+                    task:send_and_schedule({tag_from,packet})
+                 end)
+         else
+            task:send_and_schedule({"error",{tag_from, err, data}})
+         end
+      end
+   end
+
+   task.stdout:start_read(read_callback("stdout"))
+   task.stderr:start_read(read_callback("stderr"))
+
+   return task
+
+
+end
 
 return actor_uv

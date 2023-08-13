@@ -28,11 +28,16 @@ function actor.scheduler:schedule()
    while self:schedule_one() do end
 end
 
+function actor.scheduler:self()
+   return self.current_task
+end
+
 function actor.scheduler:schedule_one()
    for task,_true in pairs(self.hot) do
       -- Remove from hot list before scheduling.  If task sends itself
       -- a message it will get moved back to the hot list.
       self:remove(task)
+      self.current_task = task
       if not task:resume() then
          -- If task died, make sure it is not on the hot list.
          self:remove(task)
@@ -104,9 +109,12 @@ function actor.scheduler:send(task, msg)
    else
       -- A task without a mbox is a dead task.  Messages sent to dead
       -- tasks will be dropped.
-      -- log("sending to dead task\n")
+      logf("sending to dead task %s\n", task.name)
    end
 end
+
+-- Default name.  Task should probably override this.
+actor.task.name = "<unknown>"
 
 
 -- Create a task that is ready to accept messages.  It needs a
@@ -129,29 +137,40 @@ function actor.task:resume()
    local ok, rv = coroutine.resume(co)
    if not ok then
       -- log("resume->false\n")
-      self:exit()
       local statusmsg = coroutine.status(co)
       local traceback = debug.traceback(co)
-      log("coroutine_resume: status=" .. statusmsg .. "\n")
-      log(rv .. "\n") -- error message
+      log("actor.task:resume_error: status: " .. statusmsg .. "\n")
+      log("actor.task:resume_error: traceback:\n")
+      -- If not nil this is the Lua error message.
+      if (rv) then log(rv .. "\n") end
       log(traceback)
       log("\n")
+      self:exit()
    else
       -- Note that when the coroutine "runs of the end", ok will be
       -- true, but coroutine.status will return dead.  In that case
       -- self:exit() will already have been called in the coroutine
       -- body.  See scheduler.spawn
       --
-      -- log("status: " .. coroutine.status(co) .. "\n")
+      local statusmsg = coroutine.status(co)
+      if statusmsg ~= "suspended" then
+         log("actor.task:resume_ok: status=" .. statusmsg .. "\n")
+         self:exit()
+      end
    end
    return status
 end
 
+-- When a task gets killed, all the linked tasks get notified.
+function actor.task:add_monitor(other_task, ref)
+   self.monitor[ref] = other_task
+end
+
+-- Called when the coroutine is dead.
 function actor.task:exit(reason)
-   -- Send a message to all tasks monitoring this one.  FIXME: API
-   -- will need to be tuned still.  E.g. use arrays or type= maps?
+   -- Send a message to all tasks monitoring this one.
    for ref, tsk in pairs(self.monitor) do
-      tsk:send({'down', ref, task, reason})
+      tsk:send({self, {'down', ref, reason}})
    end
    -- Remove from hot list to make sure scheduler will not try to
    -- resume this task.  Do this after sending monitor message to
@@ -196,6 +215,7 @@ function actor.task:recv(filter)
       coroutine.yield()
    end
 end
+
 
 return actor
 

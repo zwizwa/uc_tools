@@ -336,14 +336,13 @@ void tether_assert_write(struct tether *s, const uint8_t *buf, size_t len) {
     assert_write(s->fd, buf, len);
 }
 
+// Constructor
 void tether_open_tty(struct tether *s, const char *dev) {
+    memset(s, 0, sizeof(*s));
     ASSERT_ERRNO(s->fd = open(dev, O_RDWR));
     raw_serial_config(s->fd);
-    // tether_sync(s);
-
-    // FIXME: This should probably use an explicit init.
-    if (!s->read)  { s->read  = tether_assert_read_fixed; }
-    if (!s->write) { s->write = tether_assert_write; }
+    s->read  = tether_assert_read_fixed;
+    s->write = tether_assert_write;
 }
 
 

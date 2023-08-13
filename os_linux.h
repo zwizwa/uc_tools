@@ -7,7 +7,7 @@
 
 #define _GNU_SOURCE // for mremap()
 
-//#define _XOPEN_SOURCE 500 // for ftruncate()
+#define _XOPEN_SOURCE 700 // for ftruncate()
 
 #include <pthread.h>
 #include <signal.h>

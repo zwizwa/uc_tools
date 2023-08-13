@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 #include "cbuf.h"
-#include "run_3if.h"
+#include "cmd_3if.h"
 
 #include "hw_stm32f103.h"
 #include "uct_byteswap.h"
@@ -12,7 +12,7 @@
 
 uint8_t data[1000] = {1,2,3};
 
-void poll(struct run_3if *s) {
+void poll(struct cmd_3if *s) {
 
     // FIXME: If the total number of bytes written here is >62 the
     // protocol tends to get out of sync due to dropped bytes.  Not
@@ -42,8 +42,8 @@ void poll(struct run_3if *s) {
 /* Goes into a separate section so linker script can place it into a
    predictable location, e.g. start of RAM segment.  For code in Flash
    there is a field reserved in struct gdbstub_config */
-RUN_3IF_SECTION
-int run(struct run_3if *s) {
+CMD_3IF_SECTION
+int run(struct cmd_3if *s) {
     s->poll = poll;
     return 0;
 }

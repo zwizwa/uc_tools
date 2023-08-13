@@ -11,7 +11,7 @@
 #include "plugin_api.h"
 #include "pbuf.h"
 
-#include "memory.h"
+#include "uct_memory.h"
 
 /* Note that plugins have undefined state before they are started, so
    we have to keep track of whether they are started or not. */

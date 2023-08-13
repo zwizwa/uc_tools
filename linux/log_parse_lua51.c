@@ -63,16 +63,13 @@
 /* Wrap mmap_file.h read-only memory-mapped file.
    This is for handling large files. */
 #define T_LOG_FILE  "uc_tools.log_file"
-static int gc_log_file(lua_State *L) {
-    LOG("FIXME: gc_log_file()\n");
-    return 0;
-}
 static struct log_file_ud *push_log_file(lua_State *L, const char *filename) {
     struct log_file_ud *ud = lua_newuserdata(L, sizeof(*ud));
     ASSERT(ud);
     memset(ud,0,sizeof(*ud));
     mmap_file_open_ro(&ud->file, filename);
     ASSERT(ud->file.buf);
+    // LOG("push_log_file() %p fd=%d\n", ud, ud->file.fd);
     luaL_getmetatable(L, T_LOG_FILE);
     lua_setmetatable(L, -2);
     return ud;
@@ -88,7 +85,13 @@ static struct log_file_ud *L_log_file(lua_State *L, int index) {
     struct log_file_ud *ud = lua_touserdata(L, index);
     return ud;
 }
-
+static int gc_log_file(lua_State *L) {
+    struct log_file_ud *ud = L_log_file(L, 1);
+    struct mmap_file *file = &ud->file;
+    //LOG("gc_log_file() %p fd=%d\n", ud, file->fd);
+    mmap_file_close(file);
+    return 0;
+}
 
 /* Wrap log_parse.h iterator. */
 #define T_LOG_PARSE "uc_tools.log_parse"

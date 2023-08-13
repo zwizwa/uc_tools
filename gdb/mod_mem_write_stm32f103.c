@@ -21,7 +21,7 @@
 #endif
 
 
-#include "memory.h"
+#include "uct_memory.h"
 
 int32_t hw_mem_write_(uint32_t addr, const uint8_t *buf, uint32_t len) {
 #if 1
