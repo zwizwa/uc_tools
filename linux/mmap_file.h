@@ -101,7 +101,10 @@ static inline const void *mmap_file_open_ro(struct mmap_file *ref,
     ASSERT_ERRNO(ref->size = lseek(ref->fd, 0, SEEK_END));
 
     ref->buf = mmap(NULL, ref->size, PROT_READ, MAP_SHARED, ref->fd, 0);
-    ASSERT(MAP_FAILED != ref->buf);
+    if (MAP_FAILED == ref->buf) {
+        ERROR("MAP_FAILED on %s\n", file);
+    }
+
     return ref->buf;
 }
 
