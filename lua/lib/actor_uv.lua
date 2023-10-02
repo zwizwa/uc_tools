@@ -78,7 +78,9 @@ function actor_uv.spawn_tcp_server(scheduler, serv_obj)
       -- We then add task behavior mixin.
       actor_uv.task(scheduler, task)
       task.socket = lsocket:accept()
-      assert(task.socket)
+      if not task.socket then
+         error("Cannot create TCP server socket port " .. serv_obj.port)
+      end
 
       scheduler:spawn(
          function(task)
