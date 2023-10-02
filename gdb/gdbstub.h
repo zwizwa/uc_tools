@@ -87,6 +87,7 @@ uint32_t gdbstub_read (struct gdbstub *stub, uint8_t *buf, uint32_t size);
 uint32_t gdbstub_read_ready(struct gdbstub *stub);
 
 // Provided by target-specific code.
+void clear_cache(void);
 uint8_t mem_read(uint32_t addr);
 int32_t mem_write(uint32_t addr, uint8_t val);
 int32_t mem_write32(uint32_t addr, uint32_t val);
