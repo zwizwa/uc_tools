@@ -163,7 +163,10 @@ void tether_read_mem(struct tether *s, uint8_t *buf,
         uint32_t chunk = (nb_bytes > max_chunk) ? max_chunk : nb_bytes;
         if (s->verbose) { LOG("%08x %d\n", address, chunk); };
         tether_cmd_u8(s, NxL, chunk);
-        ASSERT(s->buf[0] == chunk);
+        if (s->buf[0] != chunk) {
+            ERROR("read_mem %d: s->buf[0] == %d, expected %d\n",
+                  nb_bytes, s->buf[0], chunk);
+        }
         memcpy(buf, s->buf+1, chunk);
         address += chunk;
         nb_bytes -= chunk;

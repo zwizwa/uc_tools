@@ -8,7 +8,7 @@
 #include "gdbstub_ctrl.h"
 
 // Currently fixed, size constrained by commands: req: X, rpl: g
-#define GDBSTUB_PACKET_BUFFER_SIZE 220
+#define GDBSTUB_PACKET_BUFFER_SIZE 512
 
 #define GDBSTUB_PACKET(name)                                            \
     static uint8_t name##_buf[GDBSTUB_PACKET_BUFFER_SIZE];              \
@@ -25,7 +25,7 @@
         .ctrl = &stub##_ctrl,                                  \
         .req = &stub##_req,                                    \
         .rpl = &stub##_rpl,                                    \
-        .reg = GDBSTUB_REG_INIT,                               \
+        .regs = GDBSTUB_REGS_INIT,                             \
         .commands = cmds,                                      \
     }
 
@@ -44,17 +44,34 @@ extern const struct gdbstub_io *io;
 // Stack pointer at top of memory for the (fake) current context.  GDB
 // will use this stack frame to perform "print" or "call" commands
 // that execute target code.
-#define GDBSTUB_REG_INIT {[13] = 0x20005000}
-#define GDBSTUB_NB_REGS 26
+#define GDBSTUB_REGS_INIT {.sp = 0x20005000}
 
-/* see gdb-7.12.1/gdb/regformats/reg-arm.dat */
+/* see gdb-7.12.1/gdb/regformats/reg-arm.dat
 
+   Note that the floating point registers are 12 bytes
+   https://sourceware.org/bugzilla/show_bug.cgi?id=25162
+*/
+
+struct regs {
+    uint32_t r0,r1,r2,r3,r4,r5,r6,r7,r8,r9,r10;
+    uint32_t fp,ip,sp,lr,pc;
+    uint32_t f0[3];
+    uint32_t f1[3];
+    uint32_t f2[3];
+    uint32_t f3[3];
+    uint32_t f4[3];
+    uint32_t f5[3];
+    uint32_t f6[3];
+    uint32_t f7[3];
+    uint32_t fps;
+    uint32_t cpsr;
+};
 
 struct gdbstub {
     struct gdbstub_ctrl *ctrl;
     struct packet *req;
     struct packet *rpl;
-    uint32_t reg[GDBSTUB_NB_REGS];
+    struct regs regs;
     uint32_t breakpoint;
     const struct gdbstub_command *commands;
 };

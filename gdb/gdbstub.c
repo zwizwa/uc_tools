@@ -135,7 +135,7 @@ static int32_t cmd_Supported(struct gdbstub *stub,
     return rsp_begin(stub->rpl)
         || packet_save_string_cs(stub->rpl,
                                  "qXfer:memory-map:read+;"
-                                 "PacketSize=c0")
+                                 "PacketSize=200")  // HEX, so 512 bytes
         || rsp_end(stub->rpl);
 }
 
@@ -227,15 +227,18 @@ static int32_t cmd_signal(struct gdbstub *stub, const uint8_t *cmd, uint32_t n) 
 */
 
 static inline void gdbstub_fake_stop_at_breakpoint(struct gdbstub *stub, uint32_t rv) {
-    stub->reg[0] = rv;
-    stub->reg[15] = stub->breakpoint + 1;
+    stub->regs.r0 = rv;
+    stub->regs.pc = stub->breakpoint + 1;
 }
 
 typedef uint32_t (*gen_func)(uint32_t a, uint32_t b, uint32_t c, uint32_t d);
 static int32_t cmd_continue(struct gdbstub *stub, const uint8_t *cmd, uint32_t n) {
     if (stub->breakpoint) {
-        gen_func fn = (gen_func)(unsigned long)(stub->reg[15]|1);
-        uint32_t rv = fn(stub->reg[0],stub->reg[1],stub->reg[2],stub->reg[3]);
+        gen_func fn = (gen_func)(unsigned long)(stub->regs.pc|1);
+        uint32_t rv = fn(stub->regs.r0,
+                         stub->regs.r1,
+                         stub->regs.r2,
+                         stub->regs.r3);
         gdbstub_fake_stop_at_breakpoint(stub, rv);
     }
     return cmd_signal(stub, cmd, n);
@@ -244,37 +247,49 @@ static int32_t cmd_continue(struct gdbstub *stub, const uint8_t *cmd, uint32_t n
 
 static int32_t cmd_get_registers(struct gdbstub *stub, const uint8_t *cmd, uint32_t n) {
     rsp_begin(stub->rpl);
-    for (uint32_t i = 0; i < GDBSTUB_NB_REGS; i++) {
-        LOG("reg %d %08x\n", i, stub->reg[i]);
-        int32_t rv = packet_save_u32_hex_cs(stub->rpl, stub->reg[i]);
+    uint32_t nb_u32 = sizeof(stub->regs) / sizeof(uint32_t);
+    uint32_t *u32 = &stub->regs.r0;
+    for (uint32_t i = 0; i < nb_u32; i++) {
+        int32_t rv = packet_save_u32_hex_cs(stub->rpl, u32[i]);
         if (rv) return rv;
     }
     return rsp_end(stub->rpl);
 }
 
 static int32_t cmd_get_register(struct gdbstub *stub, const uint8_t *b, uint32_t l) {
-    uint32_t r;
-    TRY(take_hex(&b, &l, &r));
-    if (r >= GDBSTUB_NB_REGS) return E_PROTO;
-    return rsp_begin(stub->rpl)
-        || packet_save_u32_hex_cs(stub->rpl, stub->reg[r])
-        || rsp_end(stub->rpl);
+    /* GDB doesn't seem to use this and uses cmd_get_registers()
+       instead.  See git history for old code, it doesn't make a lot
+       of sense. */
+    return E_PROTO;
 }
 
 static int32_t cmd_set_registers(struct gdbstub *stub, const uint8_t *cmd, uint32_t n) {
-    if (n != 26*8) return E_PROTO;
-    uint32_t nr = n / 8;
-    for (uint32_t i = 0; i < nr; i++) {
-        stub->reg[i] = read_hex_u32_le(cmd + i * 8);
-    }
-    return rsp_OK(stub->rpl);
+    /* GDB doesn't seem to use this and uses cmd_set_register()
+       instead.  See git history for old code, it doesn't make a lot
+       of sense. */
+    return E_PROTO;
 }
 
 static int32_t cmd_set_register(struct gdbstub *stub, const uint8_t *b, uint32_t l) {
     uint32_t r;
     TRY(take_hex(&b, &l, &r));
-    if (r >= GDBSTUB_NB_REGS) return E_PROTO;
-    stub->reg[r] = read_hex_u32_le(b);
+    if ((r>=0) && (r<=15)) {
+        uint32_t *u32 = &stub->regs.r0;
+        u32[r] = read_hex_u32_le(b);
+    }
+    else if ((r>=16) && (r<=23)) {
+        // Floating point registers not supported.
+        return E_PROTO;
+    }
+    else if ((r>=24) && (r<=25)) {
+        // fps, cpsr
+        uint32_t *u32 = &stub->regs.fps;
+        u32[r-24] = read_hex_u32_le(b);
+    }
+    else {
+        // Bad register index
+        return E_PROTO;
+    }
     return rsp_OK(stub->rpl);
 }
 
