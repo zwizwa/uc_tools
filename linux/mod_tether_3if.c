@@ -13,7 +13,7 @@ const char *tether_3if_tag = "";
 
 struct tether;
 struct tether {
-    int fd;
+    int fd_in, fd_out;
 
     ssize_t (*read)(struct tether *s, void *vbuf, size_t nb);
     void (*write)(struct tether *s, const uint8_t *buf, size_t len);
@@ -309,38 +309,39 @@ void tether_sync(struct tether *s) {
     int rv;
     /* Read any stale replies with non-blocking set temporarily. */
     int opt;
-    ASSERT_ERRNO(opt = fcntl(s->fd, F_GETFL));
+    ASSERT_ERRNO(opt = fcntl(s->fd_in, F_GETFL));
     opt |= O_NONBLOCK;
-    ASSERT_ERRNO(fcntl(s->fd, F_SETFL, opt));
-    ASSERT_ERRNO(rv = read(s->fd, buf, sizeof(buf)));
+    ASSERT_ERRNO(fcntl(s->fd_in, F_SETFL, opt));
+    ASSERT_ERRNO(rv = read(s->fd_in, buf, sizeof(buf)));
     opt &= ~O_NONBLOCK;
-    ASSERT_ERRNO(fcntl(s->fd, F_SETFL, opt));
+    ASSERT_ERRNO(fcntl(s->fd_in, F_SETFL, opt));
 
     LOG("sync1: %d\n", rv);
 
     /* Send a bunch of zeros to recover from protocol sync loss.  This
        finalizes any command that is in progress and will then fall
        into skipping empty packets. */
-    write(s->fd, buf, sizeof(buf));
+    assert_write(s->fd_out, buf, sizeof(buf));
 
     /* Read again, this time blocking. */
-    rv = read(s->fd, buf, sizeof(buf));
+    rv = read(s->fd_in, buf, sizeof(buf));
     LOG("sync2: %d\n", rv);
 
 }
 
 ssize_t tether_assert_read_fixed(struct tether *s, void *vbuf, size_t nb) {
-    return assert_read_fixed(s->fd, vbuf, nb);
+    return assert_read_fixed(s->fd_in, vbuf, nb);
 }
 void tether_assert_write(struct tether *s, const uint8_t *buf, size_t len) {
-    assert_write(s->fd, buf, len);
+    assert_write(s->fd_out, buf, len);
 }
 
 // Constructor
 void tether_open_tty(struct tether *s, const char *dev) {
     memset(s, 0, sizeof(*s));
-    ASSERT_ERRNO(s->fd = open(dev, O_RDWR));
-    raw_serial_config(s->fd);
+    ASSERT_ERRNO(s->fd_in = open(dev, O_RDWR));
+    s->fd_out = s->fd_in;
+    raw_serial_config(s->fd_in);
     s->read  = tether_assert_read_fixed;
     s->write = tether_assert_write;
 }
