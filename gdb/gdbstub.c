@@ -135,7 +135,7 @@ static int32_t cmd_Supported(struct gdbstub *stub,
     return rsp_begin(stub->rpl)
         || packet_save_string_cs(stub->rpl,
                                  "qXfer:memory-map:read+;"
-                                 "PacketSize=200")  // HEX, so 512 bytes
+                                 "PacketSize=1F0")  // HEX
         || rsp_end(stub->rpl);
 }
 
