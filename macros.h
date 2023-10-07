@@ -17,6 +17,13 @@
 #ifndef LOG
 #define LOG(...) fprintf(stderr, __VA_ARGS__)
 #endif
+
+#define LOG_HEX(prefix,buf,nb) do { \
+        LOG("%s",prefix);                                               \
+        for(uintptr_t (i)=0; (i)<(nb); (i)++) { LOG(" %02x", (buf)[i]); }; \
+        LOG("\n");                                                      \
+    } while(0)
+
 /* The default error propagation is to exit the program.  This works
  * well for the intended use as Erlang port. */
 

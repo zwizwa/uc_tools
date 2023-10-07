@@ -18,7 +18,9 @@ struct tether {
     ssize_t (*read)(struct tether *s, void *vbuf, size_t nb);
     void (*write)(struct tether *s, const uint8_t *buf, size_t len);
 
-
+    /* If set to 0 (default), then use the code default, which
+       currently uses maximum allowed size. */
+    uint8_t max_chunk_write;
 
     /* Max transfer is size byte + max size indicated by that size
        byte (255 bytes) */
@@ -213,7 +215,9 @@ void tether_write_mem(struct tether *s, const uint8_t *buf,
     tether_cmd_u32(s, LDx, address);
     while (nb_bytes > 0) {
         /* 255 is max packet size, 1 for command. */
-        uint32_t max_chunk = 254;
+        uint32_t max_chunk = s->max_chunk_write;
+        if (!max_chunk) max_chunk = 254;
+
         uint32_t chunk = (nb_bytes > max_chunk) ? max_chunk : nb_bytes;
         if (s->verbose) { LOG("%08x %d\n", address, chunk); };
         tether_cmd_buf(s, NxS, buf, chunk);
