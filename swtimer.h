@@ -68,7 +68,10 @@ static inline uint16_t swtimer_next_at(swtimer_heap_t *h, uint16_t time_abs) {
     return next.time_abs == time_abs;
 }
 
-
+static inline void swtimer_reset(swtimer_heap_t *h) {
+    h->nb = 0;
+    h->now_abs = 0;
+}
 
 /* To cancel a timer, it might be simplest to set a bit in a flag
    register that will drop the software event when the hardware timer
