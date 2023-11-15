@@ -26,6 +26,8 @@
 
 */
 
+#define TAG_PTERM       0xFFEE  // Erlang printed term
+#define TAG_MIDI        0xFFEF  // midi message
 #define TAG_LEB128      0xFFF0  // see leb128.erl
 #define TAG_COMMAND     0xFFF1  // command.h Forth-style commands
 #define TAG_CSP         0xFFF2  // CSP packet
@@ -47,6 +49,11 @@
 /* TAG_STREAM
    u16_be: byte stream ID
    rest:   byte stream data
+*/
+
+/* TAG_MIDI
+   u16_be: midi port ID
+   rest:   parsed midi message
 */
 
 /* TAG_EVENT
