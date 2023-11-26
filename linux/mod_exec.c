@@ -32,8 +32,8 @@ int exec_main(int argc, char **argv) {
 
     if (0 == child_pid) {
         /* Child */
-        close(1); dup(pipefd[1]);
-        close(2); dup(pipefd[1]);
+        close(1); ASSERT_ERRNO(dup(pipefd[1]));
+        close(2); ASSERT_ERRNO(dup(pipefd[1]));
         close(pipefd[0]);
 
         int sub_argc = argc - 1;
