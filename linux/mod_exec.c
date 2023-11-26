@@ -2,10 +2,11 @@
 #define MOD_EXEC
 
 /* Process control wrapper between arbitrary process and
-   jack_client.erl tag protocol.
+   uc_tools tag protocol.
 
-   This essentially replaces the socat wrapper with something more
-   flexible, conforming to tag protocol used throughout.
+   Before, socat was used to ensure daemon exit on stdin close.  This
+   code performs that action and in addition performs tag protocol
+   wrapping.
 */
 
 #define EXEC_LOG_CHUNK_SIZE 1000
