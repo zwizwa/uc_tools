@@ -104,13 +104,17 @@ static inline void send_reply_tag_u32_maybe(
     }
 }
 
-#define SEND_REPLY_TAG_U32(req, ...) {                          \
+#define SEND_REPLY_TAG_U32_BYTES(req, b, nb, ...) {             \
         uint32_t a[] = { __VA_ARGS__ };                         \
         const struct tag_u32 s = {                              \
             .args = a, .nb_args = sizeof(a)/sizeof(uint32_t),   \
+            .bytes = b, .nb_bytes = nb,                         \
         };                                                      \
         send_reply_tag_u32_maybe(req, &s);                      \
 }
+#define SEND_REPLY_TAG_U32(req, ...) \
+    SEND_REPLY_TAG_U32_BYTES(req, NULL, 0, __VA_ARGS__)
+
 
 /* This assumes reply_tag_u32 supports req==NULL to send a plain message. */
 #define SEND_TAG_U32(...) SEND_REPLY_TAG_U32(NULL, __VA_ARGS__)
