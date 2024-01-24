@@ -158,6 +158,7 @@ case "$TYPE" in
 
         # Optionally link to parent elf file
         [ ! -z "$PARENT_ELF" ] && PARENT_ELF_LDFLAGS=-Wl,--just-symbols=$PARENT_ELF
+        echo "LDLIBS=$LDLIBS"
         $GCC \
             $LDFLAGS \
             -T$LD \
