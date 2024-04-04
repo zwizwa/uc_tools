@@ -67,6 +67,8 @@ HOST_ELF := \
 	linux/sqlite3_logparse.dynamic.host.so \
 	linux/sqlite3_ramblings.dynamic.host.so \
 
+HOST_SH := \
+	linux/sqlite3.sh
 
 
 ALL_ELF := $(STM_HEX_BIN) $(STM_ELF) $(KLSTR_ELF) $(HOST_ELF)
@@ -114,8 +116,17 @@ LIB_HOST_A_OBJECTS := \
 	linux/packet_bridge.host.o \
 
 # Generated files
+# Generated shell scripts
+linux/sqlite3.sh:
+	echo '#/bin/sh' >$@
+	echo 'exec $(shell which sqlite3) "$$@"' >>$@
+	chmod +x $@
+	cat $@
 
 LUA := $(shell find lua -name '*.lua')
+
+
+
 
 # Linker file
 gdb/%.ld: gdb/%.ld.sh
@@ -283,6 +294,8 @@ linux/lib.host.a: $(LIB_HOST_A_OBJECTS)
 	export TYPE=so ; \
 	export UC_TOOLS=$(UC_TOOLS) ; \
 	$$BUILD 2>&1
+
+
 
 
 
