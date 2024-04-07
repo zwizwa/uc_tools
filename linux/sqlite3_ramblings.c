@@ -102,7 +102,7 @@ static int xConnect(
     pNew->filename = filename;
     memcpy(filename, argv[3]+1, n-1);
     filename[n-1] = 0;
-    // LOG("ramblings %s\n", filename);
+    LOG("ramblings %s\n", filename);
 
     mmap_file_open_ro(&pNew->file, filename);
     ASSERT(pNew->file.buf);
@@ -394,7 +394,9 @@ void inc(sqlite3_context *c, int argc, sqlite3_value **argv) {
 }
 
 int sqlite3_ramblings_init(sqlite3 *db, char **err, const sqlite3_api_routines *api) {
+    //LOG("extension init\n");
     SQLITE_EXTENSION_INIT2(api);
+    //LOG("create function\n");
     ASSERT(
         SQLITE_OK ==
         sqlite3_create_function(
@@ -405,6 +407,7 @@ int sqlite3_ramblings_init(sqlite3 *db, char **err, const sqlite3_api_routines *
             NULL,  // xStep,
             NULL   // xFinal
             ));
+    //LOG("create module\n");
     ASSERT(
         SQLITE_OK ==
         sqlite3_create_module(db, "ramblings", &Module, 0));
