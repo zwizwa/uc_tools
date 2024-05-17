@@ -17,8 +17,13 @@
 /* Firmware blocksize is hardcoded to STM32F103 erase block size.
    FIXME: Metadata needs to be extended to support different block
    sizes. */
-#define BLOCK_LOGSIZE 10
-#define BLOCK_SIZE    (1 << BLOCK_LOGSIZE)
+
+/* This should really be programmable: I want bootloader to contain
+   block size such that fw doesn't need to be hardcoded to frame
+   size. */
+
+//#define BLOCK_LOGSIZE 10
+//#define BLOCK_SIZE    (1 << BLOCK_LOGSIZE)
 
 #define FWSTREAM_OK 0
 #define FWSTREAM_ERR_GAP 1
@@ -48,6 +53,7 @@ struct fwstream {
     /* Priority to set before writing the control block to flash. */
     uint32_t priority;
 
+    uint32_t block_logsize;
 
     /* STATE */
 
@@ -77,8 +83,8 @@ fwstream_reset(struct fwstream *s) {
 }
 
 static inline uint32_t
-fwstream_size_padded(uint32_t size_bytes) {  // endx-start
-    return (((size_bytes-1)/BLOCK_SIZE)+1)*BLOCK_SIZE;
+fwstream_size_padded(uint32_t block_logsize, uint32_t size_bytes) {  // endx-start
+    return (((size_bytes-1)>>block_logsize)+1)<<block_logsize;
 }
 static inline uint32_t
 fwstream_ctrl_crc(struct fwstream *s, const struct gdbstub_control *c) {
@@ -89,7 +95,8 @@ fwstream_new_priority(struct fwstream *s, const struct gdbstub_config *config) {
     //LOG("flash_start = 0x%x\n", config->flash_start);
     //5LOG("flash_endx = 0x%x\n", config->flash_endx);
     uint32_t size_padded =
-        fwstream_size_padded(config->flash_endx - config->flash_start);
+        fwstream_size_padded(s->block_logsize,
+                             config->flash_endx - config->flash_start);
     struct gdbstub_control *c = (void*)(config->flash_start + size_padded);
     //LOG("size_padded = %d\n", size_padded);
     //LOG("control = 0x%x\n", c);
@@ -164,7 +171,7 @@ fwstream_push(struct fwstream *s, uintptr_t chunk_nb, const uint8_t *chunk_data)
            we've lost track and need to abort the iteration. */
         if (endx <= start) return FWSTREAM_ERR_FW_ENDX;
         uint32_t size_bytes = endx - start;
-        uint32_t size_padded = fwstream_size_padded(size_bytes);
+        uint32_t size_padded = fwstream_size_padded(s->block_logsize, size_bytes);
         if (s->max_size && (size_padded > s->max_size)) {
             LOG("fwstream: max_size=0x%x, size_padded=0x%x\n",
                 s->max_size, size_padded);
