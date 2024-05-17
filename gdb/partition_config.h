@@ -54,8 +54,8 @@ static inline const struct gdbstub_control *partition_config_valid(
     if (endx > (start + (p->max_size - page_size))) return 0;
 
     /* We now know that the firmware is in a meaningful location.  Get
-       the control block pointer and check it points into the
-       partition. */
+       the control block pointer and check it points into the expected
+       Flash range. */
     const struct gdbstub_control *control = p->config->control;
     const uint8_t *ctrl = (void*)control;
     if (ctrl <= endx) return 0;

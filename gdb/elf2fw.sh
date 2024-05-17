@@ -50,7 +50,7 @@
 # - Bless the file by renaming .fw.tmp to .fw
 
 set -e
-# set -x
+set -x
 
 [ -z "$1" ] && echo "usage: $0 <elf> [<fw>]" && exit
 ELF="$1"
@@ -76,13 +76,7 @@ FW_TMP="$FW.tmp"
 CONTROL="$ELF.control.bin.tmp"
 ELF_SHA1=$(sha1sum $ELF | cut -b -40)
 
-# The control block that is added into the new elf contains the hash
-# of the original elf.  The ELF_SHA1_DIR points to a content
-# addressable store (CAS) where we add the file together with a gc
-# root.
-if [ ! -z "$ELF_CAS" ]; then
-    $ELF_CAS/.m.store $ELF $(basename $ELF)
-fi
+echo "ELF=$ELF FW=$FW"
 
 cleanup() {
     rm -f "$BIN" "$FW_BIN" "$CONTROL" "$FW_TMP"
@@ -107,6 +101,17 @@ cleanup
 
 echo "FW=$FW" >&2
 ls -l "$FW" >&2
+
+
+# The control block that is added into the new elf contains the hash
+# of the original elf.  The ELF_SHA1_DIR points to a content
+# addressable store (CAS) where we add the file together with a gc
+# root.  Do this at the end such that we do not save when firmware
+# conversion failed.
+
+if [ ! -z "$ELF_CAS" ]; then
+    $ELF_CAS/.m.store $ELF $(basename $ELF)
+fi
 
 
 

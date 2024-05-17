@@ -3,6 +3,10 @@
 # Postable used for firmware images.
 # Do not use this in the bootloader.
 
+# Default for 128k Flash devices
+# For 256k Flash it is 2048
+[ -z "$FLASH_BLOCK_SIZE" ] && FLASH_BLOCK_SIZE=1024
+
 cat <<EOF
 
 SECTIONS {
@@ -18,7 +22,7 @@ SECTIONS {
 
  	.firmware_end : {
 		_firmware_endx = . ;     
-		. = ALIGN(1024);
+		. = ALIGN($FLASH_BLOCK_SIZE);
 		_firmware_block_endx = . ;     
  	} >rom
 
@@ -32,7 +36,7 @@ SECTIONS {
         .control : {
 		_control = . ;
                 KEEP (*(.control)) ;
-		. = ALIGN(1024);
+		. = ALIGN($FLASH_BLOCK_SIZE);
         } >rom
 
         .flash_free : {

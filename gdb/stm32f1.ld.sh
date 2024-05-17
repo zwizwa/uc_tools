@@ -157,8 +157,5 @@ PROVIDE(_service = 0x08000150);
 /* Boot loader config block. */
 PROVIDE(_config = $CONFIG);
 
-/* Data store. */
-PROVIDE(_store = 0x08030000);
-
 EOF
 

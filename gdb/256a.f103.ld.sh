@@ -1,36 +1,34 @@
 #!/bin/sh
 
-# Variant of x8, for use with dual-partition firmware on 128k Flash STM32F103
+# For use with dual-partition firmware on 256k Flash STM32F103
 #
-# gdbstub:     0x08000000 - 0x08003000
-# trampoline:  0x08003000 - 0x08004000
-# partition a: 0x08004000 - 0x08012000 (both have 0x800 config + rest is firmware)
-# partition b: 0x08012000 - 0x08020000
+# bl + tramp:  0x08000000 - 0x08004000
+# partition a: 0x08004000 - 0x08022000 (both have 0x800 config + rest is firmware)
+# partition b: 0x08022000 - 0x08040000
 
-# Partitions might need to move if the trampoline doesn't fit: it has
-# a CRC routine.
-
-# See x8.f103.ld.sh for more information.
 
 [ -z "$MAIN_LD" ] && MAIN_LD=$(dirname $0)/stm32f1.ld.sh
 [ -z "$END_LD" ]  && END_LD=$(dirname $0)/stm32f1_end.ld.sh 
 
 case $(basename $0) in
-    128b.f103.ld.sh)
-        CONFIG=0x08012000
-        ORIGIN=0x08012800
-        # LENGTH=0xD800 # From ORIGIN to end of Flash
-        LENGTH=0xD400 # Leave room for 1k log dump
+    256b.f103.ld.sh)
+        CONFIG=0x08022000
+        ORIGIN=0x08022800
+        # LENGTH=0x1D000 # From ORIGIN to end of Flash
+        LENGTH=0x1C000 # Leave room for 2k log dump
         ;;
     *)
         CONFIG=0x08004000
         ORIGIN=0x08004800
-        LENGTH=0xD800 # From ORIGIN to beginning of partition B
+        LENGTH=0x1D800 # From ORIGIN to beginning of partition B
         ;;
 esac
 
+FLASH_BLOCK_SIZE=2048
+
 export CONFIG
 export ORIGIN
+export FLASH_BLOCK_SIZE
 
 # echo ORIGIN=$ORIGIN >&2
 
