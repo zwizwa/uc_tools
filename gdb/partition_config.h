@@ -45,10 +45,6 @@ static inline const struct gdbstub_control *partition_config_valid(
     const uint8_t *start = p->config->flash_start;
     const uint8_t *endx  = p->config->flash_endx;
 
-    uintptr_t flash_endx = (uintptr_t)endx;
-    uintptr_t flash_endx_padded =
-        (((flash_endx-1)>>p->page_logsize)+1)<<p->page_logsize;
-
     /* Make sure it is loaded into flash at the correct address. */
     if ((void*)start != (void*)p->config) return 0;
 
@@ -57,9 +53,13 @@ static inline const struct gdbstub_control *partition_config_valid(
     if (endx <= start) return 0;
     if (endx > (start + (p->max_size - page_size))) return 0;
 
-    /* We now know that the firmware and the control block are in
-       meaningful locations. */
-    const struct gdbstub_control *control = (void*)flash_endx_padded;
+    /* We now know that the firmware is in a meaningful location.  Get
+       the control block pointer and check it points into the
+       partition. */
+    const struct gdbstub_control *control = p->config->control;
+    const uint8_t *ctrl = (void*)control;
+    if (ctrl <= endx) return 0;
+    if (ctrl > (start + (p->max_size - page_size))) return 0;
 
     /* The next value we need to trust is the size of the control
        block.  The CRC for the control block is stored after the
