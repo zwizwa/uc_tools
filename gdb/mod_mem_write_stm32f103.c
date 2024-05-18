@@ -37,24 +37,6 @@
 
 #include "uct_memory.h"
 
-int32_t hw_mem_write_(uint32_t addr, const uint8_t *buf, uint32_t len) {
-#if 1
-    return hw_flash_write_and_erase(10 /*page_logsize*/, addr, buf, len);
-#else
-    /* THIS IS ONLY FOR TESTING AND DOES NOT WORK FOR INCREMENTAL
-     * FIRMWARE UPDATE WRITES. */
-    int32_t rv;
-    uint32_t t0 = cycle_counter();
-    if ((rv = hw_flash_erase(addr, (1<<10), 10))) return rv;
-    uint32_t t1 = cycle_counter();
-    if ((rv = hw_flash_write(addr, buf, len))) return rv;
-    uint32_t t2 = cycle_counter();
-    MEM_WRITE_LOG("hw_mem_write_ us1=%d, us2=%d\n",
-                  (t1-t0)/HW_CPU_MHZ,
-                  (t2-t1)/HW_CPU_MHZ);
-    return rv;
-#endif
-}
 
 #ifndef MEM_WRITE_FLASH_START
 extern struct gdbstub_config config;
@@ -87,6 +69,7 @@ int32_t hw_mem_write_generic(const struct partition_config *pc,
     if (addr < MEM_WRITE_PARTITIONS_START) return MEM_WRITE_BEFORE_START;
 
     /* This is no longer block-aligned, so do block alignment here. */
+    // FIXME: Use shifts
     uint32_t endx = ((((MEM_WRITE_FLASH_ENDX)-1)/block_size)+1)*block_size;
 
     /* Don't allow writes outside of targeted partition if that is
@@ -117,7 +100,10 @@ int32_t hw_mem_write_generic(const struct partition_config *pc,
 
     MEM_WRITE_LOG("set_c8_memory %x:%d FLASH\n", addr, len);
     //info_hex_u8(buf, len); MEM_WRITE_LOG("\n");
-    return hw_mem_write_(addr, buf, len);
+    // return hw_mem_write_(addr, buf, len);
+
+    return hw_flash_write_and_erase(block_logsize, addr, buf, len);
+
 }
 
 static inline int32_t hw_mem_write_in_partition(
