@@ -17,13 +17,15 @@
 
 #include "partition_config.h"
 
-#define MEM_WRITE_IN_PROGRESS      (-1)  // see hw_flash_check_eop()
-#define MEM_WRITE_BEFORE_START     (-2)  // before start of partitions
-#define MEM_WRITE_AFTER_END        (-3)  // after end of partitions
-#define MEM_WRITE_ACTIVE_PARTITION (-4)  // attempt write into running code partition
-#define MEM_WRITE_BAD_ADDR_ALIGN   (-5)  // address needs to be aligned to 16 bit boundary
-#define MEM_WRITE_BAD_SIZE_ALIGN   (-6)  // write chunks need to be multiple of 16 bit
-#define MEM_WRITE_NO_PARTITION     (-7)  // no partition config
+#define MEM_WRITE_IN_PROGRESS       (-1)  // see hw_flash_check_eop()
+#define MEM_WRITE_BEFORE_START      (-2)  // before start of partitions
+#define MEM_WRITE_AFTER_END         (-3)  // after end of partitions
+#define MEM_WRITE_ACTIVE_PARTITION  (-4)  // attempt write into running code partition
+#define MEM_WRITE_BAD_ADDR_ALIGN    (-5)  // address needs to be aligned to 16 bit boundary
+#define MEM_WRITE_BAD_SIZE_ALIGN    (-6)  // write chunks need to be multiple of 16 bit
+#define MEM_WRITE_NO_PARTITION      (-7)  // no partition config
+#define MEM_WRITE_OUTSIDE_PARTITION (-8)  // attempt to write outside of partition
+
 
 
 
@@ -74,29 +76,40 @@ int32_t hw_mem_write_generic(const struct partition_config *pc,
 
     /* If a partition_config is passed, we take config from there.
        Otherwise, revert to previous behavior for backwards
-       compatibility.  A lot of code depends on this routine having
-       stable semantics. */
+       compatibility.  A lot of old code depends on this routine
+       having stable semantics. */
+    const uint32_t block_logsize = pc ? pc->page_logsize : 10;
+    const uint32_t block_size = 1 << block_logsize;
 
-    const uint32_t block_size = 1024; // FIXME: hardcoded
-    /* Memory protection.  Only allow access to partitions, to code
-       that is not runing. */
-    /* FIXME: propery define status codes? */
-    if (addr     < MEM_WRITE_PARTITIONS_START) return MEM_WRITE_BEFORE_START;
-    if (addr+len > MEM_WRITE_PARTITIONS_ENDX)  return MEM_WRITE_AFTER_END;
+    /* Various memory protections. */
+
+    /* Only allow access to partitions, to code that is not runing. */
+    if (addr < MEM_WRITE_PARTITIONS_START) return MEM_WRITE_BEFORE_START;
 
     /* This is no longer block-aligned, so do block alignment here. */
     uint32_t endx = ((((MEM_WRITE_FLASH_ENDX)-1)/block_size)+1)*block_size;
 
-
-    /* The semantics of this changed in a backwards compatible way.
-       If partition_config is NULL, the old behavior is used. */
-    if (!pc) {
-        if ((addr     >= MEM_WRITE_FLASH_START) &&
-            (addr+len <= (endx + block_size))) {
-            return MEM_WRITE_ACTIVE_PARTITION;
+    /* Don't allow writes outside of targeted partition if that is
+       provided. */
+    if (pc) {
+        uint32_t pc_start = (uint32_t)(pc->config);
+        int inside = ((addr >= pc_start) && (addr < pc_start + pc->max_size));
+        if (!inside) {
+            return MEM_WRITE_OUTSIDE_PARTITION;
         }
     }
     else {
+        /* This only works on 128k devices, so put it here to keep
+           backwards compatibility.  If pc is provided a stricter
+           check is performed anyway.  On anything other than 128k
+           devices pc should be provided. */
+        if (addr+len > MEM_WRITE_PARTITIONS_ENDX) return MEM_WRITE_AFTER_END;
+    }
+
+    /* Don't allow writes to active partition. */
+    if ((addr     >= MEM_WRITE_FLASH_START) &&
+        (addr+len <= (endx + block_size))) {
+        return MEM_WRITE_ACTIVE_PARTITION;
     }
 
     if (addr&1) return MEM_WRITE_BAD_ADDR_ALIGN;
@@ -117,7 +130,7 @@ static inline int32_t hw_mem_write_in_partition(
 
 
 static inline int32_t hw_mem_write(uint32_t addr, const uint8_t *buf, uint32_t len) {
-    return hw_mem_write_in_partition(NULL, addr, buf, len);
+    return hw_mem_write_generic(NULL, addr, buf, len);
 }
 
 
