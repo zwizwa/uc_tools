@@ -221,8 +221,10 @@ struct gdbstub_config {
     uint32_t fwtag;
 
     /* 20: This slot can be used to point to any othere data in the
-       partition.  The fields flash_start and flash_endx must be zero
-       such that partition_config_valid() returns NULL. */
+       partition.  Note that the fields flash_start and flash_endx
+       must be zero such that partition_config_valid() returns NULL in
+       case there is no bootable code in this partition apart from
+       data pointed to here. */
     void *data;
 
     /* 21: Alternative to swiching protocol: app presents read/write. */

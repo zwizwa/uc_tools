@@ -11,10 +11,18 @@
 
 /* Partition configuration information. */
 struct partition_config {
-    const struct gdbstub_config *config;
-    uint32_t max_size;
-    uint32_t page_logsize;
+    uint32_t version;                     // Struct version, for later struct layout changes
+    const struct gdbstub_config *config;  // Start of partition always contains a config block
+    uint32_t max_size;                    // Nb bytes in partition
+    uint32_t page_logsize;                // Page size for Flash erase operations
 };
+
+/* This is partition size minus room for control block. */
+static inline uint32_t partition_config_max_firmware_size(
+    const struct partition_config *pc)
+{
+    return pc->max_size - (1 << pc->page_logsize);
+}
 
 /* Logging filled in by partition_config_valid_partition. */
 struct partition_config_log {

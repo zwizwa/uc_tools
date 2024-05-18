@@ -56,7 +56,7 @@ int bin2fw(
     LOG("start   = 0x%08x\n", start);
     LOG("endx    = 0x%08x\n", endx);
 
-    /* Some consistency checks.  FIXME: Hardcoded for 128k or 246k
+    /* Some consistency checks.  FIXME: Hardcoded for 128k or 256k
        STM32F103.  This should also catch endianness errors. */
     ASSERT(start == 0x08002800 || /* Main application partition. */
            start == 0x08004000 || /* trampoline.c partition a... */

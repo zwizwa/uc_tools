@@ -42,9 +42,9 @@ struct fwstream {
     /* CONFIG */
 
     /* Memory write callback. */
-    const uint8_t* (*write)(struct fwstream *, uintptr_t rel_chunk, const uint8_t *chunk_data);
+    const uint8_t* (*write)(struct fwstream *,
+                            uintptr_t rel_chunk, const uint8_t *chunk_data);
     uintptr_t chunk_size; // It's simpler to keep this constant.
-    uintptr_t max_size;   // Used as consistency check
 
     /* Incremental checksum computation of written and re-read data
        using e.g. crc32b. */
@@ -53,7 +53,7 @@ struct fwstream {
     /* Priority to set before writing the control block to flash. */
     uint32_t priority;
 
-    uint32_t block_logsize;
+    const struct partition_config *partition_config;
 
     /* STATE */
 
@@ -70,6 +70,12 @@ struct fwstream {
     uintptr_t expected_chunk_nb;
 
     uint32_t valid;
+
+    /* Low level write status result of last write() call.  0 is ok,
+       negative is error code.  See implementation of write,
+       e.g. hw_mem_write() in mod_mem_write_stm32f103.c for
+       implementation-specific error codes. */
+    int32_t write_status;
 
 };
 
@@ -95,7 +101,7 @@ fwstream_new_priority(struct fwstream *s, const struct gdbstub_config *config) {
     //LOG("flash_start = 0x%x\n", config->flash_start);
     //5LOG("flash_endx = 0x%x\n", config->flash_endx);
     uint32_t size_padded =
-        fwstream_size_padded(s->block_logsize,
+        fwstream_size_padded(s->partition_config->page_logsize,
                              config->flash_endx - config->flash_start);
     struct gdbstub_control *c = (void*)(config->flash_start + size_padded);
     //LOG("size_padded = %d\n", size_padded);
@@ -171,10 +177,13 @@ fwstream_push(struct fwstream *s, uintptr_t chunk_nb, const uint8_t *chunk_data)
            we've lost track and need to abort the iteration. */
         if (endx <= start) return FWSTREAM_ERR_FW_ENDX;
         uint32_t size_bytes = endx - start;
-        uint32_t size_padded = fwstream_size_padded(s->block_logsize, size_bytes);
-        if (s->max_size && (size_padded > s->max_size)) {
-            LOG("fwstream: max_size=0x%x, size_padded=0x%x\n",
-                s->max_size, size_padded);
+        uint32_t size_padded = fwstream_size_padded(
+            s->partition_config->page_logsize, size_bytes);
+
+        uint32_t max_size = partition_config_max_firmware_size(s->partition_config);
+
+        if (max_size && (size_padded > max_size)) {
+            LOG("fwstream: max_size=0x%x, size_padded=0x%x\n", max_size, size_padded);
             return FWSTREAM_ERR_FW_SIZE;
         }
         s->control_chunk = size_padded / s->chunk_size;
