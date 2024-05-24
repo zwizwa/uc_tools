@@ -40,6 +40,7 @@ struct fwstream;
 struct fwstream {
 
     /* CONFIG */
+    void *context;
 
     /* Memory write callback. */
     const uint8_t* (*write)(struct fwstream *,
@@ -98,18 +99,10 @@ fwstream_ctrl_crc(struct fwstream *s, const struct gdbstub_control *c) {
 }
 static inline uint32_t
 fwstream_new_priority(struct fwstream *s, const struct gdbstub_config *config) {
-    //LOG("flash_start = 0x%x\n", config->flash_start);
-    //5LOG("flash_endx = 0x%x\n", config->flash_endx);
-    uint32_t size_padded =
-        fwstream_size_padded(s->partition_config->page_logsize,
-                             config->flash_endx - config->flash_start);
-    struct gdbstub_control *c = (void*)(config->flash_start + size_padded);
-    //LOG("size_padded = %d\n", size_padded);
-    //LOG("control = 0x%x\n", c);
 
-    //if (c) {
-    //    LOG("size = %d, BLOCK_SIZE = %d\n", c->size, BLOCK_SIZE);
-    //}
+    /* Use direct pointer.
+       The old method based on firmware endx is obsolete. */
+    struct gdbstub_control *c = config->control;
 
     uint32_t priority = 0;
     if (c && (c->size >= sizeof(*c)) /* sanity check */) {
@@ -129,6 +122,7 @@ fwstream_new_priority(struct fwstream *s, const struct gdbstub_config *config) {
     return priority;
 
 }
+
 
 
 static inline int
