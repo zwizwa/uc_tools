@@ -88,7 +88,8 @@ cleanup
 "$BIN2FW" "$BIN" "$FW_BIN" "$CONTROL" "$SHA1_FILE"
 
 hexdump -C "$CONTROL" >&2
-cat "$SHA1_FILE" >&2
+SHA1=$(cat $SHA1_FILE)
+echo "SHA1=$SHA1" >&2
 
 cp -a "$ELF" "$FW_TMP"
 
@@ -113,7 +114,7 @@ ls -l "$FW" >&2
 # FIXME: Store needs to be parameterized by hash.
 
 if [ ! -z "$ELF_CAS" ]; then
-    $ELF_CAS/.m.store $ELF $(basename $ELF) $(cat $SHA1_FILE)
+    $ELF_CAS/.m.store $FW $(basename $FW) $SHA1
 fi
 
 
