@@ -221,8 +221,10 @@ struct gdbstub_config {
     uint32_t fwtag;
 
     /* 20: This slot can be used to point to any othere data in the
-       partition.  The fields flash_start and flash_endx must be zero
-       such that partition_config_valid() returns NULL. */
+       partition.  Note that the fields flash_start and flash_endx
+       must be zero such that partition_config_valid() returns NULL in
+       case there is no bootable code in this partition apart from
+       data pointed to here. */
     void *data;
 
     /* 21: Alternative to swiching protocol: app presents read/write. */
@@ -246,6 +248,7 @@ struct gdbstub_config {
 #define GDBSTUB_CONFIG_INDEX_VERSION      9
 #define GDBSTUB_CONFIG_INDEX_FLASH_START 15
 #define GDBSTUB_CONFIG_INDEX_FLASH_ENDX  16
+#define GDBSTUB_CONFIG_INDEX_CONTROL     18
 #define GDBSTUB_CONFIG_INDEX_FWTAG       19
 #define GDBSTUB_CONFIG_INDEX_CMD_3IF     22
 
@@ -262,7 +265,7 @@ struct gdbstub_control {
     uint32_t version;      /* Control block version/magic.  Currently 0, not used. */
     uint32_t fw_crc;       /* CRC of firmware image. */
     uint32_t priority;     /* Load priority.  0=lowest. */
-    uint8_t  elf_sha1[20]; /* SHA-1 hash of elf file with debug symbols. */
+    uint8_t  fw_sha1[20];  /* SHA-1 hash of firmware, see bin2fw.c */
     uint32_t ctrl_crc;     /* This should always be the last field. */
 } __attribute__ ((__packed__));
 

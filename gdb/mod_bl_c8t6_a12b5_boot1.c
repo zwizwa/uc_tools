@@ -119,6 +119,7 @@ int main(void) {
        boot ROM, so we can use it as an application start toggle. */
     /* FIXME: Find out why this is not 100% reliable. */
     uint32_t boot1 = hw_gpio_read(GPIOB,2);
+    (void)boot1; // Might not be used by macro.
     if (GDBSTUB_BOOT1_START(boot1) && !flash_null(_config.start)) {
         ensure_started(&bootloader_stub_ctrl);
     }

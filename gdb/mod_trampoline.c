@@ -46,12 +46,24 @@
 #include <string.h>
 #include "tools.h"
 
-/* We are specialized to the partitions provided in the linker files,
-   so these are hardcoded. */
+/* Partition tables are defined in the main bootloader files via
+   PARTITION_CONFIG_INIT macro.  Assume for now there are always
+   exactly 2 partitions.  They are linked into the trampolines
+   gdbstub_config. */
 #ifndef PARTITION_CONFIG_INIT
 #define PARTITION_CONFIG_INIT PARTITION_CONFIG_DEFAULT_INIT
 #endif
-static const struct partition_config part[] = PARTITION_CONFIG_INIT;
+
+static const struct partition_config part[2] = PARTITION_CONFIG_INIT;
+
+/* Indirection to allow future size change of the struct.  This array
+   is NULL-terminated and linked to the gdbstub_config data field. */
+const struct {
+    const struct partition_config *partition_a;
+    const struct partition_config *partition_b;
+    const struct partition_config *end_marker;
+} gdbstub_partition_config = { &part[0], &part[1], (const void*)NULL };
+
 
 /* Instantiate these functions so they won't be inlined, making them
    available for manual interaction in gdb. */
@@ -154,6 +166,7 @@ struct gdbstub_config trampoline_config CONFIG_HEADER_SECTION = {
 #endif
     .switch_protocol = switch_protocol,
     .loop            = main_loop,
+    .data            = (void*)&gdbstub_partition_config,
 };
 
 

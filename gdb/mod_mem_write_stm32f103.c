@@ -2,7 +2,7 @@
 #define MOD_MEM_WRITE_STM32F103
 
 /* Perform a Flash write, with added memory protection.
-   Return value:
+   Return values (see MEM_WRITE_* below)
 
     0 OK
    -1 ERROR operation in progress
@@ -15,6 +15,20 @@
 
 */
 
+#include "partition_config.h"
+
+#define MEM_WRITE_IN_PROGRESS       (-1)  // see hw_flash_check_eop()
+#define MEM_WRITE_BEFORE_START      (-2)  // before start of partitions
+#define MEM_WRITE_AFTER_END         (-3)  // after end of partitions
+#define MEM_WRITE_ACTIVE_PARTITION  (-4)  // attempt write into running code partition
+#define MEM_WRITE_BAD_ADDR_ALIGN    (-5)  // address needs to be aligned to 16 bit boundary
+#define MEM_WRITE_BAD_SIZE_ALIGN    (-6)  // write chunks need to be multiple of 16 bit
+#define MEM_WRITE_NO_PARTITION      (-7)  // no partition config
+#define MEM_WRITE_OUTSIDE_PARTITION (-8)  // attempt to write outside of partition
+
+
+
+
 /* Logging is off by default to not interfere with core dumps. */
 #ifndef MEM_WRITE_LOG
 #define MEM_WRITE_LOG(...)
@@ -23,24 +37,6 @@
 
 #include "uct_memory.h"
 
-int32_t hw_mem_write_(uint32_t addr, const uint8_t *buf, uint32_t len) {
-#if 1
-    return hw_flash_write_and_erase(10 /*page_logsize*/, addr, buf, len);
-#else
-    /* THIS IS ONLY FOR TESTING AND DOES NOT WORK FOR INCREMENTAL
-     * FIRMWARE UPDATE WRITES. */
-    int32_t rv;
-    uint32_t t0 = cycle_counter();
-    if ((rv = hw_flash_erase(addr, (1<<10), 10))) return rv;
-    uint32_t t1 = cycle_counter();
-    if ((rv = hw_flash_write(addr, buf, len))) return rv;
-    uint32_t t2 = cycle_counter();
-    MEM_WRITE_LOG("hw_mem_write_ us1=%d, us2=%d\n",
-                  (t1-t0)/HW_CPU_MHZ,
-                  (t2-t1)/HW_CPU_MHZ);
-    return rv;
-#endif
-}
 
 #ifndef MEM_WRITE_FLASH_START
 extern struct gdbstub_config config;
@@ -56,30 +52,73 @@ extern struct gdbstub_config config;
 #define MEM_WRITE_PARTITIONS_ENDX 0x08020000
 #endif
 
-int32_t hw_mem_write(uint32_t addr, const uint8_t *buf, uint32_t len) {
 
-    const uint32_t block_size = 1024; // FIXME: hardcoded
-    /* Memory protection.  Only allow access to partitions, to code
-       that is not runing. */
-    /* FIXME: propery define status codes? */
-    if (addr     < MEM_WRITE_PARTITIONS_START) return -2; // before start of partitions
-    if (addr+len > MEM_WRITE_PARTITIONS_ENDX)  return -3; // after end of partitions
+int32_t hw_mem_write_generic(const struct partition_config *pc,
+                             uint32_t addr, const uint8_t *buf, uint32_t len) {
+
+    /* If a partition_config is passed, we take config from there.
+       Otherwise, revert to previous behavior for backwards
+       compatibility.  A lot of old code depends on this routine
+       having stable semantics. */
+    const uint32_t block_logsize = pc ? pc->page_logsize : 10;
+    const uint32_t block_size = 1 << block_logsize;
+
+    /* Various memory protections. */
+
+    /* Only allow access to partitions, to code that is not runing. */
+    if (addr < MEM_WRITE_PARTITIONS_START) return MEM_WRITE_BEFORE_START;
 
     /* This is no longer block-aligned, so do block alignment here. */
+    // FIXME: Use shifts
     uint32_t endx = ((((MEM_WRITE_FLASH_ENDX)-1)/block_size)+1)*block_size;
 
-    if ((addr     >= MEM_WRITE_FLASH_START) &&
-        (addr+len <= (endx + block_size))) {
-        return -4; // inside running partition (fw image + fw control block)
+    /* Don't allow writes outside of targeted partition if that is
+       provided. */
+    if (pc) {
+        uint32_t pc_start = (uint32_t)(pc->config);
+        int inside = ((addr >= pc_start) && (addr < pc_start + pc->max_size));
+        if (!inside) {
+            return MEM_WRITE_OUTSIDE_PARTITION;
+        }
+    }
+    else {
+        /* This only works on 128k devices, so put it here to keep
+           backwards compatibility.  If pc is provided a stricter
+           check is performed anyway.  On anything other than 128k
+           devices pc should be provided. */
+        if (addr+len > MEM_WRITE_PARTITIONS_ENDX) return MEM_WRITE_AFTER_END;
     }
 
-    if (addr&1) return -5; // bad alignment
-    if (len&1)  return -6; // bad alignment
+    /* Don't allow writes to active partition. */
+    if ((addr     >= MEM_WRITE_FLASH_START) &&
+        (addr+len <= (endx + block_size))) {
+        return MEM_WRITE_ACTIVE_PARTITION;
+    }
+
+    if (addr&1) return MEM_WRITE_BAD_ADDR_ALIGN;
+    if (len&1)  return MEM_WRITE_BAD_SIZE_ALIGN;
 
     MEM_WRITE_LOG("set_c8_memory %x:%d FLASH\n", addr, len);
     //info_hex_u8(buf, len); MEM_WRITE_LOG("\n");
-    return hw_mem_write_(addr, buf, len);
+    // return hw_mem_write_(addr, buf, len);
+
+    return hw_flash_write_and_erase(block_logsize, addr, buf, len);
+
 }
+
+static inline int32_t hw_mem_write_in_partition(
+    const struct partition_config *pc,
+    uint32_t addr, const uint8_t *buf, uint32_t len)
+{
+    if (!pc) return MEM_WRITE_NO_PARTITION;
+    return hw_mem_write_generic(pc, addr, buf, len);
+}
+
+
+static inline int32_t hw_mem_write(uint32_t addr, const uint8_t *buf, uint32_t len) {
+    return hw_mem_write_generic(NULL, addr, buf, len);
+}
+
 
 int32_t hw_mem_write_log(uint32_t addr, const uint8_t *buf, uint32_t len) {
     uint32_t stamp = cycle_counter();
