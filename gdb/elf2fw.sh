@@ -74,20 +74,21 @@ BIN="$ELF.bin.tmp"
 FW_BIN="$ELF.fw.bin.tmp"
 FW_TMP="$FW.tmp"
 CONTROL="$ELF.control.bin.tmp"
-ELF_SHA1=$(sha1sum $ELF | cut -b -40)
+SHA1_FILE="$FW.sha1.tmp"
 
 echo "ELF=$ELF FW=$FW"
 
 cleanup() {
-    rm -f "$BIN" "$FW_BIN" "$CONTROL" "$FW_TMP"
+    rm -f "$BIN" "$FW_BIN" "$CONTROL" "$FW_TMP" "$SHA1_FILE"
 }
 
 cleanup
 
 "$OBJCOPY" -O binary "$ELF" "$BIN"
-"$BIN2FW" "$BIN" "$FW_BIN" "$CONTROL" "$ELF_SHA1"
+"$BIN2FW" "$BIN" "$FW_BIN" "$CONTROL" "$SHA1_FILE"
 
 hexdump -C "$CONTROL" >&2
+cat "$SHA1_FILE" >&2
 
 cp -a "$ELF" "$FW_TMP"
 
@@ -109,8 +110,10 @@ ls -l "$FW" >&2
 # root.  Do this at the end such that we do not save when firmware
 # conversion failed.
 
+# FIXME: Store needs to be parameterized by hash.
+
 if [ ! -z "$ELF_CAS" ]; then
-    $ELF_CAS/.m.store $ELF $(basename $ELF)
+    $ELF_CAS/.m.store $ELF $(basename $ELF) $(cat $SHA1_FILE)
 fi
 
 

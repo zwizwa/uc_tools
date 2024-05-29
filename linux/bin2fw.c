@@ -8,6 +8,7 @@
    beware!
 */
 
+#include "sha1.h"
 #include "crc.h"
 #include "macros.h"
 #include "gdb/gdbstub_api.h"
@@ -17,7 +18,7 @@ int bin2fw(
     const char *bin,      // input: binary image
     const char *fw,       // output: binary firmware image
     const char *fwctrl,   // output: firmware control block only
-    const char *elf_sha1  // input: sha1 back-reference to original elf
+    const char *sha1      // output: firmware sha1
     ){
 
     /* Read bin file. */
@@ -85,13 +86,28 @@ int bin2fw(
     LOG("crc     = 0x%08x checksum of original firmware\n", fw_crc);
     struct gdbstub_control *control = (void*)(fw_u8 + control_offset);
 
+    /* Calculate SHA1 of the config header + firmware.  Note that the
+       semantics changed here.  We are hashing only the firmware
+       binary image, not the ELF file.  This allows firmware to
+       self-validate if needed, and if we use the hash in a CAS
+       database also still allows mapping from binary firmware to ELF
+       to load debug symbols from ELF CAS database.  We do give up the
+       direct link from ELF to hash, which is a small price to pay for
+       the extra functionality. */
+    SHA1_CTX ctx;
+    sha1_init(&ctx);
+    sha1_update(&ctx, fw_u8, span);
+    sha1_final(&ctx, &control->fw_sha1[0]);
+    char sha1_hex[20*2+2];
+    LOG("sha1    = ");
+    for(int i=0; i<20; i++) { sprintf(sha1_hex + 2*i, "%02x", control->fw_sha1[i]); }
+    sprintf(sha1_hex + 40, "\n");
+    LOG("%s", sha1_hex);
+
+    /* Fill in the rest of the control block. */
     control->version = 0;
     control->fw_crc = fw_crc;
     control->size = sizeof(*control);
-    ASSERT(0 ==
-           read_hex_to_bytes_check(
-               (const uint8_t*)elf_sha1, /* the _check variant won't read past 0 */
-               &control->elf_sha1[0], 20));
     control->ctrl_crc = crc32b((uint8_t*)control, control->size - 4);
 
     /* Write out the .fw image = padded .bin + control block appended. */
@@ -107,12 +123,23 @@ int bin2fw(
     ASSERT(bsize == fwrite((void*)control, 1, bsize, f_fwctrl));
     fclose(f_fwctrl);
 
-    LOG("=== BIN2FW\n-> %s\n-> %s\n\n", fw, fwctrl);
+    /* Write the sha1 hex to a separate file. */
+    LOG("sha1 hex:       %s\n", sha1);
+    FILE *f_sha1;
+    ASSERT(NULL != (f_sha1 = fopen(sha1, "w")));
+    ASSERT(41 == fwrite(sha1_hex, 1, 41, f_sha1));
+    fclose(f_sha1);
+
+    LOG("=== BIN2FW\n"
+        "-> %s\n"
+        "-> %s\n"
+        "-> %s\n",
+        fw, fwctrl, sha1);
 
     return 0;
 }
 
-/* bin2fw <bin> <fw> <fwctrl> <elf_sha1> */
+/* bin2fw <bin> <fw> <fwctrl> <sha1_hex> */
 int main(int argc, char **argv) {
     ASSERT(argc == 5);
     return bin2fw(argv[1],argv[2],argv[3],argv[4]);

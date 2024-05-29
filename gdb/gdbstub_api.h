@@ -265,7 +265,7 @@ struct gdbstub_control {
     uint32_t version;      /* Control block version/magic.  Currently 0, not used. */
     uint32_t fw_crc;       /* CRC of firmware image. */
     uint32_t priority;     /* Load priority.  0=lowest. */
-    uint8_t  elf_sha1[20]; /* SHA-1 hash of elf file with debug symbols. */
+    uint8_t  fw_sha1[20];  /* SHA-1 hash of firmware, see bin2fw.c */
     uint32_t ctrl_crc;     /* This should always be the last field. */
 } __attribute__ ((__packed__));
 

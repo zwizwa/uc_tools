@@ -49,8 +49,8 @@ void partition_info(uint32_t offset, const char *format) {
     LOG("version  %s\n", version);
 
     char sha1[20*2+1] = {};
-    for (uint32_t i=0; i<sizeof(control->elf_sha1); i++) {
-        sprintf(sha1 + 2*i, "%02x", control->elf_sha1[i]);
+    for (uint32_t i=0; i<sizeof(control->fw_sha1); i++) {
+        sprintf(sha1 + 2*i, "%02x", control->fw_sha1[i]);
     }
     LOG("elf_sha1 %s\n", sha1);
 
