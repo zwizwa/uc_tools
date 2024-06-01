@@ -1,6 +1,7 @@
 // telnet server on stdout
 // test_telnet.sh starts with socat
 
+// #define TELNET_WORD_MODE
 #include "mod_telnet.c"
 #include "macros.h"
 void telnet_write_output(struct telnet *, const uint8_t *bytes, uintptr_t len) {
@@ -19,6 +20,8 @@ void telnet_event(struct telnet *t, uintptr_t event) {
         break;
     case TELNET_EVENT_CONTROL:
         LOG("<CONTROL:%d>\n", byte);
+        if (byte == 4) { /* CTRL-D */ exit(0); }
+        else if (byte == 12) { telnet_clear(t); }
         break;
     case TELNET_EVENT_ESCAPE:
         LOG("<ESC:");
@@ -35,6 +38,9 @@ void telnet_event(struct telnet *t, uintptr_t event) {
         LOG(">\n");
         break;
     case TELNET_EVENT_FLUSH:
+        break;
+    case TELNET_EVENT_PROMPT:
+        t->write_output(t, (const uint8_t*)"> ", 2);
         break;
     }
 }

@@ -11,11 +11,14 @@
    to read and understand all docs, so this is implemented using trial
    and error, just to get a command console up.
 
+   This also works on a raw tty.  See e.g. test_tty.sh
+
    https://en.wikipedia.org/wiki/Telnet
    https://www.rfc-editor.org/rfc/rfc854
    https://www.iana.org/assignments/telnet-options/telnet-options.xhtml
    https://en.wikipedia.org/wiki/ANSI_escape_code
    https://en.wikipedia.org/wiki/C0_and_C1_control_codes
+   https://stackoverflow.com/questions/33903165/telnet-how-to-remove-null-0x00-after-every-cr-0x0d-on-send-using-char-mode
 */
 
 /* Notes:
@@ -83,6 +86,7 @@ const uint8_t telnet_init_bytes[] = {
 #define TELNET_EVENT_INTERRUPT  0x300
 #define TELNET_EVENT_FLUSH      0x400
 #define TELNET_EVENT_CONTROL    0x500
+#define TELNET_EVENT_PROMPT     0x600
 
 
 struct telnet;
@@ -112,14 +116,27 @@ struct telnet {
 #define TELNET_NEXT(s,var)                      \
     TELNET_NEXT_(s,var,GENSYM(label_))
 
+
+#define TELNET_WRITE_OUTPUT(t, ...) { \
+    uint8_t cmd[] = { __VA_ARGS__ }; \
+    t->write_output(t, cmd, sizeof(cmd)); \
+}
+
+
 static inline void telnet_tick(struct telnet *s, int32_t telnet_tick_input) {
+#if 0
     if (telnet_tick_input >=0 ) { 
         TELNET_LOG("%02x (%d)\n", telnet_tick_input, telnet_tick_input);
     }
+#endif
     // TELNET_LOG("[%02x]", telnet_tick_input);
     if (s->next) goto *(s->next);
+    s->event(s, TELNET_EVENT_FLUSH);
+    s->event(s, TELNET_EVENT_PROMPT);
+
   next:
     TELNET_NEXT(s, s->cmd);
+  interpret_cmd:
     switch(s->cmd) {
     case TELNET_COMMAND_IAC:
         /* For now, just parse and ignore telnet commands. */
@@ -143,14 +160,38 @@ static inline void telnet_tick(struct telnet *s, int32_t telnet_tick_input) {
 
         /* All te rest is ANSI terminal codes */
 
-    case '\r': {
-        const uint8_t buf[] = {'\r','\n'};
+        /* Line / word editor  */
+#ifdef TELNET_WORD_MODE
+    case ' ':
+#endif
+    case '\r':
+    {
         s->event(s, TELNET_EVENT_FLUSH);
-        s->write_output(s, buf, sizeof(buf));
+#ifdef TELNET_WORD_MODE
+        /* In word mode, don't insert separator when there is no input. */
+        if (!s->nb_char) goto next;
+#else
+        /* Only insert newline in line mode.  Note that in word mode,
+           the prompt should include the spacer. */
+        TELNET_WRITE_OUTPUT(s, '\r','\n');
+#endif
         s->event(s, TELNET_EVENT_LINE);
         s->nb_char = 0;
-        goto next;
+        s->event(s, TELNET_EVENT_FLUSH);
+        s->event(s, TELNET_EVENT_PROMPT);
+
+        /* Not sure what to do here.  My telnet sends \r\0 on enter in
+           character mode.  Is that always the case?  Here the 0 byte
+           is filtered out. */
+        TELNET_NEXT(s, s->cmd);
+        if (s->cmd == 0) {
+            goto next;
         }
+        else {
+            goto interpret_cmd;
+        }
+    }
+    
     case 3:
         interrupt:
         s->event(s, TELNET_EVENT_FLUSH);
@@ -158,8 +199,7 @@ static inline void telnet_tick(struct telnet *s, int32_t telnet_tick_input) {
         goto next;
     case 127:
         if (s->nb_char > 0) {
-            const uint8_t buf[] = {'\b',' ','\b'};
-            s->write_output(s, buf, sizeof(buf));
+            TELNET_WRITE_OUTPUT(s, '\b',' ','\b');
             s->nb_char--;
         }
         goto next;
@@ -197,7 +237,7 @@ static inline void telnet_tick(struct telnet *s, int32_t telnet_tick_input) {
             s->esc[s->nb_esc++] = s->opt;
         }
         else {
-            TELNET_LOG("<FIXME:ESC 0x%02x>", s->cmd);
+            /* FIXME: Not sure.  Always single code?  E.g. ALT-BS*/
         }
         s->event(s, TELNET_EVENT_ESCAPE);
         s->nb_esc = 0;
@@ -236,11 +276,21 @@ static inline void telnet_init(struct telnet *s,
     memset(s, 0, sizeof(*s));
     s->write_output = write_output;
     s->event = event;
+
+    /* FIXME: Make this optional for ANSY TTY on serial port + also
+       don't interpret TELNET codes in that case.  It does seem to
+       work though. */
     write_output(s, telnet_init_bytes, sizeof(telnet_init_bytes));
-    telnet_tick(s, -1 /* dummy, run it up to first NEXT */);
+
+    /* Dummy tick, run task up to NEXT, waiting for first byte. */
+    telnet_tick(s, -1);
 }
 
-
+static inline void telnet_clear(struct telnet *t) {
+    TELNET_WRITE_OUTPUT(t, 27, '[', 'H',  27, '[', 'J');
+    t->event(t, TELNET_EVENT_PROMPT);
+    t->write_output(t, t->line, t->nb_char);
+}
 
 
 #endif
