@@ -124,7 +124,7 @@ struct telnet {
 
 
 static inline void telnet_tick(struct telnet *s, int32_t telnet_tick_input) {
-#if 0
+#if 1
     if (telnet_tick_input >=0 ) { 
         TELNET_LOG("%02x (%d)\n", telnet_tick_input, telnet_tick_input);
     }
@@ -203,13 +203,19 @@ static inline void telnet_tick(struct telnet *s, int32_t telnet_tick_input) {
             s->nb_char--;
         }
         goto next;
+    escape:
     case 27:
-        // FIXME: Probably not complete
+        // FIXME: not complete, see wikipedia page
         /* Reuse cmd,opt for ESC codes */
         TELNET_NEXT(s, s->cmd);
         s->nb_esc = 0;
         s->esc[s->nb_esc++] = s->cmd;
-        if (s->cmd == '[') {
+        if (s->cmd == 27) {
+            /* Double escape? I've seen this on ALT-F1.  Don't know
+               what to do so restart parse. */
+            goto escape;
+        }
+        else if (s->cmd == '[') {
 
             /* Control Sequence Introducer, or CSI, has the following
                structure:
@@ -269,6 +275,30 @@ static inline void telnet_write_input(struct telnet *s,
         telnet_tick(s, bytes[i]);
     }
 }
+
+struct telnet_escapes {
+    const char *esc;
+    void (*op)(struct telnet *);
+};
+
+static inline void telnet_escape(struct telnet *t, const struct telnet_escapes *e) {
+    char e0[t->nb_esc+1];
+    memcpy(e0, t->esc, t->nb_esc);
+    e0[t->nb_esc] = 0;
+    for (; e->esc; e++) {
+        if (!strcmp(e0, e->esc)) {
+            TELNET_LOG("ESC %s %p\n", e0, e->op);
+            e->op(t);
+            return;
+        }
+    }
+    TELNET_LOG("<ESC:");
+    for(uint32_t i=0; i<t->nb_esc; i++) {
+        TELNET_LOG("%c", t->esc[i]);
+    }
+    TELNET_LOG(">\n");
+}
+
 
 static inline void telnet_init(struct telnet *s,
                                telnet_write_output_fn write_output,
