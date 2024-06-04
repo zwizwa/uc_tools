@@ -124,7 +124,7 @@ struct telnet {
 
 
 static inline void telnet_tick(struct telnet *s, int32_t telnet_tick_input) {
-#if 1
+#if 0
     if (telnet_tick_input >=0 ) { 
         TELNET_LOG("%02x (%d)\n", telnet_tick_input, telnet_tick_input);
     }
@@ -276,28 +276,54 @@ static inline void telnet_write_input(struct telnet *s,
     }
 }
 
-struct telnet_escapes {
-    const char *esc;
-    void (*op)(struct telnet *);
+// FIXME: Add commands or f1/f2 to telnet to do some basic controls.
+struct telnet_cmd {
+    const char *cmd;
+    void (*fun)(struct telnet *);
 };
 
-static inline void telnet_escape(struct telnet *t, const struct telnet_escapes *e) {
-    char e0[t->nb_esc+1];
-    memcpy(e0, t->esc, t->nb_esc);
-    e0[t->nb_esc] = 0;
-    for (; e->esc; e++) {
-        if (!strcmp(e0, e->esc)) {
-            TELNET_LOG("ESC %s %p\n", e0, e->op);
-            e->op(t);
-            return;
+static inline const struct telnet_cmd *telnet_lookup(
+    struct telnet *t, const struct telnet_cmd *cmds, uint8_t *cmd, uintptr_t len,
+    int doit)
+{
+    /* Zero-terminate for strcmp */
+    char cmd0[len+1];
+    memcpy(cmd0, cmd, len);
+    cmd[len] = 0;
+    for (; cmds->cmd; cmds++) {
+        if (!strcmp(cmd0, cmds->cmd)) {
+            TELNET_LOG("%s %p\n", cmd0, cmds->cmd);
+            if (doit) cmds->fun(t);
+            return cmds;
         }
     }
-    TELNET_LOG("<ESC:");
-    for(uint32_t i=0; i<t->nb_esc; i++) {
-        TELNET_LOG("%c", t->esc[i]);
-    }
-    TELNET_LOG(">\n");
+    TELNET_LOG("<unk:%s>\n", cmd0);
+    return NULL;
 }
+
+static inline const struct telnet_cmd *telnet_escape(
+    struct telnet *t, const struct telnet_cmd *cmd)
+{
+    return telnet_lookup(t, cmd, &t->esc[0], t->nb_esc, 1);
+}
+static inline const struct telnet_cmd *telnet_line(
+    struct telnet *t, const struct telnet_cmd *cmd)
+{
+    return telnet_lookup(t, cmd, &t->line[0], t->nb_char, 1);
+}
+static inline const struct telnet_cmd *telnet_line_lookup(
+    struct telnet *t, const struct telnet_cmd *cmd)
+{
+    return telnet_lookup(t, cmd, &t->line[0], t->nb_char, 0);
+}
+static inline const struct telnet_cmd *telnet_escape_lookup(
+    struct telnet *t, const struct telnet_cmd *cmd)
+{
+    return telnet_lookup(t, cmd, &t->esc[0], t->nb_esc, 0);
+}
+
+
+
 
 
 static inline void telnet_init(struct telnet *s,
