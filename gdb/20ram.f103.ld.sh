@@ -1,6 +1,4 @@
 #!/bin/sh
-# FIXME: model after x8.f103.ld.sh - this is just a verbatim copy of
-# old linker script.
 cat <<EOF
 /* Locally modified version of
    libopencm3/lib/libopencm3_stm32f1.ld */
