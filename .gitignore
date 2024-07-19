@@ -31,3 +31,4 @@ a.out.wasm
 test_*.txt
 .gdb*
 push.sh
+gdb/*.ld
