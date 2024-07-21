@@ -32,5 +32,4 @@ test_*.txt
 .gdb*
 push.sh
 gdb/*.ld
-*.dont_commit
-
+*.secret

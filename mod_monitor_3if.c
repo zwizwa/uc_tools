@@ -102,8 +102,11 @@ void push_stack(struct monitor_3if *s) { *(s->ds)++ = s->byte; }
 void pop_stack (struct monitor_3if *s) { s->byte = *--(s->ds); }
 
 
-/* Machine is written in push style, waiting for next byte.
-   Each occurrence of NEXT is a suspend point. */
+#ifndef MONITOR_3IF_BLOCKING
+
+/* By default this implements a state machine written in push style,
+   waiting for next byte.  Each occurrence of NEXT is a suspend
+   point. */
 #define NEXT_LABEL(s,var,label)                         \
     do {						\
 	s->next = &&label;				\
@@ -113,6 +116,13 @@ void pop_stack (struct monitor_3if *s) { s->byte = *--(s->ds); }
     } while(0)
 #define NEXT(s,var)                             \
     NEXT_LABEL(s,var,GENSYM(label_))
+#else
+/* Alternatively the main loop can be hosted in a thread with
+   blocking read / write. */
+uint8_t monitor_3if_read_byte(struct monitor_3if *);
+#define NEXT(s,var) do { key = monitor_3if_read_byte(s); (var) = key; } while(0)
+#endif
+
 
 #ifndef MONITOR_3IF_LOG
 #define MONITOR_3IF_LOG(...)
@@ -120,8 +130,13 @@ void pop_stack (struct monitor_3if *s) { s->byte = *--(s->ds); }
 
 static inline uintptr_t monitor_3if_push_key(struct monitor_3if *s, uint8_t key) {
     enum PRIM op;
+#ifndef MONITOR_3IF_BLOCKING
     if (s->next) goto *(s->next);
+#endif
   next:
+#ifndef MONITOR_3IF_BLOCKING
+    // FIXME: Flush output here, or create a dedicated opcode.
+#endif
     NEXT(s,s->count);
     if (s->count == 0) {
         // 0-size packets are treated as NOP in most uc_tools
@@ -193,6 +208,7 @@ static inline uintptr_t monitor_3if_push_key(struct monitor_3if *s, uint8_t key)
     goto next;
 }
 
+#ifndef MONITOR_3IF_BLOCKING
 uintptr_t monitor_3if_write(struct monitor_3if *s,
                             const uint8_t *buf, uint32_t len) {
     for (uint32_t i=0; i<len; i++) {
@@ -201,14 +217,18 @@ uintptr_t monitor_3if_write(struct monitor_3if *s,
     }
     return 0;
 }
+#endif
+
 void monitor_3if_init(struct monitor_3if *s,
                       struct cbuf *out, uint8_t *ds_buf) {
     memset(s,0,sizeof(*s));
     cbuf_clear(out);
     s->out = out;
     s->ds = ds_buf;
+#ifndef MONITOR_3IF_BLOCKING
     /* Dummy write to end up in the first blocking read. */
     uint8_t dummy = 0; monitor_3if_write(s, &dummy, 1);
+#endif
 }
 
 
