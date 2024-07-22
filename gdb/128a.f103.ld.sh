@@ -19,8 +19,8 @@ case $(basename $0) in
     128b.f103.ld.sh)
         CONFIG=0x08012000
         ORIGIN=0x08012800
-        # LENGTH=0xD800 # From ORIGIN to end of Flash
-        LENGTH=0xD400 # Leave room for 1k log dump
+        LENGTH=0xD800 # From ORIGIN to end of Flash
+        # LENGTH=0xD400 # Leave room for 1k log dump
         ;;
     *)
         CONFIG=0x08004000

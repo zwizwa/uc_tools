@@ -8,6 +8,7 @@
 #include "raw_serial.h"
 #include "assert_write.h"
 #include "assert_read.h"
+#include "tcp_tools.h"
 
 const char *tether_3if_tag = "";
 
@@ -353,4 +354,12 @@ void tether_open_tty(struct tether *s, const char *dev) {
     s->write = tether_assert_write;
 }
 
+
+void tether_open_tcp(struct tether *s, const char *host, uint16_t port) {
+    memset(s, 0, sizeof(*s));
+    s->fd_in = assert_tcp_connect(host, port);
+    s->fd_out = s->fd_in;
+    s->read  = tether_assert_read_fixed;
+    s->write = tether_assert_write;
+}
 

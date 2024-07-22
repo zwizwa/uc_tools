@@ -14,7 +14,18 @@ local gdbstub_lua51 = require('gdbstub_lua51')
 -- favor of exposing the packet decoder and handling some packets in
 -- Lua.
 
-function m.start(scheduler, tcp_port, target)
+function m.start(scheduler, tcp_port, default_target, make_target)
+
+   -- The `make-target` argument is optional.  It can be used to
+   -- create multiple instances of the underlying memory reader.  This
+   -- is used in multi-devices setups where the debugger is launched
+   -- many times against the same port 3333, but a `monitor` command
+   -- is used to select a different device.
+
+   if nil == make_target then
+      make_target = function() return default_target end
+   end
+
    assert(scheduler)
    assert(tcp_port)
    local C = gdbstub_lua51
@@ -88,7 +99,7 @@ function m.start(scheduler, tcp_port, target)
    -- If these return true, a response has been generated.
    local parse = {}
    -- Memory read, E.g. m5555560d,8
-   function parse.m(p)
+   function parse.m(target, p)
       if p:byte(1) ~= 109 then return false end -- m
       local addr,nb = unpack(hex_csv(p,2))
       local bytes   = target.read(addr, nb) or { error = 'read failed' }
@@ -100,7 +111,7 @@ function m.start(scheduler, tcp_port, target)
    -- print commands which can call target code.  Generic breakpoints
    -- and code resume is not supported (and doesn't make much sense in
    -- the context).
-   function parse.c(p)
+   function parse.c(target, p)
       if p:byte(1) ~= 99 then return false end -- c
       -- Get function pointer and arguments
       local fn = bit.bor(C.reg_read(stub,15), 1)
@@ -116,16 +127,16 @@ function m.start(scheduler, tcp_port, target)
       rpl_signal(5) -- SIGTRAP
       return true
    end
-   function parse.qRcmd(p)
+   function parse.qRcmd(target, p)
       if p:sub(1,6) ~= "qRcmd," then return false end
       local cmd_hex = p:sub(7)
       rpl_string(target.command(hex_to_str(cmd_hex)))
       return true
    end
 
-   local function do_parse(packet)
+   local function do_parse(target, packet)
       for name, fun in pairs(parse) do
-         if fun(packet) then
+         if fun(target, packet) then
             -- One of our handlers produced a reply.
             return
          end
@@ -137,6 +148,8 @@ function m.start(scheduler, tcp_port, target)
    function serv_obj:connection()
       local c = {}
       function c:connect()
+         local target = make_target()
+
          while true do
             local msg = self:recv()
             local from, req = unpack(msg)
@@ -144,7 +157,7 @@ function m.start(scheduler, tcp_port, target)
             for i=1,#req do
                local status, packet = C.stub_putchar(stub, req:byte(i))
                if status == 0 then
-                  do_parse(packet)
+                  do_parse(target, packet)
                else
                   -- FIXME: error handling
                end
