@@ -10,9 +10,13 @@ OBJDUMP := $(TPF)objdump
 all: test.elf
 
 clean:
-	rm -f *.elf *~
+	rm -f *.elf *.o *~
 
-%.elf: %.c
+%.o: %.c
+	$(GCC) -o $@ -c $<
+	$(OBJDUMP) -d $@
+
+%.elf: %.o
 	$(GCC) -o $@ $<
 	$(OBJDUMP) -d $@
 

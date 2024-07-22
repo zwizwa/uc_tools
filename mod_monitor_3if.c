@@ -106,7 +106,7 @@ void pop_stack (struct monitor_3if *s) { s->byte = *--(s->ds); }
 
 /* By default this implements a state machine written in push style,
    waiting for next byte.  Each occurrence of NEXT is a suspend
-   point. */
+   point.  All output goes into a cbuf. */
 #define NEXT_LABEL(s,var,label)                         \
     do {						\
 	s->next = &&label;				\
@@ -116,10 +116,16 @@ void pop_stack (struct monitor_3if *s) { s->byte = *--(s->ds); }
     } while(0)
 #define NEXT(s,var)                             \
     NEXT_LABEL(s,var,GENSYM(label_))
+
+static inline void monitor_3if_write_byte(struct monitor_3if *s, uint8_t byte) {
+    cbuf_put(s->out, byte);
+}
+
 #else
 /* Alternatively the main loop can be hosted in a thread with
-   blocking read / write. */
+   blocking io. */
 uint8_t monitor_3if_read_byte(struct monitor_3if *);
+void    monitor_3if_write_byte(struct monitor_3if *, uint8_t);
 #define NEXT(s,var) do { key = monitor_3if_read_byte(s); (var) = key; } while(0)
 #endif
 
@@ -127,6 +133,7 @@ uint8_t monitor_3if_read_byte(struct monitor_3if *);
 #ifndef MONITOR_3IF_LOG
 #define MONITOR_3IF_LOG(...)
 #endif
+
 
 static inline uintptr_t monitor_3if_push_key(struct monitor_3if *s, uint8_t key) {
     enum PRIM op;
@@ -142,7 +149,7 @@ static inline uintptr_t monitor_3if_push_key(struct monitor_3if *s, uint8_t key)
         // 0-size packets are treated as NOP in most uc_tools
         // encodings (notably SLIP) and are often used as heartbeat /
         // sync, so send a 0-size reply
-        cbuf_put(s->out, 0);
+        monitor_3if_write_byte(s, 0);
         goto next;
     }
     s->poll = NULL;
@@ -188,8 +195,8 @@ static inline uintptr_t monitor_3if_push_key(struct monitor_3if *s, uint8_t key)
     if (s->count != 1) goto err;
     // needs s->transfer
     NEXT(s,s->count);
-    cbuf_put(s->out, s->count);
-    while(s->count--) { s->transfer(s); cbuf_put(s->out, s->byte); }
+    monitor_3if_write_byte(s, s->count);
+    while(s->count--) { s->transfer(s); monitor_3if_write_byte(s, s->byte); }
     goto next;
 
   to_reg:
@@ -201,8 +208,8 @@ static inline uintptr_t monitor_3if_push_key(struct monitor_3if *s, uint8_t key)
     while(s->count--) { NEXT(s, s->byte); s->transfer(s); }
   ack:
     // 0-size packets are NOP, so send a non-zero size ack
-    cbuf_put(s->out, 1);
-    cbuf_put(s->out, 0);
+    monitor_3if_write_byte(s, 1);
+    monitor_3if_write_byte(s, 0);
     // if poll was set (e.g. by JSR) we can call it after ack
     if (s->poll) s->poll(s);
     goto next;
@@ -217,19 +224,30 @@ uintptr_t monitor_3if_write(struct monitor_3if *s,
     }
     return 0;
 }
+#else
+uintptr_t monitor_3if_loop(struct monitor_3if *s) {
+    return monitor_3if_push_key(s, 0 /*dummy*/);
+}
 #endif
 
+#ifndef MONITOR_3IF_BLOCKING
 void monitor_3if_init(struct monitor_3if *s,
-                      struct cbuf *out, uint8_t *ds_buf) {
+                      struct cbuf *out,
+                      uint8_t *ds_buf) {
     memset(s,0,sizeof(*s));
     cbuf_clear(out);
     s->out = out;
     s->ds = ds_buf;
-#ifndef MONITOR_3IF_BLOCKING
     /* Dummy write to end up in the first blocking read. */
     uint8_t dummy = 0; monitor_3if_write(s, &dummy, 1);
-#endif
 }
+#else
+void monitor_3if_init(struct monitor_3if *s,
+                      uint8_t *ds_buf) {
+    memset(s,0,sizeof(*s));
+    s->ds = ds_buf;
+}
+#endif
 
 
 /* About poll:
