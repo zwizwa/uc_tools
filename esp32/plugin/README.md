@@ -1,8 +1,12 @@
-ESP32 doodling
+ESP32 plugin
 
-Toolchain is managed in exo-dev/flake.nix for now.
-This is a minimal setup to build plugins for the "os" in esp32.
-Basic idea is to have quick cycle time: small code, load to SRAM via 3if.
+Idea is to use the 3if monitor to load code into free sections of IRAM
+and DRAM, e.g. at the end of the memory range.
+
+It is necessary to split it up into two binaries because IRAM only
+supports 32-bit aligned data bus access.
+
+
 
 
 
