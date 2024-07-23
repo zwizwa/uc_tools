@@ -8,11 +8,6 @@ struct state {
 };
 
 void run(struct state *s) {
-    // Literal strings don't work yet.  They are still loaded into
-    // IRAM which only supports 32 bit access.  The image needs to be
-    // split into two parts: IRAM and DRAM to make this work, so work
-    // around it for now.
-
     s->esp_os->printf("test.c run at %p\n", &run);
     // s->esp_os->log_u32(0x55555555);
 }
