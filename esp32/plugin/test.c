@@ -13,8 +13,8 @@ void run(struct state *s) {
     // split into two parts: IRAM and DRAM to make this work, so work
     // around it for now.
 
-    s->esp_os->printf("hello from test.c\n");
-    s->esp_os->log_u32(0x55555555);
+    s->esp_os->printf("test.c run at %p\n", &run);
+    // s->esp_os->log_u32(0x55555555);
 }
 
 // I ran into "l32r: literal placed after use" when putting run()
