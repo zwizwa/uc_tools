@@ -17,10 +17,9 @@ void run(struct state *s) {
     // s->esp_os->log_u32(0x55555555);
 }
 
-// I ran into "l32r: literal placed after use" when putting run()
-// first, so use this trampoline.  The l32r still seems to refer to
-// data stored after the reference though, so I don't think I
-// understand.
+// I ran into "l32r: literal placed after use" when the function at
+// the start of iram refers to literals, so just use a trampoline that
+// doesn't use any literals.
 __attribute__((section(".run")))
 __attribute__((__noinline__))
 void _run(struct state *s) {
