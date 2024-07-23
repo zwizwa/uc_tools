@@ -77,6 +77,11 @@ struct monitor_3if {
 #define TO_FLASH_3IF(s)
 #endif
 
+/* Default, works on ARM: Just read it out. */
+#ifndef FROM_FLASH_3IF
+#define FROM_FLASH_3IF s->byte = *(s->flash)++
+#endif
+
 /* Machine suspends on input (KEY), and output is buffered (EMIT). */
 
 /* FIXME: Machine should suspend on output as well.  For now we assume
@@ -85,7 +90,7 @@ struct monitor_3if {
 
 /* Loop body loaded into s->code. */
 void from_ram  (struct monitor_3if *s) { s->byte = *(s->ram)++; }
-void from_flash(struct monitor_3if *s) { s->byte = *(s->flash)++; }
+void from_flash(struct monitor_3if *s) { FROM_FLASH_3IF(s); }
 
 void to_ram    (struct monitor_3if *s) { *(s->ram)++ = s->byte; }
 void to_flash  (struct monitor_3if *s) { TO_FLASH_3IF(s); }

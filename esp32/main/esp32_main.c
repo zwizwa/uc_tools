@@ -12,6 +12,8 @@
 */
 
 // ssh mimas "cd /i/exo/uc_tools/esp32/build ; /nix/store/5lbxsj5mnz95rq5hkq7ixxb1cg96k07g-ninja-1.11.1/bin/ninja"
+// ./tether_bl.dynamic.host.elf 192.168.0.122 load 0x40098000 /i/exo/uc_tools/esp32/plugin/test.bin
+// ./tether_bl.dynamic.host.elf 192.168.0.122 run_ram 0x40098000
 
 
 #include <string.h>
@@ -38,6 +40,8 @@
 #include "lwip/err.h"
 #include "lwip/sys.h"
 
+#include "esp_os.h"
+
 static const char *TAG = "app";
 
 
@@ -47,8 +51,16 @@ static const char *TAG = "app";
    goto.  Not sure what is going on here.  A workaround is to use a
    blocking read instead, which is ok since we have an RTOS here. */
 #define MONITOR_3IF_BLOCKING
+#define TO_FLASH_3IF(s)   monitor_i3f_write_iram_byte(s, s->byte)
+#define FROM_FLASH_3IF(s) s->byte = monitor_i3f_read_iram_byte(s)
+struct monitor_3if;
+void    monitor_i3f_write_iram_byte(struct monitor_3if *s, uint8_t byte);
+uint8_t monitor_i3f_read_iram_byte(struct monitor_3if *s);
+
 //#define MONITOR_3IF_LOG(s, ...) printf(__VA_ARGS__)
 #include "../../mod_monitor_3if.c"
+
+
 
 
 /* Hard-code it for now. */
@@ -76,13 +88,51 @@ static const char *TAG = "app";
 #define PORT 12345
 
 
+/* The idea is to use the monitor to load applets to SRAM for rapid
+   edit-compile-run cycle exploration.  The existing build and flash
+   operations work fine for production but are a bit too slow to my
+   taste.  The idea is to expose functionality in a struct, and only
+   reload the firmware when this functionality changes.  The code in
+   SRAM could then be updated more frequently. */
+
+void log_u32(uint32_t tag) {
+    printf("log_u32: %08lx\n", tag);
+}
+
+const struct esp_os esp_os = {
+    .malloc = malloc,
+    .printf = printf,
+    .log_u32 = log_u32,
+};
+
+
+/* Code buffer needs to be in IRAM. */
+
+// FIXME: I'm just using 0x40098000 now, the top 32k of SRAM0 IRAM,
+// which happens to be free.  This here doesn't seem to work: it just
+// gives a DRAM address 0x3F......
+
+// IRAM_BSS_ATTR uint32_t monitor_scratch[4 * 1024];
+
+
 struct monitor_esp {
+    /* Monitor state. */
     struct monitor_3if m;
+    /* Pointer to struct with OS functionality is mapped into register
+       space.  Currently this starts at register 9. */
+    const struct esp_os *esp_os;  /*  9 */
+    int sock;                     /* 10 */
+    /* Misc state not mapped into 3if register space can be mapped here. */
+    union {
+        uint8_t u8[4];
+        uint32_t u32;
+    } iram_buf;
     jmp_buf abort;
-    int sock;
     uint8_t out_buf[256];
     uint8_t ds_buf[256];
 };
+
+struct monitor_esp monitor_esp = { };
 
 struct monitor_3if;
 uint8_t monitor_3if_read_byte(struct monitor_3if *s) {
@@ -103,10 +153,46 @@ void monitor_3if_write_byte(struct monitor_3if *s, uint8_t byte) {
         longjmp(me->abort, 2);
     }
 }
+/* The IRAM can only be read or written as 32bit words, so cache reads
+   and writes such that a normal byte sequence transfer will work.
+   Use the Flash mode for this. */
+void monitor_i3f_write_iram_byte(struct monitor_3if *s, uint8_t byte) {
+    struct monitor_esp *me = (void*)s;
+    uint32_t offset = ((uint32_t)s->flash) & 3;
+    me->iram_buf.u8[offset] = byte;
+    if (offset == 3) {
+        /* Flush */
+        uint32_t *u32 = (void*)(s->flash - 3);
+        *u32 = me->iram_buf.u32;
+    }
+    s->flash++;
+}
+uint8_t monitor_i3f_read_iram_byte(struct monitor_3if *s) {
+    struct monitor_esp *me = (void*)s;
+    uint32_t offset = ((uint32_t)s->flash) & 3;
+    if (offset == 0) {
+        /* Cache */
+        uint32_t *u32 = (void*)(s->flash );
+        me->iram_buf.u32 = *u32;
+    };
+    s->flash++;
+    return me->iram_buf.u8[offset];
+}
+
+
+void monitor_loop(int sock) {
+    struct monitor_esp *me = &monitor_esp;
+    monitor_3if_init(&me->m, me->ds_buf);
+    me->sock = sock;
+    me->esp_os = &esp_os;
+    if (0 == setjmp(me->abort)) {
+        monitor_3if_loop(&me->m);
+    }
+}
 
 #if 0
 // TCP client
-void monitor(void)
+void start_monitor(void)
 {
     char host_ip[] = HOST_IP;
     int addr_family = 0;
@@ -134,11 +220,8 @@ void monitor(void)
         }
         ESP_LOGI(TAG, "connected");
 
-        struct monitor_esp me = { .sock = sock };
-        monitor_3if_init(&me.m, me.ds_buf);
-        if (0 == setjmp(me.abort)) {
-            monitor_3if_loop(&me.m);
-        }
+        monitor_loop(sock);
+
         if (sock != -1) {
             ESP_LOGE(TAG, "shutdown");
             shutdown(sock, 0);
@@ -213,12 +296,7 @@ static void tcp_server_task(void *pvParameters)
         }
         ESP_LOGI(TAG, "accepted from %s", addr_str);
 
-
-        struct monitor_esp me = { .sock = sock };
-        monitor_3if_init(&me.m, me.ds_buf);
-        if (0 == setjmp(me.abort)) {
-            monitor_3if_loop(&me.m);
-        }
+        monitor_loop(sock);
 
         shutdown(sock, 0);
         close(sock);
@@ -228,7 +306,7 @@ CLEAN_UP:
     close(listen_sock);
     vTaskDelete(NULL);
 }
-void monitor(void) {
+void start_monitor(void) {
     xTaskCreate(tcp_server_task, "tcp_server", 4096, (void*)AF_INET, 5, NULL);
 }
 #endif
@@ -328,6 +406,13 @@ void wifi_init_sta(void)
     }
 }
 
+extern uint32_t _iram_end;
+extern uint32_t _heap_low_start;
+void meminfo(void) {
+    printf("%p _iram_end\n", &_iram_end);
+    printf("%p _heap_low_start\n", &_heap_low_start);
+}
+
 void app_main(void)
 {
 
@@ -342,7 +427,9 @@ void app_main(void)
     ESP_LOGI(TAG, "ESP_WIFI_MODE_STA");
     wifi_init_sta();
 
-    monitor();
+    meminfo();
+
+    start_monitor();
 }
 
 
