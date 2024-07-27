@@ -33,3 +33,5 @@ test_*.txt
 push.sh
 gdb/*.ld
 *.secret
+meminfo.sh
+*.old

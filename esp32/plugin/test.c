@@ -1,4 +1,5 @@
-#include "../main/iot_bios.h"
+typedef int size_t;
+#include "../../iot_bios.h"
 // The code is executed with 3if JSR which is passed the monitor_esp
 // struct, which is what we implement here as struct overlay that
 // hides things we don't need.
