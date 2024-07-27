@@ -1,11 +1,20 @@
+#!/bin/sh
+
+set -e
+cd $(dirname "$0")
+[ -f meminfo.sh ]
+
+. ./meminfo.sh
+
+cat <<EOF
 
 
 MEMORY
 {
         /* 32k at the end of SRAM0. */
-	iram (rwx) : ORIGIN = 0x40390a00, LENGTH = 0xffd0f600
+	iram (rwx) : ORIGIN = ${FLASH_ADDR}, LENGTH = ${FLASH_LEN}
         /* 32k at the end of SRAM1 mapped as DRAM */
-	dram (rw)  : ORIGIN = 0x3fc93f80, LENGTH = 0x8000
+	dram (rw)  : ORIGIN = ${RAM_ADDR}, LENGTH = ${RAM_LEN}
 }
 
 /* Define sections. */
@@ -37,5 +46,14 @@ SECTIONS
 
 	} >dram
 }
+
+
+EOF
+
+
+# To generate the code.  See also Makefil.
+# xtensa-esp32-elf-gcc -mtext-section-literals --static -nostartfiles -Tsram.ld
+# xtensa-esp32-elf-objcopy -O binary --only-section=.iram ${PLUGIN}.elf ${PLUGIN}.iram.bin
+# xtensa-esp32-elf-objcopy -O binary --only-section=.dram ${PLUGIN}.elf ${PLUGIN}.dram.bin
 
 
