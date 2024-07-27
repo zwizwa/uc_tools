@@ -15,6 +15,13 @@
    little code space.  The host side can then read/write to Flash and
    RAM and execute code.
 
+   Note that the need for separate flash and ram read could also be
+   solved by memory-mapping, but this is how it is now.  On ESP32 for
+   example, the "flash" is for IRAM with 32-bit aligned read and write
+   and some memory mapping, and the "ram" is plain bytes.  So "flash"
+   could be interpreted as "special memory access".  I.e. the f is for
+   fussy.
+
 */
 
 #ifndef MOD_MONITOR_3IF
@@ -63,8 +70,17 @@ struct monitor_3if {
     /* 6 */ void *next;  // continuation after byte input
     /* 7 */ void (*transfer)(struct monitor_3if *s);  // what to do inside loop
     /* 8 */ uint16_t count; uint8_t offset; uint8_t byte;
-
 };
+
+/* Typically exposed via virtual address, e.g. Flash address 0 maps to
+   this struct. */
+struct monitor_3if_meminfo {
+    uint32_t ram_addr;
+    uint32_t ram_len;
+    uint32_t flash_addr;
+    uint32_t flash_len;
+};
+
 
 #define REG(name) OFFSETOF(struct monitor_3if, name)
 

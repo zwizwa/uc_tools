@@ -76,7 +76,6 @@
 
 */
 
-#include "instance.h"
 #include "sm.h"
 #include "cbuf.h"
 
@@ -86,6 +85,10 @@
 
 #define SWD_OUT 0
 #define SWD_IN  1
+
+#if 0
+
+// FIXME: Move STM code elsewhere.
 
 INLINE int  swd_get_swdio(void)     { return hw_gpio_read(SWD_GPIO_SWDIO); }
 INLINE void swd_set_swdio(int val)  { hw_gpio_write_v2(SWD_GPIO_SWDIO, val); }
@@ -97,6 +100,30 @@ INLINE void swd_dir(int in) {
         HW_GPIO_CONFIG_INPUT :
         HW_GPIO_CONFIG_OUTPUT);
 }
+INLINE void swd_busywait(uint32_t ticks) {
+    hw_busywait(ticks);
+}
+INLINE uint32_t swd_cycle_counter_future_time(uint32_t ticks) {
+    return cycle_counter_future_time(ticks);
+}
+INLINE int swd_cycle_counter_expired(uint32_t time) {
+    return cycle_counter_expired(time);
+}
+
+
+#else
+
+INLINE int  swd_get_swdio(void);
+INLINE void swd_set_swdio(int val);
+INLINE void swd_swclk(int val);
+INLINE void swd_srst(int val);
+INLINE void swd_dir(int in);
+INLINE void swd_busywait(uint32_t ticks);
+INLINE uint32_t swd_cycle_counter_future_time(uint32_t delta_time);
+INLINE int swd_cycle_counter_expired(uint32_t time);
+
+#endif
+
 
 
 #define SWD_FLAGS_PARITY (1<<0)
@@ -212,7 +239,6 @@ void log_cmd(uint8_t cmd) {
     LOG("read = %d\n", 1 & (cmd >> 2));
     LOG("addr = %d\n", 0b1100 & (cmd >> 1));
 }
-DEF_COMMAND(log_cmd) { log_cmd(command_stack_pop()); }
 
 uint32_t swd_cmd_hdr(uint32_t port, uint32_t read, uint32_t addr) {
     uint32_t hdr =
@@ -425,11 +451,11 @@ sm_status_t swd_serv_tick(struct swd_serv *s) {
     /* Reset SWD. */
     if (SM_SUB_CATCH(s, swd_cmd, 0, 0)) goto error;
     // stm32f103 is 1ba01477
-    infof("dpidr 0x%08x, p=%d\n", c->val, !!(c->flags & SWD_FLAGS_PARITY));
+    infof("dpidr 0x%08lx, p=%d\n", c->val, !!(c->flags & SWD_FLAGS_PARITY));
 
     /* Read status register. */
     if (SWD_TRANS_DP_READ(s, SWD_DP_RD_CTRLSTAT)) goto error;
-    infof("ctrlstat 0x%08x, p=%d\n", c->val, !!(c->flags & SWD_FLAGS_PARITY));
+    infof("ctrlstat 0x%08lx, p=%d\n", c->val, !!(c->flags & SWD_FLAGS_PARITY));
 
     /* Power up debug domain.*/
     if (SWD_TRANS_DP_WRITE(s, SWD_DP_WR_CTRLSTAT,
@@ -439,7 +465,7 @@ sm_status_t swd_serv_tick(struct swd_serv *s) {
     /* Read status register. */
     if (SWD_TRANS_DP_READ(s, SWD_DP_RD_CTRLSTAT)) goto error;
     // FIXME: check SWD_CTRLSTAT_CSYSPWRUPACK | SWD_CTRLSTAT_CDBGPWRUPACK
-    infof("ctrlstat 0x%08x, p=%d\n", c->val, !!(c->flags & SWD_FLAGS_PARITY));
+    infof("ctrlstat 0x%08lx, p=%d\n", c->val, !!(c->flags & SWD_FLAGS_PARITY));
 
     /* Iterate over APs */
     for (s->i = 0; s->i < 4; s->i++) {
@@ -450,7 +476,7 @@ sm_status_t swd_serv_tick(struct swd_serv *s) {
         /* Assuming zero result means end of AP list */
         if (!c->val) break;
         /* 0x14770011 is AHB-AP */
-        infof("ap %d, idr 0x%08x\n", s->i, c->val);
+        infof("ap %d, idr 0x%08lx\n", s->i, c->val);
     }
 
     /* All subsequent AP reads/writes use only the main registers, so
@@ -460,32 +486,32 @@ sm_status_t swd_serv_tick(struct swd_serv *s) {
     /* Configure MEM-AP for 32 bit transfers and auto-increment.  Note
        that this wraps withing a 1KB address boundary. */
     SWD_AP_REG_READ(s, 0x0); // CSW
-    infof("csw 0x%08x\n", c->val);
+    infof("csw 0x%08lx\n", c->val);
     SWD_AP_REG_WRITE(s, SWD_MEM_AP_CSW, c->val | (2 << 0) | (2 << 4));
     SWD_AP_REG_READ(s, SWD_MEM_AP_CSW);
-    infof("csw 0x%08x\n", c->val);
+    infof("csw 0x%08lx\n", c->val);
 
     /* Perform memory reads and writes */
     SWD_MEM_AP_READ(s, 0x08000000)
-    infof("drw 0x%08x\n", c->val);
+    infof("drw 0x%08lx\n", c->val);
 
     SWD_MEM_AP_READ(s, 0x08000004)
-    infof("drw 0x%08x\n", c->val);
+    infof("drw 0x%08lx\n", c->val);
 
     SWD_MEM_AP_READ(s, 0x20000000)
-    infof("drw 0x%08x\n", c->val);
+    infof("drw 0x%08lx\n", c->val);
 
     SWD_MEM_AP_WRITE(s, 0x20000000, 0x123)
 
     SWD_MEM_AP_READ(s, 0x20000000)
-    infof("drw 0x%08x\n", c->val);
+    infof("drw 0x%08lx\n", c->val);
 
 
     SWD_MEM_AP_READ(s, 0x08000000)
-    infof("drw 0x%08x (verify 0x08000000)\n", c->val);
+    infof("drw 0x%08lx (verify 0x08000000)\n", c->val);
 
     SWD_MEM_AP_READ(s, 0x08000010)
-    infof("drw 0x%08x (verify 0x08000010)\n", c->val);
+    infof("drw 0x%08lx (verify 0x08000010)\n", c->val);
 
 
   again:
@@ -503,7 +529,7 @@ sm_status_t swd_serv_tick(struct swd_serv *s) {
     SWD_TRANS_AP_READ(s, SWD_MEM_AP_DRW); // skip pipeline junk
     for (s->i=0; s->i<300; s->i++) {
         if (SWD_TRANS_AP_READ(s, SWD_MEM_AP_DRW)) goto error;
-        infof("drw 0x%08x @%x %d\n", c->val, 0x08000000 + s->i * 4, s->i);
+        infof("drw 0x%08lx @%x %d\n", c->val, 0x08000000 + s->i * 4, s->i);
     }
 
     for(;;) {
@@ -520,9 +546,6 @@ sm_status_t swd_serv_tick(struct swd_serv *s) {
     SM_HALT_STATUS(s, 1);
 }
 
-DEF_COMMAND(swd_req) {
-    swd_req++;
-}
 
 
 #undef SWD_DELAY
@@ -530,7 +553,7 @@ DEF_COMMAND(swd_req) {
 
 // FIXME: This doesn't work properly.  DP reads work, but AP reads do
 // not.  It's currently not really necessary so just turn it off.
-#if 1
+#if 0
 
 #define CLOCK_HALF_KHZ(khz) (72000 / ((khz) * 2))
 
@@ -539,11 +562,11 @@ uint32_t clock_half = CLOCK_HALF_KHZ(1000);
 /* Synchronous. */
 static inline void delay_half(void) {
     if (0) {
-        hw_busywait(100);
+        swd_busywait(100);
     }
     else {
-        uint32_t time = cycle_counter_future_time(clock_half);
-        while(!cycle_counter_expired(time));
+        uint32_t time = swd_cycle_counter_future_time(clock_half);
+        while(!swd_cycle_counter_expired(time));
     }
 }
 
@@ -564,7 +587,7 @@ int swd_read_bit(struct swd_ctx *c) {
 void swd_log_flags(struct swd_ctx *c) {
     if (c->flags) {
         // FIXME: need error mechanism
-        infof("ERROR: flags = 0x%08x\n", c->flags);
+        infof("ERROR: flags = 0x%08lx\n", c->flags);
     }
 }
 void swd_write_lsb(struct swd_ctx *c, uint32_t bits_vec, uint32_t bits_nb) {
@@ -596,15 +619,6 @@ uint32_t swd_cmd(struct swd_ctx *c, uint8_t cmd, uint32_t val) {
         cmd = swd_cmd_hdr(SWD_PORT_DP, SWD_READ, SWD_DP_RD_DPIDR);
     }
     return swd_transaction(c, cmd, val);
-}
-
-DEF_COMMAND(swd_cmd) {
-    struct swd_ctx c = {};
-    uint32_t wval = command_stack_pop();
-    uint8_t  cmd  = command_stack_pop();
-    uint32_t rval = swd_cmd(&c, cmd, wval);
-    LOG("rval = 0x%08x\n", rval);
-    command_stack_push(rval);
 }
 
 uint32_t swd_trans_dp_read(struct swd_ctx *c, uint32_t reg) {
@@ -639,6 +653,31 @@ void swd_select(struct swd_ctx *c, uint32_t ap, uint32_t reg) {
     SWD_SELECT_(c, ap, reg, swd_trans_dp_write);
 }
 
+#undef SWD_DELAY
+
+void clear_sticky(struct swd_ctx *c) {
+    swd_trans_dp_write(
+        c, SWD_DP_WR_ABORT,
+        SWD_ABORT_STKCMPCLR | SWD_ABORT_STKERRCLR |
+        SWD_ABORT_WDERRCLR  | SWD_ABORT_ORUNERRCLR);
+}
+
+#define ESC 033
+void cls(void) {
+    char c[] = {
+        ESC,'[','2','J', // clear screen
+        ESC,'[','H',     // move cursor to upper left
+        0};
+    info_puts(c);
+}
+
+
+#endif
+
+
+// The DEF_COMMAND stuff also depends on linker scripts, so leave it
+// optional.
+#if 0
 /* Generic interactive command wrappers. */
 void swd_command_read(uint32_t (*read)(struct swd_ctx *c, uint32_t addr)) {
     struct swd_ctx c = {};
@@ -652,66 +691,17 @@ void swd_command_write(void (*write)(struct swd_ctx *c, uint32_t addr, uint32_t 
     uint32_t addr = command_stack_pop();
     write(&c, addr, val);
 }
-#define SWD_DEF_READ_COMMAND(fname,cname) \
-    DEF_COMMAND(fname) { swd_command_read(cname); }
-
-#define SWD_DEF_WRITE_COMMAND(fname,cname) \
-    DEF_COMMAND(fname) { swd_command_write(cname); }
-
-SWD_DEF_READ_COMMAND(dp_rd,swd_trans_dp_read);
-SWD_DEF_READ_COMMAND(ap_rd,swd_trans_ap_read);
-SWD_DEF_WRITE_COMMAND(dp_wr,swd_trans_dp_write);
-SWD_DEF_WRITE_COMMAND(ap_wr,swd_trans_ap_write);
-SWD_DEF_READ_COMMAND(ap_req_rd,swd_ap_reg_read)
-SWD_DEF_WRITE_COMMAND(ap_reg_wr,swd_ap_reg_write)
-SWD_DEF_READ_COMMAND(mem_rd,swd_mem_ap_read)
-SWD_DEF_WRITE_COMMAND(mem_wr,swd_mem_ap_write)
-
-DEF_COMMAND(select) {
-    struct swd_ctx c = {};
-    uint32_t reg = command_stack_pop();
-    uint32_t ap  = command_stack_pop();
-    swd_select(&c, ap, reg);
-}
-
-#undef SWD_DELAY
-
-/* OpenOCD commands.
-
-   openocd/src/jtag/drivers/pdap.c uses a direct mapping of OpenOCD
-   callbacks to RPN commands.
-
-*/
-DEF_COMMAND(sync) {
-    LOG("sync %x\n", command_stack_pop());
-}
-DEF_COMMAND(jtag_to_swd) {
-    struct swd_ctx c = {}; swd_cmd(&c, 0, 0);
-}
-DEF_COMMAND(swd_to_jtag) {
-}
-DEF_COMMAND(line_reset) {
-}
-DEF_COMMAND(idle) {
-    uint32_t nb_zeros = command_stack_pop();
-    struct swd_ctx c = {};
-    swd_dir(SWD_OUT);
-    swd_ones_zeros(&c, 0, nb_zeros);
-    //swd_dir(SWD_IN);
-}
 uint8_t openocd_cmd_pop(void) {
     /* AP/DP, R/W, Addr, Parity are set by OpenOCD.
        We just need to add Start, Park. */
     return command_stack_pop() | 0x81;
 }
 
-void clear_sticky(struct swd_ctx *c) {
-    swd_trans_dp_write(
-        c, SWD_DP_WR_ABORT,
-        SWD_ABORT_STKCMPCLR | SWD_ABORT_STKERRCLR |
-        SWD_ABORT_WDERRCLR  | SWD_ABORT_ORUNERRCLR);
-}
 
+DEF_COMMAND(log_cmd) { log_cmd(command_stack_pop()); }
+DEF_COMMAND(swd_req) {
+    swd_req++;
+}
 DEF_COMMAND(rd) {
     uint8_t cmd = openocd_cmd_pop();
     struct swd_ctx c = {};
@@ -752,18 +742,71 @@ DEF_COMMAND(srst) {
     // LOG("# %x srst\n", arg);
     swd_srst(!arg);
 }
-#define ESC 033
-void cls(void) {
-    char c[] = {
-        ESC,'[','2','J', // clear screen
-        ESC,'[','H',     // move cursor to upper left
-        0};
-    info_puts(c);
+DEF_COMMAND(swd_cmd) {
+    struct swd_ctx c = {};
+    uint32_t wval = command_stack_pop();
+    uint8_t  cmd  = command_stack_pop();
+    uint32_t rval = swd_cmd(&c, cmd, wval);
+    LOG("rval = 0x%08lx\n", rval);
+    command_stack_push(rval);
+}
+/* OpenOCD commands.
+
+   openocd/src/jtag/drivers/pdap.c uses a direct mapping of OpenOCD
+   callbacks to RPN commands.
+
+*/
+#define SWD_DEF_READ_COMMAND(fname,cname) \
+    DEF_COMMAND(fname) { swd_command_read(cname); }
+
+#define SWD_DEF_WRITE_COMMAND(fname,cname) \
+    DEF_COMMAND(fname) { swd_command_write(cname); }
+
+SWD_DEF_READ_COMMAND(dp_rd,swd_trans_dp_read);
+SWD_DEF_READ_COMMAND(ap_rd,swd_trans_ap_read);
+SWD_DEF_WRITE_COMMAND(dp_wr,swd_trans_dp_write);
+SWD_DEF_WRITE_COMMAND(ap_wr,swd_trans_ap_write);
+SWD_DEF_READ_COMMAND(ap_req_rd,swd_ap_reg_read)
+SWD_DEF_WRITE_COMMAND(ap_reg_wr,swd_ap_reg_write)
+SWD_DEF_READ_COMMAND(mem_rd,swd_mem_ap_read)
+SWD_DEF_WRITE_COMMAND(mem_wr,swd_mem_ap_write)
+
+DEF_COMMAND(select) {
+    struct swd_ctx c = {};
+    uint32_t reg = command_stack_pop();
+    uint32_t ap  = command_stack_pop();
+    swd_select(&c, ap, reg);
+}
+
+DEF_COMMAND(sync) {
+    LOG("sync %x\n", command_stack_pop());
+}
+DEF_COMMAND(jtag_to_swd) {
+    struct swd_ctx c = {}; swd_cmd(&c, 0, 0);
+}
+DEF_COMMAND(swd_to_jtag) {
+}
+DEF_COMMAND(line_reset) {
+}
+DEF_COMMAND(idle) {
+    uint32_t nb_zeros = command_stack_pop();
+    struct swd_ctx c = {};
+    swd_dir(SWD_OUT);
+    swd_ones_zeros(&c, 0, nb_zeros);
+    //swd_dir(SWD_IN);
 }
 COMMAND_REGISTER_NAMED("cls", cls);
 
-
 #endif
+
+
+
+// The instance.h doesn't seem like a good idea for an API because it
+// is too specific to projects where there is full control over the
+// linker scripts.  Also, mod_swd.c should be platform-independent.
+
+#if 0
+#include "instance.h"
 
 instance_status_t swd_init(instance_init_t *ctx) {
     int clk = hw_gpio_read(SWD_GPIO_SWCLK);
@@ -777,6 +820,8 @@ instance_status_t swd_init(instance_init_t *ctx) {
     return 0;
 }
 DEF_INSTANCE(swd);
+#endif
+
 
 
 #endif

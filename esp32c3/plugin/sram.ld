@@ -1,17 +1,12 @@
-
-
 MEMORY
 {
-        /* 32k at the end of SRAM0. */
-	iram (rwx) : ORIGIN = , LENGTH = 
-        /* 32k at the end of SRAM1 mapped as DRAM */
-	dram (rw)  : ORIGIN = , LENGTH = 
+	sram (rwx) : ORIGIN = 0x3FCD8000, LENGTH = 0x8000
 }
 
 /* Define sections. */
 SECTIONS
 {
-	.iram : {
+	.sram : {
 		_stext = .;
                 KEEP (*(.run))     /* Startup trampoline goes first.  Should not contain l32r instructions. */
 		_sliteral = .;
@@ -19,9 +14,7 @@ SECTIONS
 		. = ALIGN(4);
 		*(.text*)          /* Program code */
 		. = ALIGN(4);
-	} >iram
 
-	.dram : {
 		*(.rodata*)        /* Read-only data */
 		. = ALIGN(4);
 
@@ -35,7 +28,7 @@ SECTIONS
 		. = ALIGN(4);
 		_ebss = .;
 
-	} >dram
+	} >sram
 }
 
 

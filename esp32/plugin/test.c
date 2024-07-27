@@ -1,15 +1,15 @@
-#include "../main/esp_os.h"
+#include "../main/iot_bios.h"
 // The code is executed with 3if JSR which is passed the monitor_esp
 // struct, which is what we implement here as struct overlay that
 // hides things we don't need.
 struct state {
-    void *_priv[9];
-    const struct esp_os *esp_os;
+    void *_3if_priv[16];
+    const struct iot_bios *iot_bios;
 };
 
 void run(struct state *s) {
-    s->esp_os->printf("test.c run at %p\n", &run);
-    // s->esp_os->log_u32(0x55555555);
+    s->iot_bios->printf("test.c run at %p\n", &run);
+    // s->iot_bios->log_u32(0x55555555);
 }
 
 // I ran into "l32r: literal placed after use" when the function at

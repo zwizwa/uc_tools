@@ -40,70 +40,25 @@
 #include "lwip/err.h"
 #include "lwip/sys.h"
 
-#include "../../iot_bios.h"
+#include "esp_os.h"
 
 static const char *TAG = "app";
 
-/* uc_tools modules */
-#define infof printf
-#define info_puts puts
 
-/* mod_3if */
+/* uc_tools */
 
 /* The GCC in it's default setup doesn't seem to support computed
    goto.  Not sure what is going on here.  A workaround is to use a
    blocking read instead, which is ok since we have an RTOS here. */
-#if 1
 #define MONITOR_3IF_BLOCKING
-/* f is for fussy */
-#define TO_FLASH_3IF(s)   monitor_i3f_write_fussy_byte(s, s->byte)
-#define FROM_FLASH_3IF(s) s->byte = monitor_i3f_read_fussy_byte(s)
+#define TO_FLASH_3IF(s)   monitor_i3f_write_iram_byte(s, s->byte)
+#define FROM_FLASH_3IF(s) s->byte = monitor_i3f_read_iram_byte(s)
 struct monitor_3if;
-void    monitor_i3f_write_fussy_byte(struct monitor_3if *s, uint8_t byte);
-uint8_t monitor_i3f_read_fussy_byte(struct monitor_3if *s);
+void    monitor_i3f_write_iram_byte(struct monitor_3if *s, uint8_t byte);
+uint8_t monitor_i3f_read_iram_byte(struct monitor_3if *s);
+
 //#define MONITOR_3IF_LOG(s, ...) printf(__VA_ARGS__)
-#else
-// Make it work in push mode again.  Best to keep all code the same.
-// The previous issue was just due to the dangling-pointer warning.
-#endif
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdangling-pointer"
 #include "../../mod_monitor_3if.c"
-#pragma GCC diagnostic pop
-
-
-
-/* mod_swd.c */
-
-INLINE int  swd_get_swdio(void)     { return 1; }
-INLINE void swd_set_swdio(int val)  { }
-INLINE void swd_swclk(int val)      { }
-INLINE void swd_srst(int val)       { }
-INLINE void swd_dir(int in)         { }
-INLINE void swd_busywait(uint32_t ticks) { }
-#include "../../cycle_counter_generic.h"
-#include "xtensa/core-macros.h"
-INLINE uint32_t swd_cycle_counter(void) {
-    /* Note that this has one per CPU, so make sure that different
-       calls are happening on the same CPU. */
-    return XTHAL_GET_CCOUNT();
-}
-INLINE uint32_t swd_cycle_counter_future_time(uint32_t udiff) {
-    return cycle_counter_future(swd_cycle_counter(), udiff);
-}
-INLINE int32_t swd_cycle_counter_remaining(uint32_t expiration_time) {
-    return cycle_counter_diff(expiration_time, swd_cycle_counter());
-}
-INLINE int swd_cycle_counter_expired(uint32_t expiration_time) {
-    return swd_cycle_counter_remaining(expiration_time) < 0;
-}
-
-
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdangling-pointer"
-#include "../../mod_swd.c"
-#pragma GCC diagnostic pop
 
 
 
@@ -144,10 +99,10 @@ void log_u32(uint32_t tag) {
     printf("log_u32: %08lx\n", tag);
 }
 
-const struct iot_bios iot_bios = {
+const struct esp_os esp_os = {
     .malloc = malloc,
     .printf = printf,
-    .reboot = esp_restart,
+    .log_u32 = log_u32,
 };
 
 
@@ -162,19 +117,16 @@ const struct iot_bios iot_bios = {
 
 struct monitor_esp {
     /* Monitor state. */
-    union {
-        struct monitor_3if m;
-        uint32_t reg[16];
-    } state;
-    /* Plugin code is provided with BIOS code pointers. */
-    const struct iot_bios *iot_bios;  /* 16 */
-    /* To implement 3if extensions that will interact with the socket. */
-    int sock;                         /* 17 */
+    struct monitor_3if m;
+    /* Pointer to struct with OS functionality is mapped into register
+       space.  Currently this starts at register 9. */
+    const struct esp_os *esp_os;  /*  9 */
+    int sock;                     /* 10 */
     /* Misc state not mapped into 3if register space can be mapped here. */
     union {
         uint8_t u8[4];
         uint32_t u32;
-    } fussy_buf;
+    } iram_buf;
     jmp_buf abort;
     uint8_t out_buf[256];
     uint8_t ds_buf[256];
@@ -204,53 +156,37 @@ void monitor_3if_write_byte(struct monitor_3if *s, uint8_t byte) {
 /* The IRAM can only be read or written as 32bit words, so cache reads
    and writes such that a normal byte sequence transfer will work.
    Use the Flash mode for this. */
-void monitor_i3f_write_fussy_byte(struct monitor_3if *s, uint8_t byte) {
+void monitor_i3f_write_iram_byte(struct monitor_3if *s, uint8_t byte) {
     struct monitor_esp *me = (void*)s;
     uint32_t offset = ((uint32_t)s->flash) & 3;
-    me->fussy_buf.u8[offset] = byte;
+    me->iram_buf.u8[offset] = byte;
     if (offset == 3) {
         /* Flush */
         uint32_t *u32 = (void*)(s->flash - 3);
-        *u32 = me->fussy_buf.u32;
+        *u32 = me->iram_buf.u32;
     }
     s->flash++;
 }
-
-const struct monitor_3if_meminfo monitor_3if_meminfo = {
-    .flash_addr = 0x40098000, .flash_len = 0x8000,
-    .ram_addr   = 0x3FFF8000, .ram_len   = 0x8000,
-};
-
-uint8_t monitor_i3f_read_fussy_byte(struct monitor_3if *s) {
+uint8_t monitor_i3f_read_iram_byte(struct monitor_3if *s) {
     struct monitor_esp *me = (void*)s;
-
-    /* Memory-mapping is done here since we're already special-casing
-       the mechanism. */
-    if (s->flash == 0) {
-        /* 0x00000000 maps to the 3if state.  This can be used to read
-           out the memory layout info. */
-        s->flash = (uint8_t *)(&monitor_3if_meminfo);
-    }
-
     uint32_t offset = ((uint32_t)s->flash) & 3;
     if (offset == 0) {
         /* Cache */
         uint32_t *u32 = (void*)(s->flash );
-        me->fussy_buf.u32 = *u32;
+        me->iram_buf.u32 = *u32;
     };
     s->flash++;
-    return me->fussy_buf.u8[offset];
+    return me->iram_buf.u8[offset];
 }
 
 
 void monitor_loop(int sock) {
     struct monitor_esp *me = &monitor_esp;
-    monitor_3if_init(&me->state.m, me->ds_buf);
+    monitor_3if_init(&me->m, me->ds_buf);
     me->sock = sock;
-    me->iot_bios = &iot_bios;
-
+    me->esp_os = &esp_os;
     if (0 == setjmp(me->abort)) {
-        monitor_3if_loop(&me->state.m);
+        monitor_3if_loop(&me->m);
     }
 }
 
@@ -471,10 +407,10 @@ void wifi_init_sta(void)
 }
 
 extern uint32_t _iram_end;
-extern uint32_t _heap_low_start;
+extern uint32_t _heap_start;
 void meminfo(void) {
     printf("%p _iram_end\n", &_iram_end);
-    printf("%p _heap_low_start\n", &_heap_low_start);
+    printf("%p _heap_start\n", &_heap_start);
 }
 
 void app_main(void)

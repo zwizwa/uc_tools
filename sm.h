@@ -178,7 +178,7 @@ typedef uint32_t sm_status_t;
         sm->next = &&label;                     \
         return SM_WAITING;                      \
       label:                                    \
-        if (0);                                 \
+        if (0) {}                               \
     } while (0)
 
 #define SM_SUSPEND(sm)                          \
