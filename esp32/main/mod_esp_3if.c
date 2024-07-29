@@ -10,6 +10,8 @@
    SRAM could then be updated more frequently. */
 
 
+#include "esp_ota_ops.h"
+
 #include "../../iot_bios.h"
 
 
@@ -36,11 +38,18 @@ uint8_t monitor_i3f_read_fussy_byte(struct monitor_3if *s);
 #include "../../mod_monitor_3if.c"
 #pragma GCC diagnostic pop
 
+const struct iot_ota iot_ota = {
+    .get_sha256 = esp_app_get_elf_sha256,
+    .begin = esp_ota_begin,
+    .write = esp_ota_write,
+    .end = esp_ota_end,
+};
 
 const struct iot_bios iot_bios = {
     .malloc = malloc,
     .printf = printf,
     .reboot = esp_restart,
+    .iot_ota = &iot_ota,
 };
 
 struct monitor_esp {
@@ -71,7 +80,12 @@ uint8_t monitor_3if_read_byte(struct monitor_3if *s) {
     uint8_t byte;
     int rv = recv(me->sock, &byte, 1, 0);
     if (rv != 1) {
-        ESP_LOGE(TAG, "recv: rv=%d", rv);
+        if (rv == 0) {
+            ESP_LOGI(TAG, "closed");
+        }
+        else {
+            ESP_LOGE(TAG, "recv: rv=%d", rv);
+        }
         longjmp(me->abort, 1);
     }
     return byte;
@@ -99,7 +113,6 @@ void monitor_i3f_write_fussy_byte(struct monitor_3if *s, uint8_t byte) {
     s->flash++;
 }
 
-uint8_t dram_buf[32*1024];
 extern uint32_t _iram_end;
 struct monitor_3if_meminfo meminfo;
 

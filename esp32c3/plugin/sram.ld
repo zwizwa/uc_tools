@@ -3,9 +3,9 @@
 MEMORY
 {
         /* 32k at the end of SRAM0. */
-	iram (rwx) : ORIGIN = 0x40390a00, LENGTH = 0xffd0f600
+	iram (rwx) : ORIGIN = 0x40390a00, LENGTH = 0x8000
         /* 32k at the end of SRAM1 mapped as DRAM */
-	dram (rw)  : ORIGIN = 0x3fc93f80, LENGTH = 0x8000
+	dram (rw)  : ORIGIN = 0x3fc9c300, LENGTH = 0x8000
 }
 
 /* Define sections. */

@@ -65,16 +65,22 @@ static const char *TAG = "app";
 //#include "mod_esp_swd.c"
 
 
+uint8_t dram_buf[32*1024];
+
 void app_main(void)
 {
 
     start_wifi();
 
     // Memory info for host side plugin linker.
-    meminfo.flash_addr = (uint32_t)&_iram_end;
-    meminfo.flash_len = 0x400A0000 - (uint32_t)&_iram_end;
+
+    // Use a dedicated buffer
     meminfo.ram_addr = (uint32_t)dram_buf;
     meminfo.ram_len = sizeof(dram_buf);
+
+    // All free instrunction sram, otherwise unused.
+    meminfo.flash_addr = (uint32_t)&_iram_end;
+    meminfo.flash_len = 0x400A0000 - (uint32_t)&_iram_end;
 
     start_monitor();
 }

@@ -129,21 +129,20 @@ void tether_flush(struct tether *s, void (*handle)(struct tether *)) {
     }
 }
 
+/* Note that JSR and INTR need verbatim code pointers in the code
+   registers, which on ARM Thumb need to have their LSB set.  Since we
+   now also support xtensa, this can't be done here.  Move that LSB=1
+   all the way up to the target-specific scripts. */
+
 void tether_exec(struct tether *s, uint32_t addr) {
-    /* Load code register.  FIXME: We're only doing ARM Thumb, so make
-       sure the thumb bit is set in the function pointer.  The monitor
-       does not do that. */
-    addr |= 1;
+    /* Load code register. */
     tether_cmd_u32(s, LDC, addr);
     /* Jump to subroutine. */
     tether_cmd(s, JSR);
 }
 
 void tether_intr(struct tether *s, uint32_t addr) {
-    /* Load code register.  FIXME: We're only doing ARM Thumb, so make
-       sure the thumb bit is set in the function pointer.  The monitor
-       does not do that. */
-    addr |= 1;
+    /* Load code register. */
     tether_cmd_u32(s, LDC, addr);
     /* Jump to subroutine. */
     tether_cmd(s, INTR);

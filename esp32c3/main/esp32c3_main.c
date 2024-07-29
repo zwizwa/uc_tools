@@ -51,6 +51,7 @@ static const char *TAG = "app";
 // TCP server
 #define KEEPALIVE_IDLE      5
 #define KEEPALIVE_INTERVAL  5
+
 #define KEEPALIVE_COUNT     3
 
 #define MONITOR_PORT 12345
@@ -66,6 +67,12 @@ static const char *TAG = "app";
 #define info_puts puts
 
 
+uint8_t dram_buf[32*1024];
+
+__attribute__((section(".iram.bss")))
+uint8_t iram_buf[32*1024];
+
+
 #include "../../esp32/main/mod_esp_3if.c"
 #include "../../esp32/main/mod_esp_wifi.c"
 
@@ -76,10 +83,14 @@ void app_main(void)
     start_wifi();
 
     // Memory info for host side plugin linker.
-    meminfo.flash_addr = (uint32_t)&_iram_end;
-    meminfo.flash_len = 0x400A0000 - (uint32_t)&_iram_end;
+
+    // Use a dedicated buffer
     meminfo.ram_addr = (uint32_t)dram_buf;
     meminfo.ram_len = sizeof(dram_buf);
+
+    // Use a dedicated buffer
+    meminfo.flash_addr = (uint32_t)iram_buf;
+    meminfo.flash_len = sizeof(iram_buf);
 
     start_monitor();
 }
