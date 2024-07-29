@@ -93,10 +93,19 @@ struct monitor_3if_meminfo {
 #define TO_FLASH_3IF(s)
 #endif
 
-/* Default, works on ARM: Just read it out. */
+/* Defaults. */
+INLINE void from_flash_3if_default(struct monitor_3if *s) {
+    s->byte = *(s->flash)++;
+}
 #ifndef FROM_FLASH_3IF
-#define FROM_FLASH_3IF s->byte = *(s->flash)++
+#define FROM_FLASH_3IF from_flash_3if_default
 #endif
+
+/* This one is always fussy, so don't attempt to implement it here. */
+#ifndef TO_FLASH_3IF
+#error need TO_FLASH_3IF
+#endif
+
 
 /* Machine suspends on input (KEY), and output is buffered (EMIT). */
 

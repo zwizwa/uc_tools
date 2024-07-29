@@ -16,7 +16,7 @@ fi
 TEST=$GDBDIR/test.gdb
 
 # To resolve types, GDB needs an ELF loaded.
-ELF=../gdb/bl_c8t6_a12b5_boot1.core.f103.elf
+ELF=../stm32f103/bl_c8t6_a12b5_boot1.core.f103.elf
 
 
 

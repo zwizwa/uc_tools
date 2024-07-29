@@ -16,7 +16,7 @@
 # file:///nix/store/kw52sdy2c5nqsx54mann2pfj8hdmx9j3-qemu-6.2.0/share/doc/qemu/qemu/system/arm/stm32.html
 
 # KERNEL=mem.bin
-KERNEL=../gdb/qemu.core.f103.bin
+KERNEL=../stm32f103/qemu.core.f103.bin
 
 ## Doesn't work
 # system() {

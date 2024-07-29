@@ -89,7 +89,7 @@ case "$TYPE" in
         assert_vars O C D ARCH FIRMWARE
         dump_closure_to_file ${O}.build
         # Note that CFLAGS_OPTI is included into CFLAGS here:
-        . $UC_TOOLS/gdb/env.$ARCH.sh
+        . $UC_TOOLS/stm32f103/env.$ARCH.sh
         # echo "GCC=$GCC ($(readlink -f $GCC))"
         # $GCC --version
         [ ! -z "$VERSION" ] && DEFINE_BUILD_VERSION="-DBUILD=\"$VERSION\""
@@ -109,7 +109,7 @@ case "$TYPE" in
     o_data)
         assert_vars O DATA ARCH 
         dump_closure_to_file ${O}.build
-        . $UC_TOOLS/gdb/env.$ARCH.sh
+        . $UC_TOOLS/stm32f103/env.$ARCH.sh
         assert_vars ELFTYPE BINARCH
         $OBJCOPY \
             --input-target=binary \
@@ -132,7 +132,7 @@ case "$TYPE" in
     elf)
         assert_vars ARCH LD MAP ELF O A
         dump_closure_to_file ${ELF}.build
-        . $UC_TOOLS/gdb/env.$ARCH.sh
+        . $UC_TOOLS/stm32f103/env.$ARCH.sh
         # About versioning: I want incremental builds, and incremental
         # uploads, and I want to _not_ upload when nothing changed.
         # This makes it difficult to include a generated version file
@@ -178,14 +178,14 @@ case "$TYPE" in
         # is filled in and padded with zeros.
         assert_vars ARCH ELF BIN
         dump_closure_to_file ${BIN}.build
-        . $UC_TOOLS/gdb/env.$ARCH.sh
+        . $UC_TOOLS/stm32f103/env.$ARCH.sh
         # $OBJDUMP -d $ELF
         $OBJCOPY -O binary $ELF $BIN
         ;;
     dasm)
         assert_vars ARCH ELF DASM
         dump_closure_to_file ${DASM}.build
-        . $UC_TOOLS/gdb/env.$ARCH.sh
+        . $UC_TOOLS/stm32f103/env.$ARCH.sh
         rm -f $DASM
         # Just put the summary in this file as well.
         $OBJDUMP -x $ELF >$DASM
@@ -194,7 +194,7 @@ case "$TYPE" in
     hex)
         assert_vars ARCH ELF HEX
         dump_closure_to_file ${HEX}.build
-        . $UC_TOOLS/gdb/env.$ARCH.sh
+        . $UC_TOOLS/stm32f103/env.$ARCH.sh
         $OBJCOPY -O ihex $ELF $HEX
         ;;
     fw)
@@ -204,10 +204,10 @@ case "$TYPE" in
         # binaries are necessary, derive them from ELF files.
         assert_vars ARCH ELF FW BIN2FW
         dump_closure_to_file ${FW}.build
-        . $UC_TOOLS/gdb/env.$ARCH.sh
+        . $UC_TOOLS/stm32f103/env.$ARCH.sh
         # ls -l $BIN2FW
-        # ls -l $UC_TOOLS/gdb/elf2fw.sh
-        $UC_TOOLS/gdb/elf2fw.sh $ELF $FW $ELF_SHA1_DIR
+        # ls -l $UC_TOOLS/stm32f103/elf2fw.sh
+        $UC_TOOLS/stm32f103/elf2fw.sh $ELF $FW $ELF_SHA1_DIR
         ;;
     enc)
         # Note that encryption key needs to be configured implicitly
@@ -223,7 +223,7 @@ case "$TYPE" in
         # ELF file after linking.
         assert_vars ARCH BIN DATA ADDR
         dump_closure_to_file ${DATA}.build
-        . $UC_TOOLS/gdb/env.$ARCH.sh
+        . $UC_TOOLS/stm32f103/env.$ARCH.sh
         assert_vars ELFTYPE
         # $OBJDUMP -d $ELF
         $OBJCOPY -I binary -O $ELFTYPE --change-section-address .data=$ADDR $BIN $DATA
