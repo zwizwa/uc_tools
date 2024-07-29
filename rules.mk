@@ -37,7 +37,7 @@
 # The version.sh script is run at .f103.elf link time to produce a
 # version string on stdout, which is then converted to a .c file,
 # compiled to .o and linked into the executable.  See VERSION_LINK_GEN
-# below, which passed the script name to uc_tools/gdb/build.sh
+# below, which passed the script name to uc_tools/stm32f103/build.sh
 
 
 
@@ -154,7 +154,7 @@ gdb/lib.f103.a: $(LIB_F103_A_OBJECTS) rules.mk
 	%.f103.o \
 	gdb/lib.f103.a \
 	gdb/x8.f103.ld \
-	$(UC_TOOLS)/gdb/registers_stm32f103.f103.o \
+	$(UC_TOOLS)/stm32f103/registers_stm32f103.f103.o \
 
 	@echo $@ ; if [ -f env.sh ] ; then . ./env.sh ; fi ; \
 	export A=gdb/lib.f103.a ; \
@@ -174,7 +174,7 @@ gdb/lib.f103.a: $(LIB_F103_A_OBJECTS) rules.mk
 	%.f103.o \
 	gdb/lib.f103.a \
 	gdb/core.f103.ld \
-	$(UC_TOOLS)/gdb/registers_stm32f103.f103.o \
+	$(UC_TOOLS)/stm32f103/registers_stm32f103.f103.o \
 
 	@echo $@ ; if [ -f env.sh ] ; then . ./env.sh ; fi ; \
 	export A=gdb/lib.f103.a ; \

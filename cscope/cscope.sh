@@ -12,7 +12,7 @@ rm -f cscope.in.out cscope.out cscope.po.out cscope.files
 LIBOPENCM3=$(readlink -f .)/../../libopencm3
 
 cat <<EOF >cscope.files
-$(ls ../gdb/*.[ch])
+$(ls ../stm32f103/*.[ch])
 $(find $LIBOPENCM3 -name '*.c')
 $(find $LIBOPENCM3 -name '*.h')
 EOF
