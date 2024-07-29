@@ -8,13 +8,13 @@
 
 #define LOG(...) fprintf(stderr, __VA_ARGS__)
 
-#include "gdb/gdbstub.h"
+#include "stm32f103/gdbstub.h"
 const char gdbstub_memory_map[] = GDBSTUB_MEMORY_MAP_STM32F103CB;
 struct gdbstub_config _config;
 
 // FIXME: These are not in the lib.  Why?
-#include "gdb/rsp_packet.c"
-#include "gdb/gdbstub.c"
+#include "stm32f103/rsp_packet.c"
+#include "stm32f103/gdbstub.c"
 
 #include "assert_write.h"
 #include "tcp_tools.h"

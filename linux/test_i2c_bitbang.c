@@ -46,11 +46,11 @@ static inline uint32_t i2c_port_timeout_expired(struct i2c_port *s, uint32_t tim
 
 /* Tracker / slave. */
 #define I2C_TRACK_LOG(s, ...) LOG(__VA_ARGS__)
-#include "gdb/mod_i2c_track.c"
+#include "stm32f103/mod_i2c_track.c"
 
 /* Master impl + info packet write. */
-#include "gdb/mod_i2c_bitbang.c"
-#include "gdb/mod_i2c_info.c"
+#include "stm32f103/mod_i2c_bitbang.c"
+#include "stm32f103/mod_i2c_info.c"
 
 /* I2C bus with 2 ports. */
 #include "mod_test_i2c_ms.c"
@@ -99,7 +99,7 @@ void test_v1(void) {
 }
 
 #define I2C_EEPROM_LOG(s, ...) LOG(__VA_ARGS__)
-#include "gdb/mod_i2c_eeprom.c"
+#include "stm32f103/mod_i2c_eeprom.c"
 
 struct i2c_eeprom i2c_eeprom = {};
 

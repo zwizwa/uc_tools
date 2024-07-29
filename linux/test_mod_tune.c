@@ -1,4 +1,4 @@
-#include "gdb/mod_tune.c"
+#include "stm32f103/mod_tune.c"
 
 /* Test mod_tune by providing a CSP task that performs the
    measurement.  It is structured as an RPC pattern to be able to

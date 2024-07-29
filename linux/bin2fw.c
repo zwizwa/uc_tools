@@ -11,7 +11,7 @@
 #include "sha1.h"
 #include "crc.h"
 #include "macros.h"
-#include "gdb/gdbstub_api.h"
+#include "stm32f103/gdbstub_api.h"
 #include <stdio.h>
 
 int bin2fw(
