@@ -311,6 +311,17 @@ int tether_next(struct tether *s, int nb) {
     return 0;
 }
 
+struct tether_meminfo {
+    uint32_t ram_addr;
+    uint32_t ram_len;
+    uint32_t flash_addr;
+    uint32_t flash_len;
+};
+
+void tether_read_meminfo(struct tether *s, struct tether_meminfo *meminfo) {
+    tether_read_mem(s, (void*)meminfo, 0, sizeof(*meminfo), LDF, NFL);
+}
+
 /* Interpret one command.
    Return value: 0=success, other=error */
 int tether_interpret(struct tether *s) {
@@ -328,6 +339,28 @@ int tether_interpret(struct tether *s) {
         LOG("%s%08x load %s\n", tether_3if_tag, address, binfile);
         tether_load_flash(s, binfile, address);
         return tether_next(s, 3);
+    }
+
+    /* Same, but use target's idea of where it should go based on meminfo. */
+    if (!strcmp(cmd,"load_meminfo_flash")) { /* binfile */
+        ASSERT(s->nb_words >= 2);
+        struct tether_meminfo meminfo;
+        tether_read_meminfo(s, &meminfo);
+        uint32_t address = meminfo.flash_addr;
+        const char *binfile = s->word[1];
+        LOG("%s%08x load_meminfo_flash %s\n", tether_3if_tag, address, binfile);
+        tether_load_flash(s, binfile, address);
+        return tether_next(s, 2);
+    }
+    if (!strcmp(cmd,"load_meminfo_ram")) { /* binfile */
+        ASSERT(s->nb_words >= 2);
+        struct tether_meminfo meminfo;
+        tether_read_meminfo(s, &meminfo);
+        uint32_t address = meminfo.ram_addr;
+        const char *binfile = s->word[1];
+        LOG("%s%08x load_meminfo_ram %s\n", tether_3if_tag, address, binfile);
+        tether_load_flash(s, binfile, address);
+        return tether_next(s, 2);
     }
 
     if (!strcmp(cmd,"load_ram")) { /* address binfile */
@@ -353,6 +386,13 @@ int tether_interpret(struct tether *s) {
         uint32_t address = strtol(s->word[1], NULL, 0);
         tether_exec(s, address);
         return tether_next(s, 2);
+    }
+    if (!strcmp(cmd,"run_meminfo_flash")) { /* address */
+        ASSERT(s->nb_words >= 1);
+        struct tether_meminfo meminfo;
+        tether_read_meminfo(s, &meminfo);
+        tether_exec(s, meminfo.flash_addr);
+        return tether_next(s, 1);
     }
 
     /* Zero out a block. E.g. to effectively disable existing
@@ -458,15 +498,19 @@ int tether_interpret(struct tether *s) {
     /* Get meminfo for dynamic loading of plugin code in the unused
        memory.  The linker then can run on the host.  By convention
        this is at virtual address 0, accessed via flash read. */
-    if (!strcmp(cmd,"meminfo")) {
-        // FIXME: Specify file to write
-        uint32_t meminfo[4];
-        tether_read_mem(s, (void*)meminfo, 0, sizeof(meminfo), LDF, NFL);
-        printf("RAM_ADDR=0x%08x\n",   meminfo[0]);
-        printf("RAM_LEN=0x%x\n",      meminfo[1]);
-        printf("FLASH_ADDR=0x%08x\n", meminfo[2]);
-        printf("FLASH_LEN=0x%x\n",    meminfo[3]);
-        return tether_next(s, 1);
+    if (!strcmp(cmd,"write_meminfo")) {
+        ASSERT(s->nb_words >= 2);
+        const char *filename = s->word[1];
+        FILE *f;
+        ASSERT(f = fopen(filename, "w+"));
+        struct tether_meminfo meminfo;
+        tether_read_meminfo(s, &meminfo);
+        fprintf(f, "RAM_ADDR=0x%08x\n",   meminfo.ram_addr);
+        fprintf(f, "RAM_LEN=0x%x\n",      meminfo.ram_len);
+        fprintf(f, "FLASH_ADDR=0x%08x\n", meminfo.flash_addr);
+        fprintf(f, "FLASH_LEN=0x%x\n",    meminfo.flash_len);
+        fclose(f);
+        return tether_next(s, 2);
     }
 
     if (!strcmp(cmd, "system")) {
