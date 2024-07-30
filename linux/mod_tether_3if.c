@@ -315,51 +315,42 @@ int tether_next(struct tether *s, int nb) {
    Return value: 0=success, other=error */
 int tether_interpret(struct tether *s) {
 
-    // FIXME: I do not trust myself refactoring these argv/argc shifts
-    // without introducing errors, so start out by keeping the API the
-    // same.  This way each of the command interpretation cases can be
-    // tested individually.
-    // 0: program name
-    // 1: device
-    // 2: first command
-    // 3...: command args
-    char **argv = s->word-2;
-    int argc = s->nb_words+2;
+    ASSERT(s->nb_words >= 1);
     const char *cmd = s->word[0];
 
     /* Download current firmware from device and compare it with the
        one on disk.  Only update if different.  For example see
        tools/tether_bl_*.sh */
     if (!strcmp(cmd,"load")) { /* address binfile */
-        ASSERT(argc >= 5);
-        uint32_t address = strtol(argv[3], NULL, 0);
-        const char *binfile = argv[4];
+        ASSERT(s->nb_words >= 3);
+        uint32_t address = strtol(s->word[1], NULL, 0);
+        const char *binfile = s->word[2];
         LOG("%s%08x load %s\n", tether_3if_tag, address, binfile);
         tether_load_flash(s, binfile, address);
         return tether_next(s, 3);
     }
 
     if (!strcmp(cmd,"load_ram")) { /* address binfile */
-        ASSERT(argc >= 5);
-        uint32_t address = strtol(argv[3], NULL, 0);
-        const char *binfile = argv[4];
+        ASSERT(s->nb_words >= 3);
+        uint32_t address = strtol(s->word[1], NULL, 0);
+        const char *binfile = s->word[2];
         LOG("%s%08x load %s\n", tether_3if_tag, address, binfile);
         tether_load_ram(s, binfile, address);
         return tether_next(s, 3);
     }
 
     if (!strcmp(cmd,"save_ram")) { /* address length binfile */
-        ASSERT(argc >= 6);
-        uint32_t address = strtol(argv[3], NULL, 0);
-        uint32_t length  = strtol(argv[4], NULL, 0);
-        const char *binfile = argv[5];
+        ASSERT(s->nb_words >= 4);
+        uint32_t address = strtol(s->word[1], NULL, 0);
+        uint32_t length  = strtol(s->word[2], NULL, 0);
+        const char *binfile = s->word[3];
         tether_dump_ram(s, binfile, address, length);
         return tether_next(s, 4);
     }
 
     if (!strcmp(cmd,"run_ram")) { /* address */
-        ASSERT(argc >= 4);
-        uint32_t address = strtol(argv[3], NULL, 0);
+        ASSERT(s->nb_words >= 2);
+        uint32_t address = strtol(s->word[1], NULL, 0);
         tether_exec(s, address);
         return tether_next(s, 2);
     }
@@ -368,8 +359,8 @@ int tether_interpret(struct tether *s) {
        trampoline firmware image, zero out the config block.  Only
        write if not already zero. */
     if (!strcmp(cmd,"zero")) { /* address */
-        ASSERT(argc >= 4);
-        uint32_t address = strtol(argv[3], NULL, 0);
+        ASSERT(s->nb_words >= 2);
+        uint32_t address = strtol(s->word[1], NULL, 0);
         uint8_t block[1024] = {};
         if (tether_verify_flash(s, block, address, sizeof(block))) {
             LOG("%s%08x was zero\n", tether_3if_tag, address);
@@ -396,26 +387,27 @@ int tether_interpret(struct tether *s) {
         return tether_next(s, 1);
     }
 
-    /* Dump stm32f103 128k flash and 20k ram.
-       FIXME: Rename these, or move them into special-purpose code. */
+#if 0
+    /* Dump stm32f103 128k flash and 20k ram. */
     if (!strcmp(cmd,"dump")) { /* flash_binfile ram_binfile */
-        ASSERT(argc >= 5);
-        tether_dump_flash(s, argv[3], 0x08000000, 128*1024);
-        tether_dump_ram  (s, argv[4], 0x20000000,  20*1024);
+        ASSERT(s->nb_words >= 3);
+        tether_dump_flash(s, s->word[1], 0x08000000, 128*1024);
+        tether_dump_ram  (s, s->word[2], 0x20000000,  20*1024);
         return tether_next(s, 3);
     }
+#endif
 
     /* Dump stm32f103 128k flash */
-    if (!strcmp(cmd,"dump_flash")) { /* flash_binfile */
-        ASSERT(argc >= 4);
-        tether_dump_flash(s, argv[3], 0x08000000, 128*1024);
+    if (!strcmp(cmd,"dump_flash_128")) { /* flash_binfile */
+        ASSERT(s->nb_words >= 2);
+        tether_dump_flash(s, s->word[1], 0x08000000, 128*1024);
         return tether_next(s, 2);
     }
 
     /* Dump stm32f103 20k ram */
-    if (!strcmp(cmd,"dump_ram")) { /* ram_binfile */
-        ASSERT(argc >= 4);
-        tether_dump_ram(s, argv[3], 0x20000000,  20*1024);
+    if (!strcmp(cmd,"dump_ram_20")) { /* ram_binfile */
+        ASSERT(s->nb_words >= 2);
+        tether_dump_ram(s, s->word[1], 0x20000000,  20*1024);
         return tether_next(s, 2);
     }
 
@@ -434,13 +426,13 @@ int tether_interpret(struct tether *s) {
     }
 
     /* Push byte */
-    if (!strcmp(cmd,"push")) { /* byte */
-        ASSERT(argc >= 3);
-        int nb = argc - 3;
+    if (!strcmp(cmd,"push")) { /* any number of bytes */
+        // Note that in multi-command mode this consumes everything.
+        int nb = s->nb_words - 1;
         for (int i=0; i<nb; i++) {
-            tether_cmd_u8(s, NPUSH, strtol(argv[3+i], NULL, 0));
+            tether_cmd_u8(s, NPUSH, strtol(s->word[1+i], NULL, 0));
         }
-        return tether_next(s, 2);
+        return tether_next(s, 1 + nb);
     }
 
     /* See mod_monitor_3if.c for more information about async
@@ -477,11 +469,14 @@ int tether_interpret(struct tether *s) {
         return tether_next(s, 1);
     }
 
-#if 0
-    if (!strcmp(s->argv[0], "shell")) {
-        // Execute shell with command string in argv[1].
+    if (!strcmp(cmd, "system")) {
+        ASSERT(s->nb_words >= 2);
+        int rv = system(s->word[1]);
+        if (rv) {
+            ERROR("system() returned %d\n", rv);
+        }
+        return tether_next(s, 2);
     }
-#endif
 
     return -1;
 
