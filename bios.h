@@ -1,5 +1,5 @@
-#ifndef IOT_BIOS
-#define IOT_BIOS
+#ifndef BIOS
+#define BIOS
 
 /* Original idea: a fleet of esp32 chips has firmware code split into
    two parts: a BIOS in Flash developed using ESP IDF, and application
@@ -9,6 +9,8 @@
    also provides a quick mechanism to update application code.  The
    idea is that IOT code always talks to the server, so the server
    might just as well push code on each startup. */
+
+#include <stdint.h>
 
 // esp-idf specifics, hide these elsewhere
 typedef esp_partition_t  iot_partition_t;
@@ -23,11 +25,12 @@ struct iot_ota {
     iot_err_t (*end)(iot_ota_handle_t handle);
 };
 
-struct iot_bios {
+struct bios {
     void *(*malloc)(size_t size);
     int (*printf)(const char*, ...);
     void (*reboot)(void);
     const struct iot_ota *iot_ota;
+    uint32_t (*cycle_counter)(void);
 };
 
 #endif

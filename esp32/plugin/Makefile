@@ -37,10 +37,6 @@ link_clean:
 	$(OBJCOPY) -O binary --only-section=.dram $< $@
 	hexdump -C $@
 
-meminfo.sh: cmd.sh
-	./cmd.sh meminfo >$@.tmp
-	mv $@.tmp $@
-
 %.ld: %.ld.sh meminfo.sh
 	sh $< >$@.tmp
 	mv $@.tmp $@

@@ -12,7 +12,7 @@
 
 #include "esp_ota_ops.h"
 
-#include "../../iot_bios.h"
+#include "../../bios.h"
 
 
 
@@ -38,6 +38,13 @@ uint8_t monitor_i3f_read_fussy_byte(struct monitor_3if *s);
 #include "../../mod_monitor_3if.c"
 #pragma GCC diagnostic pop
 
+#include "xtensa/core-macros.h"
+uint32_t esp_cycle_counter(void) {
+    /* Note that this has one per CPU, so make sure that different
+       calls are happening on the same CPU. */
+    return XTHAL_GET_CCOUNT();
+}
+
 const struct iot_ota iot_ota = {
     .get_sha256 = esp_app_get_elf_sha256,
     .begin = esp_ota_begin,
@@ -45,11 +52,12 @@ const struct iot_ota iot_ota = {
     .end = esp_ota_end,
 };
 
-const struct iot_bios iot_bios = {
+const struct bios bios = {
     .malloc = malloc,
     .printf = printf,
     .reboot = esp_restart,
     .iot_ota = &iot_ota,
+    .cycle_counter = esp_cycle_counter,
 };
 
 struct monitor_esp {
@@ -59,7 +67,7 @@ struct monitor_esp {
         uint32_t reg[16];
     } state;
     /* Plugin code is provided with BIOS code pointers. */
-    const struct iot_bios *iot_bios;  /* 16 */
+    const struct bios *bios;  /* 16 */
     /* To implement 3if extensions that will interact with the socket. */
     int sock;                         /* 17 */
     /* Misc state not mapped into 3if register space can be mapped here. */
@@ -142,7 +150,7 @@ void monitor_loop(int sock) {
     struct monitor_esp *me = &monitor_esp;
     monitor_3if_init(&me->state.m, me->ds_buf);
     me->sock = sock;
-    me->iot_bios = &iot_bios;
+    me->bios = &bios;
 
     if (0 == setjmp(me->abort)) {
         monitor_3if_loop(&me->state.m);

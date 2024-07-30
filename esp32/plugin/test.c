@@ -1,16 +1,22 @@
+
+// FIXME: These definitions need to be made abstract.
 typedef int size_t;
-#include "../../iot_bios.h"
+typedef int esp_ota_handle_t;
+typedef int esp_err_t;
+typedef int esp_partition_t;
+
+#include "../../bios.h"
 // The code is executed with 3if JSR which is passed the monitor_esp
 // struct, which is what we implement here as struct overlay that
 // hides things we don't need.
 struct state {
     void *_3if_priv[16];
-    const struct iot_bios *iot_bios;
+    const struct bios *bios;
 };
 
 void run(struct state *s) {
-    s->iot_bios->printf("test.c run at %p\n", &run);
-    // s->iot_bios->log_u32(0x55555555);
+    const struct bios *b = s->bios;
+    b->printf("%08x test.c run at %p\n", b->cycle_counter(), &run);
 }
 
 // I ran into "l32r: literal placed after use" when the function at

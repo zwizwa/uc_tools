@@ -9,11 +9,6 @@
 #ifndef WIFI_PASS
 #error need WIFI_PASS
 #endif
-#ifndef HOST_IP
-#error need HOST_IP
-#endif
-
-
 
 
 
