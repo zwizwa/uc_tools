@@ -9,7 +9,9 @@
 #include "assert_write.h"
 #include "assert_read.h"
 #include "tcp_tools.h"
+#include "uct_byteswap.h"
 
+// FIXME: Put this inside the struct.
 const char *tether_3if_tag = "";
 
 struct tether;
@@ -19,7 +21,8 @@ struct tether {
     ssize_t (*read)(struct tether *s, void *vbuf, size_t nb);
     void (*write)(struct tether *s, const uint8_t *buf, size_t len);
 
-
+    int nb_words;
+    char **word;
 
     /* Max transfer is size byte + max size indicated by that size
        byte (255 bytes) */
@@ -149,6 +152,8 @@ void tether_intr(struct tether *s, uint32_t addr) {
 void tether_jsr(struct tether *s) {
     tether_cmd(s, JSR);
 }
+
+void tether_handle_async(struct tether *s);
 
 void tether_read_mem(struct tether *s, uint8_t *buf,
                       uint32_t address, uint32_t nb_bytes,
@@ -298,6 +303,188 @@ void tether_load_flash(struct tether *s, const char *filename, uint32_t address)
 void tether_load_ram(struct tether *s, const char *filename, uint32_t address) {
     return tether_load(s, filename, address,
                        LDA, NAS, NAL);
+}
+
+int tether_next(struct tether *s, int nb) {
+    s->nb_words -= nb;
+    s->word += nb;
+    return 0;
+}
+
+/* Interpret one command.
+   Return value: 0=success, other=error */
+int tether_interpret(struct tether *s) {
+
+    // FIXME: I do not trust myself refactoring these argv/argc shifts
+    // without introducing errors, so start out by keeping the API the
+    // same.  This way each of the command interpretation cases can be
+    // tested individually.
+    // 0: program name
+    // 1: device
+    // 2: first command
+    // 3...: command args
+    char **argv = s->word-2;
+    int argc = s->nb_words+2;
+    const char *cmd = s->word[0];
+
+    /* Download current firmware from device and compare it with the
+       one on disk.  Only update if different.  For example see
+       tools/tether_bl_*.sh */
+    if (!strcmp(cmd,"load")) { /* address binfile */
+        ASSERT(argc >= 5);
+        uint32_t address = strtol(argv[3], NULL, 0);
+        const char *binfile = argv[4];
+        LOG("%s%08x load %s\n", tether_3if_tag, address, binfile);
+        tether_load_flash(s, binfile, address);
+        return tether_next(s, 3);
+    }
+
+    if (!strcmp(cmd,"load_ram")) { /* address binfile */
+        ASSERT(argc >= 5);
+        uint32_t address = strtol(argv[3], NULL, 0);
+        const char *binfile = argv[4];
+        LOG("%s%08x load %s\n", tether_3if_tag, address, binfile);
+        tether_load_ram(s, binfile, address);
+        return tether_next(s, 3);
+    }
+
+    if (!strcmp(cmd,"save_ram")) { /* address length binfile */
+        ASSERT(argc >= 6);
+        uint32_t address = strtol(argv[3], NULL, 0);
+        uint32_t length  = strtol(argv[4], NULL, 0);
+        const char *binfile = argv[5];
+        tether_dump_ram(s, binfile, address, length);
+        return tether_next(s, 4);
+    }
+
+    if (!strcmp(cmd,"run_ram")) { /* address */
+        ASSERT(argc >= 4);
+        uint32_t address = strtol(argv[3], NULL, 0);
+        tether_exec(s, address);
+        return tether_next(s, 2);
+    }
+
+    /* Zero out a block. E.g. to effectively disable existing
+       trampoline firmware image, zero out the config block.  Only
+       write if not already zero. */
+    if (!strcmp(cmd,"zero")) { /* address */
+        ASSERT(argc >= 4);
+        uint32_t address = strtol(argv[3], NULL, 0);
+        uint8_t block[1024] = {};
+        if (tether_verify_flash(s, block, address, sizeof(block))) {
+            LOG("%s%08x was zero\n", tether_3if_tag, address);
+        }
+        else {
+            LOG("%s%08x zero\n", tether_3if_tag, address);
+            tether_write_flash(s, block, address, sizeof(block));
+            if (!tether_verify_flash(s, block, address, sizeof(block))) {
+                LOG("%s%08x zero FAIL\n", tether_3if_tag, address);
+            }
+        }
+        return tether_next(s, 2);
+    }
+    /* Send a reboot command using {packet,4}.  If app is not started,
+       monitor will see this as a protocol error and start the app.
+       App will interpret this and will reboot. */
+    if (!strcmp(cmd,"reboot")) {
+        uint8_t buf[] = {
+            0x00, 0x00, 0x00, 0x02,
+            0xFF, 0xF4,
+        };
+        LOG("%sreboot\n", tether_3if_tag);
+        assert_write(s->fd_out, buf, sizeof(buf));
+        return tether_next(s, 1);
+    }
+
+    /* Dump stm32f103 128k flash and 20k ram.
+       FIXME: Rename these, or move them into special-purpose code. */
+    if (!strcmp(cmd,"dump")) { /* flash_binfile ram_binfile */
+        ASSERT(argc >= 5);
+        tether_dump_flash(s, argv[3], 0x08000000, 128*1024);
+        tether_dump_ram  (s, argv[4], 0x20000000,  20*1024);
+        return tether_next(s, 3);
+    }
+
+    /* Dump stm32f103 128k flash */
+    if (!strcmp(cmd,"dump_flash")) { /* flash_binfile */
+        ASSERT(argc >= 4);
+        tether_dump_flash(s, argv[3], 0x08000000, 128*1024);
+        return tether_next(s, 2);
+    }
+
+    /* Dump stm32f103 20k ram */
+    if (!strcmp(cmd,"dump_ram")) { /* ram_binfile */
+        ASSERT(argc >= 4);
+        tether_dump_ram(s, argv[3], 0x20000000,  20*1024);
+        return tether_next(s, 2);
+    }
+
+    /* Send an application packet to start the app. */
+    if (!strcmp(cmd,"start")) {
+        uint8_t msg[] = {
+            U32_BE(4),
+            /* See uc_tools/packet_tags.h This is a generic event tag
+               that does not expect a reply.  Will be ignored by
+               rtcore_serv or passed to handle_other() if defined. */
+            U16_BE(0xFFF3),
+            U16_BE(0),
+        };
+        assert_write(s->fd_out, msg, sizeof(msg));
+        return tether_next(s, 1);
+    }
+
+    /* Push byte */
+    if (!strcmp(cmd,"push")) { /* byte */
+        ASSERT(argc >= 3);
+        int nb = argc - 3;
+        for (int i=0; i<nb; i++) {
+            tether_cmd_u8(s, NPUSH, strtol(argv[3+i], NULL, 0));
+        }
+        return tether_next(s, 2);
+    }
+
+    /* See mod_monitor_3if.c for more information about async
+       operation.  What we need to know here is: 1) alwys run "flush"
+       before interacting witht he bootloader.  This will disable
+       async poll and will remove all async messages from the
+       queue. */
+
+    /* Wait for event. */
+    if (!strcmp(cmd,"wait")) {
+        tether_read(s);
+        tether_handle_async(s);
+        return tether_next(s, 1);
+    }
+
+    /* Flush async messages. */
+    if (!strcmp(cmd,"flush")) {
+        // FIXME: Put a pointer in the struct.
+        tether_flush(s, tether_handle_async);
+        return tether_next(s, 1);
+    }
+
+    /* Get meminfo for dynamic loading of plugin code in the unused
+       memory.  The linker then can run on the host.  By convention
+       this is at virtual address 0, accessed via flash read. */
+    if (!strcmp(cmd,"meminfo")) {
+        // FIXME: Specify file to write
+        uint32_t meminfo[4];
+        tether_read_mem(s, (void*)meminfo, 0, sizeof(meminfo), LDF, NFL);
+        printf("RAM_ADDR=0x%08x\n",   meminfo[0]);
+        printf("RAM_LEN=0x%x\n",      meminfo[1]);
+        printf("FLASH_ADDR=0x%08x\n", meminfo[2]);
+        printf("FLASH_LEN=0x%x\n",    meminfo[3]);
+        return tether_next(s, 1);
+    }
+
+#if 0
+    if (!strcmp(s->argv[0], "shell")) {
+        // Execute shell with command string in argv[1].
+    }
+#endif
+
+    return -1;
+
 }
 
 
