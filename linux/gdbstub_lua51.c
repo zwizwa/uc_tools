@@ -31,8 +31,8 @@
 #include "gdbstub.h"
 #include "lua_tools.h"
 
-#include "gdb/rsp_packet.c"
-#include "gdb/gdbstub.c"
+#include "stm32f103/rsp_packet.c"
+#include "stm32f103/gdbstub.c"
 const char gdbstub_memory_map[] = GDBSTUB_MEMORY_MAP_STM32F103CB;
 struct gdbstub_config _config;
 

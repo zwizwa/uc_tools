@@ -1,4 +1,4 @@
-#include "gdb/pwm_bitstream.h"
+#include "stm32f103/pwm_bitstream.h"
 #include "macros.h"
 #include <stdint.h>
 

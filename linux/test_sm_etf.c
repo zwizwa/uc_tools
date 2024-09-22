@@ -1,8 +1,8 @@
 /* Test harness for sm_etf that doesn't need to run on a uC */
 
 #include "macros.h"
-#include "gdb/sm_etf.h"
-#include "gdb/sm_etf.c"
+#include "stm32f103/sm_etf.h"
+#include "stm32f103/sm_etf.c"
 #include <unistd.h>
 
 

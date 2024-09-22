@@ -1,6 +1,6 @@
 #include "macros.h"
 #include "crc.h"
-#include "gdb/fwstream.h"
+#include "stm32f103/fwstream.h"
 
 uint8_t chunk[128];
 const uint8_t *fw_write(struct fwstream *fw, uintptr_t chunk_nb, const uint8_t *data) {

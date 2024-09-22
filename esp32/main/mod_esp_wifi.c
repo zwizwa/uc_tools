@@ -2,7 +2,7 @@
 #define MOD_ESP_WIFI
 
 /* Hard-code it for now. */
-#include "wifi.secret"
+#include "../../wifi.secret"
 #ifndef WIFI_SSID
 #error need WIFI_SSID
 #endif
