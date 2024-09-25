@@ -20,7 +20,7 @@
 #include "tcp_tools.h"
 
 /* MISC */
-time_t now(void) { return time(NULL); }
+time_t fd_meta_now(void) { return time(NULL); }
 
 /* Growable array of file descriptor annotations. */
 struct fd_meta;
@@ -62,7 +62,7 @@ void fd_meta_alloc(struct fd_pool *s,
         ASSERT(s->fd_meta = realloc(s->fd_meta, sizeof(struct fd_meta) * s->room));
     }
     struct fd_meta *m = fd_meta(s, fd);
-    m->t_last = now();
+    m->t_last = fd_meta_now();
     m->fd = fd;
     m->handle = handle;
     m->disconnect = disconnect;
@@ -75,7 +75,7 @@ void fd_meta_handle(struct fd_meta *s,
                     void (*handle_message)(struct fd_meta *),
                     void (*disconnect)(struct fd_meta *)) {
 
-    s->t_last = now();
+    s->t_last = fd_meta_now();
 
     /* This assumes the client will send complete messages.  Router
        daemon will freeze until full message is received. FIXME: This
@@ -218,7 +218,7 @@ void pfd_clear(struct poll_state *s) {
 void pfd_add(struct poll_state *s,
              int fd) {
     struct fd_pool *p = s->p;
-    time_t t = now();
+    time_t t = fd_meta_now();
 
     /* All TCP connections use a keepalive mechanism to guard against
        half open connections, where the other end has terminated but

@@ -1,7 +1,7 @@
 #ifndef MOD_AUTH
 #define MOD_AUTH
 
-// Better-than-nothing SHA256 MAC with time stamp checking.
+// Better-than-nothing SHA256 MAC with time stamp checking and pre-shared key.
 
 #include "macros.h"
 #include "uct_byteswap.h"
