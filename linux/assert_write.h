@@ -42,7 +42,6 @@ static inline void assert_write_nb(int fd, const uint8_t *buf, size_t len, int s
     }
 }
 
-
 #define ASSERT_WRITE(fd, ...) {              \
     const uint8_t buf[] = { __VA_ARGS__ };   \
     assert_write(fd, buf, sizeof(buf));      \

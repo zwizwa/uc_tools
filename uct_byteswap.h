@@ -58,6 +58,7 @@ static inline void read_be_u32_array(
 /* Array splices with embedded commas */
 #define U16_BE(t) ((t) >> 8), ((t) & 0xFF)
 #define U32_BE(t) U16_BE((t) >> 16), U16_BE((t) & 0xFFFF)
+#define U64_BE(t) U32_BE((t) >> 32), U32_BE((t) & 0xFFFFFFFF)
 
 #define U16_LE(t) ((t) & 0xFF), ((t) >> 8)
 #define U32_LE(t) U16_LE((t) & 0xFFFF), U16_LE((t) >> 16)
