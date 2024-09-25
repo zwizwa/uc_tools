@@ -57,6 +57,18 @@ void db_sql0(const char *sql) {
 }
 
 
+void db_begin_transaction(void) {
+    static sqlite3_stmt *s; stmt(&s, "BEGIN TRANSACTION");
+    int rv = sqlite3_step(s);
+    sqlite_assert_eq(rv, SQLITE_DONE);
+}
+void db_end_transaction(void) {
+    static sqlite3_stmt *s; stmt(&s, "END TRANSACTION");
+    int rv = sqlite3_step(s);
+    sqlite_assert_eq(rv, SQLITE_DONE);
+}
+
+
 
 
 

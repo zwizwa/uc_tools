@@ -1,5 +1,5 @@
-#ifndef MOD_FD_META
-#define MOD_FD_META
+#ifndef MOD_FD_POOL
+#define MOD_FD_POOL
 
 #ifndef SOCKET_TIMEOUT_SEC
 #define SOCKET_TIMEOUT_SEC 60
@@ -151,6 +151,27 @@ int fd_meta_unix_dgram_socket(struct fd_pool *p,
     fd_meta_alloc(p, fd, handle, NULL);
     return fd;
 }
+
+int fd_meta_timer_ms(struct fd_pool *p,
+                     void (*handle)(struct fd_meta *),
+                     int ms) {
+    int clockid = CLOCK_MONOTONIC;
+    int create_flags = 0;
+    int fd;
+    ASSERT_ERRNO(fd = timerfd_create(clockid, create_flags));
+    int settime_flags = 0;
+    time_t s  =  ms / 1000;
+    long   ns = (ms % 1000) * 1000000;
+    //LOG("s=%d ns=%d\n", s, ns);
+    struct itimerspec itimerspec = {
+        .it_interval = { .tv_sec = s, .tv_nsec = ns },
+        .it_value    = { .tv_sec = s, .tv_nsec = ns },
+    };
+    timerfd_settime(fd, settime_flags, &itimerspec, NULL);
+    fd_meta_alloc(p, fd, handle, NULL);
+    return fd;
+}
+
 
 /* FIXME: Since we are single threaded, we will need to buffer
    outgoing messages as well!  For now this will block. */
