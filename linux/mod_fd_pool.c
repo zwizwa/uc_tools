@@ -19,6 +19,8 @@
 #include "pbuf.h"
 #include "tcp_tools.h"
 
+
+
 /* MISC */
 time_t fd_meta_now(void) { return time(NULL); }
 
@@ -125,6 +127,7 @@ int fd_meta_try_connect(
     ASSERT_ERRNO(setsockopt(fd, IPPROTO_TCP, TCP_NODELAY,
                             &intarg, sizeof(intarg)));
     socklen_t addrlen = sizeof(address_in);
+    LOG("%s: %s: connecting\n", tag, s_ip);
     if (-1 == connect(fd, (struct sockaddr *)&address_in, addrlen)) {
         LOG("%s: %s: failed\n", tag, s_ip);
         close(fd);
@@ -137,6 +140,12 @@ int fd_meta_try_connect(
         return fd;
     }
 }
+
+int fd_meta_disconnect(struct fd_pool *s, int fd) {
+    struct fd_meta *m = fd_meta(s, fd);
+    m->disconnect(m);
+}
+
 
 int fd_meta_unix_dgram_socket(struct fd_pool *p,
                               const char *path,

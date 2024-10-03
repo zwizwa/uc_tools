@@ -29,6 +29,14 @@ void db_open(const char *db_file) {
     // https://www.sqlite.org/wal.html
 }
 /* DB STATEMENTS */
+
+struct stmt_list;
+struct stmt_list {
+    sqlite3_stmt *s;
+    struct stmt_list *next;
+};
+struct stmt_list *stmt_list = NULL;
+
 sqlite3_stmt *stmt(sqlite3_stmt **ps, const char *q) {
     struct sqlite3_stmt *tmp_ps = NULL;
     if (ps == NULL) {
@@ -37,12 +45,28 @@ sqlite3_stmt *stmt(sqlite3_stmt **ps, const char *q) {
     if (*ps == NULL) {
         LOG("prepare: %p %s\n", ps, q);
         ASSERT_SQLITE(sqlite3_prepare_v2(db, q, strlen(q), ps, NULL));
+        /* Keep track of list to be able to properly shut down. */
+        struct stmt_list *l = malloc(sizeof(*l));
+        ASSERT(l);
+        l->next = stmt_list;
+        l->s = *ps;
+        stmt_list = l;
     }
     struct sqlite3_stmt *s = *ps;
     ASSERT_SQLITE(sqlite3_reset(s));
     ASSERT_SQLITE(sqlite3_clear_bindings(s));
     return s;
 }
+void stmts_finalize(void) {
+    struct stmt_list *l = stmt_list;
+    while(l) {
+        struct stmt_list *l0 = l;
+        l = l->next;
+        sqlite3_finalize(l0->s);
+        free(l0);
+    }
+}
+
 void db_attach_tmp(const char *db_file) {
     sqlite3_stmt *s = stmt(NULL /* Not stored */, "ATTACH DATABASE ? AS tmp");
     ASSERT_SQLITE(sqlite3_bind_text(s, 1, db_file, strlen(db_file), NULL));
