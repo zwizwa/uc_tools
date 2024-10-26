@@ -66,7 +66,7 @@ static inline const struct gdbstub_control *partition_config_valid(
        Flash range. */
     const struct gdbstub_control *control = p->config->control;
     const uint8_t *ctrl = (void*)control;
-    if (ctrl <= endx) return 0;
+    if (ctrl < endx) return 0;
     if (ctrl > (start + (p->max_size - page_size))) return 0;
 
     /* The next value we need to trust is the size of the control
