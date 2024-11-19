@@ -35,3 +35,11 @@ gdb/*.ld
 *.secret
 meminfo.sh
 *.old
+*.trace
+*.err
+a.out*
+*.log
+*.out
+esp/*/plugin/sram.ld
+*.opam
+gambit
