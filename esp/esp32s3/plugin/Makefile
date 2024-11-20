@@ -8,8 +8,8 @@ OBJCOPY := $(TPF)objcopy
 CFLAGS := \
 
 # CMD := /i/tom/rdm-bridge/tools/tether_bl.dynamic.host.elf 192.168.6.122 
-CMD := /charon/home/tom/rdm-bridge/tools/tether_bl.dynamic.host.elf 192.168.1.35
-
+# CMD := /charon/home/tom/rdm-bridge/tools/tether_bl.dynamic.host.elf 192.168.1.35
+# CMD := //tom/rdm-bridge/tools/tether_bl.dynamic.host.elf 192.168.0.121
 
 .PHONY: all clean link_clean
 

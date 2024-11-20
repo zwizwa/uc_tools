@@ -391,6 +391,15 @@ int tether_interpret(struct tether *s) {
         return tether_next(s, 4);
     }
 
+    if (!strcmp(cmd,"save_flash")) { /* address length binfile */
+        ASSERT(s->nb_words >= 4);
+        uint32_t address = strtol(s->word[1], NULL, 0);
+        uint32_t length  = strtol(s->word[2], NULL, 0);
+        const char *binfile = s->word[3];
+        tether_dump_flash(s, binfile, address, length);
+        return tether_next(s, 4);
+    }
+
     if (!strcmp(cmd,"run_ram")) { /* address */
         ASSERT(s->nb_words >= 2);
         uint32_t address = strtol(s->word[1], NULL, 0);
