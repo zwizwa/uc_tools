@@ -1,19 +1,9 @@
-/* Exploratory ESP32 application.
+/* See more comments in plain esp32 files.
 
-   Documentation:
-   https://github.com/espressif/esp-idf/blob/master/examples/wifi/getting_started/station/main/station_example_main.c
-   https://github.com/espressif/esp-idf/blob/master/examples/get-started/hello_world/main/hello_world_main.c
-   https://github.com/espressif/esp-idf/tree/master/examples/protocols/sockets/tcp_client
-   https://github.com/espressif/esp-idf/tree/master/examples/protocols/sockets/tcp_server
-
-   Questions:
-   - Why is nvs needed?
-   - How is this so large? 760k? Is that typical?
+   What is different here from plain esp32 is the memory layout for
+   the 3if monitor.  See esp32s3/build/esp-idf/esp_system/ld/memory.ld
 */
 
-// ssh mimas "cd /i/exo/uc_tools/esp32/build ; /nix/store/5lbxsj5mnz95rq5hkq7ixxb1cg96k07g-ninja-1.11.1/bin/ninja"
-// ./tether_bl.dynamic.host.elf 192.168.0.122 load 0x40098000 /i/exo/uc_tools/esp32/plugin/test.bin
-// ./tether_bl.dynamic.host.elf 192.168.0.122 run_ram 0x40098000
 
 
 #include <string.h>
@@ -71,8 +61,21 @@ static const char *TAG = "app";
 
 uint8_t dram_buf[32*1024];
 
+/* FIXME: This causes Guru Meditation Error: Core / panic'ed (Cache
+   disabled but cached memory region accessed). */
+
+#if 1
 __attribute__((section(".iram.bss")))
 uint8_t iram_buf[32*1024];
+#define iram_buf_size sizeof(iram_buf)
+#else
+/* From memory.ld: Startup code uses the IRAM from 0x403B9000 to
+   0x403E0000, which is not available for static memory, but can only
+   be used after app starts. */
+#define iram_buf       0x403B9000
+#define iram_buf_endx  0x403E0000
+#define iram_buf_size (iram_buf_endx - iram_buf)
+#endif
 
 
 #include "../../common/mod_esp_3if.c"
@@ -92,7 +95,7 @@ void app_main(void)
 
     // Use a dedicated buffer
     meminfo.flash_addr = (uint32_t)iram_buf;
-    meminfo.flash_len = sizeof(iram_buf);
+    meminfo.flash_len = iram_buf_size;
 
     start_monitor();
 }

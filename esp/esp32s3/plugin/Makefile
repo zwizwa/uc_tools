@@ -27,6 +27,7 @@ link_clean:
 #	$(OBJDUMP) -d $@
 
 %.elf: %.o sram.ld
+	echo "GCC=$$(which $(GCC))"
 	$(GCC) --static -nostartfiles -Tsram.ld -o $@ $<
 #	$(OBJDUMP) -x $@
 	$(OBJDUMP) -d $@
