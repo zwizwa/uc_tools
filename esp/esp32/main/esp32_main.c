@@ -72,7 +72,7 @@ uint8_t dram_buf[32*1024];
 void app_main(void)
 {
 
-    start_wifi();
+    wifi_start();
 
     // Memory info for host side plugin linker.
 

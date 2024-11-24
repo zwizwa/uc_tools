@@ -2,17 +2,14 @@
 
 case $(hostname) in
     zoe)
-        USB=2-1.5.2:1.0
+        ESPPORT=/dev/serial/by-id/usb-1a86_USB_Single_Serial_589B038622-if00
         ;;
     mimas)
-        USB=3-6.1.1:1.0
+	ESPPORT=/dev/serial/by-id/usb-1a86_USB_Single_Serial_589B038284-if00
         ;;
 esac
-
-
 if [ -z "$ESPPORT" ]; then
-    DEV=$(find /sys/devices -name $USB)
-    ESPPORT=/dev/$(ls $DEV/tty)
+    ESPPORT=/dev/ttyACM0
 fi
 echo ESPPORT=$ESPPORT
 export ESPPORT
