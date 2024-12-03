@@ -51,7 +51,7 @@ static void usb_lib_task(void *arg) {
         }
     }
 }
-static void usb_acm_connect_task(void *arg) {
+static void usb_acm_task(void *arg) {
 
     const cdc_acm_host_device_config_t dev_config = {
         .connection_timeout_ms = TX_TIMEOUT_MS,
@@ -105,7 +105,7 @@ void acm_start(void) {
     ESP_ERROR_CHECK(usb_host_install(&host_config));
 
     // Create a task that will handle USB library events
-    BaseType_t task_created = xTaskCreate(usb_lib_task, "usb_acm_connect_task", 4096, xTaskGetCurrentTaskHandle(), USB_HOST_PRIORITY, NULL);
+    BaseType_t task_created = xTaskCreate(usb_lib_task, "usb_acm", 4096, NULL, USB_HOST_PRIORITY, NULL);
     assert(task_created == pdTRUE);
 
     ESP_LOGI(TAG, "Installing CDC-ACM driver");
@@ -115,7 +115,7 @@ void acm_start(void) {
     esp_log_level_set("cdc_acm", ESP_LOG_DEBUG);
 
     // Create a task that will handle USB library events
-    BaseType_t task_created1 = xTaskCreate(usb_acm_connect_task, "usb_lib", 4096, xTaskGetCurrentTaskHandle(), USB_HOST_PRIORITY, NULL);
+    BaseType_t task_created1 = xTaskCreate(usb_acm_task, "usb_lib", 4096, NULL, USB_HOST_PRIORITY, NULL);
     assert(task_created1 == pdTRUE);
 
 
