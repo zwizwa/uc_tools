@@ -54,10 +54,8 @@
 
 
 STM_ELF := \
-	gdb/bl_c8t6_a12b5_boot1.core.f103.elf \
-
-STM_ELF_FIXME := \
-	gdb/pdap.x8.f103.elf \
+	stm32f103/bl_c8t6_a12b5_boot1.core.f103.elf \
+	stm32f103/pdap.x8.f103.elf \
 
 STM_HEX_BIN := \
 	$(BIN2FW)
@@ -76,18 +74,18 @@ ALL_ELF := $(STM_HEX_BIN) $(STM_ELF) $(KLSTR_ELF) $(HOST_ELF)
 UC_TOOLS := .
 
 LIB_F103_A_OBJECTS := \
-	gdb/bootloader.f103.o \
-	gdb/cdcacm_desc.f103.o \
-	gdb/gdbstub.f103.o \
-	gdb/hw_bootloader.f103.o \
-	gdb/memory.f103.o \
-	gdb/pluginlib.f103.o \
-	gdb/rsp_packet.f103.o \
-	gdb/sm_etf.f103.o \
-	gdb/vector.f103.o \
-	gdb/instance.f103.o \
-	gdb/stack.f103.o \
-	gdb/semihosting.f103.o \
+	stm32f103/bootloader.f103.o \
+	stm32f103/cdcacm_desc.f103.o \
+	stm32f103/gdbstub.f103.o \
+	stm32f103/hw_bootloader.f103.o \
+	stm32f103/memory.f103.o \
+	stm32f103/pluginlib.f103.o \
+	stm32f103/rsp_packet.f103.o \
+	stm32f103/sm_etf.f103.o \
+	stm32f103/vector.f103.o \
+	stm32f103/instance.f103.o \
+	stm32f103/stack.f103.o \
+	stm32f103/semihosting.f103.o \
 	memoize.f103.o \
 	\
 	csp.f103.o \
@@ -129,9 +127,9 @@ LUA := $(shell find lua -name '*.lua')
 
 
 # Linker file
-gdb/%.ld: gdb/%.ld.sh
+stm32f103/%.ld: stm32f103/%.ld.sh
 	@echo $@ ; if [ -f env.sh ] ; then . ./env.sh ; fi ; \
-	export BUILD=gdb/build.sh ; \
+	export BUILD=stm32f103/build.sh ; \
 	export LD=$@ ; \
 	export LD_GEN=$< ; \
 	export TYPE=ld ; \
@@ -143,9 +141,9 @@ gdb/%.ld: gdb/%.ld.sh
 %.f103.o: %.c $(GEN)
 	@echo $@ ; if [ -f env.sh ] ; then . ./env.sh ; fi ; \
 	export ARCH=f103 ; \
-	export BUILD=gdb/build.sh ; \
+	export BUILD=stm32f103/build.sh ; \
 	export C=$< ; \
-	export CFLAGS_EXTRA="-Igdb/ -Ilinux/" ; \
+	export CFLAGS_EXTRA="-Istm32f103/ -Ilinux/" ; \
 	export D=$(patsubst %.o,%.d,$@) ; \
 	export FIRMWARE=memory ; \
 	export O=$@ ; \
@@ -154,10 +152,10 @@ gdb/%.ld: gdb/%.ld.sh
 	$$BUILD 2>&1
 
 # Main object library.  All elf files link against this.
-gdb/lib.f103.a: $(LIB_F103_A_OBJECTS) rules.mk
+stm32f103/lib.f103.a: $(LIB_F103_A_OBJECTS) rules.mk
 	@echo $@ ; if [ -f env.sh ] ; then . ./env.sh ; fi ; \
 	export A=$@ ; \
-	export BUILD=gdb/build.sh ; \
+	export BUILD=stm32f103/build.sh ; \
 	export OBJECTS="$(LIB_F103_A_OBJECTS)" ; \
 	export TYPE=a ; \
 	export UC_TOOLS=$(UC_TOOLS) ; \
@@ -169,16 +167,16 @@ gdb/lib.f103.a: $(LIB_F103_A_OBJECTS) rules.mk
 # just memory-mapped device layout for debugging.
 %.x8.f103.elf: \
 	%.f103.o \
-	gdb/lib.f103.a \
-	gdb/x8.f103.ld \
+	stm32f103/lib.f103.a \
+	stm32f103/x8.f103.ld \
 	$(UC_TOOLS)/stm32f103/registers_stm32f103.f103.o \
 
 	@echo $@ ; if [ -f env.sh ] ; then . ./env.sh ; fi ; \
-	export A=gdb/lib.f103.a ; \
+	export A=stm32f103/lib.f103.a ; \
 	export ARCH=f103 ; \
-	export BUILD=gdb/build.sh ; \
+	export BUILD=stm32f103/build.sh ; \
 	export ELF=$@ ; \
-	export LD=gdb/x8.f103.ld ; \
+	export LD=stm32f103/x8.f103.ld ; \
 	export MAP=$(patsubst %.elf,%.map,$@) ; \
 	export O=$< ; \
 	export TYPE=elf ; \
@@ -189,22 +187,42 @@ gdb/lib.f103.a: $(LIB_F103_A_OBJECTS) rules.mk
 # Core binaries.  This is e.g. for bootloader.
 %.core.f103.elf: \
 	%.f103.o \
-	gdb/lib.f103.a \
-	gdb/core.f103.ld \
+	stm32f103/lib.f103.a \
+	stm32f103/core.f103.ld \
 	$(UC_TOOLS)/stm32f103/registers_stm32f103.f103.o \
 
 	@echo $@ ; if [ -f env.sh ] ; then . ./env.sh ; fi ; \
-	export A=gdb/lib.f103.a ; \
+	export A=stm32f103/lib.f103.a ; \
 	export ARCH=f103 ; \
-	export BUILD=gdb/build.sh ; \
+	export BUILD=stm32f103/build.sh ; \
 	export ELF=$@ ; \
-	export LD=gdb/core.f103.ld ; \
+	export LD=stm32f103/core.f103.ld ; \
 	export MAP=$(patsubst %.elf,%.map,$@) ; \
 	export O=$< ; \
 	export TYPE=elf ; \
 	export UC_TOOLS=$(UC_TOOLS) ; \
 	$$BUILD 2>&1
 
+
+# RAM image, e.g. loaded using bl_tether.c
+%.20ram.f103.elf: \
+	%.f103.o \
+	stm32f103/lib.f103.a \
+	stm32f103/20ram.f103.ld \
+	stm32f103/registers_stm32f103.f103.o \
+
+	@echo $@ ; if [ -f env.sh ] ; then . ./env.sh ; fi ; \
+	export A=stm32f103/lib.f103.a ; \
+	export ARCH=f103 ; \
+	export BUILD=stm32f103/build.sh ; \
+	export ELF=$@ ; \
+	export LD=stm32f103/20ram.f103.ld ; \
+	export MAP=$(patsubst %.elf,%.map,$@) ; \
+	export O=$< ; \
+	export TYPE=elf ; \
+	export UC_TOOLS=. ; \
+	export VERSION_LINK_GEN=./version.sh ; \
+	$$BUILD 2>&1
 
 
 # Raw binary from elf
@@ -213,7 +231,7 @@ gdb/lib.f103.a: $(LIB_F103_A_OBJECTS) rules.mk
 
 	@echo $@ ; if [ -f env.sh ] ; then . ./env.sh ; fi ; \
 	export ARCH=f103 ; \
-	export BUILD=gdb/build.sh ; \
+	export BUILD=stm32f103/build.sh ; \
 	export ELF=$< ; \
 	export BIN=$@ ; \
 	export TYPE=bin ; \
@@ -226,7 +244,7 @@ gdb/lib.f103.a: $(LIB_F103_A_OBJECTS) rules.mk
 
 	@echo $@ ; if [ -f env.sh ] ; then . ./env.sh ; fi ; \
 	export ARCH=f103 ; \
-	export BUILD=gdb/build.sh ; \
+	export BUILD=stm32f103/build.sh ; \
 	export ELF=$< ; \
 	export HEX=$@ ; \
 	export TYPE=hex ; \
@@ -243,8 +261,8 @@ gdb/lib.f103.a: $(LIB_F103_A_OBJECTS) rules.mk
 	export ARCH=host ; \
 	export BUILD=linux/build.sh ; \
 	export C=$< ; \
-	export CFLAGS=\ -std=gnu99\ -Ilinux/\ -Igdb/\ -DVERSION="\"$(GIT_VERSION)\""; \
-	export D=$(patsubst %.o,%.d,$@) ; \
+	export CFLAGS_EXTRA="-O3 -Istm32f103/ -Ilinux/" ; \
+	export D=$(patsubst %.o,%d,$@) ; \
 	export FIRMWARE=$$(basename $< .c) ; \
 	export O=$@ ; \
 	export TYPE=o ; \
@@ -305,5 +323,5 @@ ALL_PRODUCTS := \
 	$(LIB_F103_A_OBJECTS) \
 	$(LIB_HOST_A_OBJECTS) \
 	$(ALL_ELF) \
-	gdb/lib.f103.a \
+	stm32f103/lib.f103.a \
 	linux/lib.host.a \
