@@ -7,4 +7,4 @@ cd $(dirname "$0")
 
 # Instead, run the command as ninja would run it and assume all files are up to date.
 cd build
-esptool.py -p $ESPPORT --chip esp32s3 --before=default_reset --after=hard_reset write_flash `cat flash_args`
+../../run.sh esptool.py -p $ESPPORT --chip esp32s3 --before=default_reset --after=hard_reset write_flash `cat flash_args`

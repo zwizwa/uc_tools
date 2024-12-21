@@ -1,4 +1,4 @@
 #!/bin/sh
 cd $(dirname "$0")
 . ./espport.sh
-idf.py monitor
+exec ../run.sh idf.py monitor

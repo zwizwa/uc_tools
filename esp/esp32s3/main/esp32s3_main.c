@@ -31,6 +31,12 @@
 #include "lwip/sys.h"
 #include "xtensa/core-macros.h"
 
+#include "driver/gpio.h"
+#include "neopixel.h"
+
+#include "esp_dmx.h"
+#include "driver/periph_ctrl.h" // FIXME: Header is deprecated, fix in esp_dmx
+
 static const char *TAG = "app";
 
 
@@ -60,9 +66,6 @@ static const char *TAG = "app";
 
 uint8_t dram_buf[32*1024];
 
-/* FIXME: This causes Guru Meditation Error: Core / panic'ed (Cache
-   disabled but cached memory region accessed). */
-
 #if 1
 __attribute__((section(".iram.bss")))
 uint8_t iram_buf[32*1024];
@@ -81,15 +84,108 @@ uint8_t iram_buf[32*1024];
 #include "../../common/mod_esp_wifi.c"
 #include "../../common/mod_esp_acm.c"
 
-
+tNeopixelContext neopixel;
+void neopixel_start(void) {
+    neopixel = neopixel_Init(100, GPIO_NUM_48);
+    // FIXME: assert
+}
 
 
 void app_main(void)
 {
 
+
+#if 0
+    neopixel_start();
+    tNeopixel pixel[] = {
+        { 0, NP_RGB(50, 0,  0) }, /* red */
+        { 0, NP_RGB(0,  50, 0) }, /* green */
+        { 0, NP_RGB(0,  0, 50) }, /* blue */
+        { 0, NP_RGB(0,  0,  0) }, /* off */
+    };
+    for (;;) {
+        for(int i = 0; i < ARRAY_SIZE(pixel); ++i) {
+            ESP_LOGI(TAG, "%08lx", pixel[i].rgb);
+            neopixel_SetPixel(neopixel, &pixel[i], 1);
+            vTaskDelay(pdMS_TO_TICKS(200));
+        }
+    }
+#endif
+
+#if 1
+
+
+
+    /* Some initial questions:
+       - How does it pick a UART device?
+     */
+
+    /* I've commented out these calls in the esp_dmx code to fix an
+       esp idf regression (5.1 to 5.3, missing .module field).  So
+       call them manually. */
+
+    // esp_dmx expects uart_signal_conn_t to have a .module field
+    //   periph_module_enable(uart_periph_signal[dmx_num].module);
+    //   periph_module_reset(uart_periph_signal[dmx_num].module);
+    //
+    // see here for 5.1:
+    // https://github.com/espressif/esp-idf/blob/release/v5.1/components/soc/include/soc/uart_periph.h
+    //
+    // this is implemented here:
+    // https://github.com/espressif/esp-idf/blob/release/v5.1/components/soc/esp32s3/uart_periph.c
+    //
+    // the following code does it manually:
+#if 1
+    const periph_module_t module = PERIPH_UART1_MODULE;
+    periph_module_enable(module);
+    periph_module_reset(module);
+#endif
+
+    const dmx_port_t dmx_num = DMX_NUM_1;
+
+    // First, use the default DMX configuration...
+    dmx_config_t config = DMX_CONFIG_DEFAULT;
+
+    // ...declare the driver's DMX personalities...
+    const int personality_count = 1;
+    dmx_personality_t personalities[] = {
+        {1, "Default Personality"}
+    };
+
+    // ...install the DMX driver...
+    dmx_driver_install(dmx_num, &config, personalities, personality_count);
+
+    // ...and then set the communication pins!
+
+    // How to pick? See ESP32S3 TRM, 6.12 IO Mux Function list and
+    // pick defaults for U1TXD, U1RXD, U1RTS.
+    const int tx_pin  = 17;
+    const int rx_pin  = 18;
+    const int rts_pin = 16;
+    dmx_set_pin(dmx_num, tx_pin, rx_pin, rts_pin);
+
+    int dmx_count = 0;
+    while (true) {
+        ESP_LOGI(TAG, "dmx %d", dmx_count++);
+
+        uint8_t data[DMX_PACKET_SIZE] = {0};
+
+        // Write to the packet and send it.
+        dmx_write(dmx_num, data, DMX_PACKET_SIZE);
+        dmx_send(dmx_num);
+
+        // Do work here...
+
+        // Block until the packet is finished sending.
+        dmx_wait_sent(dmx_num, DMX_TIMEOUT_TICK);
+    }
+
+#endif
+
     acm_start();
 
     wifi_start();
+
 
     // Memory info for host side plugin linker.
 

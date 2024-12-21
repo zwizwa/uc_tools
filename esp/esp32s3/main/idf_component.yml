@@ -1,4 +1,7 @@
 ## IDF Component Manager Manifest File
 dependencies:
+  zorxx/neopixel: "*"
   usb_host_cdc_acm: "2.*"
   idf: ">=4.4"
+  esp_dmx:
+    override_path: "../components/esp_dmx"

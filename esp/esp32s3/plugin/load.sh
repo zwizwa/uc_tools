@@ -6,15 +6,19 @@ set -xe
 # DEFAULT_IP=192.168.0.121
 # DEFAULT_IP=192.168.0.122
 # DEFAULT_IP=192.168.1.35
-DEFAULT_IP=192.168.68.54
+# DEFAULT_IP=192.168.68.54
+DEFAULT_IP=192.168.0.163
 
 [ -z "$IP" ] && IP=$DEFAULT_IP
 
 # FIXME: This is badly organized.  Build the tether_bl application
 # here.  For now it uses a binary built by another project.
-CMD_DIR=~/.result/synth_tools/linux
+# CMD_DIR=~/.result/synth_tools/linux
 # CMD_DIR="/i/tom/rdm-bridge/tools/"
 # CMD_DIR="/charon/home/tom/rdm-bridge/tools/"
+
+CMD_DIR=~/.result/uc_tools/linux
+
 
 CMD="$CMD_DIR/tether_bl.dynamic.host.elf $IP"
 export TETHER_BL_VERBOSE=1
