@@ -95,7 +95,7 @@ void app_main(void)
 {
 
 
-#if 0
+#if 0 // NEOPIXEL
     neopixel_start();
     tNeopixel pixel[] = {
         { 0, NP_RGB(50, 0,  0) }, /* red */
@@ -112,9 +112,7 @@ void app_main(void)
     }
 #endif
 
-#if 1
-
-
+#if 0 // DMX
 
     /* Some initial questions:
        - How does it pick a UART device?
@@ -158,7 +156,7 @@ void app_main(void)
     // ...and then set the communication pins!
 
     // How to pick? See ESP32S3 TRM, 6.12 IO Mux Function list and
-    // pick defaults for U1TXD, U1RXD, U1RTS.
+    // pick defaults for U1TXD, U1RXD.  Then use adjacent unused pin.
     const int tx_pin  = 17;
     const int rx_pin  = 18;
     const int rts_pin = 16;
@@ -183,9 +181,10 @@ void app_main(void)
 #endif
 
     acm_start();
-
     wifi_start();
+    acm_tcp_start();
 
+#if 1
 
     // Memory info for host side plugin linker.
 
@@ -198,6 +197,7 @@ void app_main(void)
     meminfo.flash_len = iram_buf_size;
 
     start_monitor();
+#endif
 }
 
 

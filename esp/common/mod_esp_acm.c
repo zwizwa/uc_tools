@@ -74,7 +74,7 @@ static void usb_acm_task(void *arg) {
             ESP_LOGI(TAG, "Failed to open device");
             continue;
         }
-        cdc_acm_host_desc_print(cdc_dev);
+        // cdc_acm_host_desc_print(cdc_dev);
         vTaskDelay(pdMS_TO_TICKS(100));
 
         // Test sending and receiving: responses are handled in handle_rx callback
@@ -88,6 +88,35 @@ static void usb_acm_task(void *arg) {
     }
 }
 
+
+
+uint8_t node_read_byte(struct esp_tcp_conn *s) {
+    uint8_t byte;
+    int rv = recv(s->sock, &byte, 1, 0);
+    if (rv != 1) {
+        if (rv == 0) {
+            ESP_LOGI(TAG, "closed");
+        }
+        else {
+            ESP_LOGE(TAG, "recv: rv=%d", rv);
+        }
+        longjmp(s->abort, 1);
+    }
+    return byte;
+}
+void node_loop(struct esp_tcp_conn *s) {
+    if (0 == setjmp(s->abort)) {
+      again:
+        // vTaskDelay(pdMS_TO_TICKS(1000));
+        uint8_t byte = node_read_byte(s);
+        ESP_LOGI(TAG, "byte = %d\n", byte);
+        goto again;
+    }
+}
+struct esp_tcp_conn node_esp_tcp = {
+    .handle = node_loop,
+    .port = 51400,
+};
 
 
 
@@ -118,6 +147,12 @@ void acm_start(void) {
     BaseType_t task_created1 = xTaskCreate(usb_acm_task, "usb_lib", 4096, NULL, USB_HOST_PRIORITY, NULL);
     assert(task_created1 == pdTRUE);
 
+
+}
+
+void acm_tcp_start(void) {
+    // Start TCP server bridge to USB TTY ACM
+    esp_tcp_listen(&node_esp_tcp);
 
 }
 
