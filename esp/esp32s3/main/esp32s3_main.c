@@ -37,10 +37,11 @@
 #include "esp_dmx.h"
 #include "driver/periph_ctrl.h" // FIXME: Header is deprecated, fix in esp_dmx
 
-static const char *TAG = "app";
-
 
 /* Config */
+
+// FIXME: Handle log tags better.  ATM all mod_*.c expect this to be define.
+#define TAG __func__
 
 // Wifi
 #define MAXIMUM_RETRY  5
@@ -182,6 +183,7 @@ void app_main(void)
 
 
     acm_bridge_start(&node_bridge);
+    // acm_bridge_start(NULL);
 
     wifi_start();
 

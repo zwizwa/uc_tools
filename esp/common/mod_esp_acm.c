@@ -33,6 +33,10 @@ struct acm_bridge {
 
 static SemaphoreHandle_t device_disconnected_sem;
 
+
+#undef TAG
+#define TAG __func__
+
 static bool acm_bridge_handle_rx(const uint8_t *data, size_t data_len, void *ctx) {
     ESP_LOGI(TAG, "Data received");
     ESP_LOG_BUFFER_HEXDUMP(TAG, data, data_len, ESP_LOG_INFO);
@@ -111,6 +115,14 @@ static void acm_bridge_acm_task(void *ctx) {
             continue;
         }
         ESP_LOGI(TAG, "Opened CDC ACM device 0x%04X:0x%04X...", USB_DEVICE_VID, USB_DEVICE_PID);
+
+        // Current setup needs a message before it will start sending
+        // data.  Not exactly sure why (either this is bootloader
+        // giving control to app, or it is inside app).  Doesn't
+        // really matter.  Use a {packet,4} length-prefixed 2-byte
+        // ping packet to get things started.
+        uint8_t hello_msg[] = {0,0,0,2, 0xFF,0xFC};
+        ESP_ERROR_CHECK(cdc_acm_host_data_tx_blocking(cdc_dev, hello_msg, sizeof(hello_msg), TX_TIMEOUT_MS));
 
         // Wait for semaphore set by acm_handle_event() CDC_ACM_HOST_DEVICE_DISCONNECTED
         xSemaphoreTake(device_disconnected_sem, portMAX_DELAY);
