@@ -1,6 +1,20 @@
 #ifndef MOD_CSP_ACM
 #define MOD_CSP_ACM
 
+/* Bridge a USB TTY microcontroller to TCP.  To keep the ACM stream
+   and TCP stream in sync we just boot the microcontroller on TCP
+   connect and put it in reset on disconnect.  Crude but simple. */
+
+/* FIXME:
+
+   - It is set up now so that it works on the first TCP connection and
+     the first ACM connection, but later this needs to be fleshed out
+     with semaphores to keep the two sides in sync (= one TCP
+     connection is one microcontroller boot cycle).
+
+
+*/
+
 #include "usb/usb_host.h"
 #include "usb/cdc_acm_host.h"
 
@@ -8,17 +22,36 @@
 #define USB_HOST_PRIORITY   (20)
 #define USB_DEVICE_VID      (0x0483)
 #define USB_DEVICE_PID      (0x5740)
-#define TX_STRING           ("CDC test string!")
 #define TX_TIMEOUT_MS       (3000)
+
+
+struct acm_bridge {
+    struct esp_tcp_conn tcp_conn;
+};
+
+
 
 static SemaphoreHandle_t device_disconnected_sem;
 
-static bool acm_handle_rx(const uint8_t *data, size_t data_len, void *arg) {
+static bool acm_bridge_handle_rx(const uint8_t *data, size_t data_len, void *ctx) {
     ESP_LOGI(TAG, "Data received");
     ESP_LOG_BUFFER_HEXDUMP(TAG, data, data_len, ESP_LOG_INFO);
+#if 0
+    struct acm_bridge *s = ctx;
+    int sock = s->tcp_conn.sock;
+    if (sock == -1) {
+        ESP_LOGI(TAG, "dropping %d bytes", data_len);
+    }
+    else {
+        ESP_LOGI(TAG, "forwarding %d bytes", data_len);
+        send(sock, data, data_len, 0);
+    }
+#endif
     return true;
 }
-static void acm_handle_event(const cdc_acm_host_dev_event_data_t *event, void *user_ctx) {
+static void acm_bridge_handle_event(const cdc_acm_host_dev_event_data_t *event, void *ctx) {
+    struct acm_bridge *s = ctx;
+    (void)s;
     switch (event->type) {
     case CDC_ACM_HOST_ERROR:
         ESP_LOGE(TAG, "CDC-ACM error has occurred, err_no = %i", event->data.error);
@@ -37,7 +70,9 @@ static void acm_handle_event(const cdc_acm_host_dev_event_data_t *event, void *u
         break;
     }
 }
-static void usb_lib_task(void *arg) {
+static void acm_bridge_usb_lib_task(void *ctx) {
+    struct acm_bridge *s = ctx;
+    (void)s;
     while (1) {
         // Start handling system events
         uint32_t event_flags;
@@ -51,15 +86,16 @@ static void usb_lib_task(void *arg) {
         }
     }
 }
-static void usb_acm_task(void *arg) {
+static void acm_bridge_acm_task(void *ctx) {
+    struct acm_bridge *s = ctx;
 
     const cdc_acm_host_device_config_t dev_config = {
         .connection_timeout_ms = TX_TIMEOUT_MS,
         .out_buffer_size = 512,
         .in_buffer_size = 512,
-        .user_arg = NULL,
-        .event_cb = acm_handle_event,
-        .data_cb = acm_handle_rx
+        .user_arg = s,
+        .event_cb = acm_bridge_handle_event,
+        .data_cb = acm_bridge_handle_rx
     };
 
     while (1) {
@@ -74,17 +110,12 @@ static void usb_acm_task(void *arg) {
             ESP_LOGI(TAG, "Failed to open device");
             continue;
         }
-        // cdc_acm_host_desc_print(cdc_dev);
-        vTaskDelay(pdMS_TO_TICKS(100));
+        ESP_LOGI(TAG, "Opened CDC ACM device 0x%04X:0x%04X...", USB_DEVICE_VID, USB_DEVICE_PID);
 
-        // Test sending and receiving: responses are handled in handle_rx callback
-        ESP_ERROR_CHECK(cdc_acm_host_data_tx_blocking(cdc_dev, (const uint8_t *)TX_STRING, strlen(TX_STRING), TX_TIMEOUT_MS));
-        vTaskDelay(pdMS_TO_TICKS(100));
-
-
-        // We are done. Wait for device disconnection and start over
-        ESP_LOGI(TAG, "Example finished successfully! You can reconnect the device to run again.");
+        // Wait for semaphore set by acm_handle_event() CDC_ACM_HOST_DEVICE_DISCONNECTED
         xSemaphoreTake(device_disconnected_sem, portMAX_DELAY);
+        ESP_LOGI(TAG, "Disconnected CDC ACM device 0x%04X:0x%04X...", USB_DEVICE_VID, USB_DEVICE_PID);
+
     }
 }
 
@@ -109,18 +140,15 @@ void node_loop(struct esp_tcp_conn *s) {
       again:
         // vTaskDelay(pdMS_TO_TICKS(1000));
         uint8_t byte = node_read_byte(s);
-        ESP_LOGI(TAG, "byte = %d\n", byte);
+        ESP_LOGI(TAG, "byte = %d", byte);
         goto again;
     }
 }
-struct esp_tcp_conn node_esp_tcp = {
-    .handle = node_loop,
-    .port = 51400,
-};
 
+// Networking needs to be up (e.g. wifi_start())
+void acm_bridge_start(struct acm_bridge *s) {
 
-
-void acm_start(void) {
+    s->tcp_conn.sock = -1;
 
     device_disconnected_sem = xSemaphoreCreateBinary();
     assert(device_disconnected_sem);
@@ -134,7 +162,8 @@ void acm_start(void) {
     ESP_ERROR_CHECK(usb_host_install(&host_config));
 
     // Create a task that will handle USB library events
-    BaseType_t task_created = xTaskCreate(usb_lib_task, "usb_acm", 4096, NULL, USB_HOST_PRIORITY, NULL);
+    BaseType_t task_created = xTaskCreate(
+        acm_bridge_usb_lib_task, "usb_lib", 4096, s, USB_HOST_PRIORITY, NULL);
     assert(task_created == pdTRUE);
 
     ESP_LOGI(TAG, "Installing CDC-ACM driver");
@@ -144,16 +173,20 @@ void acm_start(void) {
     esp_log_level_set("cdc_acm", ESP_LOG_DEBUG);
 
     // Create a task that will handle USB library events
-    BaseType_t task_created1 = xTaskCreate(usb_acm_task, "usb_lib", 4096, NULL, USB_HOST_PRIORITY, NULL);
+    BaseType_t task_created1 = xTaskCreate(
+        acm_bridge_acm_task, "usb_acm", 4096, s, USB_HOST_PRIORITY, NULL);
     assert(task_created1 == pdTRUE);
 
-
-}
-
-void acm_tcp_start(void) {
     // Start TCP server bridge to USB TTY ACM
-    esp_tcp_listen(&node_esp_tcp);
+    // esp_tcp_listen(&s->tcp_conn);
 
 }
+
+struct acm_bridge node_bridge = {
+    .tcp_conn = {
+        .handle = node_loop,
+        .port = 51400,
+    }
+};
 
 #endif

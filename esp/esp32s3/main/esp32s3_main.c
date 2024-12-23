@@ -180,9 +180,10 @@ void app_main(void)
 
 #endif
 
-    acm_start();
+
+    acm_bridge_start(&node_bridge);
+
     wifi_start();
-    acm_tcp_start();
 
 #if 1
 
