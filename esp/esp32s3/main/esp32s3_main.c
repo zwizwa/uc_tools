@@ -36,6 +36,7 @@
 
 #include "esp_dmx.h"
 #include "driver/periph_ctrl.h" // FIXME: Header is deprecated, fix in esp_dmx
+#include "rdm/responder.h"
 
 
 /* Config */
@@ -91,29 +92,8 @@ void neopixel_start(void) {
     // FIXME: assert
 }
 
-
-void app_main(void)
-{
-
-
-#if 0 // NEOPIXEL
-    neopixel_start();
-    tNeopixel pixel[] = {
-        { 0, NP_RGB(50, 0,  0) }, /* red */
-        { 0, NP_RGB(0,  50, 0) }, /* green */
-        { 0, NP_RGB(0,  0, 50) }, /* blue */
-        { 0, NP_RGB(0,  0,  0) }, /* off */
-    };
-    for (;;) {
-        for(int i = 0; i < ARRAY_SIZE(pixel); ++i) {
-            ESP_LOGI(TAG, "%08lx", pixel[i].rgb);
-            neopixel_SetPixel(neopixel, &pixel[i], 1);
-            vTaskDelay(pdMS_TO_TICKS(200));
-        }
-    }
-#endif
-
-#if 0 // DMX
+void dmx_start() {
+#if 1
 
     /* Some initial questions:
        - How does it pick a UART device?
@@ -163,6 +143,8 @@ void app_main(void)
     const int rts_pin = 16;
     dmx_set_pin(dmx_num, tx_pin, rx_pin, rts_pin);
 
+#if 0
+    // send out dmx
     int dmx_count = 0;
     while (true) {
         ESP_LOGI(TAG, "dmx %d", dmx_count++);
@@ -178,8 +160,34 @@ void app_main(void)
         // Block until the packet is finished sending.
         dmx_wait_sent(dmx_num, DMX_TIMEOUT_TICK);
     }
+#endif
+
+#if 1
+    // responder
+    // Continuously handle DMX and RDM packets
+    dmx_packet_t packet;
+    while (1) {
+        if (dmx_receive(dmx_num, &packet, DMX_TIMEOUT_TICK)) {
+            if (packet.sc == DMX_SC) {
+                ESP_LOGI(TAG, "Got DMX packet!");
+            } else if (packet.is_rdm) {
+                ESP_LOGI(TAG, "Got RDM packet!");
+                rdm_send_response(dmx_num);
+            }
+        }
+        // Do other work here...
+    }
+#endif
 
 #endif
+}
+
+
+void app_main(void)
+{
+
+
+
 
     /* Order is important.  First start networking. */
     wifi_start();
@@ -202,6 +210,30 @@ void app_main(void)
 
     start_monitor();
 #endif
+
+
+#if 0 // NEOPIXEL
+    neopixel_start();
+    tNeopixel pixel[] = {
+        { 0, NP_RGB(50, 0,  0) }, /* red */
+        { 0, NP_RGB(0,  50, 0) }, /* green */
+        { 0, NP_RGB(0,  0, 50) }, /* blue */
+        { 0, NP_RGB(0,  0,  0) }, /* off */
+    };
+    for (;;) {
+        for(int i = 0; i < ARRAY_SIZE(pixel); ++i) {
+            ESP_LOGI(TAG, "%08lx", pixel[i].rgb);
+            neopixel_SetPixel(neopixel, &pixel[i], 1);
+            vTaskDelay(pdMS_TO_TICKS(200));
+        }
+    }
+#endif
+
+
+    dmx_start();
+
+
+
 }
 
 

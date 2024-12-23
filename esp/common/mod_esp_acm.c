@@ -96,8 +96,8 @@ static void acm_bridge_acm_task(void *ctx) {
 
     const cdc_acm_host_device_config_t dev_config = {
         .connection_timeout_ms = TX_TIMEOUT_MS,
-        .out_buffer_size = 512,
-        .in_buffer_size = 512,
+        .out_buffer_size = 1024,
+        .in_buffer_size = 1024,
         .user_arg = s,
         .event_cb = acm_bridge_handle_event,
         .data_cb = acm_bridge_handle_rx
