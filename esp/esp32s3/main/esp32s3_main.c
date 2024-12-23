@@ -181,11 +181,12 @@ void app_main(void)
 
 #endif
 
-
-    acm_bridge_start(&node_bridge);
-    // acm_bridge_start(NULL);
-
+    /* Order is important.  First start networking. */
     wifi_start();
+
+    /* This will start TCP, so networking needs to be up. */
+    acm_bridge_start(&node_bridge);
+
 
 #if 1
 

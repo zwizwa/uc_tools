@@ -27,6 +27,7 @@
 
 struct acm_bridge {
     struct esp_tcp_conn tcp_conn;
+    cdc_acm_dev_hdl_t cdc_dev;
 };
 
 
@@ -40,7 +41,7 @@ static SemaphoreHandle_t device_disconnected_sem;
 static bool acm_bridge_handle_rx(const uint8_t *data, size_t data_len, void *ctx) {
     ESP_LOGI(TAG, "Data received");
     ESP_LOG_BUFFER_HEXDUMP(TAG, data, data_len, ESP_LOG_INFO);
-#if 0
+
     struct acm_bridge *s = ctx;
     int sock = s->tcp_conn.sock;
     if (sock == -1) {
@@ -50,7 +51,6 @@ static bool acm_bridge_handle_rx(const uint8_t *data, size_t data_len, void *ctx
         ESP_LOGI(TAG, "forwarding %d bytes", data_len);
         send(sock, data, data_len, 0);
     }
-#endif
     return true;
 }
 static void acm_bridge_handle_event(const cdc_acm_host_dev_event_data_t *event, void *ctx) {
@@ -103,26 +103,19 @@ static void acm_bridge_acm_task(void *ctx) {
     };
 
     while (1) {
-        cdc_acm_dev_hdl_t cdc_dev = NULL;
+        s->cdc_dev = NULL;
 
         // Open USB device from tusb_serial_device example example. Either single or dual port configuration.
         ESP_LOGI(TAG, "Opening CDC ACM device 0x%04X:0x%04X...", USB_DEVICE_VID, USB_DEVICE_PID);
         uint8_t interface_idx = 0;
         // uint8_t interface_idx = 1;
-        esp_err_t err = cdc_acm_host_open(USB_DEVICE_VID, USB_DEVICE_PID, interface_idx, &dev_config, &cdc_dev);
+        esp_err_t err = cdc_acm_host_open(
+            USB_DEVICE_VID, USB_DEVICE_PID, interface_idx, &dev_config, &s->cdc_dev);
         if (ESP_OK != err) {
             ESP_LOGI(TAG, "Failed to open device");
             continue;
         }
         ESP_LOGI(TAG, "Opened CDC ACM device 0x%04X:0x%04X...", USB_DEVICE_VID, USB_DEVICE_PID);
-
-        // Current setup needs a message before it will start sending
-        // data.  Not exactly sure why (either this is bootloader
-        // giving control to app, or it is inside app).  Doesn't
-        // really matter.  Use a {packet,4} length-prefixed 2-byte
-        // ping packet to get things started.
-        uint8_t hello_msg[] = {0,0,0,2, 0xFF,0xFC};
-        ESP_ERROR_CHECK(cdc_acm_host_data_tx_blocking(cdc_dev, hello_msg, sizeof(hello_msg), TX_TIMEOUT_MS));
 
         // Wait for semaphore set by acm_handle_event() CDC_ACM_HOST_DEVICE_DISCONNECTED
         xSemaphoreTake(device_disconnected_sem, portMAX_DELAY);
@@ -147,11 +140,30 @@ uint8_t node_read_byte(struct esp_tcp_conn *s) {
     }
     return byte;
 }
-void node_loop(struct esp_tcp_conn *s) {
-    if (0 == setjmp(s->abort)) {
+void node_loop(struct esp_tcp_conn *conn) {
+    struct acm_bridge *s = (void*)conn;
+
+    /* Once the TCP connection is up, activate the device.
+
+       Goal: make sure nothing gets missed, because the protocol uses
+       size prefixes and cannot resynchronize.
+
+       FIXME: Later this should be done by bringing it out if reset
+       and letting it re-enumerate.  But for now this works: device
+       will only start sending if it receives a packet.  We use a ping
+       packet for that.  Reason is not clear (bootloader->app
+       transition? or some other logging flag?)
+    */
+
+    uint8_t hello_msg[] = {0,0,0,2, 0xFF,0xFC};
+    ESP_ERROR_CHECK(
+        cdc_acm_host_data_tx_blocking(
+            s->cdc_dev, hello_msg, sizeof(hello_msg), TX_TIMEOUT_MS));
+
+    if (0 == setjmp(conn->abort)) {
       again:
         // vTaskDelay(pdMS_TO_TICKS(1000));
-        uint8_t byte = node_read_byte(s);
+        uint8_t byte = node_read_byte(conn);
         ESP_LOGI(TAG, "byte = %d", byte);
         goto again;
     }
@@ -160,7 +172,8 @@ void node_loop(struct esp_tcp_conn *s) {
 // Networking needs to be up (e.g. wifi_start())
 void acm_bridge_start(struct acm_bridge *s) {
 
-    // s->tcp_conn.sock = -1;
+    // FIXME: Some startup logic is necessary
+    s->tcp_conn.sock = -1;
 
     device_disconnected_sem = xSemaphoreCreateBinary();
     assert(device_disconnected_sem);
@@ -190,7 +203,7 @@ void acm_bridge_start(struct acm_bridge *s) {
     assert(task_created1 == pdTRUE);
 
     // Start TCP server bridge to USB TTY ACM
-    // esp_tcp_listen(&s->tcp_conn);
+    esp_tcp_listen(&s->tcp_conn);
 
 }
 
