@@ -39,8 +39,9 @@ static SemaphoreHandle_t device_disconnected_sem;
 #define TAG __func__
 
 static bool acm_bridge_handle_rx(const uint8_t *data, size_t data_len, void *ctx) {
-    ESP_LOGI(TAG, "Data received");
-    ESP_LOG_BUFFER_HEXDUMP(TAG, data, data_len, ESP_LOG_INFO);
+
+    //ESP_LOGI(TAG, "Data received");
+    //ESP_LOG_BUFFER_HEXDUMP(TAG, data, data_len, ESP_LOG_INFO);
 
     struct acm_bridge *s = ctx;
     int sock = s->tcp_conn.sock;
@@ -48,7 +49,7 @@ static bool acm_bridge_handle_rx(const uint8_t *data, size_t data_len, void *ctx
         ESP_LOGI(TAG, "dropping %d bytes", data_len);
     }
     else {
-        ESP_LOGI(TAG, "forwarding %d bytes", data_len);
+        // ESP_LOGI(TAG, "forwarding %d bytes", data_len);
         send(sock, data, data_len, 0);
     }
     return true;
@@ -140,6 +141,23 @@ uint8_t node_read_byte(struct esp_tcp_conn *s) {
     }
     return byte;
 }
+
+
+void reset_peripheral(void) {
+    gpio_num_t gpio = GPIO_NUM_4;
+
+    // Drive reset pin to GND.
+    gpio_set_level(gpio, 0);
+    gpio_set_direction(gpio, GPIO_MODE_OUTPUT);
+
+    vTaskDelay(pdMS_TO_TICKS(10));
+
+    // Release the pin again, leaving it under control of its pullup
+    // circuit.
+    gpio_set_direction(gpio, GPIO_MODE_INPUT);
+
+}
+
 void node_loop(struct esp_tcp_conn *conn) {
     struct acm_bridge *s = (void*)conn;
 
@@ -158,13 +176,42 @@ void node_loop(struct esp_tcp_conn *conn) {
     uint8_t hello_msg[] = {0,0,0,2, 0xFF,0xFC};
     ESP_ERROR_CHECK(
         cdc_acm_host_data_tx_blocking(
-            s->cdc_dev, hello_msg, sizeof(hello_msg), TX_TIMEOUT_MS));
+            s->cdc_dev,
+            hello_msg, sizeof(hello_msg),
+            TX_TIMEOUT_MS));
 
     if (0 == setjmp(conn->abort)) {
       again:
+#if 0
         // vTaskDelay(pdMS_TO_TICKS(1000));
         uint8_t byte = node_read_byte(conn);
         ESP_LOGI(TAG, "byte = %d", byte);
+#else
+        uint8_t buf[1024]; // What's a good size?  This can hold the largest packet.
+        int rv = recv(conn->sock, buf, sizeof(buf), 0);
+        if (rv > 0) {
+            // ok
+            ESP_ERROR_CHECK(
+                cdc_acm_host_data_tx_blocking(
+                    s->cdc_dev,
+                    buf, rv,
+                    TX_TIMEOUT_MS));
+        }
+        else {
+            // error, e.g. disconnect
+            ESP_LOGE(TAG, "recv = %d", rv);
+
+            // reset the device here so it will be MOST LIKELY
+            // connected again when TCP reconnects.  FIXME: this is a
+            // race condition, but probably not one that easily
+            // triggers (tcp assumes device pointer to be operational
+            // right after connect but there is nothing that actually
+            // guarantees that).
+            reset_peripheral();
+
+            return;
+        }
+#endif
         goto again;
     }
 }
@@ -172,8 +219,11 @@ void node_loop(struct esp_tcp_conn *conn) {
 // Networking needs to be up (e.g. wifi_start())
 void acm_bridge_start(struct acm_bridge *s) {
 
+    reset_peripheral();
+
     // FIXME: Some startup logic is necessary
     s->tcp_conn.sock = -1;
+
 
     device_disconnected_sem = xSemaphoreCreateBinary();
     assert(device_disconnected_sem);

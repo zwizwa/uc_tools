@@ -184,7 +184,7 @@ void app_main(void)
     /* Order is important.  First start networking. */
     wifi_start();
 
-    /* This will start TCP, so networking needs to be up. */
+    /* This will start a TCP server, so networking needs to be up. */
     acm_bridge_start(&node_bridge);
 
 
