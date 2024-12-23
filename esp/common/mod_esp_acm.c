@@ -148,7 +148,7 @@ void node_loop(struct esp_tcp_conn *s) {
 // Networking needs to be up (e.g. wifi_start())
 void acm_bridge_start(struct acm_bridge *s) {
 
-    s->tcp_conn.sock = -1;
+    // s->tcp_conn.sock = -1;
 
     device_disconnected_sem = xSemaphoreCreateBinary();
     assert(device_disconnected_sem);
