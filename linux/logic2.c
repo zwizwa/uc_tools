@@ -1,3 +1,10 @@
+// NOTE: 20241216 reviving this because it really is more convenient
+// in some cases to just use the Logic2 app.  Where possible though,
+// try to convince people to use sigrok which produces a much simpler
+// raw format. The SAL file is a zip file that contains binaries that
+// can be parsed with this file.
+
+
 // NOTE: use logic2_csv.c -- CSV format is already "joined" making the
 // converter much simpler.
 
@@ -73,9 +80,15 @@ void paint(const struct logic2_digital *data,
 // FIXME: Add time range
 
 int main(int argc, const char **argv) {
-    ASSERT(argc >= 3);
-    const char *out_name = argv[1];
+    if (argc < 3) {
+        LOG("usage: %s <out.raw> <digital-0.bin> [<digital-1.bin> ...]\n", argv[0]);
+        exit(1);
+    }
 
+    
+
+
+    const char *out_name = argv[1];
     const char **in = &argv[2];
     int n = argc - 2;
     LOG("%d channels\n", n);
@@ -85,18 +98,20 @@ int main(int argc, const char **argv) {
         off_t size;
         data[i] = assert_mmap_rdonly(in[i], 0, &size);
         ASSERT(size >= sizeof(struct logic2_digital));
-        // log_digital(data[i]);
+        log_digital(data[i]);
     }
 
     // Assume all files have the same span.  Pick span from first.
     double begin = data[0]->begin_time;
 
-    begin = 2700;
+    // begin = 2700;
 
     double end   = data[0]->end_time;
     LOG("(%f,%f)\n", begin, end);
 
     off_t size = RATE * (end - begin);
+
+    LOG("output name=%s size=%d\n", out_name, size);
 
     mmap_file_open_rw(&out, out_name, size);
 
