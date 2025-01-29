@@ -155,7 +155,7 @@ end
 -- other routing can be performed that is specific to the binary
 -- encoding of the incoming data.
 
-function actor_uv.spawn_process(scheduler, executable, args, body, push)
+function actor_uv.spawn_process(scheduler, executable, args, body, push, error_handler)
    assert(executable)
    assert(args)
 
@@ -165,38 +165,26 @@ function actor_uv.spawn_process(scheduler, executable, args, body, push)
 
    -- Task data
    local task = {
-      stdin  = uv.pipe(),
-      stdout = uv.pipe(),
-      stderr = uv.pipe(),
    }
    -- We then add task behavior mixin.
    actor_uv.task(scheduler, task)
 
-   local function error_handler(handle, err, status, signal)
+   task.close = function()
+      uv:close(task.handle) ; task.handle = nil
+      uv:close(task.stdin)  ; task.stdin  = nil
+      uv:close(task.stdout) ; task.stdout = nil
+      uv:close(task.stderr) ; task.stderr = nil
+   end
+
+   local function default_error_handler(handle, err, status, signal)
       -- Note: No documentation was found about the libuv error
       -- handler API, but there seem to be two cases that occur in
       -- practice: an error happens during startup, e.g. executable
       -- not found, or the process dies. e.g. due to a bug or fatal
       -- error in the program.
-      handle:close()
-      log_desc({error_handler = {err=err,status=status,signal=signal}})
+      task:close()
+      log_desc({uv_error_handler = {err=err,status=status,signal=signal}})
    end
-
-   -- Create libuv process handle
-   task.handle = uv.spawn({
-         file = executable,
-         stdio = {
-            { stream = task.stdin,  flags = uv.CREATE_PIPE + uv.READABLE_PIPE },
-            { stream = task.stdout, flags = uv.CREATE_PIPE + uv.WRITABLE_PIPE },
-            { stream = task.stderr, flags = uv.CREATE_PIPE + uv.WRITABLE_PIPE }
-         },
-         args = args
-   }, error_handler)
-
-   -- Spawn the task.  It can use task:recv() to pop the mailbox,
-   -- which will give tagged {port, ...} messages for incoming pipe
-   -- data.  It can also write to task.stdin
-   scheduler:spawn(body, task)
 
    -- Anything coming in on stdout gets sent to the task.  Note that
    -- we cannot call error() in the uv callbacks, as that is the main
@@ -207,19 +195,53 @@ function actor_uv.spawn_process(scheduler, executable, args, body, push)
    -- any registered monitors.
    local function read_callback(tag_from)
       return function(_,err,data)
+         -- log_desc({read_callback={err=err,data=data}})
          if not err then
             push(data,
                  function(packet)
                     task:send_and_schedule({tag_from,packet})
                  end)
          else
-            task:send_and_schedule({"error",{tag_from, err, data}})
+            -- Error codes are in lua-lluv/src/lluv_error.c
+            -- https://github.com/moteus/lua-lluv v1.1.10
+            task:send_and_schedule({"error",{tag_from, err:no(), err:msg()}})
          end
       end
    end
 
-   task.stdout:start_read(read_callback("stdout"))
-   task.stderr:start_read(read_callback("stderr"))
+   -- Create libuv process handle
+   local function uv_spawn()
+      task.stdin  = uv.pipe()
+      task.stdout = uv.pipe()
+      task.stderr = uv.pipe()
+      task.handle =
+         uv.spawn(
+            {
+               file = executable,
+               stdio = {
+                  { stream = task.stdin,  flags = uv.CREATE_PIPE + uv.READABLE_PIPE },
+                  { stream = task.stdout, flags = uv.CREATE_PIPE + uv.WRITABLE_PIPE },
+                  { stream = task.stderr, flags = uv.CREATE_PIPE + uv.WRITABLE_PIPE }
+               },
+               args = args
+            },
+            error_handler or default_error_handler)
+
+      task.stdout:start_read(read_callback("stdout"))
+      task.stderr:start_read(read_callback("stderr"))
+
+   end
+   uv_spawn()
+
+   -- To restart just the uv process, keeping the actor alive.
+   task.restart = uv_spawn
+
+   -- Spawn the task.  It can use task:recv() to pop the mailbox,
+   -- which will give tagged {port, ...} messages for incoming pipe
+   -- data.  It can also write to task.stdin
+   scheduler:spawn(body, task)
+
+
 
    return task
 
