@@ -210,6 +210,8 @@ function actor_uv.spawn_process(scheduler, executable, args, body, push, error_h
    end
 
    -- Create libuv process handle
+   task.cmd = { executable = executable, args = args }
+
    local function uv_spawn()
       task.stdin  = uv.pipe()
       task.stdout = uv.pipe()
@@ -217,13 +219,13 @@ function actor_uv.spawn_process(scheduler, executable, args, body, push, error_h
       task.handle =
          uv.spawn(
             {
-               file = executable,
+               file = task.cmd.executable,
                stdio = {
                   { stream = task.stdin,  flags = uv.CREATE_PIPE + uv.READABLE_PIPE },
                   { stream = task.stdout, flags = uv.CREATE_PIPE + uv.WRITABLE_PIPE },
                   { stream = task.stderr, flags = uv.CREATE_PIPE + uv.WRITABLE_PIPE }
                },
-               args = args
+               args = task.cmd.args
             },
             error_handler or default_error_handler)
 
