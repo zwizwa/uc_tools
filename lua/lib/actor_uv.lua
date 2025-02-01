@@ -248,4 +248,46 @@ function actor_uv.spawn_process(scheduler, executable, args, body, push, error_h
 
 end
 
+-- The cfg supports some modes:
+--
+-- 1. if 'body' is defined, that will be used as the task body
+--
+-- 2. if `handle_line` is defined, we will create a body and just push
+--    lines to that function
+--
+-- 3. if neither is defined, lines will just go to stderr
+
+function actor_uv.spawn_line_process(scheduler, executable, args, cfg)
+   cfg = cfg or {}
+
+   local buf = linebuf.new()
+   local function push(data, push_packet)
+      buf.push_line = function(self, line) push_packet(line) end
+      buf:push(data)
+   end
+   local body = cfg.body or function(task)
+      while true do
+         local msg = task:recv()
+         local from, line = unpack(msg)
+         if from == "stdout" then
+            local handle_line = cfg.handle_line or log
+            handle_line(line)
+         else
+            log_desc({ignoring_tether_bl_msg = msg})
+         end
+      end
+   end
+   local function error_handler(handle, err, status, signal)
+      log_desc({uv_error_handler =
+                   {err=err,status=status,signal=signal}})
+   end
+   local task = actor_uv.spawn_process(
+      scheduler, executable, args, body, push, error_handler)
+   return task
+end
+
+
+
+
+
 return actor_uv
