@@ -275,7 +275,7 @@ function actor_uv.spawn_line_process(scheduler, executable, args, cfg)
             local handle_line = cfg.handle_line or log
             handle_line(line)
          else
-            log_desc({ignoring_tether_bl_msg = msg})
+            log_desc({ignoring_line_process_msg = msg})
          end
       end
    end

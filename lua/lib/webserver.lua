@@ -89,7 +89,7 @@ end
 
 function webserver.start(scheduler, serv_obj)
    serv_obj.mode = 'line' -- needed by webserver:handle()
-   actor_uv.spawn_tcp_server(scheduler, serv_obj)
+   return actor_uv.spawn_tcp_server(scheduler, serv_obj)
 end
 
 return webserver

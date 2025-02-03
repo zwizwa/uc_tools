@@ -43,25 +43,32 @@ end
 
 local lxml = {}
 function lxml.w_elements(w, elements)
+   -- log_desc({elements=elements})
    for i,element in ipairs(elements) do
       assert(w)
       assert(element)
       if type(element) == 'string' then
          w_string(w, element)
-         return
+         -- 20250203: There was a return here, but that is wrong.
+         -- There can be multiple strings in an element list, and
+         -- other elements.
+      elseif type(element) == 'table' then
+         local tag, attrs, elements = unpack(element)
+         assert(tag)
+         if not attrs then attrs = {} end
+         if not elements then elements = {} end
+         w('<') ; w(tag)
+         for attr, val in pairs(attrs) do
+            -- FIXME: Do proper string quoting.
+            w(' ') ; w(attr) ; w('="') ; w(val) ; w('"')
+         end
+         w('>')
+         lxml.w_elements(w, elements)
+         w('</') ; w(tag) ; w('>\n')
+      else
+         w("[UNPRINTABLE]")
       end
-      local tag, attrs, elements = unpack(element)
-      assert(tag)
-      if not attrs then attrs = {} end
-      if not elements then elements = {} end
-      w('<') ; w(tag)
-      for attr, val in pairs(attrs) do
-         -- FIXME: Do proper string quoting.
-         w(' ') ; w(attr) ; w('="') ; w(val) ; w('"')
-      end
-      w('>')
-      lxml.w_elements(w, elements)
-      w('</') ; w(tag) ; w('>\n')
+
    end
 end
 
@@ -93,6 +100,72 @@ end
 
 -- FIXME: Currently I only need SVG, so this is not yet translated.
 
+
+-- 3. Lua object printing
+
+-- Idea: recursively print a table but replace all tables that are
+-- also in nodes with a link to a new printer.
+function lxml.pretty(nodes, tab)
+   assert(nodes)
+   local els = {}
+   local function w(thing) table.insert(els, thing) end
+
+   local function memo(v)
+      local ref = nodes.tab2ref[v]
+      if ref == nil then
+         local type_v = type(v)
+         if type_v == 'table' then
+            ref = '/@' .. string.sub(tostring(v), 10)
+         elseif type_v == 'function' then
+            ref = '/@' .. string.sub(tostring(v), 13)
+         end
+         if ref then
+            nodes.tab2ref[v] = ref
+            nodes.ref2tab[ref] = v
+         end
+      end
+      return ref
+   end
+
+   for k,v in pairs(tab) do
+
+      local type_k = type(k)
+      if type_k == 'string' or type_k == 'number' or type_k == 'boolean' then
+         w(tostring(k))
+      else
+         w('#')
+         w(type_k)
+      end
+
+      local type_v = type(v)
+      if type_v == 'string' or type_v == 'number' or type_v == 'boolean' then
+         w(' = ')
+         w(tostring(v))
+         w('\n')
+      elseif type_v == 'table' then
+         if v.render then
+            -- If a table has a render function then we link that instead.
+            local ref = memo(v.render)
+            w(' ')
+            w({'a',{href = ref},{'->'}})
+         else
+            local ref = memo(v)
+            w(' ')
+            w({'a',{href = ref},{'->'}})
+         end
+      else
+         w(' = ')
+         w('#')
+         w(type_v)
+         w('\n')
+      end
+
+   end
+
+   local expr = {'pre', {}, els}
+   -- log_desc({tab=tab,expr=expr})
+   return expr
+end
 
 
 return lxml
