@@ -114,46 +114,48 @@ function lxml.pretty(nodes, tab)
       local ref = nodes.tab2ref[v]
       if ref == nil then
          local type_v = type(v)
-         if type_v == 'table' then
-            ref = '/@' .. string.sub(tostring(v), 10)
-         elseif type_v == 'function' then
-            ref = '/@' .. string.sub(tostring(v), 13)
-         end
-         if ref then
-            nodes.tab2ref[v] = ref
-            nodes.ref2tab[ref] = v
-         end
+         ref = '/@' .. string.sub(tostring(v), 10)
+         nodes.tab2ref[v] = ref
+         nodes.ref2tab[ref] = v
       end
       return ref
    end
 
    for k,v in pairs(tab) do
-
-      local type_k = type(k)
-      if type_k == 'string' or type_k == 'number' or type_k == 'boolean' then
-         w(tostring(k))
-      else
-         w('#')
-         w(type_k)
+      local function render_k()
+         local type_k = type(k)
+         if type_k == 'string' or type_k == 'number' or type_k == 'boolean' then
+            w(tostring(k))
+         else
+            w('#')
+            w(type_k)
+         end
       end
 
       local type_v = type(v)
       if type_v == 'string' or type_v == 'number' or type_v == 'boolean' then
+         render_k()
          w(' = ')
          w(tostring(v))
          w('\n')
       elseif type_v == 'table' then
-         if v.render then
-            -- If a table has a render function then we link that instead.
-            local ref = memo(v.render)
-            w(' ')
-            w({'a',{href = ref},{'->'}})
+         if v.button then
+            -- Render a button.  The value of v.button is an action
+            -- that will be permed by the server in response to an
+            -- xmlrpc event.
+            local ref = memo(v)
+            w({'button',
+               -- Quoting is wonky here byt combinging ' and " seems to work.
+               {onclick="r=new XMLHttpRequest();r.open('GET','" .. ref .. "');r.send()"},
+               {tostring(k)}})
          else
             local ref = memo(v)
+            render_k()
             w(' ')
             w({'a',{href = ref},{'->'}})
          end
       else
+         render_k()
          w(' = ')
          w('#')
          w(type_v)
