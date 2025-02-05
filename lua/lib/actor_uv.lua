@@ -71,10 +71,14 @@ function actor_uv.spawn_tcp_server(scheduler, serv_obj)
    assert(serv_obj.ip)
    assert(serv_obj.port)
 
+   local listener = {
+   }
+
    local function connect(lsocket, err)
 
       -- This produces a mixin object that implements :handle()
       local task = serv_obj:connection()
+
       -- We then add task behavior mixin.
       actor_uv.task(scheduler, task)
       task.socket = lsocket:accept()
@@ -82,10 +86,17 @@ function actor_uv.spawn_tcp_server(scheduler, serv_obj)
          error("Cannot create TCP server socket port " .. serv_obj.port)
       end
 
+      -- How to get remote port?  To uniquely identify, use the table
+      -- pointer.
+      local conn_name = task.socket:getpeername() .. '@' .. string.sub(tostring(task), 10)
+
+      listener[conn_name] = task
+
       scheduler:spawn(
          function(task)
             task:connect()
             task.socket:close()
+            listener[conn_name] = nil
          end,
          task)
 
@@ -130,9 +141,12 @@ function actor_uv.spawn_tcp_server(scheduler, serv_obj)
 
    end
    local lsocket = uv.tcp()
+   listener.lsocket = lsocket
+
    lsocket:bind(serv_obj.ip, serv_obj.port)
    lsocket:listen(connect)
-   return lsocket
+
+   return listener
 end
 
 -- Blocking abstraction for asynchronous socket writes.
