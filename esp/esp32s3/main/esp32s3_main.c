@@ -86,9 +86,11 @@ uint8_t iram_buf[32*1024];
 #include "../../common/mod_esp_wifi.c"
 #include "../../common/mod_esp_acm.c"
 
+#define NB_PIXELS 170
+
 tNeopixelContext neopixel;
 void neopixel_start(void) {
-    neopixel = neopixel_Init(100, GPIO_NUM_48);
+    neopixel = neopixel_Init(NB_PIXELS, GPIO_NUM_48);
     // FIXME: assert
 }
 
@@ -167,10 +169,35 @@ void dmx_start() {
     // Continuously handle DMX and RDM packets
     dmx_packet_t packet;
     while (1) {
-        if (dmx_receive(dmx_num, &packet, DMX_TIMEOUT_TICK)) {
+        int size;
+        if ((size = dmx_receive(dmx_num, &packet, DMX_TIMEOUT_TICK))) {
             if (packet.sc == DMX_SC) {
-                ESP_LOGI(TAG, "Got DMX packet!");
-            } else if (packet.is_rdm) {
+                // ESP_LOGI(TAG, "Got DMX packet %d!", size);
+                uint8_t buf[size];
+                dmx_read(dmx_num, buf, size);
+                if ((size > 0) && (size <= 513)) {
+                    uint8_t *slot = &buf[1];
+                    int left = size-1;
+                    int pixel_nb = 0;
+                    while (left >= 3) {
+                        if (pixel_nb == 0) {
+                            ESP_LOGI(TAG, "DMX size=%d pix0=(%d,%d,%d)",
+                                     size, slot[0], slot[1], slot[2]);
+                        }
+                        if (pixel_nb < NB_PIXELS) {
+                            tNeopixel pixel_data = {
+                                pixel_nb,
+                                NP_RGB(slot[0], slot[1], slot[2])
+                            };
+                            neopixel_SetPixel(neopixel, &pixel_data, 1);
+                        }
+                        left -= 3;
+                        slot += 3;
+                        pixel_nb++;
+                    }
+                }
+            }
+            else if (packet.is_rdm) {
                 ESP_LOGI(TAG, "Got RDM packet!");
                 rdm_send_response(dmx_num);
             }
@@ -212,26 +239,26 @@ void app_main(void)
 #endif
 
 
-#if 0 // NEOPIXEL
+    // NEOPIXEL
     neopixel_start();
+#if 0
     tNeopixel pixel[] = {
         { 0, NP_RGB(50, 0,  0) }, /* red */
         { 0, NP_RGB(0,  50, 0) }, /* green */
         { 0, NP_RGB(0,  0, 50) }, /* blue */
         { 0, NP_RGB(0,  0,  0) }, /* off */
     };
-    for (;;) {
-        for(int i = 0; i < ARRAY_SIZE(pixel); ++i) {
-            ESP_LOGI(TAG, "%08lx", pixel[i].rgb);
-            neopixel_SetPixel(neopixel, &pixel[i], 1);
-            vTaskDelay(pdMS_TO_TICKS(200));
-        }
+    for(int i = 0; i < ARRAY_SIZE(pixel); ++i) {
+        ESP_LOGI(TAG, "%08lx", pixel[i].rgb);
+        neopixel_SetPixel(neopixel, &pixel[i], 1);
+        vTaskDelay(pdMS_TO_TICKS(200));
     }
 #endif
 
 
+    // Fall into DMX/RDM handler, infinite loop.
     dmx_start();
-
+    
 
 
 }
