@@ -32,6 +32,10 @@
 #define LOG_PARSE_SWAP_U32(x) SWAP_U32(x)
 #endif
 
+#ifndef LOG_PARSE_SWAP_U16
+#define LOG_PARSE_SWAP_U16(x) SWAP_U16(x)
+#endif
+
 #ifndef LOG_PARSE_MAX_LINE_LEN
 #define LOG_PARSE_MAX_LINE_LEN 1024
 #endif
@@ -157,7 +161,7 @@ static inline log_parse_status_t log_parse_tick(struct log_parse *s, uint8_t c) 
         // Use line buffer as temp storage for 16 bit size wird.
         LOG_PARSE_GETC(s); s->line[0] = c;
         LOG_PARSE_GETC(s); s->line[1] = c;
-        s->bin_len = read_be(s->line, 2) + 4;
+        s->bin_len = LOG_PARSE_SWAP_U16(read_be(s->line, 2)) + 4;
     }
     else {
         s->bin_len = c - 0x80 + 4;
