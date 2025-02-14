@@ -208,7 +208,8 @@ function logsvg.read_log_parse(filename, config)
    if not config then config = {} end
    -- log_desc({logsvg_read_log_parse_config = config})
    -- the default "" matches any message
-   local sync_re = config.sync_re or "" -- "^ping (.-)"
+   -- local sync_re = config.sync_re or "" -- "^ping (.-)"
+   log_desc({sync_re=sync_re})
    local max_lines = config.max_lines or 1000
    local bin_to_string = config.bin_to_string
    local lines = {}

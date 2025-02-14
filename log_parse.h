@@ -138,6 +138,8 @@ static inline log_parse_status_t log_parse_tick(struct log_parse *s, uint8_t c) 
        32 bit big endian rolling time stamp + max 126 payload
        bytes. */
   read_bin:
+    // LOG("bin: %02x\n", c);
+
     /* FIXME: Spill if there is data? */
     s->in_mark = s->in;
     if (c == 0xFF) {
@@ -145,6 +147,7 @@ static inline log_parse_status_t log_parse_tick(struct log_parse *s, uint8_t c) 
            cannot write a full message.  Each write should leave room
            for at least one overflow byte to indicate to the log
            parser that a part of the log stream was dropped. */
+        // LOG("OVERFLOW FF\n");
         if (s->cb->overflow) {
             status = s->cb->overflow(s, 0, NULL, 0);
         }
