@@ -38,6 +38,19 @@
 -- keeping it working.  Continuation points can be represented as a
 -- triplet: (symbol_index, non_terminal, rule_index).
 
+-- The regular grammar and eNFA are almost the same structure if we
+-- allow A->eB transitions.  The conversion from regular expression to
+-- eNFA is straightforward but might produce many trivial epsilon
+-- transitions (where an epsilon is the only transition out of the
+-- first state and there is only one epsilon transition into the econd
+-- state).  The general epsilon elimination is more involved and
+-- doesn't seem like a good path to take.  So a possible approach
+-- could be to extend the algorithm to support epsilon transitions,
+-- then maybe eliminate the trivial epsilon rules but that might not
+-- really be necessary because those do not introduce backtracking
+-- points anyway and are just one extra indirection.
+--
+-- So basically, implement this: https://www.youtube.com/watch?v=VbR1mGdP99s
 
 require('lib.tools.log')
 
@@ -46,7 +59,7 @@ local lib = {}
 
 -- env:   data that remains constant during execution
 -- state: matching algorithm traversal state
-local function regexp_match_step(env, state)
+local function rules_match_step(env, state)
    local log_desc = env.log_desc or function() end
    log_desc({STEP=state})
 
@@ -67,14 +80,23 @@ local function regexp_match_step(env, state)
    assert(rule_index <= #non_terminal_rules)
    local rule = non_terminal_rules[rule_index]
    local rule_terminal, rule_non_terminal = unpack(rule)
-   assert(rule_terminal)
-   local prim_match = env.prim[rule_terminal]
-   assert(type(prim_match) == 'function')
 
-   log_desc({SYMBOL = {
-                symbol_index = symbol_index,
-                non_terminal = non_terminal,
-                non_terminal_rules = non_terminal_rules}})
+   local prim_match = false
+   if rule_terminal then
+      if type(rule_terminal) == 'function' then
+         prim_match = rule_terminal
+      else
+         -- Allow indirection.  This makes it possible to print rules at
+         -- the expense of an extra table indirection.
+         prim_match = env.prim[rule_terminal]
+         assert(type(prim_match) == 'function')
+      end
+
+      log_desc({SYMBOL = {
+                   symbol_index = symbol_index,
+                   non_terminal = non_terminal,
+                   non_terminal_rules = non_terminal_rules}})
+   end
 
    -- Save continuation
    --
@@ -108,6 +130,22 @@ local function regexp_match_step(env, state)
       end
    end
 
+   -- Epsilon rules do not match anything
+   if not prim_match then
+      log_desc({EPSILON = {
+                   symbol = symbol,
+                   symbol_index = symbol_index,
+      }})
+
+      -- FIXME: Epsilon rule might have no rule_non_terminal
+      assert(rule_non_terminal)
+      state.non_terminal = rule_non_terminal
+      -- state.symbol_index Doesn't change
+      state.rule_index   = 1
+      return
+   end
+
+
    -- Check for a match.
    --
    -- Note that symbols are opaque from the pov of the regular
@@ -122,7 +160,6 @@ local function regexp_match_step(env, state)
                 symbol = symbol,
                 symbol_index = symbol_index,
             }})
-
 
    if not match then
       -- No match.  Backtrack if possible.
@@ -153,7 +190,7 @@ local function regexp_match_step(env, state)
    end
 end
 
-local function regexp_match(env)
+local function rules_match(env)
    local log_desc = env.log_desc or function() end
    log_desc({env=env})
    local state = {
@@ -165,7 +202,7 @@ local function regexp_match(env)
       payload       = {},  -- result of matcher for each symbol
    }
    while state.result == nil do
-      regexp_match_step(env, state)
+      rules_match_step(env, state)
    end
 
    local result
@@ -178,22 +215,37 @@ local function regexp_match(env)
    log_desc({RESULT=result})
    return unpack(result)
 end
+lib.rules_match = rules_match
 
 
-lib.regexp_match = regexp_match
+-- Convert regular expression to grammar rules used in the matcher.
+-- https://cs.stackexchange.com/questions/68575/steps-to-convert-regular-expressions-directly-to-regular-grammars-and-vice-versa
+--
+-- Generate anonymous non-terminals as sequence 1,2,3,...
+--
+-- Currently only implement the 'any' operator as a non-terminal
+-- referring to itself and the next symcol.  I think I am missing some
+-- intuition about how regex and grammar are related tbh.
+local function regex_to_rules(regex)
+   local env = {}
+end
 
-function lib.test_env()
-   -- Primitive matchers represent the regular language's terminal symbols.
-   local function prim(event)
-      return function(entry)
-         if entry.event == event then
-            return true, entry.time
-         else
-            return false
-         end
+lib.regex_to_rules = regex_to_rules
+
+-- Primitive matchers represent the regular language's terminal symbols.
+local function prim(event)
+   return function(entry)
+      if entry.event == event then
+         return true, entry.time
+      else
+         return false
       end
    end
+end
+
+function lib.test_env1()
    return {
+      log_desc = log_desc,
       symbols = {
          {event = 'start', time = 1},
          {event = 'mid',   time = 2},
@@ -216,10 +268,41 @@ function lib.test_env()
       }
    }
 end
+
+function lib.test_env2()
+   return {
+      log_desc = log_desc,
+      symbols = {
+         {event = 'start', time = 1},
+         {event = 'mid',   time = 2},
+         {event = 'mid',   time = 3},
+         {event = 'stop',  time = 4},
+      },
+      prim = {
+         start = prim('start'),
+         mid   = prim('mid'),
+         stop  = prim('stop'),
+      },
+      rules = {
+         S = {
+            {'start', 'E'},
+         },
+         E = {
+            -- Epsilon rule E->M
+            {false, 'M'},
+         },
+         M = {
+            {'mid', 'M'},
+            {'stop'},
+         },
+      }
+   }
+end
+
+
 function lib.test()
-   local env = lib.test_env()
-   env.log_desc = log_desc
-   lib.regexp_match(env)
+   -- lib.rules_match(lib.test_env1())
+   lib.rules_match(lib.test_env2())
 end
 
 return lib
