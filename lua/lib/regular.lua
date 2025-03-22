@@ -37,20 +37,41 @@
 -- something that works first, then tune the representation while
 -- keeping it working.  Continuation points can be represented as a
 -- triplet: (symbol_index, non_terminal, rule_index).
-
--- The regular grammar and eNFA are almost the same structure if we
--- allow A->eB transitions.  The conversion from regular expression to
--- eNFA is straightforward but might produce many trivial epsilon
--- transitions (where an epsilon is the only transition out of the
--- first state and there is only one epsilon transition into the econd
--- state).  The general epsilon elimination is more involved and
--- doesn't seem like a good path to take.  So a possible approach
--- could be to extend the algorithm to support epsilon transitions,
--- then maybe eliminate the trivial epsilon rules but that might not
--- really be necessary because those do not introduce backtracking
--- points anyway and are just one extra indirection.
 --
--- So basically, implement this: https://www.youtube.com/watch?v=VbR1mGdP99s
+-- The regular grammar and (epsilon-)NFA forms are almost the same
+-- structure if we allow A->eB transitions, so it's probably ok if I
+-- mix terminology a bit.  (E.g. treat "automaton transition" the same
+-- as "grammar production rule")
+--
+-- The conversion from regular expression to NFA is straightforward
+-- but typically produces many trivial epsilon transitions (where an
+-- epsilon is the only transition out of the first state and there is
+-- only one epsilon transition into the econd state). Ryan mentions in
+-- the video that there is a way to get rid of these but let's not
+-- worry about it.  I found another video explaining a general epsilon
+-- elimination technique but that is a lot more involved and doesn't
+-- seem like a good path to take.  Instead, just support the epsilon
+-- transitions in the interpreter, since they do not introduce
+-- backtracking points anyway and are just one extra indirection.  If
+-- a regex is just executed once after translation to NFA / grammar
+-- and if the sequences are short it probably doesn't save much
+-- anyway.
+--
+-- So basically, implement this with the understanding that what we
+-- call rules A->aB can also be seen as NFA transitions A-a->B etc:
+-- https://www.youtube.com/watch?v=VbR1mGdP99s
+--
+-- The equivalence is explained here:
+-- https://www.youtube.com/watch?v=fQVZ3B7qi6w
+
+-- TODO:
+-- . rework to NFA explicitly (explicit final states are needed to compose NFAs)
+-- . rewrite comments
+
+-- Do I need to reimplement it?  I don't think so.  Use the NFA
+-- representation (with explicit multiple end states) to do the
+-- composition, then convert the final one to a single end state.
+
 
 require('lib.tools.log')
 
@@ -68,8 +89,14 @@ local function rules_match_step(env, state)
    local symbol_index = state.symbol_index  ; assert(symbol_index)
    local symbols      = env.symbols         ; assert(symbols)
    if symbol_index > #symbols then
+      -- FIXME: If this state is an end state we're good.
       -- End needs to be matched explicitly.
-      error('extra symbols')
+      if env.final[state.non_terminal] then
+         state.result = true
+         return
+      else
+         error('extra symbols')
+      end
    end
    local symbol = symbols[symbol_index] ; assert(symbol)
 
@@ -219,18 +246,67 @@ lib.rules_match = rules_match
 
 
 -- Convert regular expression to grammar rules used in the matcher.
--- https://cs.stackexchange.com/questions/68575/steps-to-convert-regular-expressions-directly-to-regular-grammars-and-vice-versa
+-- https://www.youtube.com/watch?v=VbR1mGdP99s
 --
 -- Generate anonymous non-terminals as sequence 1,2,3,...
 --
--- Currently only implement the 'any' operator as a non-terminal
--- referring to itself and the next symcol.  I think I am missing some
--- intuition about how regex and grammar are related tbh.
-local function regex_to_rules(regex)
-   local env = {}
+-- Note that this is simplest to by using an explicit NFA
+-- implementation where terminal states are listed explicitly.
+
+-- FIXME: I need to restart this.  Basic operations
+-- . change above representation as {state, symbol}
+-- . join 2 nfas assuming states have different names = guaranteed by make_state()
+-- . concatenation: for all final states in nfa1 add an epsilon transition to start of nfa2
+
+
+function lib.test_regex_to_rules()
+   local last_state = 0
+   local function make_state()
+      last_state = last_state + 1
+      return string.format("s%d", last_state)
+   end
+   -- Convert symbol to nfa.
+   local function nfa_symbol(s)
+      local start = make_state()
+      local final = make_state()
+      return {
+         start = start,
+         final = { final },
+         rules = {
+            [start] = {{final, s}},
+            [final] = {}
+         }
+      }
+   end
+   local function nfa_concat(nfa1, nfa2)
+      -- A set (list) of transitions, encoded as {state, symbol}
+      local nfa = { rules = {}, final = {} }
+      -- nfa start state is nfa1 start state
+      nfa.start = nfa1.start
+      -- nfa final states are nfa2 final states (copy)
+      for _, state in ipairs(nfa2.final) do table.insert(nfa.final, state) end
+      -- nfa rules is the union of nfa1, nfa2 rules. states are mutually exclusive, guaranteed by make_state()
+      for state, rule in pairs(nfa1.rules) do nfa.rules[state] = rule end
+      for state, rule in pairs(nfa2.rules) do nfa.rules[state] = rule end
+      -- nfa1 end states will get an epsilon transition to nfa2 start state
+      for _, state in ipairs(nfa1.final) do
+         table.insert(nfa.rules[state], {nfa2.start})
+      end
+
+      return nfa
+   end
+
+
+   -- nfa_union
+   -- nfa_star
+   local a = nfa_symbol('a') ; log_desc({a=a})
+   local b = nfa_symbol('b') ; log_desc({b=b})
+   local ab = nfa_concat(a, b) ; log_desc({ab=ab})
+
 end
 
-lib.regex_to_rules = regex_to_rules
+
+
 
 -- Primitive matchers represent the regular language's terminal symbols.
 local function prim(event)
@@ -293,16 +369,22 @@ function lib.test_env2()
          },
          M = {
             {'mid', 'M'},
-            {'stop'},
+            {'stop', 'F'},
          },
-      }
+         F = {
+         },
+      },
+      final = {
+         F = true,
+      },
    }
 end
 
 
 function lib.test()
    -- lib.rules_match(lib.test_env1())
-   lib.rules_match(lib.test_env2())
+   lib.rules_match(lib.test_env2()) -- TODO: change to NFA structure
+   -- lib.test_regex_to_rules()  -- TODO: Continue dev and unify with backtracker
 end
 
 return lib
