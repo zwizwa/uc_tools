@@ -91,7 +91,7 @@ local function rules_match_step(env, state)
    if symbol_index > #symbols then
       -- FIXME: If this state is an end state we're good.
       -- End needs to be matched explicitly.
-      if env.final[state.non_terminal] then
+      if env.final[state.nfa_state] then
          state.result = true
          return
       else
@@ -100,41 +100,43 @@ local function rules_match_step(env, state)
    end
    local symbol = symbols[symbol_index] ; assert(symbol)
 
-   -- Obtain rule set for the current non-terminal.
-   local non_terminal_rules = env.rules[state.non_terminal]
-   assert(#non_terminal_rules > 0)
+   -- Obtain state transition rule set for the current NFA state.
+   local nfa_state_rules = env.rules[state.nfa_state]
+   assert(#nfa_state_rules > 0)
    local rule_index = state.rule_index
-   assert(rule_index <= #non_terminal_rules)
-   local rule = non_terminal_rules[rule_index]
-   local rule_terminal, rule_non_terminal = unpack(rule)
+   assert(rule_index <= #nfa_state_rules)
+   local rule = nfa_state_rules[rule_index]
+   -- Next NFA state and input symbol matcher
+   local rule_nfa_state, rule_input = unpack(rule)
+   assert(rule_nfa_state)
 
    local prim_match = false
-   if rule_terminal then
-      if type(rule_terminal) == 'function' then
-         prim_match = rule_terminal
+   if rule_input then
+      if type(rule_input) == 'function' then
+         prim_match = rule_input
       else
          -- Allow indirection.  This makes it possible to print rules at
          -- the expense of an extra table indirection.
-         prim_match = env.prim[rule_terminal]
+         prim_match = env.prim[rule_input]
          assert(type(prim_match) == 'function')
       end
 
       log_desc({SYMBOL = {
                    symbol_index = symbol_index,
-                   non_terminal = non_terminal,
-                   non_terminal_rules = non_terminal_rules}})
+                   nfa_state = nfa_state,
+                   nfa_state_rules = nfa_state_rules}})
    end
 
    -- Save continuation
    --
-   -- If there are more rules to evaluate for this non-terminal after
+   -- If there are more rules to evaluate for this NFA state after
    -- we have evaluated the current one, we need to save that rule as
    -- a backtracking point.
-   if rule_index + 1 <= #non_terminal_rules then
+   if rule_index + 1 <= #nfa_state_rules then
       local continuation = {
          symbol_index = symbol_index,
          rule_index   = rule_index + 1,
-         non_terminal = state.non_terminal
+         nfa_state = state.nfa_state
       }
       log_desc({SAVE_CONTINUATION=continuation})
       table.insert(state.continuations, continuation)
@@ -149,7 +151,7 @@ local function rules_match_step(env, state)
          local continuation = table.remove(state.continuations)
          log_desc({BACKTRACK=continuation})
          state.symbol_index = continuation.symbol_index
-         state.non_terminal = continuation.non_terminal
+         state.nfa_state    = continuation.nfa_state
          state.rule_index   = continuation.rule_index
       else
          -- No more paths to tray, we are done with no match.
@@ -164,9 +166,7 @@ local function rules_match_step(env, state)
                    symbol_index = symbol_index,
       }})
 
-      -- FIXME: Epsilon rule might have no rule_non_terminal
-      assert(rule_non_terminal)
-      state.non_terminal = rule_non_terminal
+      state.nfa_state = rule_nfa_state
       -- state.symbol_index Doesn't change
       state.rule_index   = 1
       return
@@ -181,7 +181,7 @@ local function rules_match_step(env, state)
    -- contained in log statements of a specific type).
    local match, payload = prim_match(symbol)
    log_desc({MATCH = {
-                rule_terminal = rule_terminal,
+                rule_input = rule_input,
                 match = match,
                 payload = payload,
                 symbol = symbol,
@@ -198,22 +198,11 @@ local function rules_match_step(env, state)
       -- with a payload.
       state.payload[state.symbol_index] = payload
 
-      if nil == rule_non_terminal then
-         -- Whe have a match and there is no next non-terminal: we are
-         -- done if the sequence is done.  Otherwise we have a partial
-         -- match (TODO: distinguish those).
-         if state.symbol_index == #env.symbols then
-            state.result = true
-         else
-            backtrack()
-         end
-      else
-         -- We have a match and there is a next non-terminal.  Descend
-         -- into the rule tree.
-         state.non_terminal = rule_non_terminal
-         state.symbol_index = symbol_index + 1
-         state.rule_index   = 1
-      end
+      -- We have a match and there is a next NFA state.  Descend
+      -- into the rule tree.
+      state.nfa_state = rule_nfa_state
+      state.symbol_index = symbol_index + 1
+      state.rule_index   = 1
    end
 end
 
@@ -223,8 +212,8 @@ local function rules_match(env)
    local state = {
       continuations = { },
       symbol_index  = 1,
-      non_terminal  = 'S', -- start symbol
-      rule_index    = 1,   -- next rule is first rule in the non_terminal's rule set (array)
+      nfa_state     = 'S', -- start symbol
+      rule_index    = 1,   -- next rule is first rule in the nfa_state's rule set (array)
       result        = nil, -- resuilt is nil (no result), true (match), false (no match)
       payload       = {},  -- result of matcher for each symbol
    }
@@ -248,7 +237,7 @@ lib.rules_match = rules_match
 -- Convert regular expression to grammar rules used in the matcher.
 -- https://www.youtube.com/watch?v=VbR1mGdP99s
 --
--- Generate anonymous non-terminals as sequence 1,2,3,...
+-- Generate anonymous NFA states as sequence s1,s2,s3,...
 --
 -- Note that this is simplest to by using an explicit NFA
 -- implementation where terminal states are listed explicitly.
@@ -319,31 +308,6 @@ local function prim(event)
    end
 end
 
-function lib.test_env1()
-   return {
-      log_desc = log_desc,
-      symbols = {
-         {event = 'start', time = 1},
-         {event = 'mid',   time = 2},
-         {event = 'mid',   time = 3},
-         {event = 'stop',  time = 4},
-      },
-      prim = {
-         start = prim('start'),
-         mid   = prim('mid'),
-         stop  = prim('stop'),
-      },
-      rules = {
-         S = {
-            {'start', 'M'},
-         },
-         M = {
-            {'mid', 'M'},
-            {'stop'},
-         },
-      }
-   }
-end
 
 function lib.test_env2()
    return {
@@ -361,15 +325,15 @@ function lib.test_env2()
       },
       rules = {
          S = {
-            {'start', 'E'},
+            {'E', 'start'},
          },
          E = {
             -- Epsilon rule E->M
-            {false, 'M'},
+            {'M'},
          },
          M = {
-            {'mid', 'M'},
-            {'stop', 'F'},
+            {'M', 'mid'},
+            {'F', 'stop'},
          },
          F = {
          },
