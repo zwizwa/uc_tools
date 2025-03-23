@@ -1,29 +1,29 @@
--- Module implementing right regular expression matching on general
--- sequences, meaning the the string of symbols setting is generalized
--- to a list of an arbitrary algebraic data type.  This was developed
--- for structured log matching/parsing.
+
+-- Regular expression matching on general sequences, meaning the the
+-- string of symbols setting is generalized to a list of an arbitrary
+-- algebraic data type, making it usable for structured log matching.
 --
 -- Split into these parts:
 --
--- . core representation abstracts "terminal symbols" as primitive
---   matching functions producing additional results that will be
---   collected by the matcher.
+-- . Matcher backtracking algoritm implemented in terms of an NFA
+--   representation of the regular language.  The string of input
+--   elements is mapped to a string of primitive match results.
 --
--- . production rules defined explicitly as set of
---   non-terminal -> (terminal, non-terminal)
---                -> terminal
---                -> empty TODO
+-- . A compiler that converts a regular expression DSL to an NFA.
 --
--- . backtracking algorithm implementing the non-terminal production
---   choice
 --
--- . translation of regexp-like syntax to production rules TODO
+
+-- OLD COMMENTS NEED REVIEW
+--
+-- Now that I understand it, I of course think that the path I used to
+-- get to understanding is very meaningful.  The vessel can be
+-- discarded.
 --
 -- Terminology adapted from https://en.wikipedia.org/wiki/Regular_grammar
 --
 -- Some more ideas here: https://stackoverflow.com/questions/37956483/regex-backtracking
-
-
+--
+--
 -- Implementation: What is the basic step?
 --
 -- Given the next terminal symbol (i.e. which primitive matcher was
@@ -287,7 +287,15 @@ function lib.test_regex_to_rules()
 
 
    -- nfa_union
+   -- New start state, epsilon to both start states.
+   -- New end state, epsilon from all end states.
+
    -- nfa_star
+   -- New end state, epsilon from all end state
+   -- New start state, epsilon to old start state, epsilon to new end state
+
+   -- concat and union can be generalized to multi-arg
+
    local a = nfa_symbol('a') ; log_desc({a=a})
    local b = nfa_symbol('b') ; log_desc({b=b})
    local ab = nfa_concat(a, b) ; log_desc({ab=ab})
