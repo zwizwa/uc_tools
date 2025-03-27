@@ -101,17 +101,35 @@ static inline const struct param *osc_find(const struct param * const* pl, const
     }
 }
 
-#define OSC_PARSE_OK 0
-#define OSC_PARSE_MISSING 1
-#define OSC_PARSE_WILDCARD 2
-#define OSC_PARSE_NOT_FOUND 3
-#define OSC_PARSE_EXTRA 4
-#define OSC_PARSE_BAD_TYPE 5
-#define OSC_PARSE_NOT_SCALAR 6
-#define OSC_PARSE_EXPECT_INT 7
+#define OSC_PARSE_OK           0
+#define OSC_PARSE_MISSING      1
+#define OSC_PARSE_WILDCARD     2
+#define OSC_PARSE_NOT_FOUND    3
+#define OSC_PARSE_EXTRA        4
+#define OSC_PARSE_BAD_TYPE     5
+#define OSC_PARSE_NOT_SCALAR   6
+#define OSC_PARSE_EXPECT_INT   7
 #define OSC_PARSE_EXPECT_FLOAT 8
 #define OSC_PARSE_UNKNOWN_TYPE 9
- 
+
+static inline const char *osc_error(int e) {
+    static const char *errors[] = {
+        [ OSC_PARSE_OK ]           = "success",
+        [ OSC_PARSE_MISSING ]      = "missing address component",
+        [ OSC_PARSE_WILDCARD ]     = "wildcard not supported",
+        [ OSC_PARSE_NOT_FOUND ]    = "parameter not found",
+        [ OSC_PARSE_EXTRA ]        = "extra address component",
+        [ OSC_PARSE_BAD_TYPE ]     = "bad type syntax",
+        [ OSC_PARSE_NOT_SCALAR ]   = "only supporting scalars",
+        [ OSC_PARSE_EXPECT_INT ]   = "expected integer",
+        [ OSC_PARSE_EXPECT_FLOAT ] = "expected float",
+        [ OSC_PARSE_UNKNOWN_TYPE ] = "unknown type tag",
+    };
+    if (e < 0) return "unknown";
+    if (e > ARRAY_SIZE(errors)) return "unknown";
+    return errors[e];
+}
+
 static inline int osc_parse(struct param_context *x, const union osc *cmd_ro, uintptr_t nb_cmd ) {
     const struct param * const* pl = x->root;
     // LOG("root0: %s\n", pl[0]->name);
@@ -126,18 +144,15 @@ static inline int osc_parse(struct param_context *x, const union osc *cmd_ro, ui
 
   next:
     if (!(tok = strtok(tok_param, delim))) {
-        LOG("unexpected end of address\n");
         return OSC_PARSE_MISSING;
     }
     tok_param = NULL;
     // LOG("tok: %s\n", tok);
     if (tok[0] == '*') {
-        LOG("wildcard not supported\n");
         return OSC_PARSE_WILDCARD;
     }
     const struct param *p = osc_find(pl, tok);
     if (!p) {
-        LOG("not found %s\n", tok);
         return OSC_PARSE_NOT_FOUND;
     }
     // LOG("found %s type=%d\n", tok, p->type);
@@ -149,13 +164,11 @@ static inline int osc_parse(struct param_context *x, const union osc *cmd_ro, ui
     else {
         /* Handle leaf.  Input address needs to be at the end */
         if ((tok = strtok(NULL, delim))) {
-            LOG("junk at end of address: %s\n", tok);
             return OSC_PARSE_EXTRA;
         }
         char *t = cmd[i_type].s;
         // LOG("type: %s\n", t);
         if (t[0] != ',') {
-            LOG("bad type syntax\n");
             return OSC_PARSE_BAD_TYPE;
         }
         if (t[2] != 0) {
@@ -167,7 +180,6 @@ static inline int osc_parse(struct param_context *x, const union osc *cmd_ro, ui
         case OSC_TYPE_FLOAT:
             /* Expecting float */
             if (t[1] != 'f') {
-                LOG("expecting float, got %c\n", t[1]);
                 return OSC_PARSE_EXPECT_FLOAT;
             }
             // LOG("float: %f\n", w->f);
@@ -176,7 +188,6 @@ static inline int osc_parse(struct param_context *x, const union osc *cmd_ro, ui
         case OSC_TYPE_INT:
             /* Expecting int */
             if (t[1] != 'i') {
-                LOG("expecting int, got %c\n", t[1]);
                 return OSC_PARSE_EXPECT_INT;
             }
             // LOG("int: %d\n", w->i);
