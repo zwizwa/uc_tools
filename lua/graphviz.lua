@@ -24,21 +24,6 @@ local function w(...)
    w_iostr({...})
 end
 
-local schematic = {
-   -- Input/Output name to text, keep this separate.
-   block = {
-      fir1 = {
-      },
-   },
-   names = {
-      ports = {},
-      blocks = {},
-   },
-
-   edges = {
-      {{'Input','ch1'}, {'FIR4','in1'}},
-   },
-}
 
 -- FIXME: Put these in a single file once and for all.
 local function map(f,arr)
@@ -64,72 +49,62 @@ local function r_ports(ports_list)
    return {"{",joined,"}"}
 end
 
+local function r_node(n)
+   return {
+      '    ',n.name,'[label="{ ',
+      r_ports(n.i),'|',n.name, '|',r_ports(n.o),
+      ' }"];\n'
+   }
+end
+
 local function w_graph(s)
-
-   local input_ports = {'ch1','ch2','ch3','ch4'}
-
-
-
-w([[
+   w([[
 digraph G {
     graph [rankdir = LR];
     node[shape=record];
-]],[[
-    Input[label="{{} |
-                 Input|
 ]],
-r_ports(input_ports),
--- [[
---                  {
---                   <ch1> ch1|
---                   <ch2> ch2|
---                   <ch3> ch3|
---                   <ch4> ch4
---                  }
--- ]],
-[[
-                 }"];
-    FIR4[label="{ {<in1>in1|
-                   <in2>in2|
-                   <in3>in3|
-                   <in4>in4}|
-                  FIR4 |
-                  {<out1>out1|
-                   <out2>out2|
-                   <out3>out3|
-                   <out4>out4} }"];
-
-    Output[label="{ {<ch1>ch1|
-                     <ch2>ch2|
-                     <ch3>ch3|
-                     <ch4>ch4}|
-                    Output |
-                    {} }"];
+r_node(s.input),
+r_node(s.fir4),[[
+    input:ch1 -> fir4:in1;
+    input:ch2 -> fir4:in2;
+    input:ch3 -> fir4:in3;
+    input:ch4 -> fir4:in4;
 ]],
-[[
-    Input:ch1 -> FIR4:in1;
-    Input:ch2 -> FIR4:in2;
-    Input:ch3 -> FIR4:in3;
-    Input:ch4 -> FIR4:in4;
-]],
-[[
-
-    FIR4:out1 -> Output:ch1;
-    FIR4:out2 -> Output:ch2;
-
-    EQ[label="{ {<in1>in1|
-                 <in2>in2}|
-                   EQ|
-                 {<out>out} }"];
-
-    FIR4:out3 -> EQ:in1;
-    FIR4:out4 -> EQ:in2;
-    EQ:out -> Output:ch4;
-
-    
-
+r_node(s.eq),
+r_node(s.output),[[
+    fir4:out1 -> output:ch1;
+    fir4:out2 -> output:ch2;
+    fir4:out3 -> eq:in1;
+    fir4:out4 -> eq:in2;
+    eq:out -> output:ch4;
 }
 ]])
 end
 
+
+local schematic = {
+   input = {
+      name = 'input',
+      i = {},
+      o = { 'ch1','ch2','ch3','ch4' },
+   },
+   fir4 = {
+      name = 'fir4',
+      i = { 'in1','in2','in3','in4' },
+      o = { 'out1','out2','out3','out4' },
+   },
+   eq = {
+      name = 'eq',
+      i = { 'in1','in2'},
+      o = { 'out'},
+   },
+   output = {
+      name = 'output',
+      i = { 'ch1','ch2','ch3','ch4' },
+      o = {},
+   },
+   edges = {
+      {{'input','ch1'}, {'fir4','in1'}},
+   },
+}
 w_graph(schematic)
