@@ -50,12 +50,25 @@ local function r_ports(ports_list)
 end
 
 local function r_node(n)
+   local name, i, o = unpack(n)
    return {
-      '    ',n.name,'[label="{ ',
-      r_ports(n.i),'|',n.name, '|',r_ports(n.o),
+      '    ',name,'[label="{ ',
+      r_ports(i),'|',name, '|',r_ports(o),
       ' }"];\n'
    }
 end
+
+local function r_edge(e)
+   local from, to = unpack(e)
+   return {
+      '    ',
+      from[1],':',from[2],
+      ' -> ',
+      to[1],':',to[2],
+      '\n'
+   }
+end
+
 
 local function w_graph(s)
    w([[
@@ -63,48 +76,37 @@ digraph G {
     graph [rankdir = LR];
     node[shape=record];
 ]],
-r_node(s.input),
-r_node(s.fir4),[[
-    input:ch1 -> fir4:in1;
-    input:ch2 -> fir4:in2;
-    input:ch3 -> fir4:in3;
-    input:ch4 -> fir4:in4;
-]],
-r_node(s.eq),
-r_node(s.output),[[
-    fir4:out1 -> output:ch1;
-    fir4:out2 -> output:ch2;
-    fir4:out3 -> eq:in1;
-    fir4:out4 -> eq:in2;
-    eq:out -> output:ch4;
+map(r_node, s.nodes),
+map(r_edge, s.edges),[[
 }
 ]])
 end
 
 
 local schematic = {
-   input = {
-      name = 'input',
-      i = {},
-      o = { 'ch1','ch2','ch3','ch4' },
-   },
-   fir4 = {
-      name = 'fir4',
-      i = { 'in1','in2','in3','in4' },
-      o = { 'out1','out2','out3','out4' },
-   },
-   eq = {
-      name = 'eq',
-      i = { 'in1','in2'},
-      o = { 'out'},
-   },
-   output = {
-      name = 'output',
-      i = { 'ch1','ch2','ch3','ch4' },
-      o = {},
+   nodes = {
+      {'input',{},{ 'ch1','ch2','ch3','ch4' }},
+      {'fir4',
+       {'in1','in2','in3','in4' },
+       { 'out1','out2','out3','out4'}},
+      {'eq',
+       { 'in1','in2'},
+       { 'out'}},
+      {'output',{ 'ch1','ch2','ch3','ch4'},{}},
    },
    edges = {
       {{'input','ch1'}, {'fir4','in1'}},
+      {{'input','ch2'}, {'fir4','in2'}},
+      {{'input','ch3'}, {'fir4','in3'}},
+      {{'input','ch4'}, {'fir4','in4'}},
+      {{'fir4','out1'}, {'output','ch1'}},
+      {{'fir4','out2'}, {'output','ch2'}},
+      {{'fir4','out3'}, {'eq','in1'}},
+      {{'fir4','out4'}, {'eq','in2'}},
+      {{'eq','out'}, {'output','ch4'}},
    },
 }
+
+
+log_desc(schematic)
 w_graph(schematic)
