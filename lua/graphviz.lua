@@ -132,50 +132,101 @@ end
 -- This should be part of the type definition.
 
 local c = { }
-function c:node()
-   local n = self.n + 1
-   self.n = n
-   return n
+
+-- FIXME: There is no explicit way to name the inputs.  This should be
+-- part of the type description (= processor class)
+function port_name(tag, i)
+   return tag .. i
 end
+
+function c:make_output(name)
+   local ports = self.ports[name] or {}
+   local n = #ports + 1
+   local out_name = port_name('out', n)
+   table.insert(ports, out_name)
+   self.ports[name] = ports
+   return {name, out_name}
+end
+
+
 function c:app(typ, name, ...)
-   local ins = {...}
    assert(typ)
    assert(name)
-   local outs = typ(self, name, ins)
-   table.insert(self.nodes, {name, ins, outs})
+
+   -- The inputs are _always_ outputs of other nodes.  What we do here
+   -- is split that into explicit input port names, and explicit
+   -- edges.
+   local ins = {...}
+
+   local in_ports = {}
+   for i,input in ipairs(ins) do
+      local port = port_name('in', i)
+      in_ports[i] = port
+      table.insert(self.edges, {input, {name, port}})
+   end
+   local outs = typ(self, name, in_ports)
+   local out_ports = {}
+   for i,output in ipairs(outs) do
+      local port = port_name('out', i)
+      out_ports[i] = port
+   end
+
+   table.insert(self.nodes, {name, in_ports, out_ports})
    return unpack(outs)
 end
 local function compiler()
    local state = {
-      n = 0,
+      -- The applicative variables are always output ports of the
+      -- nodes (processor instances).
+      ports = {},
+
       nodes = {},
       edges = {},
    }
    setmetatable(state, {__index = c})
    return state
 end
-local function compile(prog)
+local function compile(prog, make_ins)
    local c = compiler()
-   local ins = {c:node()}
-   local outs = prog(c, unpack(ins))
+   local outs = prog(c, c:app(make_ins, 'input'))
    return c
 end
 
-local function test2()
-   function t_filter(c, name, ins)
-      assert(type(name) == 'string')
-      assert(type(ins) == 'table')
-      local outs = map(function(i) return c:node() end, ins)
+-- parameterized type
+function t_input(n)
+   return function (c, name)
+      local outs = {}
+      for i=1,n do outs[i] = c:make_output(name) end
       return outs
    end
-   local function prog(c, i)
-      local a = c:app(t_filter, 'f1', i )
-      local b = c:app(t_filter, 'f2', i, a )
+end
+
+local function test2()
+
+
+   function t_filter(c, name, ins)
+      assert(type(name) == 'string')
+      assert(type(ins)  == 'table')
+      local outs = map(
+         function(i)
+            return c:make_output(name)
+         end,
+         ins)
+      return outs
+   end
+   local function prog1(s, a)
+      local b    = s:app(t_filter, 'f1', a)
+      local c, d = s:app(t_filter, 'f2', a, b )
       return b
    end
-   local sch = compile(prog)
+   local function prog2(s, a, b)
+      local c, d       = s:app(t_filter, 'f1', a, b )
+      local e, f, g, h = s:app(t_filter, 'f2', a, b, c, d )
+      return b
+   end
+   local sch = compile(prog2, t_input(2))
    log_desc(sch)
-   -- w_graph(sch)
+   w_graph(sch)
 end
 
 
