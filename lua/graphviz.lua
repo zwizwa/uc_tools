@@ -51,8 +51,12 @@ end
 
 local function r_node(n)
    local name, i, o = unpack(n)
+   assert(name)
+   assert(i)
+   assert(o)
    return {
-      '    ',name,'[label="{ ',
+      '    ',
+      name,'[label="{ ',
       r_ports(i),'|',name, '|',r_ports(o),
       ' }"];\n'
    }
@@ -60,17 +64,27 @@ end
 
 local function r_edge(e)
    local from, to = unpack(e)
+   assert(from)
+   assert(to)
+   local from_node, from_port = unpack(from)
+   assert(from_node)
+   assert(from_port)
+   local to_node, to_port = unpack(to)
+   assert(to_node)
+   assert(to_port)
    return {
       '    ',
-      from[1],':',from[2],
+      from_node,':',from_port,
       ' -> ',
-      to[1],':',to[2],
-      '\n'
+      to_node,':',to_port,
+      ';\n'
    }
 end
 
 
 local function w_graph(s)
+   assert(s.nodes)
+   assert(s.edges)
    w([[
 digraph G {
     graph [rankdir = LR];
@@ -108,5 +122,64 @@ local schematic = {
 }
 
 
-log_desc(schematic)
-w_graph(schematic)
+local function test1()
+   log_desc(schematic)
+   w_graph(schematic)
+end
+
+-- To keep it simple: use unique node names at first.
+-- How to specify the number of outputs that a processor produces?
+-- This should be part of the type definition.
+
+local c = { }
+function c:node()
+   local n = self.n + 1
+   self.n = n
+   return n
+end
+function c:app(typ, name, ...)
+   local ins = {...}
+   assert(typ)
+   assert(name)
+   local outs = typ(self, name, ins)
+   table.insert(self.nodes, {name, ins, outs})
+   return unpack(outs)
+end
+local function compiler()
+   local state = {
+      n = 0,
+      nodes = {},
+      edges = {},
+   }
+   setmetatable(state, {__index = c})
+   return state
+end
+local function compile(prog)
+   local c = compiler()
+   local ins = {c:node()}
+   local outs = prog(c, unpack(ins))
+   return c
+end
+
+local function test2()
+   function t_filter(c, name, ins)
+      assert(type(name) == 'string')
+      assert(type(ins) == 'table')
+      local outs = map(function(i) return c:node() end, ins)
+      return outs
+   end
+   local function prog(c, i)
+      local a = c:app(t_filter, 'f1', i )
+      local b = c:app(t_filter, 'f2', i, a )
+      return b
+   end
+   local sch = compile(prog)
+   log_desc(sch)
+   -- w_graph(sch)
+end
+
+
+-- test1()
+test2()
+
+
