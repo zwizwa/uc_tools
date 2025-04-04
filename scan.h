@@ -22,7 +22,7 @@ static inline void scan_init(struct scan *s, char *str, char sep) {
     s->dup = 1;
 };
 
-const char *scan_next(struct scan *s) {
+char *scan_next(struct scan *s) {
     char sep = s->sep;
     char *str = s->str;
     uintptr_t n = s->n;
