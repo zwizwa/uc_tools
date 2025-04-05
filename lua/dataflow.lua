@@ -122,7 +122,7 @@ end
 
 
 -- C code gen
--- local function r_c_assign(s)
+-- local function render_c_assign(s)
 --    local code = {}
 --    for _,edge in ipairs(s.edges) do
 --       -- log_desc({edge=edge})
@@ -157,10 +157,10 @@ local function input_edges(s)
    return tab
 end
 
--- The inner_code argument contains declarations or definitions for
--- the _process functions.
-local function r_c(s,inner_code)
+local function render_c(s)
+   local top_struct_code = {}
    local struct_code = {}
+   local alloc_code = {}
    local connect_code = {}
    local process_code = {}
    -- Index the edges by inputs.
@@ -168,6 +168,11 @@ local function r_c(s,inner_code)
    -- log_desc({edge=edge})
 
    local indent = '    '
+   local indent2 = {indent, indent}
+
+   local alloc_count = 0
+
+   local function str(n) return n .. '' end
 
    -- For all processing nodes
    for _,node in ipairs(s.nodes) do
@@ -175,37 +180,37 @@ local function r_c(s,inner_code)
       -- log_desc({node=node})
       local to_node, to_ports, outs = unpack(node)
 
-      local struct = {}
-      table.insert(
-         struct,
-         {indent, '// outputs\n'})
+      local out_struct = {}
       for _,out in ipairs(outs) do
          table.insert(
-            struct,
-            {indent,'float *',out,';\n'})
+            out_struct,
+            {indent2,'float *',out,';\n'})
       end
-
-
-      table.insert(
-         struct,
-         {indent, '// inputs\n'})
+      local in_struct = {}
       for _,to_port in ipairs(to_ports) do
          -- log_desc({to_node,to_port})
          local from = edge[to_node][to_port]
 
          table.insert(
-            struct,
-            {indent,'float *',to_port,';\n'})
+            in_struct,
+            {indent2,'float *',to_port,';\n'})
 
          -- Obtain the inputs by assigning pointers.
          if from then
             assert(from)
             local from_node, from_port = unpack(from)
+            local input  = {'s->', to_node,   '.input.',  to_port,   }
+            local output = {'s->', from_node, '.output.', from_port, }
             table.insert(
-               connect_code,
-               {indent,
-                's->', to_node,   '.', to_port,   ' = ',
-                's->', from_node, '.', from_port, ';\n'})
+               alloc_code, {
+                  {indent, output, ' = s->buf[',str(alloc_count),']',';\n'},
+            })
+            alloc_count = alloc_count + 1,
+
+            table.insert(
+               connect_code, {
+                  {indent, input, ' = ', output, ';\n'}
+            })
          else
             -- Port is not connected.
             log_desc({not_connected={to_node,to_port}})
@@ -221,21 +226,38 @@ local function r_c(s,inner_code)
       -- Save the data structure
       table.insert(struct_code,
                    {'struct ', to_node, ' {\n',
-                    struct,
+                    {indent,'struct {\n', in_struct,  indent,'} input;\n'},
+                    {indent,'struct {\n', out_struct, indent,'} output;\n'},
+                    {indent, 'struct ', to_node, '_state state;\n'},
                     '};\n'})
+
+      -- Add it to the top struct
+      table.insert(
+         top_struct_code,
+         {indent, 'struct ',to_node, ' ', to_node, ';\n'})
    end
+
+   table.insert(
+      top_struct_code,
+      {indent, 'float buf[',str(alloc_count),'][256];\n'});
+
+
+
    return {
-      struct_code,
-      {'void connect(areal *s) {\n', connect_code, '}\n'},
-      inner_code or {},
-      {'void process(areal *s) {\n', process_code, '}\n'},
+      structs = {
+         struct_code,
+         {"struct top {\n", top_struct_code, "}\n"},
+      },
+      connect = {'void connect(areal *s) {\n',
+                 {indent, '// alloc\n'},
+                 alloc_code,
+                 {indent, '// connect\n'},
+                 connect_code,
+                 '}\n'},
+      process = {'void process(areal *s) {\n', process_code, '}\n'},
    }
 end
 
-local function w_c(s, filename)
-   local rendered = { r_c(s) }
-   w(rendered, filename)
-end
 
 
 local schematic = {
@@ -449,8 +471,7 @@ return {
    t = t,
    graph_compile = graph_compile,
    w_dot = w_dot,
-   w_c = w_c,
-   r_c = r_c,
+   render_c = render_c,
    w = w,
    input_edges = input_edges,
 
