@@ -63,4 +63,26 @@ function iolist.write_to_stream(f, iol)
    f:flush()
 end
 
+function iolist.join(connect_el, arr)
+   local out_arr = {}
+   local n = #arr
+   for i,el in ipairs(arr) do 
+      table.insert(out_arr, el)
+      if i<n then table.insert(out_arr, connect_el) end
+   end
+   return out_arr
+end
+
+function iolist.w(iol, maybe_filename)
+   if (type(maybe_filename) == 'string') then
+
+      local file = io.open(maybe_filename, "w")
+      iolist.write_to_stream(file, iol)
+      file:close()
+   else
+      iolist.write_to_stream(file, io.stdout)
+   end
+end
+
+
 return iolist

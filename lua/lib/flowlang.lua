@@ -5,47 +5,16 @@
 
 require('lib.tools.log')
 local list   = require('lib.tools.list')
+local iolist = require('lure.iolist')
 local map    = list.map
 local concat = list.concat
-
--- Implementation uses Erlang style iolist to avoid string concatenation
--- iolist = listof(iolist) | string
 
 -- The 'w_' functions take iolist and write to stdout
 -- The 'render_' functions will render to iolist
 
--- WRITE IOLIST TO FILE
+local w    = iolist.w
+local join = iolist.join
 
-local function w_iostr(file, s)
-   if type(s) == 'string' then
-      file:write(s)
-   else
-      for _,str in ipairs(s) do
-         w_iostr(file, str)
-      end
-   end
-end
-
-local function w(iostring, maybe_filename)
-   if (type(maybe_filename) == 'string') then
-      local file = io.open(maybe_filename, "w")
-      w_iostr(file, iostring)
-      file:close()
-   else
-      w_iostr(io.stdout, iostring)
-   end
-end
-
-
-local function join(connect_el, arr)
-   local out_arr = {}
-   local n = #arr
-   for i,el in ipairs(arr) do 
-      table.insert(out_arr, el)
-      if i<n then table.insert(out_arr, connect_el) end
-   end
-   return out_arr
-end
 
 
 -- RENDER GRAPH TO IOLIST
@@ -299,6 +268,24 @@ local function graph_compiler()
          error('bad input_name type')
       end
 
+      -- FIXME: The edges will need to be annotated to carry the
+      -- buffer type.  Basic idea is that:
+      -- 1. default edge type is unspecified
+      -- 2. if processor needs vectorization input, this is specified
+      -- 3. if vectorization conflicts an error is generated
+      -- 4. user should solve transposition manually if needed
+
+      -- FIXME: this is a property of the ports, not the edges!  The
+      -- edges need to respect the port type, but we're not defining
+      -- output edges here so can't set the output bus type in the
+      -- edges.
+
+      if instance.bus_type then
+         -- e.g. { vector = 4 } assumes the wires are vectorized by 4
+         -- FIXME: implement
+         log_desc({bus_type = instance.bus_type})
+      end
+
       for i,input in ipairs(ins) do
          table.insert(self.edges, {input, {name, in_port_names[i]}})
       end
@@ -311,6 +298,7 @@ local function graph_compiler()
          end,
          outs)
 
+      -- FIXME: Change the data type here to be able to add metadata.
       table.insert(self.nodes, {name, in_port_names, out_ports})
       return unpack(outs)
    end
@@ -337,17 +325,20 @@ end
 -- The meaning of a type is a Lua function that instantiates a processor
 local t = {}
 
-function t.bus_op(type_name)
+function t.bus_op(type_name, bus_type)
    return function (c, name, nb_inputs)
       local outs = {}
       for i=1,nb_inputs do outs[i] = c:make_output(name, 'o' .. i) end
       return {
          type_name = type_name,
          outs = outs,
-         input_name = function(i) return 'i' .. i end
+         input_name = function(i) return 'i' .. i end,
+         bus_type = bus_type
       }
    end
 end
+
+
 
 function t.matrix_op(type_name, in_names, out_names)
    return function (c, name, nb_inputs)
