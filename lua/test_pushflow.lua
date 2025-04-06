@@ -6,11 +6,11 @@ local function log_desc(thing) log(prompt.describe(thing)) end
 
 log("test_dataflow.lua begin\n")
 
-local dataflow = require('lib.dataflow')
+local pushflow = require('lib.pushflow')
 
 
 function test()
-   local s = dataflow.scheduler.new()
+   local s = pushflow.scheduler.new()
    local n = {};
 
    n.in1 = s:new_node({}, {name = "in1"})
@@ -46,5 +46,5 @@ function test()
 end
 
 test()
-log("test_dataflow.lua end\n")
+log("test_pushflow.lua end\n")
 
