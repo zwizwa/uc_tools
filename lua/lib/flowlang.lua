@@ -3,6 +3,7 @@
 -- Generate readable dataflow schematics and patching C code from a
 -- Lua-embedded 'final' DSL.
 
+
 require('lib.tools.log')
 local list   = require('lib.tools.list')
 local iolist = require('lure.iolist')
@@ -29,7 +30,9 @@ end
 
 local function render_node(s)
    return function(n)
-      local name, i, o = unpack(n)
+      local name = n.name
+      local i = n.in_ports
+      local o = n.out_ports
       assert(name)
       assert(i)
       assert(o)
@@ -138,7 +141,12 @@ local function render_c(s)
    for _,node in ipairs(s.nodes) do
       -- Get the processor definition
       -- log_desc({node=node})
-      local to_node, to_ports, outs = unpack(node)
+      local to_node  = node.name
+      local to_ports = node.in_ports
+      local outs     = node.out_ports
+      assert(to_node)
+      assert(to_ports)
+      assert(outs)
 
       local out_struct = {}
       for _,out in ipairs(outs) do
@@ -268,24 +276,6 @@ local function graph_compiler()
          error('bad input_name type')
       end
 
-      -- FIXME: The edges will need to be annotated to carry the
-      -- buffer type.  Basic idea is that:
-      -- 1. default edge type is unspecified
-      -- 2. if processor needs vectorization input, this is specified
-      -- 3. if vectorization conflicts an error is generated
-      -- 4. user should solve transposition manually if needed
-
-      -- FIXME: this is a property of the ports, not the edges!  The
-      -- edges need to respect the port type, but we're not defining
-      -- output edges here so can't set the output bus type in the
-      -- edges.
-
-      if instance.bus_type then
-         -- e.g. { vector = 4 } assumes the wires are vectorized by 4
-         -- FIXME: implement
-         log_desc({bus_type = instance.bus_type})
-      end
-
       for i,input in ipairs(ins) do
          table.insert(self.edges, {input, {name, in_port_names[i]}})
       end
@@ -298,8 +288,23 @@ local function graph_compiler()
          end,
          outs)
 
-      -- FIXME: Change the data type here to be able to add metadata.
-      table.insert(self.nodes, {name, in_port_names, out_ports})
+      -- Instances are annotated with bus_type which defines a
+      -- constraint on the layout of the loop code.  E.g. when the
+      -- loop code was hand coded in assembly or C to use 4 x float
+      -- vectors, like FIR and biquad implementations.
+      --
+      -- For loop code that is generated, we can absorb transposition
+      -- into the loop.
+
+      -- TODO:
+      -- . bus types need to be checked when patching things together
+      -- . probably user should solve transposition in separate block if needed
+
+      table.insert(self.nodes,
+                   {name      = name,
+                    in_ports  = in_port_names,
+                    out_ports = out_ports,
+                    bus_type  = bus_type})
       return unpack(outs)
    end
 

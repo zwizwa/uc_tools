@@ -80,7 +80,7 @@ function iolist.w(iol, maybe_filename)
       iolist.write_to_stream(file, iol)
       file:close()
    else
-      iolist.write_to_stream(file, io.stdout)
+      iolist.write_to_stream(io.stdout, iol)
    end
 end
 

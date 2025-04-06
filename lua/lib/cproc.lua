@@ -1,4 +1,7 @@
 -- Code for generating cproc patching code.
+local m = { test = {} }
+local iolist = require('lure.iolist')
+
 --
 -- After doing some more hands-on work, it really seems that block
 -- processing is essential to be able to use the available
@@ -84,18 +87,72 @@
 
 -- Inputs layed out as 4-vector busses
 
-local function input(chanel,sample)
-   local buf = channel % 4
-   ...
-   return
-      update = '+= 4',
+
+
+
+
+-- The core viewpoint is how the input and output buffers look inside
+-- a processor's block loop.  Those are what needs to be abstracted.
+-- We represent them as a pair: pointer init code, pointer update
+-- code.  It could in theory be abstracted as a C function, but let's
+-- keep it as concrete as possible to get it going.  Only support
+-- float buffers, and only use interleaving.
+--
+-- float *pin0 = ibuf0 + 1;
+-- float *pin1 = ibuf1 + 0;
+-- float *pout = obuf + 0;
+-- for(int i=0; i<nb; i++) {
+--     float in0 = *pin0;
+--     float in1 = *pin1;
+--     float out = in0 + in1;
+--     *pout = out;
+--     pout += 4;
+--     pin0 += 4;
+--     pin0 += 1;
+-- }
+--
+-- For each input, output there is just the offset, stride pair.
+
+function m.render_proc(cproc, inputs, outputs)
+   local init_code = {}
+   local update_code = {}
+   local indent = '    '
+   local function gen_init(tag,ports)
+      for i,port in ipairs(ports) do
+         table.insert(
+            init_code,
+            -- A bus contains multiple channels
+            {indent,'float *chan_',tag,i-1,' = bus_',tag,i-1,' + ',port.offset,';\n'})
+      end
+   end
+   gen_init('in',inputs)
+   gen_init('out',outputs)
+
+   local function gen_update(tag,ports)
+      for i,port in ipairs(ports) do
+         table.insert(
+            init_code,
+            {indent,'*chan_',tag,i-1,' += ', port.stride, ';\n'})
+      end
+   end
+   gen_update('in',inputs)
+   gen_update('out',outputs)
+
+   return {init_code, update_code}
+end
+function m.test.render_proc()
+   local inputs = {
+      {offset = 1, stride = 4},
+      {offset = 3, stride = 4},
    }
+   local outputs = {
+      {offset = 0, stride = 1},
+   }
+   local code = m.render_proc({}, inputs, outputs)
+   iolist.w(code)
 end
 
 
-
-
-local m = {}
 function m.render_map(cproc, input, output)
    for i=1,12 do
       log(input(i))
