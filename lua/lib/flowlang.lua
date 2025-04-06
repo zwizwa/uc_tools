@@ -239,13 +239,6 @@ local function graph_compiler()
 
    local c = { }
 
-   function c:make_output(name, out_name)
-      local ports = self.ports[name] or {}
-      table.insert(ports, out_name)
-      self.ports[name] = ports
-      return {name, out_name}
-   end
-
    function c:app(typ, name, ...)
       assert(typ)
       assert(type(name) == 'string')
@@ -257,7 +250,6 @@ local function graph_compiler()
       -- explicit edges.
 
       local instance = typ(self, name, #ins)
-      local outs = instance.outs
       local input_name = instance.input_name
       local in_port_names
       if input_name == nil then
@@ -280,14 +272,6 @@ local function graph_compiler()
          table.insert(self.edges, {input, {name, in_port_names[i]}})
       end
 
-      -- Return just the port name.
-      local out_ports = map(
-         function(out)
-            local _name, port = unpack(out);
-            return port
-         end,
-         outs)
-
       -- Instances are annotated with bus_type which defines a
       -- constraint on the layout of the loop code.  E.g. when the
       -- loop code was hand coded in assembly or C to use 4 x float
@@ -300,19 +284,17 @@ local function graph_compiler()
       -- . bus types need to be checked when patching things together
       -- . probably user should solve transposition in separate block if needed
 
-      table.insert(self.nodes,
-                   {name      = name,
-                    in_ports  = in_port_names,
-                    out_ports = out_ports,
-                    instance  = instance})
-      return unpack(outs)
+      instance.name = name
+      instance.in_ports = in_port_names
+      assert(instance.out_ports)
+      table.insert(self.nodes, instance)
+
+      local rvs = map(function(o) return {name, o} end, instance.out_ports)
+      return unpack(rvs)
    end
 
 
    local state = {
-      -- The applicative variables are always output ports of the
-      -- nodes (processor instances).
-      ports = {},
       -- The Graphviz node and edge sets.
       nodes = {},
       edges = {},
@@ -330,13 +312,14 @@ end
 -- The meaning of a type is a Lua function that instantiates a processor
 local t = {}
 
-function t.bus_op(type_name, bus_type)
+function t.bus_op(cproc_name, bus_type)
    return function (c, name, nb_inputs)
       local outs = {}
-      for i=1,nb_inputs do outs[i] = c:make_output(name, 'o' .. i) end
+      for i=1,nb_inputs do outs[i] = 'o' .. i end
       return {
-         type_name = type_name,
-         outs = outs,
+         type_name = 'bus_op',
+         cproc_name = cproc_name,
+         out_ports = outs,
          input_name = function(i) return 'i' .. i end,
          bus_type = bus_type
       }
@@ -344,14 +327,12 @@ function t.bus_op(type_name, bus_type)
 end
 
 
-
+-- FIXME: This is a special generated one.
 function t.matrix_op(type_name, in_names, out_names)
    return function (c, name, nb_inputs)
-      local outs = {}
-      for i=1,#out_names do outs[i] = c:make_output(name, out_names[i]) end
       return {
-         type_name = type_name,
-         outs = outs,
+         type_name  = type_name,
+         out_ports  = out_names,
          input_name = in_names,
       }
    end
@@ -365,13 +346,18 @@ function t.input(n)
       assert(n0 == 0)
       local outs = {}
       if type(n) == 'number' then
-         for i=1,n do outs[i] = c:make_output(name, 'ch' .. i) end
+         for i=1,n do outs[i] = 'ch' .. i end
       elseif type(n) == 'table' then
-         for i,name_i in ipairs(n) do outs[i] = c:make_output(name, name_i) end
+         for i,name_i in ipairs(n) do outs[i] = name_i end
       else
          error('bad t.input type ' .. type(n))
       end
-      return { outs = outs, }
+      return {
+         name = name,
+         type_name = 'input',
+         out_ports = outs,
+         in_ports = {},
+      }
    end
 end
 
