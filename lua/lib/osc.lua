@@ -29,7 +29,7 @@ function m.render_c(param_tree)
          -- Use setters
          table.insert(
             set_code, {
-               {'set_',full_c_name,'(struct areal *s, ',typ,' val) ',
+               {'void set_',full_c_name,'(struct areal *s, ',typ,' val) ',
                 '{ ', var,' = val; }\n'},
          })
          local typ_def = {

@@ -304,7 +304,7 @@ local function graph_compiler()
                    {name      = name,
                     in_ports  = in_port_names,
                     out_ports = out_ports,
-                    bus_type  = bus_type})
+                    instance  = instance})
       return unpack(outs)
    end
 

@@ -1,4 +1,9 @@
 -- Code for generating cproc patching code.
+-- TL;DR
+-- 1. Some hand-written loops need special layout (e.g. vector busses)
+-- 2. Absorb "transposition" in the fmap function for simple processors
+
+
 local m = { test = {} }
 local iolist = require('lure.iolist')
 local list = require('lib.tools.list')
@@ -120,30 +125,34 @@ local map  = list.map
 -- "patch language" doesn't need to distinguish between input and
 -- output ports, so we just drop that here.
 
-function m.render_bus_map(cproc, ports)
+function m.render_bus_map(cproc, ports, opts)
+   opts = opts or {}
+   local nb = opts.nb or 256
+
    local init_code = {}
    local update_code = {}
    local indent = '    '
    local indent2 = {indent, indent}
-   local busses   = {}
+   local typed_busses   = {}
    local channels = {}
    for i,port in ipairs(ports) do
       local chan = {'chan_',i-1}
       local bus  = {'bus_', i-1}
+      local typ  = port.typ
       table.insert(channels, chan)
-      table.insert(busses,   bus)
+      table.insert(typed_busses, {typ, '* ', bus})
       table.insert(
          init_code,
          -- A bus contains multiple channels
-         {indent,'float *',chan,' = ',bus,' + ',port.offset,';\n'})
+         {indent,typ,' *',chan,' = ',bus,' + ',port.offset,';\n'})
       table.insert(
          update_code,
          {indent2,'*',chan,' += ', port.stride, ';\n'})
    end
    return {
-      {'void ',cproc,'_buf(',cproc,'_t *',cproc,'_s, ',join(', ',prefix('float *',busses)),'){\n'},
+      {'void ',cproc,'_buf(',cproc,'_t *',cproc,'_s, ',join(', ',typed_busses),') {\n'},
       init_code,
-      {indent,'for(int i=0; i<256; i++){\n'},
+      {indent,'for(int i=0; i<',nb,'; i++) {\n'},
       {indent2, cproc, '(', cproc,'_s, ', join(', ',channels), ');\n'},
       update_code,
       {indent,'}\n'},
@@ -152,11 +161,11 @@ function m.render_bus_map(cproc, ports)
 end
 function m.test.render_bus_map()
    local ports = {
-      {offset = 1, stride = 4},
-      {offset = 3, stride = 4},
-      {offset = 0, stride = 1},
+      {typ = 'int',   offset = 1, stride = 4},
+      {typ = 'float', offset = 3, stride = 4},
+      {typ = 'float', offset = 0, stride = 1},
    }
-   local code = m.render_bus_map('proc1', ports)
+   local code = m.render_bus_map('proc1', ports, {nb = 128})
    iolist.w(code)
 end
 
