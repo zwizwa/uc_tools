@@ -4,12 +4,17 @@
 -- Lua-embedded 'final' DSL.
 
 require('lib.tools.log')
+local list   = require('lib.tools.list')
+local map    = list.map
+local concat = list.concat
 
 -- Implementation uses Erlang style iolist to avoid string concatenation
 -- iolist = listof(iolist) | string
 
--- The 'r_' functions will render to iolist
 -- The 'w_' functions take iolist and write to stdout
+-- The 'render_' functions will render to iolist
+
+-- WRITE IOLIST TO FILE
 
 local function w_iostr(file, s)
    if type(s) == 'string' then
@@ -32,12 +37,6 @@ local function w(iostring, maybe_filename)
 end
 
 
--- FIXME: Put these in a single file once and for all.
-local function map(f,arr)
-   local out_arr = {}
-   for i,el in ipairs(arr) do  out_arr[i] = f(el) end
-   return out_arr
-end
 local function join(connect_el, arr)
    local out_arr = {}
    local n = #arr
@@ -49,8 +48,9 @@ local function join(connect_el, arr)
 end
 
 
+-- RENDER GRAPH TO IOLIST
 
-local function r_ports(s)
+local function render_ports(s)
    return function (ports_list)
       local port_labels = map(function(p) return {"<",p,">",p} end, ports_list)
       local joined = join("|", port_labels)
@@ -58,7 +58,7 @@ local function r_ports(s)
    end
 end
 
-local function r_node(s)
+local function render_node(s)
    return function(n)
       local name, i, o = unpack(n)
       assert(name)
@@ -67,7 +67,7 @@ local function r_node(s)
       return {
          '    ',
          name,'[label="{ ',
-         r_ports(s)(i),'|',name, '|',r_ports(s)(o),
+         render_ports(s)(i),'|',name, '|',render_ports(s)(o),
          ' }"];\n'
       }
    end
@@ -86,7 +86,7 @@ local function map_edge(f, e)
    return f(from_node, from_port, to_node, to_port)
 end
 
-local function r_edge(s)
+local function render_edge(s)
    return function(e)
       return map_edge(
          function(from_node, from_port, to_node, to_port)
@@ -104,38 +104,29 @@ end
 
 
 -- https://stackoverflow.com/questions/7922960/block-diagram-layout-with-dot-graphviz
-local function w_dot(s, filename)
+local function render_dot(s)
    assert(s.nodes)
    assert(s.edges)
-   w({[[
+   return {[[
 digraph G {
     # splines = false;
     splines = line;
     graph [rankdir = LR];
     node[shape=record];
 ]],
-map(r_node(s), s.nodes),
-map(r_edge(s), s.edges),[[
+map(render_node(s), s.nodes),
+map(render_edge(s), s.edges),[[
 }
-]]}, filename)
+]]}
+end
+
+local function w_dot(s, maybe_filename)
+   w(render_dot(s), maybe_filename)
 end
 
 
--- C code gen
--- local function render_c_assign(s)
---    local code = {}
---    for _,edge in ipairs(s.edges) do
---       -- log_desc({edge=edge})
---       map_edge(
---          function(from_node, from_port, to_node, to_port)
---             table.insert(
---                code,
---                {to_node, '.', to_port, ' = ',
---                 from_node, '.', from_port, ';\n'})
---          end, edge)
---    end
---    return code
--- end
+-- RENDER GRAPH TO C CODE
+
 
 -- Represent the edges in reverse as a nested Lua struct:
 -- [input][port] = {output,port}
@@ -260,35 +251,8 @@ end
 
 
 
-local schematic = {
-   nodes = {
-      {'input',{},{ 'ch1','ch2','ch3','ch4' }},
-      {'fir4',
-       {'in1','in2','in3','in4' },
-       { 'out1','out2','out3','out4'}},
-      {'eq',
-       { 'in1','in2'},
-       { 'out'}},
-      {'output',{ 'ch1','ch2','ch3','ch4'},{}},
-   },
-   edges = {
-      {{'input','ch1'}, {'fir4','in1'}},
-      {{'input','ch2'}, {'fir4','in2'}},
-      {{'input','ch3'}, {'fir4','in3'}},
-      {{'input','ch4'}, {'fir4','in4'}},
-      {{'fir4','out1'}, {'output','ch1'}},
-      {{'fir4','out2'}, {'output','ch2'}},
-      {{'fir4','out3'}, {'eq','in1'}},
-      {{'fir4','out4'}, {'eq','in2'}},
-      {{'eq','out'}, {'output','ch4'}},
-   },
-}
+-- COMPILE LUA TO GRAPH
 
-
-local function test1()
-   log_desc(schematic)
-   w_dot(schematic)
-end
 
 -- To keep it simple: use unique node names at first.
 -- How to specify the number of outputs that a processor produces?
@@ -304,12 +268,6 @@ local function graph_compiler()
       self.ports[name] = ports
       return {name, out_name}
    end
-
-   -- function c:app(typ, name, ...)
-   --    local ins = {...}
-   --    log_desc({ins=ins})
-   --    return self:app_list(type, name, ins)
-   -- end
 
    function c:app(typ, name, ...)
       assert(typ)
@@ -421,6 +379,24 @@ function t.input(n)
    end
 end
 
+
+-- Some utility functions
+local function named(names, values)
+   local tab = {}
+   for i,v in ipairs(values) do
+      tab[names[i]] = v
+   end
+   return tab
+end
+
+
+
+
+
+
+-- TEST
+
+-- Test for lua to graph compiler
 local function test2()
    local t_filter = t.bus_op('fir')
    local function prog1(s, a)
@@ -444,26 +420,40 @@ local function test2()
 
 end
 
--- Some utility functions
-local function named(names, values)
-   local tab = {}
-   for i,v in ipairs(values) do
-      tab[names[i]] = v
-   end
-   return tab
+
+local schematic = {
+   nodes = {
+      {'input',{},{ 'ch1','ch2','ch3','ch4' }},
+      {'fir4',
+       {'in1','in2','in3','in4' },
+       { 'out1','out2','out3','out4'}},
+      {'eq',
+       { 'in1','in2'},
+       { 'out'}},
+      {'output',{ 'ch1','ch2','ch3','ch4'},{}},
+   },
+   edges = {
+      {{'input','ch1'}, {'fir4','in1'}},
+      {{'input','ch2'}, {'fir4','in2'}},
+      {{'input','ch3'}, {'fir4','in3'}},
+      {{'input','ch4'}, {'fir4','in4'}},
+      {{'fir4','out1'}, {'output','ch1'}},
+      {{'fir4','out2'}, {'output','ch2'}},
+      {{'fir4','out3'}, {'eq','in1'}},
+      {{'fir4','out4'}, {'eq','in2'}},
+      {{'eq','out'}, {'output','ch4'}},
+   },
+}
+
+-- Test for graph data structure
+local function test1()
+   log_desc(schematic)
+   w_dot(schematic)
 end
 
-local function concat(list_of_lists)
-   local result = {}
-   for i,list in ipairs(list_of_lists) do
-      for j,el in ipairs(list) do
-         table.insert(result, el)
-      end
-   end
-   return result
-end
 
 
+-- EXPORT
 
 -- test1()
 -- test2()
@@ -472,6 +462,7 @@ return {
    graph_compile = graph_compile,
    w_dot = w_dot,
    render_c = render_c,
+   render_c_osc = render_c_osc,
    w = w,
    input_edges = input_edges,
 

@@ -11,4 +11,15 @@ function list.map(fun, arr)
    return results
 end
 
+function list.concat(list_of_lists)
+   local result = {}
+   for i,list in ipairs(list_of_lists) do
+      for j,el in ipairs(list) do
+         table.insert(result, el)
+      end
+   end
+   return result
+end
+
+
 return list
