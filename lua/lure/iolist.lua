@@ -6,6 +6,9 @@
 
 -- FIXME: Rename functions.  This is too confusing.
 
+local list = require('lib.tools.list')
+local map = list.map
+
 local iolist = { }
 
 local function write(w,iol)
@@ -83,6 +86,11 @@ function iolist.w(iol, maybe_filename)
       iolist.write_to_stream(io.stdout, iol)
    end
 end
+
+function iolist.prefix(sep, list)
+   return map(function(p) return({sep,p}) end, list)
+end
+
 
 
 return iolist

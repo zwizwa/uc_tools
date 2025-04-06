@@ -5,13 +5,12 @@
 -- float instead of requiring a setter.
 
 local list = require('lib.tools.list')
+local iolist = require('lure.iolist')
+local prefix = iolist.prefix
 local map = list.map
 
-local m = {}
 
-local function prefix(sep, list)
-   return map(function(p) return({sep,p}) end, list)
-end
+local m = {}
 
 function m.render_c(param_tree)
    local set_code = {}

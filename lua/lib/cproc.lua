@@ -1,6 +1,10 @@
 -- Code for generating cproc patching code.
 local m = { test = {} }
 local iolist = require('lure.iolist')
+local list = require('lib.tools.list')
+local prefix = iolist.prefix
+local join = iolist.join
+local map  = list.map
 
 --
 -- After doing some more hands-on work, it really seems that block
@@ -111,44 +115,48 @@ local iolist = require('lure.iolist')
 --     pin0 += 1;
 -- }
 --
--- For each input, output there is just the offset, stride pair.
+-- For each input, output there is just the offset, stride pair.  Note
+-- that because the inner loop uses pointers, the buffer wrapper
+-- "patch language" doesn't need to distinguish between input and
+-- output ports, so we just drop that here.
 
-function m.render_proc(cproc, inputs, outputs)
+function m.render_bus_map(cproc, ports)
    local init_code = {}
    local update_code = {}
    local indent = '    '
-   local function gen_init(tag,ports)
-      for i,port in ipairs(ports) do
-         table.insert(
-            init_code,
-            -- A bus contains multiple channels
-            {indent,'float *chan_',tag,i-1,' = bus_',tag,i-1,' + ',port.offset,';\n'})
-      end
+   local indent2 = {indent, indent}
+   local busses   = {}
+   local channels = {}
+   for i,port in ipairs(ports) do
+      local chan = {'chan_',i-1}
+      local bus  = {'bus_', i-1}
+      table.insert(channels, chan)
+      table.insert(busses,   bus)
+      table.insert(
+         init_code,
+         -- A bus contains multiple channels
+         {indent,'float *',chan,' = ',bus,' + ',port.offset,';\n'})
+      table.insert(
+         update_code,
+         {indent2,'*',chan,' += ', port.stride, ';\n'})
    end
-   gen_init('in',inputs)
-   gen_init('out',outputs)
-
-   local function gen_update(tag,ports)
-      for i,port in ipairs(ports) do
-         table.insert(
-            init_code,
-            {indent,'*chan_',tag,i-1,' += ', port.stride, ';\n'})
-      end
-   end
-   gen_update('in',inputs)
-   gen_update('out',outputs)
-
-   return {init_code, update_code}
+   return {
+      {'void ',cproc,'_buf(',cproc,'_t *',cproc,'_s, ',join(', ',prefix('float *',busses)),'){\n'},
+      init_code,
+      {indent,'for(int i=0; i<256; i++){\n'},
+      {indent2, cproc, '(', cproc,'_s, ', join(', ',channels), ');\n'},
+      update_code,
+      {indent,'}\n'},
+      {'}\n'},
+   }
 end
-function m.test.render_proc()
-   local inputs = {
+function m.test.render_bus_map()
+   local ports = {
       {offset = 1, stride = 4},
       {offset = 3, stride = 4},
-   }
-   local outputs = {
       {offset = 0, stride = 1},
    }
-   local code = m.render_proc({}, inputs, outputs)
+   local code = m.render_bus_map('proc1', ports)
    iolist.w(code)
 end
 
