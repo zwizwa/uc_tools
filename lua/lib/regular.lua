@@ -286,12 +286,36 @@ function lib.test_regex_to_rules()
    end
 
 
-   -- nfa_union
-   -- New start state, epsilon to both start states.
-   -- New end state, epsilon from all end states.
+   -- nfa_union  FIXME prob not right
+   local function nfa_union(nfa1, nfa2)
+      local nfa = { rules = {}, final = {} }
+      -- New start state, epsilon to both start states.
+      nfa.start = make_state()
+      nfa.rules[nfa.start] = {{nfa1.start}, {nfa2.start}}
+      -- New end state, epsilon from all end states.
+      local nfa_end = make_state
+      nfa.final = { nfa_end }
+      for _, state in ipairs(nfa1.final) nfa.rules[state] = { nfa_end } end
+      for _, state in ipairs(nfa2.final) nfa.rules[state] = { nfa_end } end
+      -- Copy other rules
+      for state, rule in pairs(nfa1.rules) do nfa.rules[state] = rule end
+      for state, rule in pairs(nfa2.rules) do nfa.rules[state] = rule end
 
-   -- nfa_star
-   -- New end state, epsilon from all end state
+      return nfa
+
+   end
+
+   -- nfa_star  FIXME not right
+   local function nfa_start(nfa1)
+      local nfa = { rules = {}, final = {} }
+      -- New end state, epsilon from all end state
+      local nfa_end = make_state()
+      nfa.final = { nfa_end }
+
+      for _, state in ipairs(nfa1.final) do table.insert(nfa.final, state) end
+      ...
+   end
+
    -- New start state, epsilon to old start state, epsilon to new end state
 
    -- concat and union can be generalized to multi-arg
