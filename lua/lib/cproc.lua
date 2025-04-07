@@ -97,6 +97,16 @@ local map  = list.map
 -- Inputs layed out as 4-vector busses
 
 
+-- I wonder if what I am trying to do is just this:
+-- . Keep transposers simple to/from vec4
+-- . Generalize wire with 1-element proc
+-- . Put all transposers in the schematic explicitly
+--
+-- It's easy enough to make the vectorization explicit in the toplevel
+-- schematic.
+
+
+
 
 
 
@@ -125,9 +135,77 @@ local map  = list.map
 -- "patch language" doesn't need to distinguish between input and
 -- output ports, so we just drop that here.
 
-function m.render_bus_map(cproc, ports, opts)
+-- FIXME: Now do the same but use applicative form anyway, and a
+-- struct with named pointers.
+
+
+-- function m.render_map_cproc_args(cproc, ports, opts)
+--    opts = opts or {}
+--    local nb = opts.nb or 256
+
+--    local init_code = {}
+--    local update_code = {}
+--    local indent = '    '
+--    local indent2 = {indent, indent}
+--    local typed_busses   = {}
+--    local channels = {}
+--    for i,port in ipairs(ports) do
+--       local chan = {'chan_',i-1}
+--       local bus  = {'bus_', i-1}
+--       local typ  = port.typ
+--       table.insert(channels, chan)
+--       table.insert(typed_busses, {typ, '* ', bus})
+--       table.insert(
+--          init_code,
+--          -- A bus contains multiple channels
+--          {indent,typ,' *',chan,' = ',bus,' + ',port.offset,';\n'})
+--       table.insert(
+--          update_code,
+--          {indent2,'*',chan,' += ', port.stride, ';\n'})
+--    end
+--    return {
+--       {'void ',cproc,'_buf(',cproc,'_t *',cproc,'_s, ',join(', ',typed_busses),') {\n'},
+--       init_code,
+--       {indent,'for(int i=0; i<',nb,'; i++) {\n'},
+--       {indent2, cproc, '(', cproc,'_s, ', join(', ',channels), ');\n'},
+--       update_code,
+--       {indent,'}\n'},
+--       {'}\n'},
+--    }
+-- end
+-- function m.test.render_map_cproc_args()
+--    local ports = {
+--       {typ = 'int',   offset = 1, stride = 4},
+--       {typ = 'float', offset = 3, stride = 4},
+--       {typ = 'float', offset = 0, stride = 1},
+--    }
+--    local code = m.render_map_cproc_args('proc1', ports, {nb = 128})
+--    iolist.w(code)
+-- end
+
+
+-- Similar, but use a struct.
+
+-- This doesn't use full overengineered cproc api which seems overkill
+-- in my current application and I forgot most of how that worked.
+-- Later though it would be nice to generalize this to also combine
+-- generic cproces with strided buffer management.
+
+-- I do not want to create complication, so assume that each cproc has
+-- a "dataflow variable" update form: (state, *in, ... *out, ...)
+-- which is named _update_df
+
+-- Suffixes used
+-- _state     state struct
+-- _update_df update function in dataflow varaible form
+-- _node      block processing node as it shows up in the graph (state + io)
+-- _loop      the loop over input/output blocks
+
+
+function m.render_loop(cproc, ports, opts)
    opts = opts or {}
-   local nb = opts.nb or 256
+   local nb = opts.nb_samples or 64 -- Pd default
+   local state = opts.state or '&s->state'
 
    local init_code = {}
    local update_code = {}
@@ -136,8 +214,8 @@ function m.render_bus_map(cproc, ports, opts)
    local typed_busses   = {}
    local channels = {}
    for i,port in ipairs(ports) do
-      local chan = {'chan_',i-1}
-      local bus  = {'bus_', i-1}
+      local chan = {'p',i-1}
+      local bus  = {'s->',port.name}
       local typ  = port.typ
       table.insert(channels, chan)
       table.insert(typed_busses, {typ, '* ', bus})
@@ -150,40 +228,28 @@ function m.render_bus_map(cproc, ports, opts)
          {indent2,'*',chan,' += ', port.stride, ';\n'})
    end
    return {
-      {'void ',cproc,'_buf(',cproc,'_t *',cproc,'_s, ',join(', ',typed_busses),') {\n'},
+      {'void ',cproc,'_loop(struct ',cproc,'_node *s) {\n'},
       init_code,
       {indent,'for(int i=0; i<',nb,'; i++) {\n'},
-      {indent2, cproc, '(', cproc,'_s, ', join(', ',channels), ');\n'},
+      {indent2, cproc, '_update_df(',state,', ', join(', ',channels), ');\n'},
       update_code,
       {indent,'}\n'},
       {'}\n'},
    }
 end
-function m.test.render_bus_map()
+function m.test.render_loop()
    local ports = {
-      {typ = 'int',   offset = 1, stride = 4},
-      {typ = 'float', offset = 3, stride = 4},
-      {typ = 'float', offset = 0, stride = 1},
+      {name = 'input.in1',  typ = 'int',   offset = 1, stride = 4},
+      {name = 'input.in2',  typ = 'float', offset = 3, stride = 4},
+      {name = 'output.out', typ = 'float', offset = 0, stride = 1},
    }
-   local code = m.render_bus_map('proc1', ports, {nb = 128})
+   local code = m.render_loop('proc1', ports, {nb_samples = 256})
    iolist.w(code)
 end
 
 
-function m.render_map(cproc, input, output)
-   for i=1,12 do
-      log(input(i))
-   end
+function m.render_nop(cproc)
+   return {'void ',cproc,'_loop(struct ',cproc,'_node *s) {}\n'}
 end
+
 return m
-
-
-
--- I wonder if what I am trying to do is just this:
--- . Keep transposers simple to/from vec4
--- . Generalize wire with 1-element proc
--- . Put all transposers in the schematic explicitly
---
--- It's easy enough to make the vectorization explicit in the toplevel
--- schematic.
-

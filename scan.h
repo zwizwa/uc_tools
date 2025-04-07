@@ -1,6 +1,8 @@
 #ifndef SCAN_H
 #define SCAN_H
 
+#include <stdint.h>
+
 /* +- strtok replacement */
 struct scan {
     char *str;

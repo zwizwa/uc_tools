@@ -9,6 +9,7 @@ local list   = require('lib.tools.list')
 local iolist = require('lure.iolist')
 local map    = list.map
 local concat = list.concat
+local cproc  = require('lib.cproc')
 
 -- The 'w_' functions take iolist and write to stdout
 -- The 'render_' functions will render to iolist
@@ -120,12 +121,16 @@ local function input_edges(s)
    return tab
 end
 
+-- Render the patching code: structs and
 local function render_c(s)
-   local top_struct_code = {}
+   -- Per type
    local struct_code = {}
+   local process_code = {}
+
+   -- Per instance
+   local graph_struct_code = {}
    local alloc_code = {}
    local connect_code = {}
-   local process_code = {}
    -- Index the edges by inputs.
    local edge = input_edges(s)
    -- log_desc({edge=edge})
@@ -137,16 +142,21 @@ local function render_c(s)
 
    local function str(n) return n .. '' end
 
+   local did_type = {}
+
    -- For all processing nodes
    for _,node in ipairs(s.nodes) do
       -- Get the processor definition
       -- log_desc({node=node})
-      local to_node  = node.name
-      local to_ports = node.in_ports
-      local outs     = node.out_ports
+      local to_node   = node.name
+      local to_ports  = node.in_ports
+      local outs      = node.out_ports
+      local type_name = node.type_name
+
       assert(to_node)
       assert(to_ports)
       assert(outs)
+      assert(type_name)
 
       local out_struct = {}
       for _,out in ipairs(outs) do
@@ -185,28 +195,35 @@ local function render_c(s)
          end
       end
 
-      -- Run the processor, which will put the outputs in the correct
-      -- place.
+      -- Add instance to the graph struct
+      table.insert(
+         graph_struct_code,
+         {indent, 'struct ',type_name, '_node ', to_node, ';\n'})
+
+      -- Run the processor instance, which will put the outputs in the
+      -- correct place.
       table.insert(
          process_code,
-         {indent, to_node, '_process(&s->',to_node,');\n'})
+         {indent, type_name, '_loop(&s->',to_node,');\n'})
 
-      -- Save the data structure
-      table.insert(struct_code,
-                   {'struct ', to_node, ' {\n',
-                    {indent,'struct {\n', in_struct,  indent,'} input;\n'},
-                    {indent,'struct {\n', out_struct, indent,'} output;\n'},
-                    {indent, 'struct ', to_node, '_state state;\n'},
-                    '};\n'})
+      -- Per-type struct and process only need to be done once
+      assert(node.type_name)
+      if not did_type[node.type_name] then
+         did_type[node.type_name] = true
 
-      -- Add it to the top struct
-      table.insert(
-         top_struct_code,
-         {indent, 'struct ',to_node, ' ', to_node, ';\n'})
+         -- Save the data structure
+         table.insert(struct_code,
+                      {'struct ', type_name, '_node {\n',
+                       {indent,'struct {\n', in_struct,  indent,'} input;\n'},
+                       {indent,'struct {\n', out_struct, indent,'} output;\n'},
+                       {indent, 'struct ', type_name, '_state state;\n'},
+                       '};\n'})
+      end
+
    end
 
    table.insert(
-      top_struct_code,
+      graph_struct_code,
       {indent, 'float buf[',str(alloc_count),'][256];\n'});
 
 
@@ -214,17 +231,52 @@ local function render_c(s)
    return {
       structs = {
          struct_code,
-         {"struct top {\n", top_struct_code, "}\n"},
+         {"struct graph {\n",
+          -- FIXME: This should not mess up state alignment.
+          {indent, "struct param_context pc;\n"},
+          graph_struct_code,
+          "};\n"},
       },
-      connect = {'void connect(areal *s) {\n',
+      connect = {'void connect(struct graph *s) {\n',
                  {indent, '// alloc\n'},
                  alloc_code,
                  {indent, '// connect\n'},
                  connect_code,
                  '}\n'},
-      process = {'void process(areal *s) {\n', process_code, '}\n'},
+      process = {'void process(struct graph *s) {\n', process_code, '}\n'},
    }
 end
+
+-- Generate block-level _process method for a scalar cproc _update_df
+-- This only needs to be done once per type as everything is generic.
+function render_c_loop(graph, node)
+   assert(node.type_name)
+   local code = { '// generic cproc ', node.type_name,'\n' }
+
+   local nop = {input = true, output = true}
+
+   if nop[node.type_name] then
+      return {code, cproc.render_nop(node.type_name)}
+   end
+
+   local function cfg_port(sub)
+         return function (p)
+            -- FIXME: Get types from graph
+            return {name = {sub,'.',p}, typ = 'float', offset = 1, stride = 4}
+         end
+   end
+   local in_ports  = map(cfg_port('input'),  node.in_ports)
+   local out_ports = map(cfg_port('output'), node.out_ports)
+   local ports = list.concat({in_ports, out_ports})
+   -- log_desc({ports=ports})
+   table.insert(code,
+                cproc.render_loop(
+                   node.type_name,
+                   ports,
+                   {nb = 256}))
+   return code
+end
+
 
 
 
@@ -312,13 +364,13 @@ end
 -- The meaning of a type is a Lua function that instantiates a processor
 local t = {}
 
+
 function t.bus_op(cproc_name, bus_type)
    return function (c, name, nb_inputs)
       local outs = {}
       for i=1,nb_inputs do outs[i] = 'o' .. i end
       return {
-         type_name = 'bus_op',
-         cproc_name = cproc_name,
+         type_name = cproc_name,
          out_ports = outs,
          input_name = function(i) return 'i' .. i end,
          bus_type = bus_type
@@ -444,6 +496,7 @@ return {
    graph_compile = graph_compile,
    w_dot = w_dot,
    render_c = render_c,
+   render_c_loop = render_c_loop,
    render_c_osc = render_c_osc,
    w = w,
    input_edges = input_edges,

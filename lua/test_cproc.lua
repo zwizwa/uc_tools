@@ -2,7 +2,6 @@
 require('lib.tools.log')
 local cproc = require('lib.cproc')
 function test1()
-   -- cproc.bus_mapper(cproc, cproc.vec4, output)
-   cproc.test.render_bus_map()
+   cproc.test.render_map_cproc_struct()
 end
 test1()
