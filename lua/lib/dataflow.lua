@@ -126,6 +126,7 @@ local function render_c(s)
    -- Per type
    local struct_code = {}
    local process_code = {}
+   local macros = {}
 
    -- Per instance
    local graph_struct_code = {}
@@ -212,12 +213,23 @@ local function render_c(s)
          did_type[node.type_name] = true
 
          -- Save the data structure
-         table.insert(struct_code,
-                      {'struct ', type_name, '_node {\n',
-                       {indent,'struct {\n', in_struct,  indent,'} input;\n'},
-                       {indent,'struct {\n', out_struct, indent,'} output;\n'},
-                       {indent, 'struct ', type_name, '_state state;\n'},
-                       '};\n'})
+         table.insert(
+            struct_code,
+            {'struct ', type_name, '_node {\n',
+             {indent,'struct {\n', in_struct,  indent,'} input;\n'},
+             {indent,'struct {\n', out_struct, indent,'} output;\n'},
+             {indent, 'struct ', type_name, '_state state;\n'},
+             '};\n'})
+         -- Save macros
+         function def_macro(tag,ports)
+            table.insert(macros, {'#define for_',type_name,'_',tag,'(m) \\\n'})
+            for i,input in ipairs(ports) do
+               table.insert(macros, {indent, 'm(',i-1,',',input,') \\\n'})
+            end
+            table.insert(macros, {'\n'})
+         end
+         def_macro('inputs',  node.in_ports)
+         def_macro('outputs', node.out_ports)
       end
 
    end
@@ -226,9 +238,8 @@ local function render_c(s)
       graph_struct_code,
       {indent, 'float buf[',str(alloc_count),'][256];\n'});
 
-
-
    return {
+      macros = macros,
       structs = {
          struct_code,
          {"struct graph {\n",
@@ -237,13 +248,13 @@ local function render_c(s)
           graph_struct_code,
           "};\n"},
       },
-      connect = {'void connect(struct graph *s) {\n',
+      connect = {'void graph_init(struct graph *s) {\n',
                  {indent, '// alloc\n'},
                  alloc_code,
                  {indent, '// connect\n'},
                  connect_code,
                  '}\n'},
-      process = {'void process(struct graph *s) {\n', process_code, '}\n'},
+      process = {'void graph_process(struct graph *s) {\n', process_code, '}\n'},
    }
 end
 

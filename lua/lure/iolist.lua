@@ -87,8 +87,11 @@ function iolist.w(iol, maybe_filename)
    end
 end
 
-function iolist.prefix(sep, list)
-   return map(function(p) return({sep,p}) end, list)
+function iolist.prefix(sep, list, start)
+   return map(function(p) return({sep,p}) end, list, start)
+end
+function iolist.postfix(list, sep)
+   return map(function(p) return({p,sep}) end, list, start)
 end
 
 

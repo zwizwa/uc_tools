@@ -1,12 +1,13 @@
 local list = {}
 
 -- apply function to all elements in an array and return result
-function list.map(fun, arr)
+function list.map(fun, arr, start)
    assert(fun)
    assert(arr)
    local results = {}
-   for i,val in ipairs(arr) do
-      results[i] = fun(val)
+   start = start or 1
+   for i=start,#arr do
+      results[i-start+1] = fun(arr[i])
    end
    return results
 end

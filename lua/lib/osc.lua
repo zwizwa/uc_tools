@@ -13,23 +13,36 @@ local map = list.map
 local m = {}
 
 function m.render_c(param_tree, opt)
+   -- Accumulators
    local set_code = {}
    local def_code = {}
+   local osc_paths = {}
+
+   -- Current path, gets pushed/pop for each level
    local path = {}
 
+   -- Config defaults
    opt = opt or { }
    local root = opt.root or 'root'
-   local function cpath(sep, path)
-      return map(function(p) return({p,sep}) end, path)
-   end
    local var_ref = opt.var_ref or function(s_var, path)
       return {'s->', iolist.join('.',path)}
    end
+   function osc_path(path)
+      return prefix('/',path,2)
+   end
 
+   local function cpath(sep, path)
+      return map(function(p) return({p,sep}) end, path)
+   end
    function render_atom(typ, c_name)
       local osc_name = c_name
       local full_c_name = {cpath('_',path),c_name}
-      local var = var_ref('s', list.concat({path, {c_name}}))
+      local path1 = list.concat({path, {c_name}})
+      local var = var_ref('s', path1)
+
+      table.insert(osc_paths, osc_path(path1))
+
+
       if true then -- FIXME: make this configurable
          -- Use setters
          table.insert(
@@ -86,7 +99,8 @@ function m.render_c(param_tree, opt)
 
    render_record(root, param_tree)
 
-   return {set_code, def_code}
+   return {set_code, def_code}, osc_paths
 end
+
 
 return m
