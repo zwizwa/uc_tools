@@ -203,12 +203,13 @@ local function render_c(s)
          {indent, 'struct ',type_name, '_node ', to_node, ';\n'})
 
       -- Add instance init
+      -- FIXME: Maybe better to assert(node.init) instead of allowing zero defaults.
       if node.init then
-         table.insert(
-            init_code,
-            {indent, type_name,'_init(&s->',to_node,'.state',
-             iolist.prefix(', ', node.init),
-             ');\n'})
+         local state = {'&s->',to_node,'.state'}
+         table.insert(init_code, {indent, type_name,'_init(',state,');\n'})
+         for name, value in pairs(node.init) do
+            table.insert(init_code, {indent, type_name,'_set_',name,'(',state,', ',value,');\n'})
+         end
       end
 
       -- Run the processor instance, which will put the outputs in the
@@ -362,6 +363,7 @@ local function graph_compiler()
       instance.in_ports = in_port_names
       assert(instance.out_ports)
       table.insert(self.nodes, instance)
+      self.node_by_name[name] = instance
 
       local rvs = map(function(o) return {name, o} end, instance.out_ports)
       return unpack(rvs)
@@ -372,6 +374,8 @@ local function graph_compiler()
       -- The Graphviz node and edge sets.
       nodes = {},
       edges = {},
+      -- Index
+      node_by_name = {},
    }
    setmetatable(state, {__index = c})
    return state

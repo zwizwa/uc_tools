@@ -24,8 +24,8 @@ function m.render_c(param_tree, opt)
    -- Config defaults
    opt = opt or { }
    local root = opt.root or 'root'
-   local var_ref = opt.var_ref or function(s_var, path)
-      return {'s->', iolist.join('.',path)}
+   local var_set = opt.var_set or function(s_var, path, value)
+      return {'s->', iolist.join('.',path), ' = ', value, ';'}
    end
    function osc_path(path)
       return prefix('/',path,2)
@@ -38,17 +38,16 @@ function m.render_c(param_tree, opt)
       local osc_name = c_name
       local full_c_name = {cpath('_',path),c_name}
       local path1 = list.concat({path, {c_name}})
-      local var = var_ref('s', path1)
+      local var_set_code = var_set('s',path1,'val')
 
       table.insert(osc_paths, osc_path(path1))
 
-
-      if true then -- FIXME: make this configurable
+      if true then
          -- Use setters
          table.insert(
             set_code, {
                {'void set_',full_c_name,'(struct param_context *s, ',typ,' val) ',
-                '{ ', var,' = val; }\n'},
+                '{ ', var_set_code, ' }\n'},
          })
          local typ_def = {
             float = 'DEF_OSC_SET_FLOAT',
@@ -60,7 +59,7 @@ function m.render_c(param_tree, opt)
                 '", set_',full_c_name, ');\n'},
          })
       else
-         -- Use pointers
+         -- Use pointers (FIXME, API changed from var_ref to var_set)
          local typ_def = {
             float = 'DEF_OSC_PTR_FLOAT',
             int   = 'DEF_OSC_PTR_INT',
