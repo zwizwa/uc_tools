@@ -88,7 +88,7 @@ function m.render_c(param_tree, opt)
          end
          local full_c_name = {cpath('_',path),name}
          local osc_name = name
-         local prefix_sub_c_names = prefix(', &', sub_c_names)
+         local prefix_sub_c_names = prefix(',\n    &', sub_c_names)
          if #prefix_sub_c_names == 0 then
             -- Workaround: macro doesn't work with empty list, so
             -- insert an extra NULL terminator.

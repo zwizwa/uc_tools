@@ -252,7 +252,10 @@ local function render_c(s)
          table.insert(init_code, {indent, type_name,'_init(',state,');\n'})
          for name, value in pairs(node.init) do
             table.insert(init_code, {indent, type_name,'_set_',name,'(',state,', ',value,');\n'})
+            
          end
+      else
+         log('WARNING: no init for ' .. node.name .. '\n')
       end
 
       -- Run the processor instance, which will put the outputs in the
@@ -269,7 +272,8 @@ local function render_c(s)
          -- Save the data structure
          table.insert(
             struct_code,
-            {'struct ', type_name, '_node {\n',
+            {'#define struct_', type_name, '_node\n',
+             'struct ', type_name, '_node {\n',
              {indent,'struct {\n', in_struct,  indent,'} input;\n'},
              {indent,'struct {\n', out_struct, indent,'} output;\n'},
              {indent, 'struct ', type_name, '_state state;\n'},
