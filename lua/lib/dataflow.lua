@@ -154,7 +154,7 @@ local function render_c(s)
       local to_node   = node.name
       local to_ports  = node.in_ports
       local outs      = node.out_ports
-      local type_name = node.type_name
+      local type_name = node.type_name or node.extern_name
 
       assert(to_node)
       assert(to_ports)
@@ -162,19 +162,37 @@ local function render_c(s)
       assert(type_name)
 
       local out_struct = {}
-      for _,out in ipairs(outs) do
-         table.insert(
-            out_struct,
-            {indent2,'float *',out,';\n'})
+      for i,out in ipairs(outs) do
+         if node.vector then
+            error('.vector impl not finished')
+            if 0 == (i-1) % node.vector then
+               table.insert(
+                  out_struct,
+                  {indent2,'float32x4_t *',out,';\n'})
+            end
+         else
+            table.insert(
+               out_struct,
+               {indent2,'float *',out,';\n'})
+         end
       end
       local in_struct = {}
-      for _,to_port in ipairs(to_ports) do
+      for i,to_port in ipairs(to_ports) do
          -- log_desc({to_node,to_port})
          local from = edge[to_node][to_port]
 
-         table.insert(
-            in_struct,
-            {indent2,'float *',to_port,';\n'})
+         if node.vector then
+            error('.vector impl not finished')
+            if 0 == (i-1) % node.vector then
+               table.insert(
+                  in_struct,
+                  {indent2,'float32x4_t *',to_port,';\n'})
+            end
+         else
+            table.insert(
+               in_struct,
+               {indent2,'float *',to_port,';\n'})
+         end
 
          -- Obtain the inputs by assigning pointers.
          if from then
@@ -182,10 +200,34 @@ local function render_c(s)
             local from_node, from_port = unpack(from)
             local input  = {'s->', to_node,   '.input.',  to_port,   }
             local output = {'s->', from_node, '.output.', from_port, }
-            table.insert(
-               alloc_code, {
-                  {indent, output, ' = s->buf[',str(alloc_count),']',';\n'},
-            })
+            -- log_desc({from_node=from_node})
+            local f_node = s.node_by_name[from_node]
+            -- log_desc({f_node=f_node})
+            local vector = f_node.vector
+            if vector then
+               -- buffers are contiguous so only the first has
+               -- assigment, count will go += vector, and output a
+               -- comment for deleted inputs
+               if 0 == (i-1) % vector then
+                  error('.vector impl not finished')
+                  table.insert(
+                     alloc_code, {
+                        {indent, output,
+                         ' = s->buf[',str(alloc_count),']',
+                         '; // v=', vector, '\n'},
+                  })
+               else
+                  table.insert(
+                     alloc_code, {
+                        {indent,
+                         '// ', output, ' in v\n'}})
+               end
+            else
+               table.insert(
+                  alloc_code, {
+                     {indent, output, ' = s->buf[',str(alloc_count),']',';\n'},
+               })
+            end
             alloc_count = alloc_count + 1,
 
             table.insert(
@@ -220,9 +262,9 @@ local function render_c(s)
          {indent, type_name, '_loop(&s->',to_node,', nb);\n'})
 
       -- Per-type struct and process only need to be done once
-      assert(node.type_name)
-      if not did_type[node.type_name] then
-         did_type[node.type_name] = true
+      assert(type_name)
+      if not did_type[type_name] then
+         did_type[type_name] = true
 
          -- Save the data structure
          table.insert(
@@ -240,8 +282,12 @@ local function render_c(s)
             end
             table.insert(macros, {'\n'})
          end
-         def_macro('inputs',  node.in_ports)
-         def_macro('outputs', node.out_ports)
+         if not node.vector then -- FIXME: also for vector?
+            def_macro('inputs',  node.in_ports)
+            def_macro('outputs', node.out_ports)
+         else
+            error('.vector impl not finished')
+         end
       end
 
    end
@@ -393,6 +439,7 @@ end
 local t = {}
 
 
+-- FIXME: Get rid of this one.
 function t.bus_op(cproc_name, bus_type)
    return function (c, name, nb_inputs)
       local outs = {}
@@ -405,6 +452,38 @@ function t.bus_op(cproc_name, bus_type)
       }
    end
 end
+
+function t.extern_op(extern_name, init)
+   return function (c, name, nb_inputs)
+      local outs = {}
+      for i=1,nb_inputs do outs[i] = 'o' .. i end
+      return {
+         extern_name = extern_name,
+         init = init,
+         out_ports = outs,
+         input_name = function(i) return 'i' .. i end,
+      }
+   end
+end
+
+
+-- Special operator taking float32x4_t in/out
+-- Represented as 4x inputs in the schematic.
+function t.vec4_op(cproc_name, bus_type)
+   error('.vector impl not finished')
+   return function (c, name, nb_inputs)
+      assert(nb_inputs == 4)
+      local outs = {}
+      for i=1,nb_inputs do outs[i] = 'o' .. i end
+      return {
+         type_name = cproc_name,
+         out_ports = outs,
+         input_name = function(i) return 'i' .. i end,
+         vector = 4,
+      }
+   end
+end
+
 
 function t.cproc_op(cproc_name, init)
    return function (c, name, nb_inputs)

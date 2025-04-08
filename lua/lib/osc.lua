@@ -88,10 +88,16 @@ function m.render_c(param_tree, opt)
          end
          local full_c_name = {cpath('_',path),name}
          local osc_name = name
+         local prefix_sub_c_names = prefix(', &', sub_c_names)
+         if #prefix_sub_c_names == 0 then
+            -- Workaround: macro doesn't work with empty list, so
+            -- insert an extra NULL terminator.
+            prefix_sub_c_names = ", NULL"
+         end
          table.insert(
             def_code,
             {'DEF_OSC_LIST(',full_c_name,', "',osc_name,'"',
-             prefix(', &', sub_c_names),');\n'})
+             prefix_sub_c_names,');\n'})
          return full_c_name
       end
    end
