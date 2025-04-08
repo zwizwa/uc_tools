@@ -132,6 +132,7 @@ local function render_c(s)
    local graph_struct_code = {}
    local alloc_code = {}
    local connect_code = {}
+   local init_code = {}
    -- Index the edges by inputs.
    local edge = input_edges(s)
    -- log_desc({edge=edge})
@@ -201,6 +202,15 @@ local function render_c(s)
          graph_struct_code,
          {indent, 'struct ',type_name, '_node ', to_node, ';\n'})
 
+      -- Add instance init
+      if node.init then
+         table.insert(
+            init_code,
+            {indent, type_name,'_init(&s->',to_node,'.state',
+             iolist.prefix(', ', node.init),
+             ');\n'})
+      end
+
       -- Run the processor instance, which will put the outputs in the
       -- correct place.
       table.insert(
@@ -253,6 +263,7 @@ local function render_c(s)
                  alloc_code,
                  {indent, '// connect\n'},
                  connect_code,
+                 init_code,
                  '}\n'},
       process = {'void graph_process(struct graph *s) {\n', process_code, '}\n'},
    }
@@ -385,6 +396,19 @@ function t.bus_op(cproc_name, bus_type)
          out_ports = outs,
          input_name = function(i) return 'i' .. i end,
          bus_type = bus_type
+      }
+   end
+end
+
+function t.cproc_op(cproc_name, init)
+   return function (c, name, nb_inputs)
+      local outs = {}
+      for i=1,nb_inputs do outs[i] = 'o' .. i end
+      return {
+         type_name = cproc_name,
+         out_ports = outs,
+         input_name = function(i) return 'i' .. i end,
+         init = init,
       }
    end
 end
