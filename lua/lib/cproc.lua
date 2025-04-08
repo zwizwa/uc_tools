@@ -204,7 +204,6 @@ local map  = list.map
 
 function m.render_loop(cproc, ports, opts)
    opts = opts or {}
-   local nb = opts.nb_samples or 64 -- Pd default
    local state = opts.state or '&s->state'
 
    local init_code = {}
@@ -225,12 +224,12 @@ function m.render_loop(cproc, ports, opts)
          {indent,typ,' *',chan,' = ',bus,' + ',port.offset,';\n'})
       table.insert(
          update_code,
-         {indent2,'*',chan,' += ', port.stride, ';\n'})
+         {indent2, chan,' += ', port.stride, ';\n'})
    end
    return {
-      {'void ',cproc,'_loop(struct ',cproc,'_node *s) {\n'},
+      {'void ',cproc,'_loop(struct ',cproc,'_node *s, uintptr_t nb) {\n'},
       init_code,
-      {indent,'for(int i=0; i<',nb,'; i++) {\n'},
+      {indent,'for(uintptr_t i=0; i<nb; i++) {\n'},
       {indent2, cproc, '_update_df(',state,', ', join(', ',channels), ');\n'},
       update_code,
       {indent,'}\n'},
@@ -249,7 +248,7 @@ end
 
 
 function m.render_nop(cproc)
-   return {'void ',cproc,'_loop(struct ',cproc,'_node *s) {}\n'}
+   return {'void ',cproc,'_loop(struct ',cproc,'_node *s, uintptr_t nb) {}\n'}
 end
 
 return m

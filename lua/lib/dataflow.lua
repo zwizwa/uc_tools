@@ -47,6 +47,7 @@ local function render_node(s)
 end
 
 local function map_edge(f, e)
+   -- log_desc({map_edge=e})
    local from, to = unpack(e)
    assert(from)
    assert(to)
@@ -216,7 +217,7 @@ local function render_c(s)
       -- correct place.
       table.insert(
          process_code,
-         {indent, type_name, '_loop(&s->',to_node,');\n'})
+         {indent, type_name, '_loop(&s->',to_node,', nb);\n'})
 
       -- Per-type struct and process only need to be done once
       assert(node.type_name)
@@ -266,7 +267,7 @@ local function render_c(s)
                  connect_code,
                  init_code,
                  '}\n'},
-      process = {'void graph_process(struct graph *s) {\n', process_code, '}\n'},
+      process = {'void graph_process(struct graph *s, uintptr_t nb) {\n', process_code, '}\n'},
    }
 end
 
@@ -285,7 +286,8 @@ function render_c_loop(graph, node)
    local function cfg_port(sub)
          return function (p)
             -- FIXME: Get types from graph
-            return {name = {sub,'.',p}, typ = 'float', offset = 1, stride = 4}
+            -- return {name = {sub,'.',p}, typ = 'float', offset = 1, stride = 4}
+            return {name = {sub,'.',p}, typ = 'float', offset = 0, stride = 1}
          end
    end
    local in_ports  = map(cfg_port('input'),  node.in_ports)
