@@ -509,6 +509,16 @@ function t.matrix_op(type_name, in_names, out_names)
       }
    end
 end
+function t.extern_matrix_op(type_name, in_names, out_names)
+   return function (c, name, nb_inputs)
+      return {
+         extern_name  = type_name,
+         out_ports  = out_names,
+         input_name = in_names,
+         init = {},
+      }
+   end
+end
 
 
 
