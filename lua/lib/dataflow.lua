@@ -163,36 +163,18 @@ local function render_c(s)
 
       local out_struct = {}
       for i,out in ipairs(outs) do
-         if node.vector then
-            error('.vector impl not finished')
-            if 0 == (i-1) % node.vector then
-               table.insert(
-                  out_struct,
-                  {indent2,'float32x4_t *',out,';\n'})
-            end
-         else
-            table.insert(
-               out_struct,
-               {indent2,'float *',out,';\n'})
-         end
+         table.insert(
+            out_struct,
+            {indent2,'float *',out,';\n'})
       end
       local in_struct = {}
       for i,to_port in ipairs(to_ports) do
          -- log_desc({to_node,to_port})
          local from = edge[to_node][to_port]
 
-         if node.vector then
-            error('.vector impl not finished')
-            if 0 == (i-1) % node.vector then
-               table.insert(
-                  in_struct,
-                  {indent2,'float32x4_t *',to_port,';\n'})
-            end
-         else
-            table.insert(
-               in_struct,
-               {indent2,'float *',to_port,';\n'})
-         end
+         table.insert(
+            in_struct,
+            {indent2,'float *',to_port,';\n'})
 
          -- Obtain the inputs by assigning pointers.
          if from then
@@ -203,31 +185,10 @@ local function render_c(s)
             -- log_desc({from_node=from_node})
             local f_node = s.node_by_name[from_node]
             -- log_desc({f_node=f_node})
-            local vector = f_node.vector
-            if vector then
-               -- buffers are contiguous so only the first has
-               -- assigment, count will go += vector, and output a
-               -- comment for deleted inputs
-               if 0 == (i-1) % vector then
-                  error('.vector impl not finished')
-                  table.insert(
-                     alloc_code, {
-                        {indent, output,
-                         ' = s->buf[',str(alloc_count),']',
-                         '; // v=', vector, '\n'},
-                  })
-               else
-                  table.insert(
-                     alloc_code, {
-                        {indent,
-                         '// ', output, ' in v\n'}})
-               end
-            else
-               table.insert(
-                  alloc_code, {
-                     {indent, output, ' = s->buf[',str(alloc_count),']',';\n'},
-               })
-            end
+            table.insert(
+               alloc_code, {
+                  {indent, output, ' = s->buf[',str(alloc_count),']',';\n'},
+            })
             alloc_count = alloc_count + 1,
 
             table.insert(
@@ -286,12 +247,8 @@ local function render_c(s)
             end
             table.insert(macros, {'\n'})
          end
-         if not node.vector then -- FIXME: also for vector?
-            def_macro('inputs',  node.in_ports)
-            def_macro('outputs', node.out_ports)
-         else
-            error('.vector impl not finished')
-         end
+         def_macro('inputs',  node.in_ports)
+         def_macro('outputs', node.out_ports)
       end
 
    end
@@ -399,18 +356,6 @@ local function graph_compiler()
          table.insert(self.edges, {input, {name, in_port_names[i]}})
       end
 
-      -- Instances are annotated with bus_type which defines a
-      -- constraint on the layout of the loop code.  E.g. when the
-      -- loop code was hand coded in assembly or C to use 4 x float
-      -- vectors, like FIR and biquad implementations.
-      --
-      -- For loop code that is generated, we can absorb transposition
-      -- into the loop.
-
-      -- TODO:
-      -- . bus types need to be checked when patching things together
-      -- . probably user should solve transposition in separate block if needed
-
       instance.name = name
       instance.in_ports = in_port_names
       assert(instance.out_ports)
@@ -466,24 +411,6 @@ function t.extern_op(extern_name, init)
          init = init,
          out_ports = outs,
          input_name = function(i) return 'i' .. i end,
-      }
-   end
-end
-
-
--- Special operator taking float32x4_t in/out
--- Represented as 4x inputs in the schematic.
-function t.vec4_op(cproc_name, bus_type)
-   error('.vector impl not finished')
-   return function (c, name, nb_inputs)
-      assert(nb_inputs == 4)
-      local outs = {}
-      for i=1,nb_inputs do outs[i] = 'o' .. i end
-      return {
-         type_name = cproc_name,
-         out_ports = outs,
-         input_name = function(i) return 'i' .. i end,
-         vector = 4,
       }
    end
 end
