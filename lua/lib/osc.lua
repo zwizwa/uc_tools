@@ -72,7 +72,7 @@ function m.render_c(param_tree, opt)
       end
       return full_c_name
    end
-   function render_record(name, thing)
+   function render_record(name, thing, is_root)
       if type(thing) == 'string' then
          -- Atom
          return render_atom(thing, name)
@@ -87,8 +87,17 @@ function m.render_c(param_tree, opt)
             table.remove(path)
          end
          local full_c_name = {cpath('_',path),name}
+
+         if is_root and opt.extern then
+            for _,extern_name in ipairs(opt.extern) do
+               table.insert(sub_c_names, extern_name)
+            end
+         end
+
          local osc_name = name
          local prefix_sub_c_names = prefix(',\n    &', sub_c_names)
+
+
          if #prefix_sub_c_names == 0 then
             -- Workaround: macro doesn't work with empty list, so
             -- insert an extra NULL terminator.
@@ -102,7 +111,7 @@ function m.render_c(param_tree, opt)
       end
    end
 
-   render_record(root, param_tree)
+   render_record(root, param_tree, true)
 
    return {set_code, def_code}, osc_paths
 end

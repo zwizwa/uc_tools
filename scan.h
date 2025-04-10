@@ -63,5 +63,44 @@ static inline char *scan_next(struct scan *s) {
 }
 
 
+/* Other misc scanning ops. */
+
+typedef void (*text_for_lines_fn)(void *context, const char *line);
+
+static inline void text_for_lines(
+    text_for_lines_fn fn, void *context,
+    const uint8_t *buf, uintptr_t len,
+    uintptr_t max_line_len)
+{
+    char line[max_line_len+1];
+    int n = 0;
+    for(;;) {
+        if (len == 0) {
+            /* Parse whatever we have left. */
+            line[n] = 0;
+            if (n > 0) {
+                fn(context, line);
+            }
+            return;
+        }
+        if (n < max_line_len) {
+            uint8_t c = *buf++; len--;
+            if ((c == '\r') || (c == '\n')) {
+                line[n] = 0;
+                fn(context, line);
+                n = 0;
+                if ((c == '\r') && (len > 0) && ('\n' == *buf)) {
+                    // support \r\n terminator as well
+                    buf++; len--;
+                }
+            }
+            else {
+                line[n++] = c;
+            }
+        }
+    }
+}
+
+
 
 #endif

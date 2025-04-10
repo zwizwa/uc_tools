@@ -267,13 +267,16 @@ local function render_c(s)
           graph_struct_code,
           "};\n"},
       },
-      connect = {'void graph_init(struct graph *s) {\n',
-                 {indent, '// alloc\n'},
-                 alloc_code,
-                 {indent, '// connect\n'},
-                 connect_code,
-                 init_code,
-                 '}\n'},
+      connect = {
+         'extern const struct param root;\n',
+         'void graph_init(struct graph *s) {\n',
+         {indent, 's->pc.root = root.cont.list;\n'},
+         {indent, '// alloc\n'},
+         alloc_code,
+         {indent, '// connect\n'},
+         connect_code,
+         init_code,
+         '}\n'},
       process = {'void graph_process(struct graph *s, uintptr_t nb) {\n', process_code, '}\n'},
    }
 end
