@@ -3,11 +3,9 @@
 -- Generate readable dataflow schematics and patching C code from a
 -- Lua-embedded 'final' DSL.
 
--- BUG1: It is possible to instantiate a CPROC with empty in_ports and
--- out_ports, which leads to them not being allocated.  There should
--- be a type check that ensures the io conforms to what the CPROC
--- expects.  Currently this is obtained from the first occurence of a
--- cproc type, which then generates the io from that particular use.
+-- DF1: Allow for disconnected (zero) inputs.
+-- DF2: Reuse buffers when possible.
+
 
 require('lib.tools.log')
 local list   = require('lib.tools.list')
@@ -176,7 +174,7 @@ local function render_c(s)
    -- First pass
    for _,node in ipairs(s.nodes) do
       -- Get the processor definition
-      log_desc({node=node})
+      -- log_desc({node=node})
       local type_name = node.type_name or node.extern_name
       assert(type_name)
 
@@ -292,7 +290,7 @@ local function render_c(s)
    end
 
    -- Second pass
-   log_desc({null_out=null_out})
+   -- log_desc({null_out=null_out})
    for _,node in ipairs(s.nodes) do
       -- Initialize all unused outputs to the null sink.
       for i,node_out_port in ipairs(node.out_ports) do
