@@ -3,6 +3,11 @@
 -- Generate readable dataflow schematics and patching C code from a
 -- Lua-embedded 'final' DSL.
 
+-- BUG1: It is possible to instantiate a CPROC with empty in_ports and
+-- out_ports, which leads to them not being allocated.  There should
+-- be a type check that ensures the io conforms to what the CPROC
+-- expects.  Currently this is obtained from the first occurence of a
+-- cproc type, which then generates the io from that particular use.
 
 require('lib.tools.log')
 local list   = require('lib.tools.list')
@@ -122,6 +127,16 @@ local function input_edges(s)
    return tab
 end
 
+-- TODO:
+-- First pass performs some analysis used in the code gen pass.
+-- . Buffer reference counts
+-- . Null input/output
+local function analyze(s)
+   -- For all processing nodes
+   for _,node in ipairs(s.nodes) do
+   end
+end
+
 -- Render the patching code: structs and
 local function render_c(s)
    -- Per type
@@ -132,6 +147,7 @@ local function render_c(s)
    -- Per instance
    local graph_struct_code = {}
    local alloc_code = {}
+   local null_code = {}
    local connect_code = {}
    local init_code = {}
    -- Index the edges by inputs.
@@ -141,79 +157,101 @@ local function render_c(s)
    local indent = '    '
    local indent2 = {indent, indent}
 
-   local alloc_count = 0
+   local alloc_count = 1
 
    local function str(n) return n .. '' end
 
    local did_type = {}
 
-   -- For all processing nodes
+   local null_out = {}
+
+   -- Note that these need to be strings because they are used as table indices.
+   local function in_buf(node_name, port_name)
+      return table.concat({'s->', node_name, '.input.', port_name })
+   end
+   local function out_buf(node_name, port_name)
+      return table.concat({'s->', node_name, '.output.', port_name })
+   end
+
+   -- First pass
    for _,node in ipairs(s.nodes) do
       -- Get the processor definition
-      -- log_desc({node=node})
-      local to_node   = node.name
-      local to_ports  = node.in_ports
-      local outs      = node.out_ports
+      log_desc({node=node})
       local type_name = node.type_name or node.extern_name
-
-      assert(to_node)
-      assert(to_ports)
-      assert(outs)
       assert(type_name)
 
+      assert(node.name)
+      assert(node.in_ports)
+      assert(node.out_ports)
+
       local out_struct = {}
-      for i,out in ipairs(outs) do
+      for i,out in ipairs(node.out_ports) do
          table.insert(
             out_struct,
             {indent2,'float *',out,';\n'})
       end
       local in_struct = {}
-      for i,to_port in ipairs(to_ports) do
-         -- log_desc({to_node,to_port})
-         local from = edge[to_node][to_port]
+
+
+      -- Go over all outputs and mark them for initialization.
+      for i,node_out_port in ipairs(node.out_ports) do
+         local node_out_buf = out_buf(node.name, node_out_port)
+         null_out[node_out_buf] = true
+      end
+
+      for i,node_in_port in ipairs(node.in_ports) do
+
+         -- log_desc({node.name,node_in_port})
+         local from = edge[node.name][node_in_port]
 
          table.insert(
             in_struct,
-            {indent2,'float *',to_port,';\n'})
+            {indent2,'float *',node_in_port,';\n'})
 
-         -- Obtain the inputs by assigning pointers.
+         local to_input_buf = in_buf(node.name, node_in_port)
+
+         -- Each input comes from some other node's output.
          if from then
             assert(from)
             local from_node, from_port = unpack(from)
-            local input  = {'s->', to_node,   '.input.',  to_port,   }
-            local output = {'s->', from_node, '.output.', from_port, }
+            local from_output_buf = out_buf(from_node, from_port)
             -- log_desc({from_node=from_node})
             local f_node = s.node_by_name[from_node]
             -- log_desc({f_node=f_node})
             table.insert(
                alloc_code, {
-                  {indent, output, ' = s->buf[',str(alloc_count),']',';\n'},
+                  {indent, from_output_buf, ' = s->buf[',str(alloc_count),']',';\n'},
             })
+            null_out[from_output_buf] = false
+
             alloc_count = alloc_count + 1,
 
             table.insert(
                connect_code, {
-                  {indent, input, ' = ', output, ';\n'}
+                  {indent, to_input_buf, ' = ', from_output_buf, ';\n'}
             })
+         -- Or it is not connected.
          else
-            -- Port is not connected.
-            log_desc({not_connected={to_node,to_port}})
+            -- This is currently an error.  Create a dummy source in
+            -- the schematic instead.
+            log_desc({not_connected={node.name,node_in_port}})
+            error('input not connected')
+
          end
       end
 
       -- Add instance to the graph struct
       table.insert(
          graph_struct_code,
-         {indent, 'struct ',type_name, '_node ', to_node, ';\n'})
+         {indent, 'struct ',type_name, '_node ', node.name, ';\n'})
 
       -- Add instance init
       -- FIXME: Maybe better to assert(node.init) instead of allowing zero defaults.
       if node.init then
-         local state = {'&s->',to_node,'.state'}
+         local state = {'&s->',node.name,'.state'}
          table.insert(init_code, {indent, type_name,'_init(',state,');\n'})
          for name, value in pairs(node.init) do
             table.insert(init_code, {indent, type_name,'_set_',name,'(',state,', ',value,');\n'})
-            
          end
       else
          log('WARNING: no init for ' .. node.name .. '\n')
@@ -223,7 +261,7 @@ local function render_c(s)
       -- correct place.
       table.insert(
          process_code,
-         {indent, type_name, '_loop(&s->',to_node,', nb);\n'})
+         {indent, type_name, '_loop(&s->',node.name,', nb);\n'})
 
       -- Per-type struct and process only need to be done once
       assert(type_name)
@@ -253,9 +291,27 @@ local function render_c(s)
 
    end
 
+   -- Second pass
+   log_desc({null_out=null_out})
+   for _,node in ipairs(s.nodes) do
+      -- Initialize all unused outputs to the null sink.
+      for i,node_out_port in ipairs(node.out_ports) do
+         local node_out_buf = out_buf(node.name, node_out_port)
+         if null_out[node_out_buf] then
+            table.insert(
+               null_code, {
+                  {indent, node_out_buf, ' = s->buf[0]',';\n'},
+            })
+         end
+      end
+   end
+
    table.insert(
       graph_struct_code,
       {indent, 'float buf[',str(alloc_count),'][256];\n'});
+
+
+
 
    return {
       macros = macros,
@@ -271,6 +327,8 @@ local function render_c(s)
          'extern const struct param root;\n',
          'void graph_init(struct graph *s) {\n',
          {indent, 's->pc.root = root.cont.list;\n'},
+         {indent, '// null\n'},
+         null_code,
          {indent, '// alloc\n'},
          alloc_code,
          {indent, '// connect\n'},
@@ -390,6 +448,14 @@ end
 -- The meaning of a type is a Lua function that instantiates a processor
 local t = {}
 
+local function assert_nonneg(n)
+   assert(type(n) == 'number')
+   assert(n >= 0)
+end
+local function assert_string(n)
+   assert(type(n) == 'string')
+end
+
 
 -- FIXME: Get rid of this one.
 function t.bus_op(cproc_name, bus_type)
@@ -405,10 +471,20 @@ function t.bus_op(cproc_name, bus_type)
    end
 end
 
-function t.extern_op(extern_name, init)
+function t.extern_op(extern_spec, init)
+   local extern_name, extern_nb_in, extern_nb_out = unpack(extern_spec)
+   assert_string(extern_name)
+   assert(extern_name)
+   assert_nonneg(extern_nb_in)
+   assert_nonneg(extern_nb_out)
+
    return function (c, name, nb_inputs)
+      if nb_inputs ~= extern_nb_in then
+         log_desc({name=name, nb_inputs=nb_inputs, extern_nb_in=extern_nb_in})
+         error('bad nb_inputs')
+      end
       local outs = {}
-      for i=1,nb_inputs do outs[i] = 'o' .. i end
+      for i=1,extern_nb_out do outs[i] = 'o' .. i end
       return {
          extern_name = extern_name,
          init = init,
@@ -419,10 +495,21 @@ function t.extern_op(extern_name, init)
 end
 
 
-function t.cproc_op(cproc_name, init)
+
+function t.cproc_op(cproc_spec, init)
+   local cproc_name, cproc_nb_in, cproc_nb_out = unpack(cproc_spec)
+   assert_string(cproc_name)
+   assert(cproc_name)
+   assert_nonneg(cproc_nb_in)
+   assert_nonneg(cproc_nb_out)
+
    return function (c, name, nb_inputs)
+      if nb_inputs ~= cproc_nb_in then
+         log_desc({name=name, nb_inputs=nb_inputs, cproc_nb_in=cproc_nb_in})
+         error('bad nb_inputs')
+      end
       local outs = {}
-      for i=1,nb_inputs do outs[i] = 'o' .. i end
+      for i=1,cproc_nb_out do outs[i] = 'o' .. i end
       return {
          type_name = cproc_name,
          out_ports = outs,
