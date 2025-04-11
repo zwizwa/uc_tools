@@ -352,7 +352,7 @@ local function render_c(s, graph_name)
       -- Add instance to the graph struct
       table.insert(
          graph_struct_code,
-         {indent, 'struct ',type_name, '_node ', node.name, ';\n'})
+         {indent, 'struct ', type_name, '_node ', node.name, ';\n'})
 
       -- Add instance init
       -- FIXME: Maybe better to assert(node.init) instead of allowing zero defaults.
@@ -378,15 +378,27 @@ local function render_c(s, graph_name)
          did_type[type_name] = true
 
          -- Save the data structure
+         --
+         -- Add guard to avoid multiple definitions when including
+         -- multiple graph files.
          table.insert(
             struct_code,
-            {'#define struct_', type_name, '_node\n',
+            {'#ifndef struct_', type_name, '_node\n',
+             '#define struct_', type_name, '_node\n',
              'struct ', type_name, '_node {\n',
              {indent,'struct {\n', in_struct,  indent,'} input;\n'},
              {indent,'struct {\n', out_struct, indent,'} output;\n'},
              {indent, 'struct ', type_name, '_state state;\n'},
-             '};\n'})
+             '};\n',
+             '#endif\n'})
+
          -- Save macros
+         --
+         -- Note that macros are not in the guard.  As a side effect
+         -- this will check that the inputs are consistent across
+         -- multiple graph files because macros will get redefined and
+         -- C preprocessor will not complain if definition is the
+         -- same.
          function def_macro(tag,ports)
             table.insert(macros, {'#define for_',type_name,'_',tag,'(m) \\\n'})
             for i,input in ipairs(ports) do
@@ -424,6 +436,11 @@ local function render_c(s, graph_name)
 
    return {
       macros = macros,
+      decl = {
+         'struct ',graph_name,'_graph;\n',
+         'void ',graph_name,'_graph_init(struct ',graph_name,'_graph *s);\n',
+         'void ',graph_name,'_graph_process(struct ',graph_name,'_graph *s, uintptr_t nb);\n',
+      },
       structs = {
          struct_code,
          {'struct ',graph_name,'_graph {\n',

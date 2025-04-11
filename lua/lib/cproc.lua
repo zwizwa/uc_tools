@@ -227,7 +227,7 @@ function m.render_loop(cproc, ports, opts)
          {indent2, chan,' += ', port.stride, ';\n'})
    end
    return {
-      {'void ',cproc,'_loop(struct ',cproc,'_node *s, uintptr_t nb) {\n'},
+      {'static void ',cproc,'_loop(struct ',cproc,'_node *s, uintptr_t nb) {\n'},
       init_code,
       {indent,'for(uintptr_t i=0; i<nb; i++) {\n'},
       {indent2, cproc, '_update_df(',state,', ', join(', ',channels), ');\n'},
@@ -248,7 +248,7 @@ end
 
 
 function m.render_nop(cproc)
-   return {'void ',cproc,'_loop(struct ',cproc,'_node *s, uintptr_t nb) {}\n'}
+   return {'static void ',cproc,'_loop(struct ',cproc,'_node *s, uintptr_t nb) {}\n'}
 end
 
 return m
