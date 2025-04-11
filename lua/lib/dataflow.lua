@@ -254,10 +254,8 @@ local function analyze(s)
 end
 
 -- Render the patching code: structs and
-local function render_c(s)
-
-   local graph_name = s.name or 'atmos'
-
+local function render_c(s, graph_name)
+   assert(graph_name)
 
    -- Per type
    local struct_code = {}
@@ -435,10 +433,10 @@ local function render_c(s)
           "};\n"},
       },
       connect = {
-         'extern const struct param root;\n',
+         'static const struct param *',graph_name,'_root(void);\n',
          'void ',graph_name,'_graph_init(struct ',graph_name,'_graph *s) {\n',
          {indent, 'memset(s,0,sizeof(*s));'},
-         {indent, 's->pc.root = root.cont.list;\n'},
+         {indent, 's->pc.root = ',graph_name,'_root()->cont.list;\n'},
          {indent, '// null\n'},
          null_code,
          {indent, '// alloc\n'},
