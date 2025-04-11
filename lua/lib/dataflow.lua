@@ -248,13 +248,17 @@ local function analyze(s)
    for k in pairs(did_type) do table.insert(types, k) end
 
    local rv = {buf=buf,connect=connect,use_stat=use_stat,edge=edge,types=types}
-   log_desc(rv)
+   -- log_desc(rv)
    return rv
 
 end
 
 -- Render the patching code: structs and
 local function render_c(s)
+
+   local graph_name = s.name or 'atmos'
+
+
    -- Per type
    local struct_code = {}
    local process_code = {}
@@ -424,7 +428,7 @@ local function render_c(s)
       macros = macros,
       structs = {
          struct_code,
-         {"struct graph {\n",
+         {'struct ',graph_name,'_graph {\n',
           -- FIXME: This should not mess up state alignment.
           {indent, "struct param_context pc;\n"},
           graph_struct_code,
@@ -432,7 +436,8 @@ local function render_c(s)
       },
       connect = {
          'extern const struct param root;\n',
-         'void graph_init(struct graph *s) {\n',
+         'void ',graph_name,'_graph_init(struct ',graph_name,'_graph *s) {\n',
+         {indent, 'memset(s,0,sizeof(*s));'},
          {indent, 's->pc.root = root.cont.list;\n'},
          {indent, '// null\n'},
          null_code,
@@ -442,7 +447,9 @@ local function render_c(s)
          connect_code,
          init_code,
          '}\n'},
-      process = {'void graph_process(struct graph *s, uintptr_t nb) {\n', process_code, '}\n'},
+      process = {'void ',graph_name,'_graph_process(',
+                 'struct ',graph_name,'_graph *s, ',
+                 'uintptr_t nb) {\n', process_code, '}\n'},
    }
 end
 
@@ -502,6 +509,7 @@ local function graph_compiler()
       -- explicit edges.
 
       local instance = typ(self, name, #ins)
+      assert(type(instance) == 'table')
       local input_name = instance.input_name
       local in_port_names
       if input_name == nil then

@@ -46,7 +46,7 @@ function m.render_c(param_tree, opt)
          -- Use setters
          table.insert(
             set_code, {
-               {'void set_',full_c_name,'(struct param_context *s, ',typ,' val) ',
+               {'static void set_',full_c_name,'(struct param_context *s, ',typ,' val) ',
                 '{ ', var_set_code, ' }\n'},
          })
          local typ_def = {
