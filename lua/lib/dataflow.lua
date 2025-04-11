@@ -129,10 +129,128 @@ end
 -- First pass performs some analysis used in the code gen pass.
 -- . Buffer reference counts
 -- . Null input/output
+
+-- Note that these need to be strings because they are used as table indices.
+local function in_buf(node_name, port_name)
+   return table.concat({'s->', node_name, '.input.', port_name })
+end
+local function out_buf(node_name, port_name)
+   return table.concat({'s->', node_name, '.output.', port_name })
+end
+
 local function analyze(s)
+   -- Index the edges by inputs.
+   local edge = input_edges(s)
+
+   -- Connections
+   local connect = {}
+
+   -- Output buffer stats
+   local buf = {}
+   local function nop() end
+
+   local did_type = {}
+
    -- For all processing nodes
-   for _,node in ipairs(s.nodes) do
+   function for_buf(on_input_buf, on_output_buf)
+      for _,node in ipairs(s.nodes) do
+         local type_name = node.type_name or node.extern_name
+         assert(type_name)
+         assert(node.name)
+         assert(node.in_ports)
+         assert(node.out_ports)
+         for i,node_in_port in ipairs(node.in_ports) do
+            local from = edge[node.name][node_in_port]
+            if from then
+               local from_node, from_port = unpack(from)
+               local from_node_out_buf = out_buf(from_node, from_port)
+               on_input_buf(from_node_out_buf)
+               local node_in_buf = in_buf(node.name, node_in_port)
+               connect[node_in_buf] = from_node_out_buf -- [1]
+            end
+         end
+         for i,node_out_port in ipairs(node.out_ports) do
+            local node_out_buf = out_buf(node.name, node_out_port)
+            on_output_buf(node_out_buf)
+         end
+
+         if not did_type[type_name] then -- [2]
+            did_type[type_name] = true
+         end
+
+         -- [1][2] The connect and type info is collected on the side
+         -- since we are traversing anyway.
+
+      end
    end
+
+   -- Pass1: get usage count
+   function pass1_buf_reference(buf_var)
+      local tab = buf[buf_var]
+      if tab then
+      else
+         error('buf not defined')
+      end
+      -- log_desc(buf_var)
+      tab.total_use = tab.total_use + 1
+   end
+   function pass1_buf_alloc(buf_var)
+      -- First pass: simple alloc
+      assert(nil == buf[buf_var])
+      buf[buf_var] = { total_use = 0 }
+   end
+   for_buf(pass1_buf_reference, pass1_buf_alloc)
+
+
+   -- Pass2: allocate.
+   function buf_alloc_reuse(buf_var)
+      -- Second pass: alloc from reuse buffer.
+      assert(buf[buf_var].total_use)
+   end
+
+   local buf_next = 1   -- buffer 0 is reserved as null out
+   local buf_stack = {} -- reusable
+
+   local use_stat = {} -- statistics
+
+   function pass2_buf_reference(buf_var)
+      local b = buf[buf_var]
+      assert(b)
+      assert(b.buf_nb)
+      b.ref_count = b.ref_count - 1
+      if b.ref_count == 0 then
+         -- Move buffer to free stack
+         table.insert(buf_stack, b.buf_nb)
+      end
+   end
+   function pass2_buf_alloc(buf_var)
+      -- First pass: simple alloc
+      local b = buf[buf_var]
+      assert(b)
+      b.ref_count = b.total_use
+      if #buf_stack == 0 then
+         -- Allocate a new one
+         b.buf_nb = buf_next
+         buf_next = buf_next + 1
+         use_stat[b.buf_nb] = 1
+      else
+         -- Reuse
+         b.buf_nb = table.remove(buf_stack)
+         assert(use_stat[b.buf_nb])
+         use_stat[b.buf_nb] = use_stat[b.buf_nb] + 1
+      end
+
+   end
+
+   for_buf(pass2_buf_reference, pass2_buf_alloc)
+
+   local types = {}
+   for k in pairs(did_type) do table.insert(types, k) end
+
+   local rv = {buf=buf,connect=connect,use_stat=use_stat,edge=edge,types=types}
+   log_desc(rv)
+   return rv
+
 end
 
 -- Render the patching code: structs and
@@ -163,21 +281,12 @@ local function render_c(s)
 
    local null_out = {}
 
-   -- Note that these need to be strings because they are used as table indices.
-   local function in_buf(node_name, port_name)
-      return table.concat({'s->', node_name, '.input.', port_name })
-   end
-   local function out_buf(node_name, port_name)
-      return table.concat({'s->', node_name, '.output.', port_name })
-   end
-
    -- First pass
    for _,node in ipairs(s.nodes) do
       -- Get the processor definition
       -- log_desc({node=node})
       local type_name = node.type_name or node.extern_name
       assert(type_name)
-
       assert(node.name)
       assert(node.in_ports)
       assert(node.out_ports)
@@ -644,6 +753,7 @@ return {
    t = t,
    graph_compile = graph_compile,
    w_dot = w_dot,
+   analyze = analyze,
    render_c = render_c,
    render_c_loop = render_c_loop,
    render_c_osc = render_c_osc,
