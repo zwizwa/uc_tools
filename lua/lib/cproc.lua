@@ -268,7 +268,8 @@ function ifndef_guard(name)
    }
 end
 
-function m.parallel(spec, size)
+
+function m.parallel(env, spec, size)
    assert(spec.name)
    assert(spec.ins)
    assert(spec.outs)
@@ -277,7 +278,7 @@ function m.parallel(spec, size)
    local indent = '    '
    local indent2 = {indent, indent}
    local struct_members = {}
-   local pname = { spec.name, '_p', size }
+   local pname = spec.name .. '_p' .. size
    local struct = { 'struct ',pname, '_state' }
    local spec_ios = list.concat({spec.ins, spec.outs})
    local ios = {}
@@ -326,6 +327,25 @@ function m.parallel(spec, size)
       inits,
       '#endif\n',
    }
+   local new_spec = {
+      name = pname,
+      ins  = {},
+      outs = {},
+      params = spec.params,
+   }
+   for i=1,size do
+      for _, input in ipairs(spec.ins) do
+         table.insert(new_spec.ins,  input .. '_' .. i)
+      end
+      for _, output in ipairs(spec.outs) do
+         table.insert(new_spec.outs, output .. '_' .. i)
+      end
+   end
+
+
+   -- It's simpler to accumulate specs in an environment.
+   env[new_spec.name] = new_spec
+
    return code
 end
 
@@ -344,13 +364,27 @@ m.spec.highpass = {
 }
 
 function m.test.parallel()
+   local env = {}
    local spec = m.spec.lowpass
-   local code = m.parallel(spec, 3)
+   local code = m.parallel(env, spec, 3)
+   log_desc({env=env})
    iolist.w(code)
 end
 
+-- Transformed parameters
+function m.serial_params(specs)
+   local params = {}
+   for i,spec in ipairs(specs) do
+      for _,param_spec in ipairs(spec.params) do
+         local param, typ = unpack(param_spec)
+         table.insert(params, {param .. '_' .. i, typ})
+      end
+   end
+   return params
+end
+
 -- FIXME: For now this only works for single-channel procs
-function m.serial(specs, maybe_name)
+function m.serial(env, specs, maybe_name)
    local nb = #specs
    assert(nb > 0)
    local names = {}
@@ -362,7 +396,7 @@ function m.serial(specs, maybe_name)
       assert(spec.params)
       names[i] = spec.name
    end
-   local comb_name = maybe_name or join('_', names)
+   local comb_name = maybe_name or iolist.to_string(join('_', names))
    local struct = {'struct ', comb_name, '_state'}
    local indent = '    '
    local indent2 = {indent, indent}
@@ -420,26 +454,43 @@ function m.serial(specs, maybe_name)
       inits,
       '#endif\n',
    }
+   local new_spec = {
+      name = comb_name,
+      ins  = specs[1].ins,
+      outs = specs[nb].outs,
+      params = m.serial_params(specs)
+   }
+
+   -- It's simpler to accumulate specs in an environment.
+   env[new_spec.name] = new_spec
+
    return code
 
 end
 
-function m.serial_many(spec, n)
+function m.serial_many(env, spec, n)
    local specs = {}
    for i=1,n do table.insert(specs, spec) end
-   return m.serial(specs, spec.name .. '_s' .. n)
+   return m.serial(env, specs, spec.name .. '_s' .. n)
 end
 
 
 
 function m.test.serial()
-   local code = m.serial({
+   local specs = {
       m.spec.highpass,
       m.spec.lowpass,
       m.spec.lowpass,
-   })
+   }
+   local env = {}
+   local code = m.serial(env, specs)
+   log_desc({env=env})
    iolist.w(code)
 end
+
+
+
+-- FIXME: These should also transform the spec at the same time of course.
 
 
 
