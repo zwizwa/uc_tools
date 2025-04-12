@@ -50,7 +50,7 @@ local function render_node(s)
 end
 
 local function map_edge(f, e)
-   -- log_desc({map_edge=e})
+   log_desc({map_edge=e})
    local from, to = unpack(e)
    assert(from)
    assert(to)
@@ -557,7 +557,10 @@ local function graph_compiler()
          error('bad input_name type')
       end
 
+      -- log_desc({name=name})
       for i,input in ipairs(ins) do
+         assert(input[1])  -- node
+         assert(input[2])  -- output port
          table.insert(self.edges, {input, {name, in_port_names[i]}})
       end
 
@@ -654,12 +657,14 @@ function t.cproc_op(cproc_spec, init)
       end
       local outs = {}
       for i=1,cproc_nb_out do outs[i] = 'o' .. i end
-      return {
+      local t = {
          type_name = cproc_name,
          out_ports = outs,
          input_name = function(i) return 'i' .. i end,
          init = init,
       }
+      log_desc({t=t})
+      return t
    end
 end
 
