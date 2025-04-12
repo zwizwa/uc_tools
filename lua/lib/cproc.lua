@@ -297,6 +297,13 @@ function m.parallel(spec, size)
             '}\n',
       })
    end
+
+   local inits = {
+      'void ',pname,'_init(',struct,' *s) {\n',
+      indent, 'for(int i=0; i<',size,'; i++) ',spec.name,'_init(&s->',spec.name,'[i]);\n',
+      '}\n',
+   }
+
    local code = {
       '// parallel ', spec.name, '\n',
       struct,' {\n',
@@ -307,6 +314,7 @@ function m.parallel(spec, size)
       body,
       '}\n',
       setters,
+      inits,
    }
    return code
 end
@@ -370,12 +378,22 @@ function m.serial(specs)
       for _, param in ipairs(spec.params) do
          table.insert(
             setters, {
-               'void ',comb_name,'_set_',spec.name,i,'_',param,'(',struct,' *s, float v) {\n',
+               -- Use just the index in the setter name
+               'void ',comb_name,'_set_',param,'_',i,'(',struct,' *s, float v) {\n',
                indent, spec.name,'_set_',param,'(&s->',spec.name,i,', v);\n',
                '}\n',
          })
       end
    end
+
+   local function call_init(i, spec)
+      return {indent, spec.name,'_init(&s->',spec.name,i,');\n',}
+   end
+   local inits = {
+      'void ',comb_name,'_init(',struct,' *s) {\n',
+      imap(call_init, specs),
+      '}\n',
+   }
 
    local code = {
       '// parallel ', join(', ', names), '\n',
@@ -387,6 +405,7 @@ function m.serial(specs)
       imap(update, specs),
       '}\n',
       setters,
+      inits,
    }
    return code
 
