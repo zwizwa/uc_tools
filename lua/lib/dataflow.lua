@@ -431,6 +431,17 @@ local function render_c(s, graph_name)
       graph_struct_code,
       {indent, 'float buf[',str(alloc_count),'][256];\n'});
 
+   -- Naming is unfortunate, but it is the output port struct of the
+   -- input node, and the input port struct of the output node.
+   local base_in  = 's->input.output'
+   local base_out = 's->output.input'
+   local base_code = {
+         {indent, 's->base.in      = (float**)&',base_in, ';\n'},
+         {indent, 's->base.out     = (float**)&',base_out,';\n'},
+         {indent, 's->base.nb_in   = sizeof(',base_in, ')/sizeof(float*);\n'},
+         {indent, 's->base.nb_out  = sizeof(',base_out,')/sizeof(float*);\n'},
+         {indent, 's->base.process = (graph_base_process_fn)',graph_name,'_graph_process;\n'},
+   }
 
 
 
@@ -445,22 +456,25 @@ local function render_c(s, graph_name)
          struct_code,
          {'struct ',graph_name,'_graph {\n',
           -- FIXME: This should not mess up state alignment.
-          {indent, "struct param_context pc;\n"},
+          {indent, "struct graph_base base;\n"},
           graph_struct_code,
           "};\n"},
       },
       connect = {
          'static const struct param *',graph_name,'_root(void);\n',
          'void ',graph_name,'_graph_init(struct ',graph_name,'_graph *s) {\n',
-         {indent, 'memset(s,0,sizeof(*s));'},
-         {indent, 's->pc.root = ',graph_name,'_root()->cont.list;\n'},
+         {indent, 'memset(s,0,sizeof(*s));\n'},
+         {indent, 's->base.pc.root = ',graph_name,'_root()->cont.list;\n'},
          {indent, '// null\n'},
          null_code,
          {indent, '// alloc\n'},
          alloc_code,
          {indent, '// connect\n'},
          connect_code,
+         {indent, '// connect\n'},
          init_code,
+         {indent, '// base\n'},
+         base_code,
          '}\n'},
       process = {'void ',graph_name,'_graph_process(',
                  'struct ',graph_name,'_graph *s, ',

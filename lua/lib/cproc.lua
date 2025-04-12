@@ -8,6 +8,7 @@ local m = { test = {} }
 local iolist = require('lure.iolist')
 local list = require('lib.tools.list')
 local prefix = iolist.prefix
+local postfix = iolist.postfix
 local join = iolist.join
 local map  = list.map
 
@@ -250,5 +251,69 @@ end
 function m.render_nop(cproc)
    return {'static void ',cproc,'_loop(struct ',cproc,'_node *s, uintptr_t nb) {}\n'}
 end
+
+
+
+-- CPROC combinators.
+-- The idea is to mimick two combinators used in sigmastudio:
+-- 1. Parallel filter, delay blocks, sharing coefficients
+-- 2. Sequential filter blocks like equalizers, joining coefficients
+
+-- Try parallel first
+function m.parallel(spec, size)
+   assert(spec.name)
+   assert(spec.ins)
+   assert(spec.outs)
+   assert(size)
+   local indent = '    '
+   local indent2 = {indent, indent}
+   local struct_members = {}
+   local pname = { spec.name, '_p', size }
+   local struct = { 'struct ',pname, '_state' }
+   local spec_ios = list.concat({spec.ins, spec.outs})
+   local ios = {}
+   for _,input in ipairs(spec_ios) do
+      for i=0,size-1 do
+         table.insert(ios, {',\n',indent,'float *', input, i})
+      end
+   end
+   local function pio_n(n)
+      return iolist.join(', ', postfix(spec_ios,n))
+   end
+   local body= {}
+   for i=0,size-1 do
+      local state = {'&s->',spec.name,'[',i,']'}
+      table.insert(body, {indent, spec.name, '_update_df(',state,', ', pio_n(i),');\n'})
+   end
+
+   local code = {
+      '// parallel ', spec.name, '\n',
+      struct,' {\n',
+      indent,'struct ',spec.name, '_state ', spec.name, '[',size,'];\n',
+      '};\n',
+      'void ',pname,'_update_df(\n',
+      indent, struct, ' *s', ios, ')\n{\n',
+      body,
+      '}\n',
+   }
+   return code
+end
+
+m.spec = {}
+m.spec.lowpass = {
+   name   = 'lowpass',
+   ins    = {'in'},
+   outs   = {'out'},
+   -- state  = {'coef','feedback','state'},
+}
+
+function m.test.parallel()
+   local spec = m.spec.lowpass
+   local code = m.parallel(spec, 3)
+   iolist.w(code)
+end
+
+
+
 
 return m
