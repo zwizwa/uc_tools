@@ -255,12 +255,19 @@ end
 
 
 
+
 -- CPROC combinators.
 -- The idea is to mimick two combinators used in sigmastudio:
 -- 1. Parallel filter, delay blocks, sharing coefficients
 -- 2. Sequential filter blocks like equalizers, joining coefficients
 
--- Try parallel first
+function ifndef_guard(name)
+   return {
+      '#ifndef ',name,'_cproc\n',
+      '#define ',name,'_cproc\n',
+   }
+end
+
 function m.parallel(spec, size)
    assert(spec.name)
    assert(spec.ins)
@@ -289,32 +296,35 @@ function m.parallel(spec, size)
    end
 
    local setters = {}
-   for _, param in ipairs(spec.params) do
+   for _, param_spec in ipairs(spec.params) do
+      local param, typ = unpack(param_spec)
       table.insert(
          setters, {
-            'void ',pname,'_set_',param,'(',struct,' *s, float v) {\n',
+            'static inline void ',pname,'_set_',param,'(',struct,' *s, ',typ,' v) {\n',
             indent, 'for(int i=0; i<',size,'; i++) ',spec.name,'_set_',param,'(&s->',spec.name,'[i], v);\n',
             '}\n',
       })
    end
 
    local inits = {
-      'void ',pname,'_init(',struct,' *s) {\n',
+      'static inline void ',pname,'_init(',struct,' *s) {\n',
       indent, 'for(int i=0; i<',size,'; i++) ',spec.name,'_init(&s->',spec.name,'[i]);\n',
       '}\n',
    }
 
    local code = {
       '// parallel ', spec.name, '\n',
+      ifndef_guard(pname),
       struct,' {\n',
       indent,'struct ',spec.name, '_state ', spec.name, '[',size,'];\n',
       '};\n',
-      'void ',pname,'_update_df(\n',
+      'static inline void ',pname,'_update_df(\n',
       indent, struct, ' *s', ios, ')\n{\n',
       body,
       '}\n',
       setters,
       inits,
+      '#endif\n',
    }
    return code
 end
@@ -324,13 +334,13 @@ m.spec.lowpass = {
    name   = 'lowpass',
    ins    = {'in'},
    outs   = {'out'},
-   params = {'freq'},
+   params = {{'freq','float'}},
 }
 m.spec.highpass = {
    name   = 'highpass',
    ins    = {'in'},
    outs   = {'out'},
-   params = {'freq'},
+   params = {{'freq','float'}},
 }
 
 function m.test.parallel()
@@ -340,7 +350,7 @@ function m.test.parallel()
 end
 
 -- FIXME: For now this only works for single-channel procs
-function m.serial(specs)
+function m.serial(specs, maybe_name)
    local nb = #specs
    assert(nb > 0)
    local names = {}
@@ -352,7 +362,7 @@ function m.serial(specs)
       assert(spec.params)
       names[i] = spec.name
    end
-   local comb_name = join('_', names)
+   local comb_name = maybe_name or join('_', names)
    local struct = {'struct ', comb_name, '_state'}
    local indent = '    '
    local indent2 = {indent, indent}
@@ -375,11 +385,12 @@ function m.serial(specs)
    local setters = {}
 
    for i,spec in ipairs(specs) do
-      for _, param in ipairs(spec.params) do
+      for _, param_spec in ipairs(spec.params) do
+         local param, typ = unpack(param_spec)
          table.insert(
             setters, {
                -- Use just the index in the setter name
-               'void ',comb_name,'_set_',param,'_',i,'(',struct,' *s, float v) {\n',
+               'static inline void ',comb_name,'_set_',param,'_',i,'(',struct,' *s, ',typ,' v) {\n',
                indent, spec.name,'_set_',param,'(&s->',spec.name,i,', v);\n',
                '}\n',
          })
@@ -390,25 +401,33 @@ function m.serial(specs)
       return {indent, spec.name,'_init(&s->',spec.name,i,');\n',}
    end
    local inits = {
-      'void ',comb_name,'_init(',struct,' *s) {\n',
+      'static inline void ',comb_name,'_init(',struct,' *s) {\n',
       imap(call_init, specs),
       '}\n',
    }
 
    local code = {
-      '// parallel ', join(', ', names), '\n',
+      '// serial ', join('->', names), '\n',
+      ifndef_guard(comb_name),
       struct,' {\n',
       imap(substruct_def, specs),
       '};\n',
-      'void ',comb_name,'_update_df(',struct,'*s, float *in, float *out) {\n',
+      'static inline void ',comb_name,'_update_df(',struct,'*s, float *in, float *out) {\n',
       tmp,
       imap(update, specs),
       '}\n',
       setters,
       inits,
+      '#endif\n',
    }
    return code
 
+end
+
+function m.serial_many(spec, n)
+   local specs = {}
+   for i=1,n do table.insert(specs, spec) end
+   return m.serial(specs, spec.name .. '_s' .. n)
 end
 
 
