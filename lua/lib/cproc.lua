@@ -11,6 +11,7 @@ local prefix = iolist.prefix
 local postfix = iolist.postfix
 local join = iolist.join
 local map  = list.map
+local imap = list.imap
 
 --
 -- After doing some more hands-on work, it really seems that block
@@ -264,6 +265,7 @@ function m.parallel(spec, size)
    assert(spec.name)
    assert(spec.ins)
    assert(spec.outs)
+   assert(spec.params)
    assert(size)
    local indent = '    '
    local indent2 = {indent, indent}
@@ -286,6 +288,15 @@ function m.parallel(spec, size)
       table.insert(body, {indent, spec.name, '_update_df(',state,', ', pio_n(i),');\n'})
    end
 
+   local setters = {}
+   for _, param in ipairs(spec.params) do
+      table.insert(
+         setters, {
+            'void ',pname,'_set_',param,'(',struct,' *s, float v) {\n',
+            indent, 'for(int i=0; i<',size,'; i++) ',spec.name,'_set_',param,'(&s->',spec.name,'[i], v);\n',
+            '}\n',
+      })
+   end
    local code = {
       '// parallel ', spec.name, '\n',
       struct,' {\n',
@@ -295,6 +306,7 @@ function m.parallel(spec, size)
       indent, struct, ' *s', ios, ')\n{\n',
       body,
       '}\n',
+      setters,
    }
    return code
 end
@@ -304,12 +316,90 @@ m.spec.lowpass = {
    name   = 'lowpass',
    ins    = {'in'},
    outs   = {'out'},
-   -- state  = {'coef','feedback','state'},
+   params = {'freq'},
+}
+m.spec.highpass = {
+   name   = 'highpass',
+   ins    = {'in'},
+   outs   = {'out'},
+   params = {'freq'},
 }
 
 function m.test.parallel()
    local spec = m.spec.lowpass
    local code = m.parallel(spec, 3)
+   iolist.w(code)
+end
+
+-- FIXME: For now this only works for single-channel procs
+function m.serial(specs)
+   local nb = #specs
+   assert(nb > 0)
+   local names = {}
+   local substruct = {}
+   for i,spec in ipairs(specs) do
+      assert(spec.name)
+      assert(spec.ins)
+      assert(spec.outs)
+      assert(spec.params)
+      names[i] = spec.name
+   end
+   local comb_name = join('_', names)
+   local struct = {'struct ', comb_name, '_state'}
+   local indent = '    '
+   local indent2 = {indent, indent}
+   function substruct_def(i, spec)
+      return {indent,'struct ',spec.name, '_state ',spec.name,i,';\n'}
+   end
+   -- Connectivity
+   local tmp = {}
+   for i=1,nb-1 do table.insert(tmp, {indent,'float tmp',i,';\n'}) end
+   function sub_in(i)
+      if i==1 then return "in" else return {'&tmp',i-1} end
+   end
+   function sub_out(i)
+      if i==nb then return "out" else return {'&tmp',i} end
+   end
+   function update(i, spec)
+      return {indent, spec.name, '_update_df(&s->',spec.name,i,', ',sub_in(i),', ',sub_out(i),');\n'}
+   end
+
+   local setters = {}
+
+   for i,spec in ipairs(specs) do
+      for _, param in ipairs(spec.params) do
+         table.insert(
+            setters, {
+               'void ',comb_name,'_set_',spec.name,i,'_',param,'(',struct,' *s, float v) {\n',
+               indent, spec.name,'_set_',param,'(&s->',spec.name,i,', v);\n',
+               '}\n',
+         })
+      end
+   end
+
+   local code = {
+      '// parallel ', join(', ', names), '\n',
+      struct,' {\n',
+      imap(substruct_def, specs),
+      '};\n',
+      'void ',comb_name,'_update_df(',struct,'*s, float *in, float *out) {\n',
+      tmp,
+      imap(update, specs),
+      '}\n',
+      setters,
+   }
+   return code
+
+end
+
+
+
+function m.test.serial()
+   local code = m.serial({
+      m.spec.highpass,
+      m.spec.lowpass,
+      m.spec.lowpass,
+   })
    iolist.w(code)
 end
 
