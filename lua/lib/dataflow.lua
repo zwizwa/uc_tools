@@ -724,7 +724,21 @@ local function named(names, values)
 end
 
 
+function osc_preset_txt(graph)
+   local nodes = graph.nodes
+   local txt = {}
+   assert(nodes)
 
+   for _,node in ipairs(nodes) do
+      for param,val in pairs(node.init or {}) do
+         table.insert(
+            txt,
+            {'/',node.name,'/',param,' ',val,'\n'})
+      end
+   end
+
+   return txt
+end
 
 
 
@@ -801,6 +815,7 @@ return {
    render_c_osc = render_c_osc,
    w = w,
    input_edges = input_edges,
+   osc_preset_txt = osc_preset_txt,
 
    test = {test1, test2},
 
