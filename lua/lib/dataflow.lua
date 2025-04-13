@@ -50,7 +50,7 @@ local function render_node(s)
 end
 
 local function map_edge(f, e)
-   log_desc({map_edge=e})
+   -- log_desc({map_edge=e})
    local from, to = unpack(e)
    assert(from)
    assert(to)
@@ -663,7 +663,7 @@ function t.cproc_op(cproc_spec, init)
          input_name = function(i) return 'i' .. i end,
          init = init,
       }
-      log_desc({t=t})
+      --log_desc({t=t})
       return t
    end
 end
