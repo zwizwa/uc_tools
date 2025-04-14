@@ -14,6 +14,10 @@ local map    = list.map
 local concat = list.concat
 local cproc  = require('lib.cproc')
 
+local path = require('lib.tools.path')
+local nested_to_flat_c = path({separator='_'}).nested_to_flat
+local nested_to_flat_osc = path({separator='/'}).nested_to_flat
+
 -- The 'w_' functions take iolist and write to stdout
 -- The 'render_' functions will render to iolist
 
@@ -359,8 +363,13 @@ local function render_c(s, graph_name)
       if node.init then
          local state = {'&s->',node.name,'.state'}
          table.insert(init_code, {indent, type_name,'_init(',state,');\n'})
-         for name, value in pairs(node.init) do
-            table.insert(init_code, {indent, type_name,'_set_',name,'(',state,', ',value,');\n'})
+         local flat_init = nested_to_flat_c(node.init)
+         for name, value in pairs(flat_init) do
+            -- Value is a 'Maybe' type.  Don't generate the
+            -- initializer if value is false.
+            if value then
+               table.insert(init_code, {indent, type_name,'_set_',name,'(',state,', ',value,');\n'})
+            end
          end
       else
          log('WARNING: no init for ' .. node.name .. '\n')
@@ -679,13 +688,13 @@ function t.matrix_op(type_name, in_names, out_names)
       }
    end
 end
-function t.extern_matrix_op(type_name, in_names, out_names)
+function t.extern_matrix_op(type_name, in_names, out_names, maybe_init)
    return function (c, name, nb_inputs)
       return {
          extern_name  = type_name,
          out_ports  = out_names,
          input_name = in_names,
-         init = {},
+         init = maybe_init or {},
       }
    end
 end
@@ -730,10 +739,14 @@ function osc_preset_txt(graph)
    assert(nodes)
 
    for _,node in ipairs(nodes) do
-      for param,val in pairs(node.init or {}) do
-         table.insert(
-            txt,
-            {'/',node.name,'/',param,' ',val,'\n'})
+      local flat_init = nested_to_flat_osc(node.init or {})
+      for param,val in pairs(flat_init) do
+         -- The val is a 'Maybe' type.
+         if val then
+            table.insert(
+               txt,
+               {'/',node.name,'/',param,' ',val,'\n'})
+         end
       end
    end
 
