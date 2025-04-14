@@ -13,6 +13,32 @@ local join = iolist.join
 local map  = list.map
 local imap = list.imap
 
+local path = require('lib.tools.path')
+local nested_to_flat_c = path({separator='_'}).nested_to_flat
+local nested_to_flat_osc = path({separator='/'}).nested_to_flat
+
+-- Convert param spec list (nested arrays) to a nested table format so
+-- it can be plugged into path.lua nested<->flat conversion.
+--
+-- FIXME: put this in path.lua
+local function param_to_nested(thing)
+   if type(thing) == 'string' then
+      return thing
+   else
+      assert(type(thing) == 'table')
+      local params = thing
+      local nested = {}
+      for _,param in ipairs(params) do
+         local name, sub = unpack(param)
+         assert(name)
+         assert(sub)
+         nested[name] = param_to_nested(sub)
+      end
+      return nested
+   end
+end
+
+
 --
 -- After doing some more hands-on work, it really seems that block
 -- processing is essential to be able to use the available
@@ -296,16 +322,54 @@ function m.parallel(env, spec, size)
       table.insert(body, {indent, spec.name, '_update_df(',state,', ', pio_n(i),');\n'})
    end
 
+   -- FIXME: setters can probably be generated directly from the
+   -- .param composition.
    local setters = {}
-   for _, param_spec in ipairs(spec.params) do
-      local param, typ = unpack(param_spec)
-      table.insert(
-         setters, {
-            'static inline void ',pname,'_set_',param,'(',struct,' *s, ',typ,' v) {\n',
-            indent, 'for(int i=0; i<',size,'; i++) ',spec.name,'_set_',param,'(&s->',spec.name,'[i], v);\n',
-            '}\n',
-      })
+
+
+   --log_desc({parallel_setters_spec_params = spec.params})
+   local nested_params = param_to_nested(spec.params)
+   --log_desc({nested_params = nested_params})
+   local flat_params = nested_to_flat_c(nested_params)
+   --log_desc({flat_params = flat_params})
+
+   for c_name, c_type in pairs(flat_params) do
+       table.insert(
+          setters, {
+             'static inline void ',pname,'_set_',c_name,'(',struct,' *s, ',c_type,' v) {\n',
+             indent, 'for(int i=0; i<',size,'; i++) ',spec.name,'_set_',c_name,'(&s->',spec.name,'[i], v);\n',
+             '}\n',
+       })
+
    end
+
+
+   -- for _, param_spec in ipairs(spec.params) do
+
+   --    local nested_param = param_to_nested(param_spec)
+   --    local flat_param = nested_to_flat_c(nested_param)
+   --    log_desc({nested_param = nested_param, flat_param = flat_param})
+
+   --    local param, typ = unpack(param_spec)
+   --    -- Note that 'typ' can be hierarchical now, so we need to
+   --    -- flatten it.
+
+
+   --    -- Old case: typ is e.g. 'float'
+   --    -- New case, we can have a list of params.
+   --    -- log_desc({parallel_setter = param_spec})
+
+   --    --local nested_param = param_to_nested(param_spec)
+   --    --local flat_param = nested_to_flat_c(nested_param)
+   --    --log_desc({nested_param = nested_param, flat_param = flat_param})
+
+   --    table.insert(
+   --       setters, {
+   --          'static inline void ',pname,'_set_',param,'(',struct,' *s, ',typ,' v) {\n',
+   --          indent, 'for(int i=0; i<',size,'; i++) ',spec.name,'_set_',param,'(&s->',spec.name,'[i], v);\n',
+   --          '}\n',
+   --    })
+   -- end
 
    local inits = {
       'static inline void ',pname,'_init(',struct,' *s) {\n',
@@ -371,17 +435,6 @@ function m.test.parallel()
    iolist.w(code)
 end
 
--- Transformed parameters
-function m.serial_params(specs)
-   local params = {}
-   for i,spec in ipairs(specs) do
-      for _,param_spec in ipairs(spec.params) do
-         local param, typ = unpack(param_spec)
-         table.insert(params, {param .. '_' .. i, typ})
-      end
-   end
-   return params
-end
 
 -- FIXME: For now this only works for single-channel procs
 function m.serial(env, specs, maybe_name)
@@ -418,13 +471,22 @@ function m.serial(env, specs, maybe_name)
 
    local setters = {}
 
+   local new_params = imap(
+      function(i, spec)
+         -- FIXME: Allow for name override instead of 1,2,3... section names
+         local section_name = i .. ''
+         return {section_name, spec.params}
+      end,
+      specs)
+   -- log_desc({new_params=new_params})
+
    for i,spec in ipairs(specs) do
       for _, param_spec in ipairs(spec.params) do
          local param, typ = unpack(param_spec)
          table.insert(
             setters, {
                -- Use just the index in the setter name
-               'static inline void ',comb_name,'_set_',param,'_',i,'(',struct,' *s, ',typ,' v) {\n',
+               'static inline void ',comb_name,'_set_',i,'_',param,'(',struct,' *s, ',typ,' v) {\n',
                indent, spec.name,'_set_',param,'(&s->',spec.name,i,', v);\n',
                '}\n',
          })
@@ -458,7 +520,8 @@ function m.serial(env, specs, maybe_name)
       name = comb_name,
       ins  = specs[1].ins,
       outs = specs[nb].outs,
-      params = m.serial_params(specs)
+      -- params = m.serial_params(specs)
+      params = new_params,
    }
 
    -- It's simpler to accumulate specs in an environment.
@@ -484,6 +547,26 @@ function m.test.serial()
    }
    local env = {}
    local code = m.serial(env, specs)
+   log_desc({env=env})
+   iolist.w(code)
+end
+
+
+
+
+function m.test.parallel_of_serial()
+   local env = {}
+   local specs = {
+      m.spec.highpass,
+      m.spec.lowpass,
+   }
+   local env = {}
+   local ign_code = m.serial(env, specs)
+   -- Interested only in the composition code
+   -- This composed spec has been generated by m.serial
+   local spec = env.highpass_lowpass
+   assert(spec)
+   local code = m.parallel(env, spec, 3)
    log_desc({env=env})
    iolist.w(code)
 end

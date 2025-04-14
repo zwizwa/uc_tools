@@ -18,6 +18,7 @@ local path = require('lib.tools.path')
 local nested_to_flat_c = path({separator='_'}).nested_to_flat
 local nested_to_flat_osc = path({separator='/'}).nested_to_flat
 
+
 -- The 'w_' functions take iolist and write to stdout
 -- The 'render_' functions will render to iolist
 
@@ -364,6 +365,7 @@ local function render_c(s, graph_name)
          local state = {'&s->',node.name,'.state'}
          table.insert(init_code, {indent, type_name,'_init(',state,');\n'})
          local flat_init = nested_to_flat_c(node.init)
+         -- log_desc({flat_init = flat_init, nested_init = node.init})
          for name, value in pairs(flat_init) do
             -- Value is a 'Maybe' type.  Don't generate the
             -- initializer if value is false.
@@ -752,6 +754,8 @@ function osc_preset_txt(graph)
 
    return txt
 end
+
+
 
 
 
