@@ -6,7 +6,7 @@
 
 /* Memory is allocated with malloc. */
 
-char *file_read_string(const char *filename) {
+static inline char *file_read_string(const char *filename) {
     /* Read bin file. */
     FILE *f;
     ASSERT(NULL != (f = fopen(filename, "r")));
@@ -23,7 +23,7 @@ char *file_read_string(const char *filename) {
 /* Allocate on stack and run callback. */
 
 typedef intptr_t (*file_read_fn)(void *ctx, uint8_t *, uintptr_t);
-intptr_t file_read_with(file_read_fn handle, void *ctx, const char *filename) {
+static inline intptr_t file_read_with(file_read_fn handle, void *ctx, const char *filename) {
     /* Read bin file. */
     FILE *f;
     if (NULL == (f = fopen(filename, "r"))) return -1;

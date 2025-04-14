@@ -22,6 +22,7 @@ static inline ssize_t assert_read(int fd, void *vbuf, size_t nb) {
     }
     else if (rv < 0) {
         int e = errno;
+        (void)e;
         LOG("fd %2d: errno=%d\n", fd, e);
         //char *msg = strerror(e);
         //LOG("%d: errno=%d: %s\n", fd, e, msg); // SIGSEGV?
