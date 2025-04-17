@@ -424,7 +424,7 @@ m.spec.highpass = {
    name   = 'highpass',
    ins    = {'in'},
    outs   = {'out'},
-   params = {{'freq','float'}},
+   params = {{'freq','float'}, {'invert','int'}},
 }
 
 function m.test.parallel()

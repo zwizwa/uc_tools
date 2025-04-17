@@ -201,7 +201,10 @@ local function analyze(s)
    end
    function pass1_buf_alloc(buf_var)
       -- First pass: simple alloc
-      assert(nil == buf[buf_var])
+      if nil ~= buf[buf_var] then
+         log_desc({buf=buf,buf_var=buf_var})
+         assert(nil == buf[buf_var])
+      end
       buf[buf_var] = { total_use = 0 }
    end
    for_buf(pass1_buf_reference, pass1_buf_alloc)
@@ -438,20 +441,26 @@ local function render_c(s, graph_name)
       end
    end
 
+   local buf_size = 256
+
    table.insert(
       graph_struct_code,
-      {indent, 'float buf[',str(alloc_count),'][256];\n'});
+      {indent, 'float buf[',alloc_count,'][',buf_size,'];\n'});
 
    -- Naming is unfortunate, but it is the output port struct of the
    -- input node, and the input port struct of the output node.
    local base_in  = 's->input.output'
    local base_out = 's->output.input'
    local base_code = {
-         {indent, 's->base.in      = (float**)&',base_in, ';\n'},
-         {indent, 's->base.out     = (float**)&',base_out,';\n'},
-         {indent, 's->base.nb_in   = sizeof(',base_in, ')/sizeof(float*);\n'},
-         {indent, 's->base.nb_out  = sizeof(',base_out,')/sizeof(float*);\n'},
-         {indent, 's->base.process = (graph_base_process_fn)',graph_name,'_graph_process;\n'},
+         {indent, 's->base.in       = (float**)&',base_in, ';\n'},
+         {indent, 's->base.out      = (float**)&',base_out,';\n'},
+         {indent, 's->base.nb_in    = sizeof(',base_in, ')/sizeof(float*);\n'},
+         {indent, 's->base.nb_out   = sizeof(',base_out,')/sizeof(float*);\n'},
+         {indent, 's->base.process  = (graph_base_process_fn)',graph_name,'_graph_process;\n'},
+         {indent, 's->base.buf      = &s->buf[0][0];\n'},
+         {indent, 's->base.buf_size = ',buf_size,';\n'},
+         {indent, 's->base.nb_buf   = ',alloc_count,';\n'},
+
    }
 
 
