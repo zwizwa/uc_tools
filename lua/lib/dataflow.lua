@@ -276,6 +276,8 @@ local function render_c(s, graph_name)
    local null_code = {}
    local connect_code = {}
    local init_code = {}
+   local buf_numbers_m = {}
+
    -- Index the edges by inputs.
    local edge = input_edges(s)
    -- log_desc({edge=edge})
@@ -341,6 +343,16 @@ local function render_c(s, graph_name)
             })
             null_out[from_output_buf] = false
 
+            -- Generate octave metadata
+            table.insert(
+               buf_numbers_m, {
+                  {graph_name, '_', from_node, '_', from_port, ' = ',
+                   alloc_count, ';\n'},
+            })
+
+
+            -- Note that this does not use the optimal allocation
+            -- computed in the analysis pass.
             alloc_count = alloc_count + 1,
 
             table.insert(
@@ -499,6 +511,7 @@ local function render_c(s, graph_name)
       process = {'void ',graph_name,'_graph_process(',
                  'struct ',graph_name,'_graph *s, ',
                  'uintptr_t nb) {\n', process_code, '}\n'},
+      octave = buf_numbers_m,
    }
 end
 
@@ -587,6 +600,14 @@ local function graph_compiler()
       instance.name = name
       instance.in_ports = in_port_names
       assert(instance.out_ports)
+
+      -- FIXME: removing all functions to make it serializable
+      for k,v in pairs(instance) do
+         if type(v) == 'function' then
+            instance[k] = '#<removed>'
+         end
+      end
+
       table.insert(self.nodes, instance)
       self.node_by_name[name] = instance
 

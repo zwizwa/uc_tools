@@ -31,10 +31,12 @@ struct graph_base {
 
 /* Connect any of the internal buffers to an output. */
 static inline void graph_monitor(struct graph_base *b,
-                                 uintptr_t buf_nb, uintptr_t out_nb) {
+                                 uintptr_t buf_nb,
+                                 uintptr_t out_nb) {
     if (buf_nb >= b->nb_buf) goto badarg;
     if (out_nb >= b->nb_out) goto badarg;
     float *buf = b->buf + b->buf_size * buf_nb;
+    LOG("graph_monitor: %d %d %p\n", buf_nb, out_nb, buf);
     b->out[out_nb] = buf;
     return;
   badarg:
