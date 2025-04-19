@@ -356,13 +356,13 @@ local function render_c(s, graph_name)
             -- Generate octave metadata
             table.insert(
                octave_out_m, {
-                  {graph_name, '_', from_node, '_', from_port, ' = ',
+                  {'s.', from_node, '_', from_port, ' = ',
                    alloc_count, ';\n'},
             })
             table.insert(
                octave_in_m, {
-                  {graph_name, '_', node.name, '_', node_in_port, ' = ',
-                   graph_name, '_', from_node, '_', from_port, ';\n'},
+                  {'s.', node.name, '_', node_in_port, ' = ',
+                   's.', from_node, '_', from_port, ';\n'},
             })
 
          -- Or it is not connected.
@@ -518,10 +518,13 @@ local function render_c(s, graph_name)
                  'struct ',graph_name,'_graph *s, ',
                  'uintptr_t nb) {\n', process_code, '}\n'},
       octave = {
+         'function s = monitor_', graph_name, '()\n',
+         's = struct();\n',
          '%% Output buffers\n',
          octave_out_m,
          '%% Input connections to output buffers\n',
          octave_in_m,
+         'end\n',
       },
    }
 end
