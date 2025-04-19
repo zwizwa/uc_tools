@@ -276,7 +276,8 @@ local function render_c(s, graph_name)
    local null_code = {}
    local connect_code = {}
    local init_code = {}
-   local buf_numbers_m = {}
+   local octave_out_m = {}
+   local octave_in_m = {}
 
    -- Index the edges by inputs.
    local edge = input_edges(s)
@@ -343,14 +344,6 @@ local function render_c(s, graph_name)
             })
             null_out[from_output_buf] = false
 
-            -- Generate octave metadata
-            table.insert(
-               buf_numbers_m, {
-                  {graph_name, '_', from_node, '_', from_port, ' = ',
-                   alloc_count, ';\n'},
-            })
-
-
             -- Note that this does not use the optimal allocation
             -- computed in the analysis pass.
             alloc_count = alloc_count + 1,
@@ -359,6 +352,19 @@ local function render_c(s, graph_name)
                connect_code, {
                   {indent, to_input_buf, ' = ', from_output_buf, ';\n'}
             })
+
+            -- Generate octave metadata
+            table.insert(
+               octave_out_m, {
+                  {graph_name, '_', from_node, '_', from_port, ' = ',
+                   alloc_count, ';\n'},
+            })
+            table.insert(
+               octave_in_m, {
+                  {graph_name, '_', node.name, '_', node_in_port, ' = ',
+                   graph_name, '_', from_node, '_', from_port, ';\n'},
+            })
+
          -- Or it is not connected.
          else
             -- This is currently an error.  Create a dummy source in
@@ -511,7 +517,12 @@ local function render_c(s, graph_name)
       process = {'void ',graph_name,'_graph_process(',
                  'struct ',graph_name,'_graph *s, ',
                  'uintptr_t nb) {\n', process_code, '}\n'},
-      octave = buf_numbers_m,
+      octave = {
+         '%% Output buffers\n',
+         octave_out_m,
+         '%% Input connections to output buffers\n',
+         octave_in_m,
+      },
    }
 end
 
