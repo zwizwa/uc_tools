@@ -313,6 +313,13 @@ local function render_c(s, graph_name)
       local in_struct = {}
 
 
+      -- Mirror the process structure for octave: one struct per
+      -- octave containing io.
+      table.insert(
+         octave_out_m, {
+            {'s.', node.name, ' = struct()\n'}
+      })
+
       -- Go over all outputs and mark them for initialization.
       for i,node_out_port in ipairs(node.out_ports) do
          local node_out_buf = out_buf(node.name, node_out_port)
@@ -320,7 +327,6 @@ local function render_c(s, graph_name)
       end
 
       for i,node_in_port in ipairs(node.in_ports) do
-
          -- log_desc({node.name,node_in_port})
          local from = edge[node.name][node_in_port]
 
@@ -344,26 +350,30 @@ local function render_c(s, graph_name)
             })
             null_out[from_output_buf] = false
 
-            -- Note that this does not use the optimal allocation
-            -- computed in the analysis pass.
-            alloc_count = alloc_count + 1,
-
             table.insert(
                connect_code, {
                   {indent, to_input_buf, ' = ', from_output_buf, ';\n'}
             })
 
+            -- FIXME: Use substructs
+
             -- Generate octave metadata
             table.insert(
                octave_out_m, {
-                  {'s.', from_node, '_', from_port, ' = ',
+                  {'s.', from_node, '.', from_port, ' = ',
                    alloc_count, ';\n'},
             })
             table.insert(
                octave_in_m, {
-                  {'s.', node.name, '_', node_in_port, ' = ',
-                   's.', from_node, '_', from_port, ';\n'},
+                  {'s.', node.name, '.', node_in_port, ' = ',
+                   's.', from_node, '.', from_port, ';\n'},
             })
+
+            -- Note that this does not use the optimal allocation
+            -- computed in the analysis pass.
+            alloc_count = alloc_count + 1
+
+
 
          -- Or it is not connected.
          else
