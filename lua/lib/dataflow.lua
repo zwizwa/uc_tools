@@ -40,6 +40,10 @@ end
 local function render_node(s)
    return function(n)
       local name = n.name
+      local pretty_name = name
+      if n.pretty_args then
+         pretty_name = {name, '=', n.pretty_args}
+      end
       local i = n.in_ports
       local o = n.out_ports
       assert(name)
@@ -48,7 +52,7 @@ local function render_node(s)
       return {
          '    ',
          name,'[label="{ ',
-         render_ports(s)(i),'|',name, '|',render_ports(s)(o),
+         render_ports(s)(i),'|',pretty_name, '|',render_ports(s)(o),
          ' }"];\n'
       }
    end
@@ -708,7 +712,7 @@ end
 
 
 
-function t.cproc_op(cproc_spec, init)
+function t.cproc_op(cproc_spec, init, pretty_args)
    local cproc_name, cproc_nb_in, cproc_nb_out = unpack(cproc_spec)
    assert_string(cproc_name)
    assert(cproc_name)
@@ -727,6 +731,7 @@ function t.cproc_op(cproc_spec, init)
          out_ports = outs,
          input_name = function(i) return 'i' .. i end,
          init = init,
+         pretty_args = pretty_args,
       }
       --log_desc({t=t})
       return t
