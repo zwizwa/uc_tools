@@ -1,7 +1,17 @@
 [package]
-name = "dataflow"
+name = "dataflow_rs"
 version = "0.1.0"
 authors = ["Author Name <tom@zwizwa.be>"]
+
+[lib]
+# Create a Lua-loadable .so dynamic library.
+crate-type = ["cdylib"]
+
+[dependencies]
+mlua = { version = "0.10.3", features = ["lua51", "module"] }
+
+
+
 
 
 

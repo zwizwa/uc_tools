@@ -3,11 +3,24 @@
 -- Generate readable dataflow schematics and patching C code from a
 -- Lua-embedded 'final' DSL.
 
+-- Principles:
+--
+-- 1. Create "readable C code": nested structs (node, state) +
+-- corresponding functions.
+--
+-- 2. Make the mapping between the data representation (Lua struct)
+-- and the C code very straightforward using name mangling.
+--
+-- 3.. Allow for easy replacement of generated C code at all levels,
+-- e.g. the cproc scalar level, and the loop level.
+
+
+
 -- DF1: Allow for disconnected (zero) inputs.
 -- DF2: Reuse buffers when possible.
 
 
-require('lib.tools.log')
+require('lure.log')
 local list   = require('lib.tools.list')
 local iolist = require('lure.iolist')
 local map    = list.map

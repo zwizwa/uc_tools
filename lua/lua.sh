@@ -2,6 +2,8 @@
 
 # FIXME: This depends on rdm-bridge-dev
 
+old() {
+
 RDM_BRIDGE_DEV=~/.nix-c8/rdm-bridge-dev
 ENV=$RDM_BRIDGE_DEV/env
 
@@ -13,6 +15,18 @@ fi
 
 # Fish it from path
 LUA=$(which lua)
+
+}
+
+
+
+new() {
+LUA=~/.result/lua/bin/lua
+}
+
+new
+# echo "LUA=$LUA" >&2
+
 
 # echo "LUA=$LUA" >&2
 
