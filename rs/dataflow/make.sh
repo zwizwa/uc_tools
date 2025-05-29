@@ -5,5 +5,6 @@
 
 cd $(dirname "$0")
 cargo build
-cargo run
+lua test.lua
+
 
