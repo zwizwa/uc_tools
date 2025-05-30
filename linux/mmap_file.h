@@ -90,7 +90,7 @@ static inline void *mmap_file_open(struct mmap_file *ref,
     return ref->buf;
 }
 
-/* Post condition: at least size bytes are available and file is mapped. */
+/* Post condition: at least size bytes are available and file is mapped if size>0. */
 static inline const void *mmap_file_open_ro(struct mmap_file *ref,
                                             const char *file) {
     memset(ref,0,sizeof(*ref));
@@ -100,13 +100,20 @@ static inline const void *mmap_file_open_ro(struct mmap_file *ref,
     ASSERT_ERRNO(ref->fd = open(file, O_RDONLY, 0664));
     ASSERT_ERRNO(ref->size = lseek(ref->fd, 0, SEEK_END));
 
-    ref->buf = mmap(NULL, ref->size, PROT_READ, MAP_SHARED, ref->fd, 0);
-    if (MAP_FAILED == ref->buf) {
-        ERROR("MAP_FAILED on %s\n", file);
+    if (ref->size == 0) {
+        /* mmap() doesn't allow empty files */
+        ref->buf = NULL;
     }
-
+    else {
+        ref->buf = mmap(NULL, ref->size, PROT_READ, MAP_SHARED, ref->fd, 0);
+        if (MAP_FAILED == ref->buf) {
+            ref->size = 0;
+            ERROR("MAP_FAILED on %s\n", file);
+        }
+    }
     return ref->buf;
 }
+
 
 static inline const void *mmap_file_open_rw(struct mmap_file *ref,
                                             const char *file,
