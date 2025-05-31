@@ -46,21 +46,32 @@ function webserver:response_upgrade_websocket(hdrs)
    local key = hdrs["Sec-WebSocket-Key"]
    assert(key)
    local hash = webserver_lua51.websocket_sha1(key)
-   log_desc({hash=hash})
+   -- log_desc({hash=hash})
    local resp =
       "HTTP/1.1 101 Switching Protocols\r\n" ..
       "Upgrade: websocket\r\n" ..
       "Connection: Upgrade\r\n" ..
       "Sec-WebSocket-Accept: " .. hash .. "\r\n\r\n"
-   log(resp)
+   -- log(resp)
    self.socket:write(resp)
 end
 
 function webserver:upgrade_websocket(hdrs)
+   log_desc({self=self})
    self:response_upgrade_websocket(hdrs)
+   -- local parser = webserver_lua51.websocket_parser()
    while true do
-      local recv_msg = self:recv(function(msg) return msg[1] == self.socket end)
+      log("websocket: recv wait\n")
+      -- local recv_msg = self:recv(function(msg) return msg[1] == self.socket end)
+      local recv_msg = self:recv()
+      log("websocket: recv done\n")
       log_desc({recv_msg = recv_msg})
+      -- Note that the websocket.h code uses BLOCKING_IO_READ while
+      -- the Lua code typically runs in a single-threaded / Lua
+      -- coroutine environment, so we just use a buffered state
+      -- machine.
+      -- local messages = webserver_lua51.websocket_parse(parser, recv_msg)
+
    end
 end
 
