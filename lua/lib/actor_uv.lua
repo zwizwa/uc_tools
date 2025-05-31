@@ -66,6 +66,25 @@ function actor_uv.task(scheduler, obj)
    return scheduler:task(obj)
 end
 
+-- The task object below is the task handling the connection.
+function actor_uv.line_mode_push(task)
+   -- Line buffer is presented with chunks from the socket,
+   -- which then get pushed into the mailbox of a task.
+   local buf = linebuf.new()
+   buf.push_line = function(self, line) task:send_and_schedule({task.socket,line}) end
+   return function(data) buf:push(data) end
+end
+function actor_uv.packet_mode_push(task, serv_obj)
+   local size_bytes = serv_obj.mode[2]
+   assert('number' == type(size_bytes))
+   local buf = packetbuf.new(size_bytes)
+   buf.push_packet = function(self, packet) task:send_and_schedule({task.socket,packet})  end
+   return function(data) buf:push(data) end
+end
+function actor_uv.raw_mode_push(task)
+   return function(data) task:send_and_schedule({task.socket,data}) end
+end
+
 -- A TCP server
 function actor_uv.spawn_tcp_server(scheduler, serv_obj)
    assert(serv_obj.ip)
@@ -102,25 +121,17 @@ function actor_uv.spawn_tcp_server(scheduler, serv_obj)
 
       -- Configure how data will be pushed into the actor network.  It
       -- seems simpler to do this at the write end as opposed to the
-      -- read end.
-      local push
+      -- read end.  The function is stored inside the connection task
+      -- object such that mode can be changed later.
 
       if serv_obj.mode == 'line' then
-         -- Line buffer is presented with chunks from the socket,
-         -- which then get pushed into the mailbox of a task.
-         local buf = linebuf.new()
-         buf.push_line = function(self, line) task:send_and_schedule({task.socket,line}) end
-         push = function(data) buf:push(data) end
+         task.push = actor_uv.line_mode_push(task)
 
       elseif serv_obj.mode and serv_obj.mode[1] == 'packet' then
-         local size_bytes = serv_obj.mode[2]
-         assert('number' == type(size_bytes))
-         local buf = packetbuf.new(size_bytes)
-         buf.push_packet = function(self, packet) task:send_and_schedule({task.socket,packet})  end
-         push = function(data) buf:push(data) end
+         task.push = actor_uv.packet_mode_push(task, serv_obj)
 
       elseif serv_obj.mode == 'raw' then
-         push = function(data) task:send_and_schedule({task.socket,data}) end
+         task.push = actor_uv.raw_mode_push(task)
 
       else
          error('bad .mode')
@@ -135,7 +146,7 @@ function actor_uv.spawn_tcp_server(scheduler, serv_obj)
                task:halt()
             else
                -- log("push: " .. data)
-               push(data)
+               task.push(data)
             end
          end)
 

@@ -3,14 +3,25 @@
 #include "macros.h"
 #include <stdint.h>
 
-/* The websocket.h header is parameterized by osal.  Note that we do
-   not use sockets directly in this Lua interface.  This is just to
-   avoid having to split the webserver code into pure functions and
-   osal functions. */
-#include "os_linux.h"
-#include "os_tcp_berkeley.h"
 
+/* The original websocket.h code was written for struct blocking_io In
+   websocket_pure.h this has been abstracted out further, and
+   parameterized by these macros, so we can create a try/abort
+   implementation instead. */
+#define WS_PURE
+#define WS_READ(io, buf, len) { if(0) goto error_exit; ws_buf_read(io, buf, len); }
+#define WS_WRITE(io, buf, len) {(void)io; (void)buf; (void)len; if(0) goto error_exit;}
+#define WS_ERR_T uint32_t
+#define WS_OK 0
+#define WS_IO_T struct ws_io
+#define WS_LOG_ERROR LOG
+struct ws_io {
+};
+WS_ERR_T ws_buf_read(struct ws_io *ws_io, uint8_t *buf, size_t len) {
+    return WS_OK;
+}
 #include "websocket.h"
+
 
 #include "lua_tools.h"
 

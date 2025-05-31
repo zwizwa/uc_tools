@@ -58,13 +58,19 @@ end
 
 function webserver:upgrade_websocket(hdrs)
    log_desc({self=self})
+
+   -- Before sending the reply, change the input mode.  This should
+   -- call into C code to convert the websocket protocol to regular
+   -- binary messages.
+   self.push = function(data) self:send_and_schedule({self.socket,data}) end
+
    self:response_upgrade_websocket(hdrs)
    -- local parser = webserver_lua51.websocket_parser()
    while true do
-      log("websocket: recv wait\n")
       -- local recv_msg = self:recv(function(msg) return msg[1] == self.socket end)
+      -- from, msg = unpack(_)
+      -- there will be 2 kinds: from socket and from another task to send out
       local recv_msg = self:recv()
-      log("websocket: recv done\n")
       log_desc({recv_msg = recv_msg})
       -- Note that the websocket.h code uses BLOCKING_IO_READ while
       -- the Lua code typically runs in a single-threaded / Lua

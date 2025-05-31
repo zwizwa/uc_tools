@@ -4,6 +4,8 @@
 /* Minimalistic implementation of the WebSocket protocol.
    Derived from erl_tools/src/serv_ws.erl
 
+   1. struct blocking_io mode:
+
    Dependencies / assumptions:
 
    - assumes blocking read/write are available
@@ -14,16 +16,28 @@
 
    - message buffers are allocated on the stack and passed to a callback.
 
-*/
+   2. single-threaded try/abort mode:
 
-#define WS_READ  BLOCKING_IO_READ
-#define WS_WRITE BLOCKING_IO_WRITE
+   Further decouple everything to allow this to be used in a setjmp
+   based try/abort mode, e.g. for use in a single-threaded Lua app.
+
+*/
 
 
 #include <stdint.h>
-#include "uct_byteswap.h"
 #include "macros.h"
+
+#include "sha1.h"
+#include "base64.h"
+#include "uct_byteswap.h"
+
+#include <stdint.h>
+
+/* In pure mode the ties to blocking_io and the rest of the C http
+   server are not made. */
+#ifndef WS_PURE
 #include "httpserver.h"
+#endif
 
 struct ws_message {
     uintptr_t len;
@@ -38,10 +52,15 @@ struct ws_message {
    Currently streaming is not supported so don't make this too big. */
 #define WS_LEN_MAX 4096
 
-/* Decouple it from implementation of read and write. */
-typedef os_error_t ws_err_t;
-struct ws_ctx;
-typedef ws_err_t (*ws_push_fn)(struct blocking_io *, struct ws_message *);
+
+static inline void ws_write_sha1(const char *key, uint8_t *sha1_buf) {
+    SHA1_CTX ctx;
+    sha1_init(&ctx);
+    sha1_update(&ctx, (uint8_t*)key, strlen(key));
+    const char magic[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+    sha1_update(&ctx, (uint8_t*)magic, strlen(magic));
+    sha1_final(&ctx, sha1_buf);
+}
 
 /* Undo the xormask.  The xormask is (I believe), a hack that is part
    of the protocol to work around broken caching proxies. */
@@ -52,11 +71,81 @@ static inline void ws_unmask(struct ws_message *m) {
 }
 
 
-static inline ws_err_t ws_read_msg_body(struct blocking_io *io,
+
+/* By default the ws reading code assumes struct blocking_io
+   interface.  For a single threaded try/abort implementation see
+   webserver_lua51.c */
+#ifndef WS_READ
+#define WS_READ  BLOCKING_IO_READ
+#endif
+#ifndef WS_WRITE
+#define WS_WRITE BLOCKING_IO_WRITE
+#endif
+
+#ifndef WS_ERR_T
+#define WS_ERR_T os_error_t
+#endif
+typedef WS_ERR_T ws_err_t;
+
+#ifndef WS_IO_T
+#define WS_IO_T struct blocking_io
+#endif
+
+#ifndef WS_OK
+#define WS_OK OS_OK
+#endif
+
+#ifndef WS_LOG_ERROR
+#define WS_LOG_ERROR OS_LOG_ERROR
+#endif
+
+typedef WS_IO_T ws_io_t;
+typedef ws_err_t (*ws_push_fn)(ws_io_t *, struct ws_message *);
+
+
+static inline ws_err_t ws_write_msg_nolock(ws_io_t *io,
+                                           const struct ws_message *m) {
+    ws_err_t error = WS_OK;
+
+    if (m->len < 126) {
+        uint8_t hdr[2] = {
+            (m->fin << 7) | (m->opcode & 0xF),
+            (m->mask << 7) | m->len
+        };
+        WS_WRITE(io, hdr, 2);
+    }
+    else if (m->len < 0xFFFF) {
+        uint8_t hdr[4] = {
+            (m->fin << 7) | (m->opcode & 0xF),
+            (m->mask << 7) | 126 /* medium size code */
+        };
+        write_be(hdr + 2, m->len, 2);
+        WS_WRITE(io, hdr, 4);
+    }
+    else {
+        uint8_t hdr[10] = {
+            (m->fin << 7) | (m->opcode & 0xF),
+            (m->mask << 7) | 127 /* large size code */
+        };
+        write_be(hdr + 2, m->len, 8);
+        WS_WRITE(io, hdr, 10);
+    }
+    WS_WRITE(io, m->buf, m->len);
+    return WS_OK;
+
+  error_exit:
+    WS_LOG_ERROR("ws_write_msg", error);
+    return error;
+}
+
+
+
+
+static inline ws_err_t ws_read_msg_body(ws_io_t *io,
                                         ws_push_fn push,
                                         struct ws_message *m,
                                         uintptr_t len_len) {
-    os_error_t error = OS_OK;
+    ws_err_t error = WS_OK;
     if (len_len) {
         /* Large and Medium have an additional length field. */
         uint8_t len_buf[len_len];
@@ -83,7 +172,7 @@ static inline ws_err_t ws_read_msg_body(struct blocking_io *io,
         }
         if (m->opcode == 8) {
             LOG("closing websocket\n");
-            return OS_OK;
+            return WS_OK;
         }
         /* https://tools.ietf.org/id/draft-ietf-hybi-thewebsocketprotocol-09.html
            0x0 denotes a continuation frame
@@ -98,11 +187,11 @@ static inline ws_err_t ws_read_msg_body(struct blocking_io *io,
     }
 
   error_exit:
-    OS_LOG_ERROR("ws_read_msg_body", error);
+    WS_LOG_ERROR("ws_read_msg_body", error);
     return error;
 }
-static inline ws_err_t ws_read_msg(struct blocking_io *io, ws_push_fn push) {
-    os_error_t error = OS_OK;
+static inline ws_err_t ws_read_msg(ws_io_t *io, ws_push_fn push) {
+    ws_err_t error = WS_OK;
 
     /* We can read 2 bytes, then we have to dispatch on size. */
     uint8_t buf[2];
@@ -127,62 +216,23 @@ static inline ws_err_t ws_read_msg(struct blocking_io *io, ws_push_fn push) {
     }
 
   error_exit:
-    OS_LOG_ERROR("ws_read_msg", error);
+    WS_LOG_ERROR("ws_read_msg", error);
     return error;
 }
 
-static inline ws_err_t ws_write_msg_nolock(struct blocking_io *io,
-                                           const struct ws_message *m) {
-    os_error_t error = OS_OK;
 
-    if (m->len < 126) {
-        uint8_t hdr[2] = {
-            (m->fin << 7) | (m->opcode & 0xF),
-            (m->mask << 7) | m->len
-        };
-        WS_WRITE(io, hdr, 2);
-    }
-    else if (m->len < 0xFFFF) {
-        uint8_t hdr[4] = {
-            (m->fin << 7) | (m->opcode & 0xF),
-            (m->mask << 7) | 126 /* medium size code */
-        };
-        write_be(hdr + 2, m->len, 2);
-        WS_WRITE(io, hdr, 4);
-    }
-    else {
-        uint8_t hdr[10] = {
-            (m->fin << 7) | (m->opcode & 0xF),
-            (m->mask << 7) | 127 /* large size code */
-        };
-        write_be(hdr + 2, m->len, 8);
-        WS_WRITE(io, hdr, 10);
-    }
-    WS_WRITE(io, m->buf, m->len);
-    return OS_OK;
 
-  error_exit:
-    OS_LOG_ERROR("ws_write_msg", error);
-    return error;
-}
 
-static inline ws_err_t ws_write_msg(struct blocking_io *io,
+
+#ifndef WS_PURE
+static inline ws_err_t ws_write_msg(ws_io_t *io,
                                     const struct ws_message *m) {
     os_mutex_lock(&io->write_lock);
     ws_err_t rv = ws_write_msg_nolock(io, m);
     os_mutex_unlock(&io->write_lock);
     return rv;
 }
-
-
-static inline void ws_write_sha1(const char *key, uint8_t *sha1_buf) {
-    SHA1_CTX ctx;
-    sha1_init(&ctx);
-    sha1_update(&ctx, (uint8_t*)key, strlen(key));
-    const char magic[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-    sha1_update(&ctx, (uint8_t*)magic, strlen(magic));
-    sha1_final(&ctx, sha1_buf);
-}
+#endif
 
 
 

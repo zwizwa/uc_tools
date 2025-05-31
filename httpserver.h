@@ -12,9 +12,8 @@
 #define HTTP_WRITE BLOCKING_IO_WRITE
 
 #include "macros.h"
+#include "websocket_pure.h"
 
-#include "sha1.h"
-#include "base64.h"
 #include "blocking_io.h"
 
 
@@ -56,6 +55,8 @@ typedef const struct webserver_status *serve_status_t;
 #ifndef WEBSERVER_FILE_NAME
 #define WEBSERVER_FILE_NAME 64
 #endif
+
+#include "sha1.h"
 
 struct webserver_req;
 struct webserver_req {
