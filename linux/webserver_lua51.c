@@ -9,27 +9,30 @@
    parameterized by these macros, so we can create a try/abort
    implementation instead. */
 #define WS_PURE
-#define WS_READ(io, buf, len) { if(0) goto error_exit; ws_buf_read(io, buf, len); }
-#define WS_WRITE(io, buf, len) {(void)io; (void)buf; (void)len; if(0) goto error_exit;}
-#define WS_ERR_T uint32_t
-#define WS_OK 0
-#define WS_IO_T struct ws_io
-#define WS_LOG_ERROR LOG
-struct ws_io {
-};
-WS_ERR_T ws_buf_read(struct ws_io *ws_io, uint8_t *buf, size_t len) {
-    return WS_OK;
-}
 #include "websocket.h"
 
 
 #include "lua_tools.h"
 
+struct websocket_parse {
+    struct ws_buf ws_buf;
+    struct lua_State *L;
+    int nb_rv;
+};
+void websocket_parse_init(struct websocket_parse *s) {
+    ws_buf_init(&s->ws_buf);
+}
+
+#define websocket_parse_T "rdm.websocket_parse"
+#define NS(name) CONCAT(websocket_parse,name)
+#include "ns_lua_struct.h"
+#undef NS
+
+
 static const char *string_L(lua_State *L, int index, size_t *len) {
     ASSERT(lua_isstring(L, index));
     return lua_tolstring(L, index, len);
 }
-
 static int websocket_sha1_cmd(lua_State *L) {
     uint8_t websocket_sha1[SHA1_BLOCK_SIZE];
     size_t len = 0;
@@ -46,8 +49,40 @@ static int websocket_sha1_cmd(lua_State *L) {
     return 1;
 }
 
+static ws_err_t ws_buf_push(ws_io_t *io, struct ws_message *msg) {
+    struct websocket_parse *s = (void*)io;
+    lua_pushlstring(s->L, (const char*)msg->buf, msg->len);
+    s->nb_rv++;
+    return WS_OK;
+}
+
+static int websocket_parse_push_chunk_cmd(lua_State *L) {
+    struct websocket_parse *s = &websocket_parse_L(L, -2)->base;
+    s->L = L;
+    s->nb_rv = 0;
+    (void)s;
+    size_t data_len = 0;
+    const uint8_t *data = (const uint8_t*)string_L(L, -1, &data_len);
+    ws_err_t err = ws_update(&s->ws_buf, data, data_len, ws_buf_push);
+    if (err != WS_OK) {
+        LOG("WARNING: ws_update error %d\n", err);
+    }
+    return s->nb_rv;
+}
+
+
+static void new_metatable(lua_State *L, const char *t_name, int (*gc)(lua_State *)) {
+    luaL_newmetatable(L, t_name);
+    luaL_getmetatable(L, t_name);
+    lua_pushstring(L, t_name); lua_setfield(L, -2, "__name");
+    lua_pushcfunction(L, gc);  lua_setfield(L, -2, "__gc");
+    lua_pop(L, -1);
+}
 int luaopen_webserver_lua51(lua_State *L) {
+    new_metatable(L, websocket_parse_T, websocket_parse_gc);
     lua_newtable(L);
     DEF_CFUN(websocket_sha1);
+    DEF_CFUN(websocket_parse_new);
+    DEF_CFUN(websocket_parse_push_chunk);
     return 1;
 }

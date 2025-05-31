@@ -37,7 +37,38 @@
    server are not made. */
 #ifndef WS_PURE
 #include "httpserver.h"
+#else
+
+#ifndef WS_ERR_T
+#define WS_ERR_T uint32_t
 #endif
+
+#define WS_READ(io, buf, len) { if(0) goto error_exit; ws_buf_read(io, buf, len); }
+#define WS_WRITE(io, buf, len) {(void)io; (void)buf; (void)len; if(0) goto error_exit;}
+#define WS_OK 0
+#define WS_IO_T struct ws_buf
+#define WS_LOG_ERROR LOG
+#include <setjmp.h>
+#include "cbuf.h"
+struct ws_buf {
+    jmp_buf jmp_buf;
+    struct cbuf in;  uint8_t in_buf[1024];
+    struct cbuf *out; // ??? how to do this
+};
+static inline void ws_buf_init(struct ws_buf *ws_io) {
+    CBUF_INIT(ws_io->in);
+}
+WS_ERR_T ws_buf_read(struct ws_buf *ws_io, uint8_t *buf, size_t len) {
+    uint32_t nb_bytes = cbuf_elements(&ws_io->in);
+    if (nb_bytes < len) {
+        /* Short read. */
+        longjmp(ws_io->jmp_buf, 1);
+    }
+    cbuf_read(&ws_io->in, buf, len);
+    return WS_OK;
+}
+#endif
+
 
 struct ws_message {
     uintptr_t len;
@@ -232,6 +263,31 @@ static inline ws_err_t ws_write_msg(ws_io_t *io,
     os_mutex_unlock(&io->write_lock);
     return rv;
 }
+
+#else
+
+/* Interface for try/abort style.
+   Saves bytes into buffer and calls the push function for each message. */
+static inline ws_err_t ws_update(ws_io_t *io,
+                                 const uint8_t *buf, size_t len,
+                                 ws_push_fn push) {
+    cbuf_write(&io->in, buf, len);
+    for(;;) {
+        typeof(io->in.read) read = io->in.read;
+        int rv;
+        if ((rv = setjmp(io->jmp_buf))) {
+            /* Short read: rewind */
+            io->in.read = read;
+            return WS_OK;
+        }
+        ws_err_t err = ws_read_msg(io, push);
+        if (err != WS_OK) return err;
+    }
+}
+
+
+
+
 #endif
 
 

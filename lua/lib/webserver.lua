@@ -57,12 +57,19 @@ function webserver:response_upgrade_websocket(hdrs)
 end
 
 function webserver:upgrade_websocket(hdrs)
-   log_desc({self=self})
-
    -- Before sending the reply, change the input mode.  This should
    -- call into C code to convert the websocket protocol to regular
    -- binary messages.
-   self.push = function(data) self:send_and_schedule({self.socket,data}) end
+   self.websocket_parse = webserver_lua51.websocket_parse_new()
+   self.push = function(data)
+      -- To test in browser console:
+      -- w = new WebSocket("ws://zoe:8800")
+      -- enc = new TextEncoder();
+      -- w.send(enc.encode("asdf"))
+      local msgs = {webserver_lua51.websocket_parse_push_chunk(
+         self.websocket_parse, data)}
+      log_desc({msgs=msgs})
+   end
 
    self:response_upgrade_websocket(hdrs)
    -- local parser = webserver_lua51.websocket_parser()
