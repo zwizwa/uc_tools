@@ -175,6 +175,15 @@ static inline ws_err_t ws_write_msg(struct blocking_io *io,
 }
 
 
+static inline void ws_write_sha1(const char *key, uint8_t *sha1_buf) {
+    SHA1_CTX ctx;
+    sha1_init(&ctx);
+    sha1_update(&ctx, (uint8_t*)key, strlen(key));
+    const char magic[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+    sha1_update(&ctx, (uint8_t*)magic, strlen(magic));
+    sha1_final(&ctx, sha1_buf);
+}
+
 
 
 #endif

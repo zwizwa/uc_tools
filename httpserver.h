@@ -13,15 +13,81 @@
 
 #include "macros.h"
 
+#include "sha1.h"
+#include "base64.h"
 #include "blocking_io.h"
 
 
 /* The http errors are a combination of os errors and application
    errors.  We still use the signed integer encoding cast to a
    pointer to be able to distinguish different types properly. */
-
 struct http_err {};
 typedef const struct http_err *http_err_t;
+
+struct blocking_io;
+struct http_req;
+
+struct http_req {
+    http_err_t (*request)(struct http_req *, int method, const char *uri);
+    http_err_t (*header)(struct http_req *, const char *header, const char *value);
+    /* The i/o is abstract.  This is done essentially for websockets,
+       which only need socket state.  This way the socket can be
+       allocated separately in a memory pool, and transient http state
+       can be kept on the stack. */
+    struct blocking_io *io;
+};
+
+/* Error propagation.
+
+   We don't need to know a whole lot at the toplevel, so we will not
+   propagate low level errors, just log them.
+
+   Errors are encoded as pointers to allow for type checking.
+*/
+
+struct webserver_status {};
+typedef const struct webserver_status *serve_status_t;
+
+#define WEBSERVER_STATUS(n)  ((serve_status_t)(0x2000 + ((n)&0xF)))
+#define WEBSERVER_DONE         WEBSERVER_STATUS(0)
+#define WEBSERVER_ERROR        WEBSERVER_STATUS(1)
+#define WEBSERVER_WEBSOCKET_UP WEBSERVER_STATUS(2)
+
+#ifndef WEBSERVER_FILE_NAME
+#define WEBSERVER_FILE_NAME 64
+#endif
+
+struct webserver_req;
+struct webserver_req {
+    /* struct http_req is inside ws. */
+    struct http_req http;
+    serve_status_t (*serve)(struct webserver_req *);
+    intptr_t content_length;
+    int cont; // what to do after serving http request
+    uint8_t websocket_sha1[SHA1_BLOCK_SIZE];
+    char filename[WEBSERVER_FILE_NAME];
+};
+
+
+static inline void http_write_str(struct http_req *s, const char *str) {
+    s->io->write(s->io, (const uint8_t*)str, strlen(str));
+}
+static inline void http_write_100_resp(struct http_req *s) {
+    http_write_str(s, "HTTP/1.0 100 Continue\r\n\r\n");
+}
+static inline void http_write_200_resp(struct http_req *s, const char *type) {
+    http_write_str(s, "HTTP/1.0 200 OK\r\nContent-Type: ");
+    http_write_str(s, type);
+    http_write_str(s, "\r\n\r\n");
+}
+static inline void http_write_201_resp(struct http_req *s) {
+    http_write_str(s, "HTTP/1.0 201 Created\r\n\r\n");
+}
+static inline void http_write_404_resp(struct http_req *s) {
+    http_write_str(s, "HTTP/1.0 404 Not Found\r\nContent-Type: text/html; charset=ISO-8859-1\r\n\r\n");
+
+}
+
 
 /* Wrapper for os errors. */
 static inline http_err_t http_err_os(os_error_t e) {
@@ -41,15 +107,6 @@ struct http_req;
 typedef void     (*http_close)(struct http_req *);
 
 
-struct http_req {
-    http_err_t (*request)(struct http_req *, int method, const char *uri);
-    http_err_t (*header)(struct http_req *, const char *header, const char *value);
-    /* The i/o is abstract.  This is done essentially for websockets,
-       which only need socket state.  This way the socket can be
-       allocated separately in a memory pool, and transient http state
-       can be kept on the stack. */
-    struct blocking_io *io;
-};
 
 
 void log_c(const uint8_t *buf, uintptr_t len) {
@@ -133,28 +190,6 @@ static inline http_err_t http_read_headers(struct http_req *c) {
 
 
 
-static inline void http_write_str(struct http_req *s, const char *str) {
-    s->io->write(s->io, (const uint8_t*)str, strlen(str));
-}
-static inline void http_write_100_resp(struct http_req *s) {
-    http_write_str(s, "HTTP/1.0 100 Continue\r\n\r\n");
-}
-
-static inline void http_write_200_resp(struct http_req *s, const char *type) {
-    http_write_str(s, "HTTP/1.0 200 OK\r\nContent-Type: ");
-    http_write_str(s, type);
-    http_write_str(s, "\r\n\r\n");
-}
-
-static inline void http_write_201_resp(struct http_req *s) {
-    http_write_str(s, "HTTP/1.0 201 Created\r\n\r\n");
-}
-
-
-static inline void http_write_404_resp(struct http_req *s) {
-    http_write_str(s, "HTTP/1.0 404 Not Found\r\nContent-Type: text/html; charset=ISO-8859-1\r\n\r\n");
-
-}
 
 /* Set type based on extension. */
 const char *http_file_type(const char *filename) {

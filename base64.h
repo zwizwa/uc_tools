@@ -1,3 +1,6 @@
+#ifndef BASE64_H
+#define BASE64_H
+
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -41,4 +44,6 @@ static inline void base64_encode(
         encoded_data[output_length - 1 - i] = '=';
 
 }
+
+#endif
 
