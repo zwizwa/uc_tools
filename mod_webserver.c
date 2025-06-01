@@ -35,32 +35,7 @@
 ws_err_t websocket_push(struct blocking_io *io, struct ws_message *m);
 
 
-/* Error propagation.
 
-   We don't need to know a whole lot at the toplevel, so we will not
-   propagate low level errors, just log them.
-
-   Errors are encoded as pointers to allow for type checking.
-*/
-
-struct webserver_status {};
-typedef const struct webserver_status *serve_status_t;
-
-#define WEBSERVER_STATUS(n)  ((serve_status_t)(0x2000 + ((n)&0xF)))
-#define WEBSERVER_DONE         WEBSERVER_STATUS(0)
-#define WEBSERVER_ERROR        WEBSERVER_STATUS(1)
-#define WEBSERVER_WEBSOCKET_UP WEBSERVER_STATUS(2)
-
-struct webserver_req;
-struct webserver_req {
-    /* struct http_req is inside ws. */
-    struct http_req http;
-    serve_status_t (*serve)(struct webserver_req *);
-    intptr_t content_length;
-    int cont; // what to do after serving http request
-    uint8_t websocket_sha1[SHA1_BLOCK_SIZE];
-    char filename[WEBSERVER_FILE_NAME];
-};
 
 const char not_found[] = "404 not found";
 
@@ -117,23 +92,6 @@ serve_status_t serve_put(struct webserver_req *s) {
 }
 
 
-serve_status_t serve_ws(struct webserver_req *s) {
-    struct http_req *h = &s->http;
-    http_write_str(
-        h, "HTTP/1.1 101 Switching Protocols\r\n"
-        "Upgrade: websocket\r\n"
-        "Connection: Upgrade\r\n"
-        "Sec-WebSocket-Accept: ");
-    int n = base64_length(sizeof(s->websocket_sha1));
-    char buf[n+1];
-    base64_encode(buf, s->websocket_sha1, sizeof(s->websocket_sha1));
-    buf[n] = 0;
-    http_write_str(h, buf);
-    http_write_str(h, "\r\n\r\n");
-    /* Indicate to caller that serve_ws_msg() needs to be called in a
-       loop. This gives caller the chance to spawn a thread. */
-    return WEBSERVER_WEBSOCKET_UP;
-}
 intptr_t is_local(const char *uri) {
     if (uri[0] == '/') uri++;
     for(const char *c = uri; *c; c++) {
@@ -154,6 +112,26 @@ void put_request(struct http_req *c, const char *uri) {
     strncpy(s->filename, uri, n);
     s->filename[n-1] = 0;
 }
+
+
+serve_status_t serve_ws(struct webserver_req *s) {
+    struct http_req *h = &s->http;
+    http_write_str(
+        h, "HTTP/1.1 101 Switching Protocols\r\n"
+        "Upgrade: websocket\r\n"
+        "Connection: Upgrade\r\n"
+        "Sec-WebSocket-Accept: ");
+    int n = base64_length(sizeof(s->websocket_sha1));
+    char buf[n+1];
+    base64_encode(buf, s->websocket_sha1, sizeof(s->websocket_sha1));
+    buf[n] = 0;
+    http_write_str(h, buf);
+    http_write_str(h, "\r\n\r\n");
+    /* Indicate to caller that serve_ws_msg() needs to be called in a
+       loop. This gives caller the chance to spawn a thread. */
+    return WEBSERVER_WEBSOCKET_UP;
+}
+
 
 void get_request(struct http_req *c, const char *uri) {
     struct webserver_req *s = (void*)c;
@@ -194,12 +172,7 @@ http_err_t header(struct http_req *c, const char *hdr, const char *val) {
     // LOG("H: %s = %s\n", hdr, val);
     // FIXME: case-insensitive?
     if (!strcmp(hdr, "Sec-WebSocket-Key")) {
-        SHA1_CTX ctx;
-        sha1_init(&ctx);
-        sha1_update(&ctx, (uint8_t*)val, strlen(val));
-        const char magic[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-        sha1_update(&ctx, (uint8_t*)magic, strlen(magic));
-        sha1_final(&ctx, s->websocket_sha1);
+        ws_write_sha1(val, s->websocket_sha1);
     }
     else if (!strcmp(hdr, "Content-Length")) {
         s->content_length = strtold(val, NULL);

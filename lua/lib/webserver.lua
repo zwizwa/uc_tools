@@ -8,6 +8,8 @@ local actor_uv  = require('lib.actor_uv')
 local lxml      = require('lib.lxml')
 local mixin     = require('lib.mixin')
 
+local webserver_lua51 = require('webserver_lua51')
+
 local function log(str)
    io.stderr:write(str)
 end
@@ -36,6 +38,54 @@ end
 function webserver:response_404()
    log("->404\n")
    self.socket:write("HTTP/1.1 404 Not Found\r\n\r\n404\r\n")
+end
+
+function webserver:response_upgrade_websocket(hdrs)
+   log("->websocket\n")
+   assert(hdrs["Upgrade"] == "websocket")
+   local key = hdrs["Sec-WebSocket-Key"]
+   assert(key)
+   local hash = webserver_lua51.websocket_sha1(key)
+   -- log_desc({hash=hash})
+   local resp =
+      "HTTP/1.1 101 Switching Protocols\r\n" ..
+      "Upgrade: websocket\r\n" ..
+      "Connection: Upgrade\r\n" ..
+      "Sec-WebSocket-Accept: " .. hash .. "\r\n\r\n"
+   -- log(resp)
+   self.socket:write(resp)
+end
+
+function webserver:upgrade_websocket(hdrs)
+   -- Before sending the reply, change the input mode.  This should
+   -- call into C code to convert the websocket protocol to regular
+   -- binary messages.
+   self.websocket_parse = webserver_lua51.websocket_parse_new()
+   self.push = function(data)
+      -- To test in browser console:
+      -- w = new WebSocket("ws://zoe:8800")
+      -- enc = new TextEncoder();
+      -- w.send(enc.encode("asdf"))
+      local msgs = {webserver_lua51.websocket_parse_push_chunk(
+         self.websocket_parse, data)}
+      log_desc({msgs=msgs})
+   end
+
+   self:response_upgrade_websocket(hdrs)
+   -- local parser = webserver_lua51.websocket_parser()
+   while true do
+      -- local recv_msg = self:recv(function(msg) return msg[1] == self.socket end)
+      -- from, msg = unpack(_)
+      -- there will be 2 kinds: from socket and from another task to send out
+      local recv_msg = self:recv()
+      log_desc({recv_msg = recv_msg})
+      -- Note that the websocket.h code uses BLOCKING_IO_READ while
+      -- the Lua code typically runs in a single-threaded / Lua
+      -- coroutine environment, so we just use a buffered state
+      -- machine.
+      -- local messages = webserver_lua51.websocket_parse(parser, recv_msg)
+
+   end
 end
 
 
@@ -84,12 +134,27 @@ function webserver:connect()
    end
    -- log("uri: " .. uri .. "\n")
    -- Pass it to delegate
-   self:serve(uri, q, hdrs)
+
+   -- Note: I do not remember if hdrs is actually used anywhere, so I
+   -- am going to change the API here to send a map.
+   self:serve(uri, q, webserver.parse_headers(hdrs))
 end
 
 function webserver.start(scheduler, serv_obj)
    serv_obj.mode = 'line' -- needed by webserver:handle()
-   actor_uv.spawn_tcp_server(scheduler, serv_obj)
+   return actor_uv.spawn_tcp_server(scheduler, serv_obj)
+end
+
+-- Split the header lines into a dictionary.
+function webserver.parse_headers(hdr_lines)
+   local tab = {}
+   for _, line in ipairs(hdr_lines) do
+      -- Regexp seems to work, but I didn't think this through.
+      for key, value in string.gmatch(line, "(%S+): (%S+)\r\n") do
+         tab[key] = value
+      end
+   end
+   return tab
 end
 
 return webserver

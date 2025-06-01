@@ -4,6 +4,7 @@
 #include "tcp_tools.h"
 #include "assert_write.h"
 #include "assert_read.h"
+#include "blocking_io.h"
 
 /* User apio is the blocking_io, so this can just be cast. */
 struct os_tcp_socket {
@@ -24,7 +25,7 @@ struct os_tcp_server {
     int fd;
 };
 // FIXME: this is just generic file read.
-static os_error_t os_tcp_read(struct blocking_io *io, uint8_t *buf, uintptr_t len) {
+static inline os_error_t os_tcp_read(struct blocking_io *io, uint8_t *buf, uintptr_t len) {
     struct os_tcp_socket *s = (void*)io;
     // LOG("read...\r");
     // ssize_t rv = assert_read(c->socket, buf, len);
@@ -40,13 +41,13 @@ static os_error_t os_tcp_read(struct blocking_io *io, uint8_t *buf, uintptr_t le
     // free(c);  // not sure if this is ok before exit.. just leak it.
     os_thread_exit(NULL);
 }
-static os_error_t os_tcp_write(struct blocking_io *io, const uint8_t *buf, uintptr_t len) {
+static inline os_error_t os_tcp_write(struct blocking_io *io, const uint8_t *buf, uintptr_t len) {
     struct os_tcp_socket *s = (void*)io;
     assert_write(s->fd, buf, len);
     //for(uintptr_t i=0; i<len; i++) LOG("%c", buf[i]);
     return OS_OK;
 }
-static os_error_t os_tcp_server_init(struct os_tcp_server *s, uint16_t port) {
+static inline os_error_t os_tcp_server_init(struct os_tcp_server *s, uint16_t port) {
     s->fd = assert_tcp_listen(port);
     return OS_OK;
 }

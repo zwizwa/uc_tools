@@ -12,6 +12,8 @@ static inline const void *assert_mmap_rdonly(
     ASSERT((off_t)-1 != size);
     //ASSERT_ERRNO(lseek(fd, 0, SEEK_SET));
     const void *mem = mmap(NULL, size - offset, PROT_READ, MAP_SHARED, fd, offset);
+    // LOG("mem = %p, MAP_FAILED = %p\n", mem, MAP_FAILED);
+    LOG("mem = %p\n", mem);
     ASSERT(MAP_FAILED != mem);
     *psize = size;
     return mem;

@@ -158,11 +158,20 @@ case "$TYPE" in
 
         # Optionally link to parent elf file
         [ ! -z "$PARENT_ELF" ] && PARENT_ELF_LDFLAGS=-Wl,--just-symbols=$PARENT_ELF
-        echo "LDLIBS=$LDLIBS"
+        # echo "LDLIBS=$LDLIBS"
+
+        # I don't really use .map files, and they are incredibly
+        # annoying in combination with naive grep in the source
+        # directory since they contain all symbols.  So just disable
+        # for now and re-enable or make configurable when needed.
+        #
+        # MAP_OPTS="-Wl,-Map=$MAP"
+        MAP_OPTS=""
+
         $GCC \
             $LDFLAGS \
             -T$LD \
-            -Wl,-Map=$MAP \
+            $MAP_OPTS \
             $PARENT_ELF_LDFLAGS \
             -o $ELF \
             $O $O_SYSTEM $O_VERSION_LINK $A $LDLIBS 

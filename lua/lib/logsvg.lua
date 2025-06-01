@@ -164,11 +164,13 @@ function logsvg.render(e, logs)
 
    -- This likely means that the ping synchronization message is
    -- missing.  FIXME: Create a better error message.
+   local t_total
    if #merged_log == 0 then
-      log('WARNING: merged_log is empty. sync ping missing?')
+      log('WARNING: merged_log is empty. sync ping missing?\n')
+      t_total = 0
+   else
+      t_total = merged_log[#merged_log][2] -- adj_time field
    end
-
-   local t_total = merged_log[#merged_log][2] -- adj_time field
    local y_total = t_total / e.ticks_per_pixel
    -- As a side effect of rendering, y contains the total y adjust
    e.height = y_total + 20 + y
@@ -208,7 +210,8 @@ function logsvg.read_log_parse(filename, config)
    if not config then config = {} end
    -- log_desc({logsvg_read_log_parse_config = config})
    -- the default "" matches any message
-   local sync_re = config.sync_re or "" -- "^ping (.-)"
+   -- local sync_re = config.sync_re or "" -- "^ping (.-)"
+   log_desc({sync_re=sync_re})
    local max_lines = config.max_lines or 1000
    local bin_to_string = config.bin_to_string
    local lines = {}
@@ -251,7 +254,7 @@ function logsvg.read_log_parse(filename, config)
       assert(timestamp)
       assert(logline)
       if not last then
-         if string.match(logline, sync_re) then
+         if sync_re and string.match(logline, sync_re) then
             log("sync:" .. timestamp .. ":" .. filename .. "\n")
             last  = timestamp
             first = timestamp

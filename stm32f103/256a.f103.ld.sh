@@ -43,7 +43,7 @@ cat <<EOF
 MEMORY /* STM32F103x8 */
 {
         rom (rx)  : ORIGIN = $ORIGIN, LENGTH = $LENGTH
-	ram (rwx) : ORIGIN = 0x20002000, LENGTH = 0x3000 /* 20kB total */
+	ram (rwx) : ORIGIN = 0x20002000, LENGTH = 0xE000 /* 64kB total */
 }
 
 /* Most stm32f103 in the wild have 128k */

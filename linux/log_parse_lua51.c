@@ -68,7 +68,7 @@ static struct log_file_ud *push_log_file(lua_State *L, const char *filename) {
     ASSERT(ud);
     memset(ud,0,sizeof(*ud));
     mmap_file_open_ro(&ud->file, filename);
-    ASSERT(ud->file.buf);
+    // ASSERT(ud->file.buf); // It is now allowed for buf to be NULL
     // LOG("push_log_file() %p fd=%d\n", ud, ud->file.fd);
     luaL_getmetatable(L, T_LOG_FILE);
     lua_setmetatable(L, -2);

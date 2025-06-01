@@ -32,6 +32,10 @@
 #define LOG_PARSE_SWAP_U32(x) SWAP_U32(x)
 #endif
 
+#ifndef LOG_PARSE_SWAP_U16
+#define LOG_PARSE_SWAP_U16(x) SWAP_U16(x)
+#endif
+
 #ifndef LOG_PARSE_MAX_LINE_LEN
 #define LOG_PARSE_MAX_LINE_LEN 1024
 #endif
@@ -131,19 +135,40 @@ static inline log_parse_status_t log_parse_tick(struct log_parse *s, uint8_t c) 
 
     }
     /* Binary messages consist of tag byte containing size, 4 bytes of
-       32 bit big endian rolling time stamp + max 127 payload
+       32 bit big endian rolling time stamp + max 126 payload
        bytes. */
   read_bin:
+    // LOG("bin: %02x\n", c);
+
     /* FIXME: Spill if there is data? */
     s->in_mark = s->in;
     if (c == 0xFF) {
-        /* Overflow character. */
+        /* Overflow character.  Firmware will write 0xFF bytes if it
+           cannot write a full message.  Each write should leave room
+           for at least one overflow byte to indicate to the log
+           parser that a part of the log stream was dropped. */
+        // LOG("OVERFLOW FF\n");
         if (s->cb->overflow) {
             status = s->cb->overflow(s, 0, NULL, 0);
         }
         goto read_line;
     }
-    s->bin_len = c - 0x80 + 4;
+    else if (c == 0xFE) {
+        /* Escape character for larger binary log message.
+           Proposed format:
+           FE           <escape>
+           hi lo        <16 bit big-endian size>
+           xx xx xx xx  <time stamp>
+           data         max 64k
+        */
+        // Use line buffer as temp storage for 16 bit size wird.
+        LOG_PARSE_GETC(s); s->line[0] = c;
+        LOG_PARSE_GETC(s); s->line[1] = c;
+        s->bin_len = LOG_PARSE_SWAP_U16(read_be(s->line, 2)) + 4;
+    }
+    else {
+        s->bin_len = c - 0x80 + 4;
+    }
     s->line_len = 0;
     while(s->line_len < s->bin_len) {
         LOG_PARSE_GETC(s);

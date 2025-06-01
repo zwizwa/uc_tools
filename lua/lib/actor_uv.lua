@@ -66,15 +66,38 @@ function actor_uv.task(scheduler, obj)
    return scheduler:task(obj)
 end
 
+-- The task object below is the task handling the connection.
+function actor_uv.line_mode_push(task)
+   -- Line buffer is presented with chunks from the socket,
+   -- which then get pushed into the mailbox of a task.
+   local buf = linebuf.new()
+   buf.push_line = function(self, line) task:send_and_schedule({task.socket,line}) end
+   return function(data) buf:push(data) end
+end
+function actor_uv.packet_mode_push(task, serv_obj)
+   local size_bytes = serv_obj.mode[2]
+   assert('number' == type(size_bytes))
+   local buf = packetbuf.new(size_bytes)
+   buf.push_packet = function(self, packet) task:send_and_schedule({task.socket,packet})  end
+   return function(data) buf:push(data) end
+end
+function actor_uv.raw_mode_push(task)
+   return function(data) task:send_and_schedule({task.socket,data}) end
+end
+
 -- A TCP server
 function actor_uv.spawn_tcp_server(scheduler, serv_obj)
    assert(serv_obj.ip)
    assert(serv_obj.port)
 
+   local listener = {
+   }
+
    local function connect(lsocket, err)
 
       -- This produces a mixin object that implements :handle()
       local task = serv_obj:connection()
+
       -- We then add task behavior mixin.
       actor_uv.task(scheduler, task)
       task.socket = lsocket:accept()
@@ -82,34 +105,33 @@ function actor_uv.spawn_tcp_server(scheduler, serv_obj)
          error("Cannot create TCP server socket port " .. serv_obj.port)
       end
 
+      -- How to get remote port?  To uniquely identify, use the table
+      -- pointer.
+      local conn_name = task.socket:getpeername() .. '@' .. string.sub(tostring(task), 10)
+
+      listener[conn_name] = task
+
       scheduler:spawn(
          function(task)
             task:connect()
             task.socket:close()
+            listener[conn_name] = nil
          end,
          task)
 
       -- Configure how data will be pushed into the actor network.  It
       -- seems simpler to do this at the write end as opposed to the
-      -- read end.
-      local push
+      -- read end.  The function is stored inside the connection task
+      -- object such that mode can be changed later.
 
       if serv_obj.mode == 'line' then
-         -- Line buffer is presented with chunks from the socket,
-         -- which then get pushed into the mailbox of a task.
-         local buf = linebuf.new()
-         buf.push_line = function(self, line) task:send_and_schedule({task.socket,line}) end
-         push = function(data) buf:push(data) end
+         task.push = actor_uv.line_mode_push(task)
 
       elseif serv_obj.mode and serv_obj.mode[1] == 'packet' then
-         local size_bytes = serv_obj.mode[2]
-         assert('number' == type(size_bytes))
-         local buf = packetbuf.new(size_bytes)
-         buf.push_packet = function(self, packet) task:send_and_schedule({task.socket,packet})  end
-         push = function(data) buf:push(data) end
+         task.push = actor_uv.packet_mode_push(task, serv_obj)
 
       elseif serv_obj.mode == 'raw' then
-         push = function(data) task:send_and_schedule({task.socket,data}) end
+         task.push = actor_uv.raw_mode_push(task)
 
       else
          error('bad .mode')
@@ -124,15 +146,18 @@ function actor_uv.spawn_tcp_server(scheduler, serv_obj)
                task:halt()
             else
                -- log("push: " .. data)
-               push(data)
+               task.push(data)
             end
          end)
 
    end
    local lsocket = uv.tcp()
+   listener.lsocket = lsocket
+
    lsocket:bind(serv_obj.ip, serv_obj.port)
    lsocket:listen(connect)
-   return lsocket
+
+   return listener
 end
 
 -- Blocking abstraction for asynchronous socket writes.
@@ -155,7 +180,7 @@ end
 -- other routing can be performed that is specific to the binary
 -- encoding of the incoming data.
 
-function actor_uv.spawn_process(scheduler, executable, args, body, push)
+function actor_uv.spawn_process(scheduler, executable, args, body, push, error_handler)
    assert(executable)
    assert(args)
 
@@ -165,38 +190,26 @@ function actor_uv.spawn_process(scheduler, executable, args, body, push)
 
    -- Task data
    local task = {
-      stdin  = uv.pipe(),
-      stdout = uv.pipe(),
-      stderr = uv.pipe(),
    }
    -- We then add task behavior mixin.
    actor_uv.task(scheduler, task)
 
-   local function error_handler(handle, err, status, signal)
+   task.close = function()
+      uv:close(task.handle) ; task.handle = nil
+      uv:close(task.stdin)  ; task.stdin  = nil
+      uv:close(task.stdout) ; task.stdout = nil
+      uv:close(task.stderr) ; task.stderr = nil
+   end
+
+   local function default_error_handler(handle, err, status, signal)
       -- Note: No documentation was found about the libuv error
       -- handler API, but there seem to be two cases that occur in
       -- practice: an error happens during startup, e.g. executable
       -- not found, or the process dies. e.g. due to a bug or fatal
       -- error in the program.
-      handle:close()
-      log_desc({error_handler = {err=err,status=status,signal=signal}})
+      task:close()
+      log_desc({uv_error_handler = {err=err,status=status,signal=signal}})
    end
-
-   -- Create libuv process handle
-   task.handle = uv.spawn({
-         file = executable,
-         stdio = {
-            { stream = task.stdin,  flags = uv.CREATE_PIPE + uv.READABLE_PIPE },
-            { stream = task.stdout, flags = uv.CREATE_PIPE + uv.WRITABLE_PIPE },
-            { stream = task.stderr, flags = uv.CREATE_PIPE + uv.WRITABLE_PIPE }
-         },
-         args = args
-   }, error_handler)
-
-   -- Spawn the task.  It can use task:recv() to pop the mailbox,
-   -- which will give tagged {port, ...} messages for incoming pipe
-   -- data.  It can also write to task.stdin
-   scheduler:spawn(body, task)
 
    -- Anything coming in on stdout gets sent to the task.  Note that
    -- we cannot call error() in the uv callbacks, as that is the main
@@ -207,23 +220,101 @@ function actor_uv.spawn_process(scheduler, executable, args, body, push)
    -- any registered monitors.
    local function read_callback(tag_from)
       return function(_,err,data)
+         -- log_desc({read_callback={err=err,data=data}})
          if not err then
             push(data,
                  function(packet)
                     task:send_and_schedule({tag_from,packet})
                  end)
          else
-            task:send_and_schedule({"error",{tag_from, err, data}})
+            -- Error codes are in lua-lluv/src/lluv_error.c
+            -- https://github.com/moteus/lua-lluv v1.1.10
+            task:send_and_schedule({"error",{tag_from, err:no(), err:msg()}})
          end
       end
    end
 
-   task.stdout:start_read(read_callback("stdout"))
-   task.stderr:start_read(read_callback("stderr"))
+   -- Create libuv process handle
+   task.cmd = { executable = executable, args = args }
+
+   local function uv_spawn()
+      task.stdin  = uv.pipe()
+      task.stdout = uv.pipe()
+      task.stderr = uv.pipe()
+      task.handle =
+         uv.spawn(
+            {
+               file = task.cmd.executable,
+               stdio = {
+                  { stream = task.stdin,  flags = uv.CREATE_PIPE + uv.READABLE_PIPE },
+                  { stream = task.stdout, flags = uv.CREATE_PIPE + uv.WRITABLE_PIPE },
+                  { stream = task.stderr, flags = uv.CREATE_PIPE + uv.WRITABLE_PIPE }
+               },
+               args = task.cmd.args
+            },
+            error_handler or default_error_handler)
+
+      task.stdout:start_read(read_callback("stdout"))
+      task.stderr:start_read(read_callback("stderr"))
+
+   end
+   uv_spawn()
+
+   -- To restart just the uv process, keeping the actor alive.
+   task.restart = uv_spawn
+
+   -- Spawn the task.  It can use task:recv() to pop the mailbox,
+   -- which will give tagged {port, ...} messages for incoming pipe
+   -- data.  It can also write to task.stdin
+   scheduler:spawn(body, task)
+
+
 
    return task
 
 
 end
+
+-- The cfg supports some modes:
+--
+-- 1. if 'body' is defined, that will be used as the task body
+--
+-- 2. if `handle_line` is defined, we will create a body and just push
+--    lines to that function
+--
+-- 3. if neither is defined, lines will just go to stderr
+
+function actor_uv.spawn_line_process(scheduler, executable, args, cfg)
+   cfg = cfg or {}
+
+   local buf = linebuf.new()
+   local function push(data, push_packet)
+      buf.push_line = function(self, line) push_packet(line) end
+      buf:push(data)
+   end
+   local body = cfg.body or function(task)
+      while true do
+         local msg = task:recv()
+         local from, line = unpack(msg)
+         if from == "stdout" then
+            local handle_line = cfg.handle_line or log
+            handle_line(line)
+         else
+            log_desc({ignoring_line_process_msg = msg})
+         end
+      end
+   end
+   local function error_handler(handle, err, status, signal)
+      log_desc({uv_error_handler =
+                   {err=err,status=status,signal=signal}})
+   end
+   local task = actor_uv.spawn_process(
+      scheduler, executable, args, body, push, error_handler)
+   return task
+end
+
+
+
+
 
 return actor_uv
