@@ -277,6 +277,7 @@ static inline ws_err_t ws_update(ws_io_t *io,
         int rv;
         if ((rv = setjmp(io->jmp_buf))) {
             /* Short read: rewind */
+            // LOG("ws:update rewind %d from %d\n", read, io->in.read);
             io->in.read = read;
             return WS_OK;
         }

@@ -63,7 +63,17 @@ static int websocket_parse_push_chunk_cmd(lua_State *L) {
     (void)s;
     size_t data_len = 0;
     const uint8_t *data = (const uint8_t*)string_L(L, -1, &data_len);
-    ws_err_t err = ws_update(&s->ws_buf, data, data_len, ws_buf_push);
+
+    ws_err_t err;
+#if 1
+    err = ws_update(&s->ws_buf, data, data_len, ws_buf_push);
+#else
+    /* Test the incomplete->abort mechanism. */
+    int c = 3;
+    err = ws_update(&s->ws_buf, data, c, ws_buf_push);
+    err = ws_update(&s->ws_buf, data+c, data_len-c, ws_buf_push);
+#endif
+
     if (err != WS_OK) {
         LOG("WARNING: ws_update error %d\n", err);
     }

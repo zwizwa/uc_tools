@@ -98,8 +98,6 @@ end
 --   as possible to catch errors early.
 --
 
--- FIXME: Currently I only need SVG, so this is not yet translated.
-
 
 -- 3. Lua object printing
 
