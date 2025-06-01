@@ -44,39 +44,37 @@ use mlua::{Error, MetaMethod, UserData, UserDataFields, UserDataMethods, Value};
 // The DSL should work in Rust as well.
 
 #[derive(Debug, Copy, Clone)]
-struct Node(u32);
+struct Node(usize);
 // FIXME: Growable vector of nodes
 #[derive(Debug)]
 struct Compiler {
-    next_node: u32,
     code: Vec<Syntax>,
 }
 #[derive(Debug)]
 enum Syntax {
     Add(Node, Node),
     Lit(u32),
+    Input,
 }
 impl Compiler {
-    fn new_node(&mut self) -> Node {
-        let n = self.next_node;
-        self.next_node = n + 1;
+    fn node(&mut self, stx: Syntax) -> Node {
+        let n = self.code.len();
+        self.code.push(stx);
         Node(n)
     }
+
     fn add(&mut self, a: Node, b: Node) -> Node {
-        let stx = Syntax::Add(a, b);
-        self.code.push(stx);
-        let rv = self.new_node();
-        rv
+        self.node(Syntax::Add(a, b))
+    }
+    fn input(&mut self) -> Node {
+        self.node(Syntax::Input)
     }
 }
 
 fn test_compiler() {
-    let mut c = Compiler {
-        next_node: 0,
-        code: Vec::new(),
-    };
-    let i1 = c.new_node();
-    let i2 = c.new_node();
+    let mut c = Compiler { code: Vec::new() };
+    let i1 = c.input();
+    let i2 = c.input();
     let o = c.add(i1, i2);
     println!("{:#?}", c);
 }
@@ -108,8 +106,14 @@ impl UserData for Node {
 //     }
 // }
 
+//impl IntoLua for Syntax {
+//    fn into_lua(
+//}
+
 impl UserData for Compiler {
-    fn add_fields<F: UserDataFields<Self>>(_fields: &mut F) {}
+    fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
+        fields.add_field_method_get("code", |_, this| Ok(this.code));
+    }
     // All DSL operations will be methods taking a set of nodes and producing a node.
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
         // FIXME: How to specifiy 2 arguments?
