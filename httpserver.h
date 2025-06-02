@@ -12,7 +12,7 @@
 #define HTTP_WRITE BLOCKING_IO_WRITE
 
 #include "macros.h"
-#include "websocket_pure.h"
+#include "websocket.h"
 
 #include "blocking_io.h"
 
