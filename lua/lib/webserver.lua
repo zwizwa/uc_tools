@@ -29,10 +29,60 @@ function webserver:response_html(lxml_element)
    self:write(lxml.elements_to_string({lxml_element}))
 end
 
+function webserver:response_xhtml(lxml_element)
+   -- local function write_cb() log("write_cb\n") end
+   log("->200\n")
+   self:write("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n")
+   self:write("<!DOCTYPE html>\n")
+   self:write(lxml.elements_to_string({lxml_element}))
+end
+
 function webserver:response_svg(lxml_element)
    log("->200\n")
    self:write("HTTP/1.1 200 OK\r\nContent-Type: image/svg+xml\r\n\r\n")
    self:write(lxml.elements_to_string({lxml_element}))
+end
+
+function webserver:response_javascript(script)
+   log("->200\n")
+   self:write("HTTP/1.1 200 OK\r\nContent-Type: text/javascript\r\n\r\n")
+   self:write(script)
+end
+
+local extensions = {
+   ['.js'] = 'text/javascript',
+   ['.css'] = 'text/css',
+   ['.html'] = 'text/html',
+}
+function extension_match(filename, extension)
+   local ext = string.sub(filename, 1 + #filename - #extension)
+   -- log_desc({ext=ext, extension=extension})
+   return extension == ext
+end
+
+function type_from_extension(filename)
+   for extension, content_type in pairs(extensions) do
+      if extension_match(filename, extension) then
+         return content_type
+      end
+   end
+   return 'text/plain'
+end
+
+function webserver:response_file(filename)
+   local file = io.open(filename, 'r')
+   if file then
+      log("->200\n")
+      -- local content_type = "text/plain"
+      -- local content_type = "text/html"
+      local content_type = type_from_extension(filename)
+      local contents = file:read("*all")
+      self:write("HTTP/1.1 200 OK\r\nContent-Type: " .. content_type .. "\r\n\r\n")
+      self:write(contents)
+      file:close()
+   else
+      self:response_404()
+   end
 end
 
 function webserver:response_404()
@@ -57,35 +107,28 @@ function webserver:response_upgrade_websocket(hdrs)
 end
 
 function webserver:upgrade_websocket(hdrs)
-   -- Before sending the reply, change the input mode.  This should
-   -- call into C code to convert the websocket protocol to regular
-   -- binary messages.
-   self.websocket_parse = webserver_lua51.websocket_parse_new()
+
+   -- Before sending the reply, change the input mode by changing the
+   -- libuv callback.  This calls into C code to convert the websocket
+   -- protocol to regular binary messages, then delivers those to the
+   -- mailbox of the task so they show up in the mail loop along side
+   -- messages from other tasks.
+   local ws = webserver_lua51
+   local wsp = ws.websocket_parse_new()
    self.push = function(data)
       -- To test in browser console:
       -- w = new WebSocket("ws://zoe:8800")
       -- enc = new TextEncoder();
       -- w.send(enc.encode("asdf"))
-      local msgs = {webserver_lua51.websocket_parse_push_chunk(
-         self.websocket_parse, data)}
-      log_desc({msgs=msgs})
+      local msgs = {ws.websocket_parse_push_chunk(wsp, data)}
+      for _, msg in ipairs(msgs) do
+         self:send_and_schedule({self.socket,msg})
+      end
    end
 
+   -- Send response header
    self:response_upgrade_websocket(hdrs)
-   -- local parser = webserver_lua51.websocket_parser()
-   while true do
-      -- local recv_msg = self:recv(function(msg) return msg[1] == self.socket end)
-      -- from, msg = unpack(_)
-      -- there will be 2 kinds: from socket and from another task to send out
-      local recv_msg = self:recv()
-      log_desc({recv_msg = recv_msg})
-      -- Note that the websocket.h code uses BLOCKING_IO_READ while
-      -- the Lua code typically runs in a single-threaded / Lua
-      -- coroutine environment, so we just use a buffered state
-      -- machine.
-      -- local messages = webserver_lua51.websocket_parse(parser, recv_msg)
 
-   end
 end
 
 

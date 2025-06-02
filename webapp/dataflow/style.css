@@ -1,0 +1,16 @@
+.image-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr); /* 8 columns */
+    grid-template-rows: repeat(12, 25px);
+    gap: 5px;
+    width: 100%;
+    max-width: 1200px;
+    margin: auto;
+}
+.image-grid img {
+    width: 100%;
+    height: 50%;
+    object-fit: cover;
+    display: block;
+    border: 1px solid #555555
+}

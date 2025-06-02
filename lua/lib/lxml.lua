@@ -41,6 +41,13 @@ local function w_string(w, str)
 end
 
 
+-- FIXME: Support self-closing tags like input
+-- https://stackoverflow.com/questions/97522/what-are-all-the-valid-self-closing-elements-in-xhtml-as-implemented-by-the-maj
+
+local self_closing = {
+   input = true,
+}
+
 local lxml = {}
 function lxml.w_elements(w, elements)
    -- log_desc({elements=elements})
@@ -63,8 +70,13 @@ function lxml.w_elements(w, elements)
             w(' ') ; w(attr) ; w('="') ; w(val) ; w('"')
          end
          w('>')
-         lxml.w_elements(w, elements)
-         w('</') ; w(tag) ; w('>\n')
+         if #elements == 0 and self_closing[tag] then
+            -- Don't emit closing tag
+            w('\n')
+         else
+            lxml.w_elements(w, elements)
+            w('</') ; w(tag) ; w('>\n')
+         end
       else
          w("[UNPRINTABLE]")
       end
