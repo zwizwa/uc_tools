@@ -29,16 +29,20 @@ end
 
 function body()
    local inputs = {}
-   for i=1,8*8 do
-      inputs[i] =
-         {'input', {
-             type = 'number',
-             id = 'quantity',
-             min = 0,
-             max = 5,
-             step = 0.1,
-             value = 0,
-             }}
+   for row=1,8 do
+      for col=1,8 do
+         table.insert(
+            inputs,
+            -- document.getElementById('/matrix/1/1').valueAsNumber
+            {'input', {
+                type = 'number',
+                id = '/matrix/' .. row .. '/' .. col,
+                min = 0,
+                max = 5,
+                step = 0.1,
+                value = 0,
+            }})
+      end
    end
    return {{'div',
            {class = 'image-grid'},
@@ -50,7 +54,7 @@ local index =
    {'html',{},
     {{'head',{},
       {{'link', {rel="stylesheet", href="style.css"}},
-       {'script', {type='module',src='./main.js'}}}},
+       {'script', {type='module',src='./main.js',defer=true}}}},
      {'body',{},body()}}}
 
 ---- This is now a file in document_root

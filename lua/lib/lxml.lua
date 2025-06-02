@@ -66,8 +66,15 @@ function lxml.w_elements(w, elements)
          if not elements then elements = {} end
          w('<') ; w(tag)
          for attr, val in pairs(attrs) do
+            log_desc({attr=attr,val=val})
             -- FIXME: Do proper string quoting.
-            w(' ') ; w(attr) ; w('="') ; w(val) ; w('"')
+            w(' ') ; w(attr)
+            if val == true then
+               -- No value. E.g. the 'defer' attribute of 'script' tag
+               -- w(' ')
+            else
+               w('="') ; w(val) ; w('"')
+            end
          end
          w('>')
          if #elements == 0 and self_closing[tag] then
