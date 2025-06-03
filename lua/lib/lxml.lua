@@ -41,6 +41,13 @@ local function w_string(w, str)
 end
 
 
+-- FIXME: Support self-closing tags like input
+-- https://stackoverflow.com/questions/97522/what-are-all-the-valid-self-closing-elements-in-xhtml-as-implemented-by-the-maj
+
+local self_closing = {
+   input = true,
+}
+
 local lxml = {}
 function lxml.w_elements(w, elements)
    -- log_desc({elements=elements})
@@ -59,12 +66,24 @@ function lxml.w_elements(w, elements)
          if not elements then elements = {} end
          w('<') ; w(tag)
          for attr, val in pairs(attrs) do
+            log_desc({attr=attr,val=val})
             -- FIXME: Do proper string quoting.
-            w(' ') ; w(attr) ; w('="') ; w(val) ; w('"')
+            w(' ') ; w(attr)
+            if val == true then
+               -- No value. E.g. the 'defer' attribute of 'script' tag
+               -- w(' ')
+            else
+               w('="') ; w(val) ; w('"')
+            end
          end
          w('>')
-         lxml.w_elements(w, elements)
-         w('</') ; w(tag) ; w('>\n')
+         if #elements == 0 and self_closing[tag] then
+            -- Don't emit closing tag
+            w('\n')
+         else
+            lxml.w_elements(w, elements)
+            w('</') ; w(tag) ; w('>\n')
+         end
       else
          w("[UNPRINTABLE]")
       end

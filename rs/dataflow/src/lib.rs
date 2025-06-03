@@ -33,6 +33,8 @@ dsl exposed to lua.
 */
 #![allow(unused)]
 extern crate mlua;
+use std::u32;
+
 use mlua::prelude::*;
 use mlua::{Error, MetaMethod, UserData, UserDataFields, UserDataMethods, Value};
 
@@ -45,12 +47,11 @@ use mlua::{Error, MetaMethod, UserData, UserDataFields, UserDataMethods, Value};
 
 #[derive(Debug, Copy, Clone)]
 struct Node(usize);
-// FIXME: Growable vector of nodes
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Compiler {
     code: Vec<Syntax>,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 enum Syntax {
     Add(Node, Node),
     Lit(u32),
@@ -110,9 +111,24 @@ impl UserData for Node {
 //    fn into_lua(
 //}
 
+// So it seems I can implement IntoLua or UserData for a struct.
+// Let's try the former.  I think it makes sense for Compiler, since
+// it really is state that is passed around, but not for individual
+// Syntax objects.
+
+impl IntoLua for Syntax {
+    fn into_lua(self, lua: &Lua) -> LuaResult<Value> {
+        Ok(match self {
+            Syntax::Input => Value::Number(123.0),     // FIXME
+            Syntax::Add(a, b) => Value::Number(123.0), // FIXME
+            Syntax::Lit(num) => Value::Number(123.0),  // FIXME
+        })
+    }
+}
+
 impl UserData for Compiler {
     fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field_method_get("code", |_, this| Ok(this.code));
+        fields.add_field_method_get("code", |_, this| Ok(this.code.clone()));
     }
     // All DSL operations will be methods taking a set of nodes and producing a node.
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {

@@ -28,7 +28,9 @@ function test_compiler()
    -- Then dump the program as C code.
    local code = c:compile()
    log(code)
+
 end
+
 
 
 
