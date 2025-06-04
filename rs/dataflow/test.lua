@@ -18,7 +18,7 @@ m.test_internal()
 function test_compiler()
    -- Compiler test.
    -- The central object is the compiler, so make an explicit constructor.
-   local c = m.compiler()
+   local c = m.new_compiler()
    -- It will need to present node objects.
    local i1 = c:input()
    local i2 = c:input()
@@ -26,11 +26,13 @@ function test_compiler()
    local o = c:add(i1, i2)
 
    -- Then dump the program as C code.
-   local code = c:compile()
-   log(code)
+   -- local code = c:compile()
+   -- log(code)
+   log_desc(c.code)
 
 end
 
+test_compiler()
 
 
 

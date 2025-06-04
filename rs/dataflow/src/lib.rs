@@ -56,13 +56,14 @@ struct Node(usize);
 #[derive(Debug, Clone)]
 struct Compiler {
     code: Vec<Syntax>,
+    input: Vec<Node>,
 }
 #[derive(Debug, Clone, Copy)]
 enum Syntax {
     Add(Node, Node),
     Inc(Node),
     Lit(u32),
-    Input(u32),
+    Input(usize),
 }
 impl Compiler {
     fn node(&mut self, stx: Syntax) -> Node {
@@ -77,15 +78,25 @@ impl Compiler {
     fn inc(&mut self, a: Node) -> Node {
         self.node(Syntax::Inc(a))
     }
-    fn input(&mut self, i: u32) -> Node {
-        self.node(Syntax::Input(i))
+    fn input(&mut self) -> Node {
+        let i = self.input.len();
+        let n = self.node(Syntax::Input(i));
+        self.input.push(n);
+        n
+    }
+}
+
+fn compiler() -> Compiler {
+    Compiler {
+        code: Vec::new(),
+        input: Vec::new(),
     }
 }
 
 fn test_compiler() {
-    let mut c = Compiler { code: Vec::new() };
-    let i1 = c.input(1);
-    let i2 = c.input(2);
+    let mut c = compiler();
+    let i1 = c.input();
+    let i2 = c.input();
     let o = c.add(i1, i2);
     println!("{:#?}", c);
 }
@@ -119,7 +130,7 @@ impl IntoLua for Syntax {
             Syntax::Input(i) => {
                 let t = lua.create_table()?;
                 t.push("input".into_lua(lua)?);
-                t.push(Value::Number(f64::from(i)));
+                t.push(Value::Number(i as f64));
                 Value::Table(t)
             }
             Syntax::Add(Node(a), Node(b)) => {
@@ -135,7 +146,7 @@ impl IntoLua for Syntax {
                 t.push(a);
                 Value::Table(t)
             }
-            Syntax::Lit(num) => Value::Number(f64::from(num)),
+            Syntax::Lit(num) => Value::Number(num as f64),
         })
     }
 }
@@ -151,7 +162,12 @@ impl UserData for Compiler {
             |_, mut this, (a, b): (Node, Node)| Ok(this.add(a, b)),
         );
         methods.add_method_mut("inc", |_, mut this, a: Node| Ok(this.inc(a)));
+        methods.add_method_mut("input", |_, mut this, (): ()| Ok(this.input()));
     }
+}
+
+fn new_compiler(_: &Lua, (): ()) -> LuaResult<Compiler> {
+    Ok(compiler())
 }
 
 fn test_internal(_: &Lua, _: ()) -> LuaResult<()> {
@@ -192,6 +208,8 @@ fn dataflow_rs(lua: &Lua) -> LuaResult<LuaTable> {
 
     exports.set("input123", Syntax::Input(123))?;
     exports.set("add", Syntax::Add(Node(1), Node(2)));
+
+    exports.set("new_compiler", lua.create_function(new_compiler)?)?;
 
     Ok(exports)
 }
