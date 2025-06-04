@@ -30,13 +30,19 @@ it would need userdata. https://docs.rs/mlua/latest/mlua/#custom-userdata
 EDIT: I am starting directly with the "user interface", which is the
 dsl exposed to lua.
 
+
+Note: this is by itself ... because the state is completely abstract
+and just passed around as a mut reference, and node references can
+just be copied, i.e. no borrow nonsense.
+
+
 */
 #![allow(unused)]
 extern crate mlua;
 use std::u32;
 
 use mlua::prelude::*;
-use mlua::{Error, MetaMethod, UserData, UserDataFields, UserDataMethods, Value};
+use mlua::{Error, MetaMethod, Table, UserData, UserDataFields, UserDataMethods, Value};
 
 // See test.lua : two objects are needed.  One for node, one for
 // compiler, and a collection of primitives are needed.  The
@@ -54,8 +60,9 @@ struct Compiler {
 #[derive(Debug, Clone, Copy)]
 enum Syntax {
     Add(Node, Node),
+    Inc(Node),
     Lit(u32),
-    Input,
+    Input(u32),
 }
 impl Compiler {
     fn node(&mut self, stx: Syntax) -> Node {
@@ -67,15 +74,18 @@ impl Compiler {
     fn add(&mut self, a: Node, b: Node) -> Node {
         self.node(Syntax::Add(a, b))
     }
-    fn input(&mut self) -> Node {
-        self.node(Syntax::Input)
+    fn inc(&mut self, a: Node) -> Node {
+        self.node(Syntax::Inc(a))
+    }
+    fn input(&mut self, i: u32) -> Node {
+        self.node(Syntax::Input(i))
     }
 }
 
 fn test_compiler() {
     let mut c = Compiler { code: Vec::new() };
-    let i1 = c.input();
-    let i2 = c.input();
+    let i1 = c.input(1);
+    let i2 = c.input(2);
     let o = c.add(i1, i2);
     println!("{:#?}", c);
 }
@@ -87,41 +97,45 @@ impl UserData for Node {
         fields.add_field_method_get("id", |_, this| Ok(this.0));
     }
 }
-// Implementation of IntoLua is automatically provided, FromLua needs
-// to be implemented manually.
+// Implementation of IntoLua is automatically provided for UserData,
+// FromLua needs to be implemented manually.
+impl FromLua for Node {
+    fn from_lua(value: Value, lua: &Lua) -> Result<Node, LuaError> {
+        match value {
+            // I copied this from example.  It's a type sandwich...
+            Value::UserData(ud) => Ok(*ud.borrow::<Self>()?),
+            _ => unreachable!(),
+        }
+    }
+}
 
-// impl FromLua for Node {
-//     fn from_lua(value: Value, lua: &Lua) -> Result<Node> {
-//         let err = Err(Error::FromLuaConversionError {
-//             from: value.type_name(),
-//             to: "userdata".to_string(),
-//             message: None,
-//         });
-//         match value {
-//             Value::UserData(ud) => match ud.borrow() {
-//                 Ok(node) => node,
-//                 _ => err,
-//             },
-//             _ => err,
-//         }
-//     }
-// }
-
-//impl IntoLua for Syntax {
-//    fn into_lua(
-//}
-
-// So it seems I can implement IntoLua or UserData for a struct.
-// Let's try the former.  I think it makes sense for Compiler, since
-// it really is state that is passed around, but not for individual
-// Syntax objects.
+// This is just for letting Lua code read a Lua representation of the
+// syntax.  The Lua->Rust is via compiler methods only, no Lua data
+// structure to Rust object conversion.
 
 impl IntoLua for Syntax {
     fn into_lua(self, lua: &Lua) -> LuaResult<Value> {
         Ok(match self {
-            Syntax::Input => Value::Number(123.0),     // FIXME
-            Syntax::Add(a, b) => Value::Number(123.0), // FIXME
-            Syntax::Lit(num) => Value::Number(123.0),  // FIXME
+            Syntax::Input(i) => {
+                let t = lua.create_table()?;
+                t.push("input".into_lua(lua)?);
+                t.push(Value::Number(f64::from(i)));
+                Value::Table(t)
+            }
+            Syntax::Add(Node(a), Node(b)) => {
+                let t = lua.create_table()?;
+                t.push("add".into_lua(lua)?);
+                t.push(a);
+                t.push(b);
+                Value::Table(t)
+            }
+            Syntax::Inc(Node(a)) => {
+                let t = lua.create_table()?;
+                t.push("inc".into_lua(lua)?);
+                t.push(a);
+                Value::Table(t)
+            }
+            Syntax::Lit(num) => Value::Number(f64::from(num)),
         })
     }
 }
@@ -132,12 +146,11 @@ impl UserData for Compiler {
     }
     // All DSL operations will be methods taking a set of nodes and producing a node.
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        // FIXME: How to specifiy 2 arguments?
-        // trait bound (Node, Node) : mlua::FromLuaMulti
-        // methods.add_method_mut("add", |_, mut this, (a, b): (Node, Node)| {
-        //     // FIXME: Create a new node
-        //     Ok(a)
-        // });
+        methods.add_method_mut(
+            "add",
+            |_, mut this, (a, b): (Node, Node)| Ok(this.add(a, b)),
+        );
+        methods.add_method_mut("inc", |_, mut this, a: Node| Ok(this.inc(a)));
     }
 }
 
@@ -176,5 +189,9 @@ fn dataflow_rs(lua: &Lua) -> LuaResult<LuaTable> {
     exports.set("sum", lua.create_function(sum)?)?;
     exports.set("used_memory", lua.create_function(used_memory)?)?;
     exports.set("myobject", MyUserData(123))?;
+
+    exports.set("input123", Syntax::Input(123))?;
+    exports.set("add", Syntax::Add(Node(1), Node(2)));
+
     Ok(exports)
 }
