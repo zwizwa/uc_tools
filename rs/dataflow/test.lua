@@ -29,6 +29,7 @@ function test_compiler()
    -- local code = c:compile()
    -- log(code)
    log_desc(c.code)
+   log_desc(c.inputs)
 
 end
 

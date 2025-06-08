@@ -56,7 +56,7 @@ struct Node(usize);
 #[derive(Debug, Clone)]
 struct Compiler {
     code: Vec<Syntax>,
-    input: Vec<Node>,
+    inputs: Vec<Node>,
 }
 #[derive(Debug, Clone, Copy)]
 enum Syntax {
@@ -79,9 +79,9 @@ impl Compiler {
         self.node(Syntax::Inc(a))
     }
     fn input(&mut self) -> Node {
-        let i = self.input.len();
+        let i = self.inputs.len();
         let n = self.node(Syntax::Input(i));
-        self.input.push(n);
+        self.inputs.push(n);
         n
     }
 }
@@ -89,7 +89,7 @@ impl Compiler {
 fn compiler() -> Compiler {
     Compiler {
         code: Vec::new(),
-        input: Vec::new(),
+        inputs: Vec::new(),
     }
 }
 
@@ -154,6 +154,7 @@ impl IntoLua for Syntax {
 impl UserData for Compiler {
     fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
         fields.add_field_method_get("code", |_, this| Ok(this.code.clone()));
+        fields.add_field_method_get("inputs", |_, this| Ok(this.inputs.clone()));
     }
     // All DSL operations will be methods taking a set of nodes and producing a node.
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
