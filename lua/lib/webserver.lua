@@ -49,6 +49,12 @@ function webserver:response_javascript(script)
    self:write(script)
 end
 
+function webserver:response_css(stylesheet)
+   log("->200\n")
+   self:write("HTTP/1.1 200 OK\r\nContent-Type: text/css\r\n\r\n")
+   self:write(stylesheet)
+end
+
 local extensions = {
    ['.js'] = 'text/javascript',
    ['.css'] = 'text/css',

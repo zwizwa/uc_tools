@@ -150,6 +150,27 @@ local function nested_put(tab, key_list, val)
    sub_tab[key_list[n]] = val
 end
 
+-- Get a value in a nested table.
+local function nested_get(tab, key_list)
+   local sub_tab = tab
+   local n = #key_list
+   assert(n > 0)
+   -- Descend into table, stopping descent when subtree is not
+   -- defined.
+   for i=1,n-1 do
+      assert(type(sub_tab) == 'table')
+      local key = key_list[i]
+      if sub_tab[key] == nil then
+         return nil
+      end
+      sub_tab = sub_tab[key]
+   end
+   -- Get the value from the inner table
+   return sub_tab[key_list[n]]
+end
+
+
+
 -- Convert flat table with dotted keys to nested table.
 local function flat_to_nested(flat_tab)
    local nested_tab = {}
@@ -190,6 +211,8 @@ return {
          nested_to_flat = nested_to_flat,
          flat_to_nested = flat_to_nested,
          indexer_to_nested = indexer_to_nested,
+         nested_put = nested_put,
+         nested_get = nested_get,
 }
 
 end
