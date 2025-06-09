@@ -66,7 +66,7 @@ function lxml.w_elements(w, elements)
          if not elements then elements = {} end
          w('<') ; w(tag)
          for attr, val in pairs(attrs) do
-            log_desc({attr=attr,val=val})
+            -- log_desc({attr=attr,val=val})
             -- FIXME: Do proper string quoting.
             w(' ') ; w(attr)
             if val == true then
