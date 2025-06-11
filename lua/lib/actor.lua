@@ -14,6 +14,7 @@
 local mixin  = require('lib.mixin')
 local prompt = require('prompt')
 local function log(str) io.stderr:write(str) end
+local function logf(...) log(string.format(...)) end
 local function log_desc(thing) log(prompt.describe(thing)) end
 
 local actor = { scheduler = {}, task = {} }

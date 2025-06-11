@@ -55,6 +55,12 @@ function webserver:response_css(stylesheet)
    self:write(stylesheet)
 end
 
+function webserver:response_content_type(content_type, content)
+   log("->200\n")
+   self:write("HTTP/1.1 200 OK\r\nContent-Type: " .. content_type .. "\r\n\r\n")
+   self:write(content)
+end
+
 local extensions = {
    ['.js'] = 'text/javascript',
    ['.css'] = 'text/css',
@@ -170,7 +176,9 @@ function webserver:connect()
    end
    -- Handle request
    log("req: " .. req)
-   local uri = string.match(req, "GET (.*) HTTP/1.1\r\n")
+   local method, uri = string.match(req, "(%S+) (.*) HTTP/1.1\r\n")
+   -- log_desc({method=method, uri=uri})
+
    local uri1, query = string.match(uri, "(.*)?(.*)")
    local q = {}
    if query then
@@ -186,7 +194,7 @@ function webserver:connect()
 
    -- Note: I do not remember if hdrs is actually used anywhere, so I
    -- am going to change the API here to send a map.
-   self:serve(uri, q, webserver.parse_headers(hdrs))
+   self:serve(uri, q, webserver.parse_headers(hdrs), method)
 end
 
 function webserver.start(scheduler, serv_obj)

@@ -24,4 +24,12 @@ function linebuf.new()
    return obj
 end
 
+-- swtich to raw mode
+function linebuf:set_raw_mode()
+   self.push = self.push_line
+   local buf = self.buf
+   self.buf = ''
+   self:push(buf)
+end
+
 return linebuf
