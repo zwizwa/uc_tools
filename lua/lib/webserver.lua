@@ -202,16 +202,50 @@ function webserver.start(scheduler, serv_obj)
    return actor_uv.spawn_tcp_server(scheduler, serv_obj)
 end
 
+-- FIXME: This seems to work but is not matching the spec exactly.
+local function header_match(line)
+   return string.gmatch(line, "(%S+): (.+)\r\n")
+end
+
 -- Split the header lines into a dictionary.
 function webserver.parse_headers(hdr_lines)
    local tab = {}
    for _, line in ipairs(hdr_lines) do
       -- Regexp seems to work, but I didn't think this through.
-      for key, value in string.gmatch(line, "(%S+): (%S+)\r\n") do
+      for key, value in header_match(line) do
          tab[key] = value
       end
    end
    return tab
 end
+
+-- Parse a form response containing a file.  I'm not really clear on
+-- what exactly this should be, so just hack it so it works for
+-- current firefox and chromium/webkit.  Also this assumes that the
+-- file encoding is just plaintext that can be split into lines.
+function webserver.parse_post_response(in_lines)
+   local out_lines = {}
+   local hdr_lines = {}
+   -- HACKS: assume the boundary markers are on the first and last
+   -- lines so we can just skip those, assume there is only one
+   -- message (e.g. no multipart).
+   local in_header = true
+   for i=2,#in_lines-1 do
+      local line = in_lines[i]
+      if line == '\r\n' then
+         in_header = false
+      elseif in_header then
+         table.insert(hdr_lines, line)
+      else
+         table.insert(out_lines, line)
+      end
+   end
+   log_desc({hdr_lines = hdr_lines})
+   local hdr = webserver.parse_headers(hdr_lines)
+   hdr.file = out_lines
+   return hdr
+end
+
+
 
 return webserver
