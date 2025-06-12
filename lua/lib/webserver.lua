@@ -132,6 +132,8 @@ function webserver:upgrade_websocket(hdrs)
       -- w = new WebSocket("ws://zoe:8800")
       -- enc = new TextEncoder();
       -- w.send(enc.encode("asdf"))
+
+      -- log_desc({websocket_push = data})
       local msgs = {ws.websocket_parse_push_chunk(wsp, data)}
       for _, msg in ipairs(msgs) do
          self:send_and_schedule({self.socket,msg})
