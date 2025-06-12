@@ -58,8 +58,8 @@ static void stub_init(struct stub *s) {
     STUB_PKT_INIT(s,rpl);
     s->stub.ctrl = &s->ctrl;
     s->stub.commands = gdbstub_default_commands;
-    uint32_t reg[GDBSTUB_NB_REGS] = GDBSTUB_REG_INIT;
-    memcpy(s->stub.reg, reg, sizeof(reg));
+    struct regs regs = GDBSTUB_REGS_INIT;
+    s->stub.regs = regs;
 }
 #define NS(name) CONCAT(stub,name)
 #include "ns_lua_struct.h"
@@ -150,8 +150,9 @@ static int rpl_end_cmd(lua_State *L) {
 static int reg_read_cmd(lua_State *L) {
     struct stub_ud *ud = stub_L(L, 1);
     uintptr_t reg_nb = number_L(L, 2);
-    ASSERT(reg_nb < GDBSTUB_NB_REGS);
-    lua_pushnumber(L, ud->base.stub.reg[reg_nb]);
+    const uint32_t *reg = &ud->base.stub.regs.r0;
+    ASSERT(reg_nb < (sizeof(ud->base.stub.regs) / sizeof(uint32_t)));
+    lua_pushnumber(L, reg[reg_nb]);
     return 1;
 }
 static int stub_return_cmd(lua_State *L) {

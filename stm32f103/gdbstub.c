@@ -304,7 +304,10 @@ static int32_t cmd_get_memory(struct gdbstub *stub, const uint8_t *b, uint32_t l
     // We don't really know when to clear, so do it once per
     // get_memory command.  This makes the x command inefficient, but
     // it seems to work fine for structs.
-    clear_cache();
+
+    // 2025-06-12 merge: this is not defined for bl_nano elf
+    // clear_cache();
+
     for (uint32_t i = 0; i < len; i++) {
         uint8_t v = mem_read(addr+i);
         int32_t rv = packet_save_hex_cs(stub->rpl, v);

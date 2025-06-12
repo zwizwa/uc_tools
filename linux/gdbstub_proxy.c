@@ -94,7 +94,7 @@ int main(int argc, char **argv) {
     /* uc abort routine dumps 12 registers at the end of RAM
        containing r4 to pc */
     uint32_t reg_dump_nb_bytes = 4 * 12;
-    memcpy(gdbstub.reg + 4,
+    memcpy(&gdbstub.regs.r4,
            ram + sizeof(ram) - reg_dump_nb_bytes,
            reg_dump_nb_bytes);
 

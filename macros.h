@@ -18,7 +18,8 @@
 #define LOG(...) fprintf(stderr, __VA_ARGS__)
 #endif
 
-#define LOG_HEX(prefix,buf,nb) do { \
+/* This clashed with some old code.  Was called LOG_HEX */
+#define LOG_HEX_BUF(prefix,buf,nb) do { \
         LOG("%s",prefix);                                               \
         for(uintptr_t (i)=0; (i)<(nb); (i)++) { LOG(" %02x", (buf)[i]); }; \
         LOG("\n");                                                      \
