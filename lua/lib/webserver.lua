@@ -240,9 +240,9 @@ function webserver.parse_post_response(in_lines)
          table.insert(out_lines, line)
       end
    end
-   log_desc({hdr_lines = hdr_lines})
+   -- log_desc({hdr_lines = hdr_lines})
    local hdr = webserver.parse_headers(hdr_lines)
-   hdr.file = out_lines
+   hdr.contents = out_lines
    return hdr
 end
 
