@@ -1,3 +1,6 @@
+-- (c) 2020-2023 Tom Schouten
+-- Part of 'uc_tools' project. CC0 License
+
 -- Operations on sets, represented as element to boolean maps.  Some
 -- of these are meaningful on ordinary maps, as long as the values
 -- evaluate as true.  When relevant, values of the rightmost map are
@@ -86,5 +89,32 @@ function set.map(fn, set)
    end
    return new_set
 end
+
+
+-- New 2023 code goes here.
+
+-- Construct a set from the keys and values of a table (i.e. its
+-- domain or range)
+function set.from_table_keys(tab)
+   local new_set = {}
+   for k,v in pairs(tab) do
+      new_set[k] = true
+   end
+   return new_set
+end
+function set.from_table_values(tab)
+   local new_set = {}
+   for k,v in pairs(tab) do
+      new_set[v] = true
+   end
+   return new_set
+end
+
+function set.is_subset(a, b)
+   local cmp = set.compare(a, b)
+   -- log_desc({is_subset_cmp = cmp})
+   return (cmp == 'lt') or (cmp == 'eq')
+end
+
 
 return set
