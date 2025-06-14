@@ -5,7 +5,7 @@
 
 require('lib.tools.log')
 
-local m = { gen = {}, shrink = {} }
+local m = { gen = {}, shrink = {}, lib = {} }
 
 -- Generators
 local gen = m.gen
@@ -28,6 +28,7 @@ local function xorshift_srandom_u32(seed)
    if (seed < 0) then seed = seed + 0x100000000 end
    return seed
 end
+m.lib.random = xorshift_srandom_u32
 function gen.random(seed)
    -- error 'no rng'
    local val = xorshift_srandom_u32(seed)
@@ -59,6 +60,18 @@ function gen.upto(max)
       return g(seed, size)
    end
 end
+
+function gen.size_then_upto(max)
+   return function (seed, size)
+      if (size <= max) then
+         return size, seed
+      else
+         local g = gen.range(0, math.min(size, max))
+         return g(seed, size)
+      end
+   end
+end
+
 local function fmap(fun, gen)
    return function(seed, size)
       local val, new_seed = gen(seed, size)
@@ -80,6 +93,23 @@ function gen.list(gen_el)
    end
 end
 
+-- Infinite stream.  This splits the random number generator, which we
+-- implement by just duplicating the seed.  Typically this is used to
+-- combine one finite data structure and mutilate it with an infinite
+-- stream.  Which is usually just a sign that the data structure is
+-- not abstracted well.
+function gen.stream(gen_el)
+   return function(seed, size)
+      local function stream()
+         local val
+         val, seed = gen_el(seed, size)
+         return val
+      end
+      return stream, seed
+   end
+end
+
+
 -- Optionally a 'keys' argument specified the order of generation to
 -- remove dependency on implementation-dependent order of the pairs()
 -- iterator.
@@ -87,6 +117,7 @@ function gen.map(gen_els, keys)
    if nil == keys then
       -- Re-generate it if not specified.
       keys = {}
+      -- log_desc({gen_els=gen_els})
       for k in pairs(gen_els) do
          table.insert(keys, k)
       end
@@ -107,6 +138,60 @@ end
 -- FIXME: Also do sized.
 function gen.size(seed, size)
    return size, seed
+end
+
+-- Pick a generator from a list of generators.
+function gen.choice(gens)
+   return function(seed, size)
+      local val_u32, new_seed = gen.random(seed)
+      local index = 1 + val_u32 % #gens
+      local gen = gens[index]
+      return gen(new_seed, size)
+   end
+end
+
+-- Generate a product, splitting the size randomly
+function gen.split_size(gena, genb)
+   return function(seed, size)
+      local size_a, seed1 = (gen.range(0,size))(seed, size)
+      local size_b = size - size_a
+      local val_a, seed2 = gena(seed1, size_a)
+      local val_b, seed3 = genb(seed2, size_b)
+      return {val_a, val_b}, seed3
+   end
+end
+
+-- Recursive types
+function gen.rec(leaf_conses, rec_conses)
+   return function(seed, size)
+      -- Pick a random constructor, but if the size is zero pick only
+      -- a non-recursive leaf constructor.
+      local nb_conses = #leaf_conses + #rec_conses
+      if size == 0 then nb_conses = #leaf_conses end
+      local i, seed1 = (gen.range(1,nb_conses))(seed, size)
+      local cons
+      if i <= #leaf_conses then
+         cons = leaf_conses[i]
+      else
+         -- Undo thunk wrapping for recursive constructors
+         cons = rec_conses[i - #leaf_conses]()
+      end
+      -- Reduce the size randomly, ensuring reduction.
+      local size_red, seed2 = (gen.range(0,size-1))(seed1, size)
+      return cons(seed2, size_red)
+   end
+end
+
+-- Custom generator
+function gen.gen(gen_fun)
+   return gen_fun
+end
+
+
+function gen.const(val)
+   return function(seed, size)
+      return val, seed
+   end
 end
 
 
@@ -149,6 +234,7 @@ shrink.nat  = nat_shrink_to(0)
 shrink.nat1 = nat_shrink_to(1)
 
 shrink.upto = shrink.nat
+shrink.size_then_upto = shrink.nat
 
 local function lst_replace(lst, index, new_el)
    local lst1 = {}
@@ -247,3 +333,4 @@ end
 
 
 return m
+
