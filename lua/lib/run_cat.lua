@@ -70,7 +70,7 @@ function cat:interpret()
 
    -- Command script
    if nil ~= script_dir then
-      local script = script_dir .. w
+      local script = script_dir .. w .. ".cat"
       local f = io.open(script, "r")
       if f ~= nil then
          f:close()
@@ -128,12 +128,15 @@ function lookup(self, w)
    return nil
 end
 
-function cat.new(env)
-   obj = { ds = {}, env = env, mixins = {} }
+function cat.new(env, mixins)
+   local obj = { ds = {}, env = env, mixins = mixins or {}, base = cat }
    setmetatable(obj, {__index = lookup })
    -- obj isn't always needed so pass it as second value
    return obj
 end
+
+
+
 
 function cat:pop()
    local n = #self.ds
@@ -141,6 +144,13 @@ function cat:pop()
    table.remove(self.ds, n)
    return rv
 end
+
+function cat:dup()
+   local v = self:pop()
+   push(self, v)
+   push(self, v)
+end
+
 
 function cat:ps() log_desc(self.ds) end
 function cat:p()  log_desc(self:pop()) end
@@ -154,6 +164,17 @@ local function op2(fun)
 end
 cat['+'] = op2(function(a,b) return a+b end)
 cat['-'] = op2(function(a,b) return a-b end)
+
+
+-- Same but for debug devices
+function cat:times()
+   local n = self:pop()
+   local code = self:pop()
+   for i=1,n do
+      push(self, code)
+      self:execute()
+   end
+end
 
 function cat:parse_string()
    local str = self:pop()
