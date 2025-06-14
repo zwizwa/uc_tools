@@ -42,6 +42,15 @@ local array_base = cfg.array_base or 0
 -- 'a[1][2]' -> {'a',{2,3}}
 
 -- FIXME: This could use some parse error handling.
+
+-- In rdm-bridge commit a8e2036d883ffa05a3120470adb123dc8dcf01a0 it
+-- was attempted to add variables, but that really does not work very
+-- well to also make the emulator work properly.  The choice was made
+-- to keep the original approach, just generate the absolute addresses
+-- as strings or using the structured access method, and fix any
+-- difference in the emulator.  Hardware implementation should be the
+-- reference point.
+
 local function parse_array_ref(str)
    local name = {}
    local coord_nb = nil
@@ -61,25 +70,34 @@ local function parse_array_ref(str)
          table.insert(coords[coord_nb], char)
       end
    end
-   -- log_desc({name,coords})
+   -- log_desc({parse_array_ref={name,coords}})
    local name_str = table.concat(name)
    local coord_nums = {}
    for i=1,#coords do
-      local num = tonumber(table.concat(coords[i]))
-      assert(num)
-      coord_nums[i] = num
+      local coords_i_str = table.concat(coords[i])
+      local num = tonumber(coords_i_str)
+      if num then
+         coord_nums[i] = num
+      else
+         -- Variable reference
+         error('variable references not supported: ' .. coords_i_str)
+      end
+      assert(coord_nums[i])
    end
    -- log_desc({name_str, coord_strs})
    return name_str, coord_nums
 end
 
 -- FIXME: This could use some parse error handling.
-local function dotted_to_list(str)
+local function dotted_to_list(keyspec)
+   assert(type(keyspec == 'string'))
+   local str = keyspec
+
    local keys = {}
    for key in string.gmatch(str, "([^" .. separator .. "]+)") do
       -- Support C array referencing syntax.
       if key:sub(#key,#key) == right_bracket then
-         local key1, coords = parse_array_ref(key)
+         local key1, coords = parse_array_ref(key, var_env)
          -- log_desc({parse_array_ref = {key1, coords}})
          table.insert(keys, key1)
          for i=1,#coords do
@@ -89,7 +107,7 @@ local function dotted_to_list(str)
          table.insert(keys, key)
       end
    end
-   -- log_desc({dotted_to_list = keys})
+   -- log_desc({dotted_to_list_keys = keys})
    return keys
 end
 
@@ -169,8 +187,6 @@ local function nested_get(tab, key_list)
    return sub_tab[key_list[n]]
 end
 
-
-
 -- Convert flat table with dotted keys to nested table.
 local function flat_to_nested(flat_tab)
    local nested_tab = {}
@@ -190,6 +206,11 @@ end
 --
 -- Just showing off a hat trick here, but idea might be useful at some
 -- point.
+--
+-- EDIT: Actually, this can be used together with loadstring to map
+-- "a.b[3].c" to {a = {b = {[3] = c}}} and get rid of the ad-hoc
+-- parser here.
+
 local function indexer_to_nested(dereference)
    local path = {}
    local function index(_dummy_tab, key)
@@ -203,16 +224,54 @@ local function indexer_to_nested(dereference)
 end
 
 
+-- Convert numeric array references to symbolic.
+local function list_to_symbolic_dotted(coords, vars)
+   local env = {}
+   local strs = {}
+   for _, coord in ipairs(coords) do
+      if type(coord) == 'number' then
+         local var = table.remove(vars, 1)
+         assert(var)
+         -- Note that the dotted representation uses Lua's 1-based array indexes.
+         env[var] = coord - 1
+         table.insert(strs, '[')
+         table.insert(strs, var)
+         table.insert(strs, ']')
+      else
+         table.insert(strs, ".")
+         table.insert(strs, coord)
+      end
+   end
+   table.remove(strs, 1) -- Remove first dot
+   return table.concat(strs), env
+end
 
+local function list_to_dotted(coords)
+   local strs = {}
+   for _, coord in ipairs(coords) do
+      if type(coord) == 'number' then
+         table.insert(strs, '[')
+         table.insert(strs, coord)
+         table.insert(strs, ']')
+      else
+         table.insert(strs, ".")
+         table.insert(strs, coord)
+      end
+   end
+   table.remove(strs, 1) -- Remove first dot
+   return table.concat(strs), env
+end
 
 
 return {
+         nested_put = nested_put,
+         nested_get = nested_get,
          dotted_to_list = dotted_to_list,
          nested_to_flat = nested_to_flat,
          flat_to_nested = flat_to_nested,
          indexer_to_nested = indexer_to_nested,
-         nested_put = nested_put,
-         nested_get = nested_get,
+         list_to_symbolic_dotted = list_to_symbolic_dotted,
+         list_to_dotted = list_to_dotted,
 }
 
 end

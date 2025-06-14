@@ -1,10 +1,6 @@
 -- require('lib.tools.log')
-local m = { }
 local C = require('sqlite3_lua51') 
 
--- While test db is a singleton, keep the interaction code abstract
--- wrt which DB it is acting on, so later we can split it up easier if
--- it gets complicated.
 local m = { }
 
 -- Generic DB code
