@@ -263,10 +263,16 @@ local function list_to_dotted(coords)
 end
 
 
+local function list_to_dotted(list)
+   return table.concat(list, separator)
+end
+
+
 return {
          nested_put = nested_put,
          nested_get = nested_get,
          dotted_to_list = dotted_to_list,
+         list_to_dotted = list_to_dotted,
          nested_to_flat = nested_to_flat,
          flat_to_nested = flat_to_nested,
          indexer_to_nested = indexer_to_nested,

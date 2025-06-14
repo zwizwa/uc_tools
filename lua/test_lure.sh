@@ -48,6 +48,9 @@ fi
 # Proceed with rest, redirecting output, only printing tail on failure.
 LOG_OUT=$(readlink -f ./test_lure.out)
 LOG_ERR=$(readlink -f ./test_lure.err)
+echo "LOG_OUT=$LOG_OUT" >&2
+echo "LOG_ERR=$LOG_ERR" >&2
+
 ./lua.sh -e "require ('lure.test').run()" >$LOG_OUT 2>$LOG_ERR
 ERR=$?
 if [ "$ERR" != 0 ]; then
