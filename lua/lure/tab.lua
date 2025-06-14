@@ -83,4 +83,20 @@ end
 --    end
 -- end
 
+function tab.is_empty(t)
+   return not next(t)
+end
+
+-- Return elements that are different in new and old, with value from new.
+function tab.updated(new, old)
+   local d = {}
+   for k,v in pairs(new) do
+      if v ~= old[k] then
+         d[k] = v
+      end
+   end
+   return d
+end
+
+
 return tab
