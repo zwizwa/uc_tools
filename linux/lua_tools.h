@@ -32,6 +32,17 @@ static inline const lua_Number L_number(lua_State *L, int index) {
     return n;
 }
 
+static const char *string_L(lua_State *L, int index, size_t *len) {
+    ASSERT(lua_isstring(L, index));
+    if (len) {
+        return lua_tolstring(L, index, len);
+    }
+    else {
+        return lua_tostring(L, index);
+    }
+}
+
+
 static inline void new_lua_metatable(lua_State *L, const char *t_name,
                                      int (*gc)(lua_State *)) {
     luaL_newmetatable(L, t_name);
