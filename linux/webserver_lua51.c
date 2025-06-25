@@ -29,10 +29,11 @@ void websocket_parse_init(struct websocket_parse *s) {
 #undef NS
 
 
-static const char *string_L(lua_State *L, int index, size_t *len) {
-    ASSERT(lua_isstring(L, index));
-    return lua_tolstring(L, index, len);
-}
+//static const char *string_L(lua_State *L, int index, size_t *len) {
+//    ASSERT(lua_isstring(L, index));
+//    return lua_tolstring(L, index, len);
+//}
+
 static int websocket_sha1_cmd(lua_State *L) {
     uint8_t websocket_sha1[SHA1_BLOCK_SIZE];
     size_t len = 0;

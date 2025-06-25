@@ -165,7 +165,7 @@ static inline ws_err_t ws_write_msg_nolock(ws_io_t *io,
     return WS_OK;
 
   error_exit:
-    WS_LOG_ERROR("ws_write_msg", error);
+    WS_LOG_ERROR("ws_write_msg %d", error);
     return error;
 }
 
@@ -218,7 +218,7 @@ static inline ws_err_t ws_read_msg_body(ws_io_t *io,
     }
 
   error_exit:
-    WS_LOG_ERROR("ws_read_msg_body", error);
+    WS_LOG_ERROR("ws_read_msg_body %d", error);
     return error;
 }
 static inline ws_err_t ws_read_msg(ws_io_t *io, ws_push_fn push) {
@@ -247,7 +247,7 @@ static inline ws_err_t ws_read_msg(ws_io_t *io, ws_push_fn push) {
     }
 
   error_exit:
-    WS_LOG_ERROR("ws_read_msg", error);
+    WS_LOG_ERROR("ws_read_msg %d", error);
     return error;
 }
 
