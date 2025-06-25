@@ -76,12 +76,9 @@ function iolist.join(connect_el, arr)
    return out_arr
 end
 
--- FIXME: Add an optional parameter that will not write the file if
--- the contents is the same so it integrates better in a build system.
--- Typically generating source files is fast but recompiling the
--- system that depends on them is not.
 function iolist.w(iol, maybe_filename, opts)
    opts = opts or {}
+   local maybe_logf = opts.logf or function() end
 
    if (type(maybe_filename) == 'string') then
       local function write_to_file(filename)
@@ -92,9 +89,10 @@ function iolist.w(iol, maybe_filename, opts)
       end
       local function read_from_file(filename)
          -- logf("reading from to %s\n", filename)
-         local file = io.open(maybe_filename, "a")
+         local file = io.open(filename, "r")
          if file then
             local contents = file:read("*a")
+            -- logf("contents %d\n", #contents)
             file:close()
             return contents
          end
@@ -110,10 +108,10 @@ function iolist.w(iol, maybe_filename, opts)
          local old = read_from_file(old_filename)
          local new = read_from_file(new_filename)
          if old == new then
-            logf("keeping %s\n", old_filename)
+            maybe_logf("old %s\n", old_filename)
             os.remove(new_filename)
          else
-            logf("updating %s\n", old_filename)
+            maybe_logf("new %s\n", old_filename)
             os.remove(old_filename)
             os.rename(new_filename, old_filename)
          end
@@ -124,7 +122,16 @@ function iolist.w(iol, maybe_filename, opts)
 end
 
 function iolist.w_preserve_if_same(iol, maybe_filename)
-     return iolist.w(iol, maybe_filename, { preserve_if_same = true })
+   local opt = {
+      -- Don't write the file if the contents is the same so it
+      -- integrates better in a build system.  Typically generating
+      -- source files is fast but recompiling the system that depends
+      -- on them is not.  When this is enabled we enable logging as
+      -- well to make it clear which files changed.
+      preserve_if_same = true,
+      logf = logf,
+   }
+   return iolist.w(iol, maybe_filename, opt)
 end
 
 
