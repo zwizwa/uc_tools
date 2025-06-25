@@ -34,8 +34,7 @@ local nested_to_flat_osc = path({separator='/'}).nested_to_flat
 
 -- The 'w_' functions take iolist and write to stdout
 -- The 'render_' functions will render to iolist
-
-local w    = iolist.w
+local w    = iolist.w_preserve_if_same
 local join = iolist.join
 
 
