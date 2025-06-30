@@ -601,6 +601,7 @@ local function graph_compiler()
    local c = { }
 
    function c:app(typ, name, ...)
+      -- log_desc({app_args = {typ, name, {...}}})
       assert(typ)
       assert(type(name) == 'string')
       local ins = {...}

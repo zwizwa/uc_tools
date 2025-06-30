@@ -148,6 +148,13 @@ function webserver:upgrade_websocket(hdrs)
    -- Send response header
    self:response_upgrade_websocket(hdrs)
 
+   function dbg_message(msg)
+      local encoded = ws.websocket_encode(wsp, msg)
+      self.socket:write(encoded)
+   end
+   dbg_message("hello\n")
+   dbg_message("123\n")
+
 end
 
 
