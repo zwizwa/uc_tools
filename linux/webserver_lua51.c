@@ -82,12 +82,13 @@ static int websocket_parse_push_chunk_cmd(lua_State *L) {
 }
 
 // Encode a message for sending
+// FIXME: Additional config table for Text/Binary encoding
 static int websocket_encode_cmd(lua_State *L) {
 
     struct websocket_parse *s = &websocket_parse_L(L, 1)->base;
     size_t str_len = 0;
     const char *str = string_L(L, 2, &str_len);
-    LOG("websocket_encode: str_len=%d\n", str_len);
+    //LOG("websocket_encode: str_len=%d\n", str_len);
 
     /* The struct ws_message does not have a const buffer pointer.  I
        do not remember if it is written. Probably not, but just be
@@ -121,7 +122,7 @@ static int websocket_encode_cmd(lua_State *L) {
 
     /* Return buffer contents. */
     int nb = cbuf_elements(&out);
-    LOG("websocket_encod: nb=%d\n", nb);
+    //LOG("websocket_encod: nb=%d\n", nb);
     lua_pushlstring(L, (const char*)out.buf, nb);
     return 1;
 }

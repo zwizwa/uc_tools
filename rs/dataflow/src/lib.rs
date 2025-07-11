@@ -36,6 +36,19 @@ and just passed around as a mut reference, and node references can
 just be copied, i.e. no borrow nonsense.
 
 
+2025-07-11 Some recent ideas:
+
+- Tagless final GATs
+  https://getcode.substack.com/p/efficient-extensible-expressive-typed
+
+- State and params really do not show up in the types, they are always
+  hidden to the inner composition mechanism so they are purely a
+  compiler run-time thing, exposed as a compilation result (state
+  struct, state init, param init and param value delivery code) next
+  to the update code.
+
+
+
 */
 #![allow(unused)]
 extern crate mlua;

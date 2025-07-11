@@ -152,8 +152,8 @@ function webserver:upgrade_websocket(hdrs)
       local encoded = ws.websocket_encode(wsp, msg)
       self.socket:write(encoded)
    end
-   dbg_message("hello\n")
-   dbg_message("123\n")
+   --dbg_message("hello\n")
+   --dbg_message("123\n")
 
 end
 
