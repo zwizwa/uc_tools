@@ -17,6 +17,10 @@ pub trait Expr {
     fn app<F: Fn(A) -> B, A, B>(f: Self::R<F>, arg: Self::R<A>) -> Self::R<B>;
 }
 
+pub fn double<E: Expr>() -> E::R<Fun<i32, i32>> {
+    E::lam(|x| E::add(&x, &x))
+}
+
 // Surface syntax via Rust macros.
 
 pub struct Eval;

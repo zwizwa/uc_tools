@@ -1,5 +1,5 @@
 [package]
-name = "tagless_rs"
+name = "ex-tagless"
 version = "0.1.0"
 authors = ["Author Name <tom@zwizwa.be>"]
 
