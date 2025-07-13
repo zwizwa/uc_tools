@@ -13,9 +13,22 @@
 #[allow(unused_imports)]
 use std::ops;
 
-struct Sig<S: Clone, V> {
-    init: S,
-    next: Box<dyn Fn(&mut S) -> V>,
+//trait Sig<V> {
+//    fn update(&mut self) -> V;
+//}
+trait Proc<I, O> {
+    fn update(&mut self, i: I) -> O;
+}
+
+struct Integrator<T: Copy> {
+    state: T,
+}
+impl<T: Copy + std::ops::Add<T, Output = T>> Proc<T, T> for Integrator<T> {
+    fn update(&mut self, i: T) -> T {
+        let o = self.state;
+        self.state = o + i;
+        o
+    }
 }
 
 // Got it to type check up to lifetimes.  This is just too difficult
@@ -39,4 +52,9 @@ struct Sig<S: Clone, V> {
 //     }
 // }
 
-pub fn test() {}
+pub fn test() -> i32 {
+    let mut x = Integrator { state: 0 };
+    let y1 = x.update(1);
+    let y2 = x.update(2);
+    y1 + y2
+}
