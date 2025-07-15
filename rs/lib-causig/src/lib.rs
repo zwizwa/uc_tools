@@ -15,8 +15,9 @@ use std::ops;
 
 // Some design considerations:
 //
-// * It's best to define inputs as immutable references and state as a
-// mutable object with methods.
+// * It's best to define inputs as immutable references to allow
+// reuse, and state as a mutable object with an update method for
+// in-place update.
 //
 // * Processors are the base abstraction, not signals because it
 // doesn't seem possible to do the lambda trick.
@@ -24,7 +25,6 @@ use std::ops;
 trait Proc<I, O> {
     fn update(&mut self, i: I) -> O;
 }
-
 struct Integrator<T: Copy> {
     state: T,
 }

@@ -8,7 +8,6 @@ local function log_desc(thing)
 end
 local m = require('dataflow_rs')
 log_desc(m)
-log_desc(m.myobject.val)
 
 -- Run the rust-only test function.
 m.test_internal()
