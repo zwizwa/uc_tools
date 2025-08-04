@@ -1,6 +1,6 @@
 -- Functions for working with data structure differences.
 
-local tab = require('lib.tools.tab')
+local tab = require('lure.tab')
 
 local m = {}
 -- Produce a nested table with differences.
@@ -14,7 +14,7 @@ function m.diff(a, b, mark)
    -- All keys come from a.
    local out = {}
    for k,va in pairs(a) do
-      -- log_desc({k=k})
+      -- log_desc({k=k,b=b})
       local vb = b[k]
       assert(nil ~= vb)
       if type(va) == 'table' then
