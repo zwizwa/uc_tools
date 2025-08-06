@@ -1,5 +1,13 @@
 -- Functions for working with data structure differences.
 
+-- Note that m.diff compares two trees that have the same structure.
+-- This function is isued mainly in the context of comparing two C
+-- data trees represented as Lua data.
+
+-- There is a legitimate reason to want to compare two trees with
+-- _different_ structure (e.g. react-style incremental updates to data
+-- structures), but this is not that!
+
 local tab = require('lure.tab')
 
 local m = {}

@@ -61,6 +61,7 @@ return { modules = {
   'test_backend_gdb',
   'test_backend_js',
   'test_backend_lua',
+  'test_diff',
   'test_hoas_match',
   'test',
   'test_lua_serialize',
@@ -78,5 +79,6 @@ return { modules = {
   'test_smc',
   'test_syntax_rules',
   'test_unify',
+  'tree',
   'unify',
 }}
