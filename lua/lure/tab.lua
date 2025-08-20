@@ -84,7 +84,9 @@ end
 -- end
 
 function tab.is_empty(t)
-   return not next(t)
+   -- return not next(t)  <- don't do this
+   -- https://stackoverflow.com/a/53599061
+   return rawequal(next(t), nil)
 end
 
 -- Return elements that are different in new and old, with value from new.

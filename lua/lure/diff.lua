@@ -1,6 +1,14 @@
 -- Functions for working with data structure differences.
 
-local tab = require('lib.tools.tab')
+-- Note that m.diff compares two trees that have the same structure.
+-- This function is isued mainly in the context of comparing two C
+-- data trees represented as Lua data.
+
+-- There is a legitimate reason to want to compare two trees with
+-- _different_ structure (e.g. react-style incremental updates to data
+-- structures), but this is not that!
+
+local tab = require('lure.tab')
 
 local m = {}
 -- Produce a nested table with differences.
@@ -14,7 +22,7 @@ function m.diff(a, b, mark)
    -- All keys come from a.
    local out = {}
    for k,va in pairs(a) do
-      -- log_desc({k=k})
+      -- log_desc({k=k,b=b})
       local vb = b[k]
       assert(nil ~= vb)
       if type(va) == 'table' then
