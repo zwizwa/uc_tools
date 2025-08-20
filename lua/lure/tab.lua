@@ -99,4 +99,61 @@ function tab.updated(new, old)
 end
 
 
+-- Nested tables.  Note that lib/tools/path.lua does something else:
+-- it doesn't use arrays as nested table paths but uses concatenated
+-- strings, so I've moved these functions here from path.lua
+function tab.nested_put(tab, key_list, val)
+   local sub_tab = tab
+   local n = #key_list
+   assert(n > 0)
+   -- Descend into table, automatically creating subtables.
+   for i=1,n-1 do
+      assert(type(sub_tab) == 'table')
+      local key = key_list[i]
+      if sub_tab[key] == nil then
+         sub_tab[key] = {}
+      end
+      sub_tab = sub_tab[key]
+   end
+   -- Set the value in the inner table
+   sub_tab[key_list[n]] = val
+end
+
+-- Get a value in a nested table.
+function tab.nested_get(tab, key_list)
+   local sub_tab = tab
+   local n = #key_list
+   assert(n > 0)
+   -- Descend into table, stopping descent when subtree is not
+   -- defined.
+   for i=1,n-1 do
+      assert(type(sub_tab) == 'table')
+      local key = key_list[i]
+      if sub_tab[key] == nil then
+         return nil
+      end
+      sub_tab = sub_tab[key]
+   end
+   -- Get the value from the inner table
+   return sub_tab[key_list[n]]
+end
+
+-- Iterate over (key_list, value) pairs in a nested table.
+function tab.for_nested(nested, fn)
+   local keylist = {}
+   local function walk(thing)
+      if type(thing) == 'table' then
+         for k,v in pairs(thing) do
+            table.insert(keylist, k)
+            walk(v)
+            table.remove(keylist)
+         end
+      else
+         fn(keylist, thing)
+      end
+   end
+   walk(nested)
+end
+
+
 return tab

@@ -500,6 +500,7 @@ local function render_c(s, graph_name)
          {indent, 's->base.out      = (float**)&',base_out,';\n'},
          {indent, 's->base.nb_in    = sizeof(',base_in, ')/sizeof(float*);\n'},
          {indent, 's->base.nb_out   = sizeof(',base_out,')/sizeof(float*);\n'},
+         {indent, 's->base.out_gain = &s->output.state.gain[0];\n'},
          {indent, 's->base.process  = (graph_base_process_fn)',graph_name,'_graph_process;\n'},
          {indent, 's->base.buf      = &s->buf[0][0];\n'},
          {indent, 's->base.buf_size = ',buf_size,';\n'},
@@ -752,16 +753,22 @@ function t.cproc_op(cproc_spec, init, pretty_args)
 end
 
 
--- FIXME: This is a special generated one.
-function t.matrix_op(type_name, in_names, out_names)
+-- This is used for t_output, which does not behave like a normal
+-- processor for code generation but will look like one from the patch
+-- perspective.
+function t.matrix_op(type_name, in_names, out_names, init)
    return function (c, name, nb_inputs)
+      -- log_desc({t_matrix_op_nb_inputs = nb_inputs})
       return {
          type_name  = type_name,
          out_ports  = out_names,
          input_name = in_names,
+         init = init,
       }
    end
 end
+
+-- This is used to wrap externally defined (not cproc API) C processing routines.
 function t.extern_matrix_op(type_name, in_names, out_names, maybe_init)
    return function (c, name, nb_inputs)
       return {
@@ -826,7 +833,6 @@ function osc_preset_txt(graph)
 
    return txt
 end
-
 
 
 
@@ -912,6 +918,8 @@ return {
    map = map,
    named = named,
    concat = concat,
+
+   osc_load_preset_txt = osc_load_preset_txt,
 
 }
 

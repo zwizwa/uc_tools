@@ -20,6 +20,9 @@ struct graph_base {
     float **in;   uintptr_t nb_in;
     float **out;  uintptr_t nb_out;
 
+    /* Optional output gain parameter. */
+    float *out_gain;
+
     /* The main process method. */
     graph_base_process_fn process;
 
@@ -27,6 +30,7 @@ struct graph_base {
     float *buf;
     uint32_t nb_buf;
     uint32_t buf_size;
+
 };
 
 /* Connect any of the internal buffers to an output. */

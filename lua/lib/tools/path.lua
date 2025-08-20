@@ -32,6 +32,7 @@ local left_bracket = cfg.left_bracket or '['
 local right_bracket = cfg.left_bracket or ']'
 local array_base = cfg.array_base or 0
 
+local tab = require('lure.tab')
 
 
 -- Parse a C style array reference into name and one-base
@@ -150,42 +151,10 @@ local function nested_to_flat(nested_tab)
    return flat_tab
 end
 
--- Set a value in a nested table.
-local function nested_put(tab, key_list, val)
-   local sub_tab = tab
-   local n = #key_list
-   assert(n > 0)
-   -- Descend into table, automatically creating subtables.
-   for i=1,n-1 do
-      assert(type(sub_tab) == 'table')
-      local key = key_list[i]
-      if sub_tab[key] == nil then
-         sub_tab[key] = {}
-      end
-      sub_tab = sub_tab[key]
-   end
-   -- Set the value in the inner table
-   sub_tab[key_list[n]] = val
-end
+-- Set a value in a nested table.  These are moved to tab.lua
+local nested_put = tab.nested_put
+local nested_get = tab.nested_get
 
--- Get a value in a nested table.
-local function nested_get(tab, key_list)
-   local sub_tab = tab
-   local n = #key_list
-   assert(n > 0)
-   -- Descend into table, stopping descent when subtree is not
-   -- defined.
-   for i=1,n-1 do
-      assert(type(sub_tab) == 'table')
-      local key = key_list[i]
-      if sub_tab[key] == nil then
-         return nil
-      end
-      sub_tab = sub_tab[key]
-   end
-   -- Get the value from the inner table
-   return sub_tab[key_list[n]]
-end
 
 -- Convert flat table with dotted keys to nested table.
 local function flat_to_nested(flat_tab)
