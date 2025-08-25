@@ -1,12 +1,13 @@
 name: uc-tools
 version: 1.0.0
-cabal-version: >= 1.18
+cabal-version: 1.18
 build-type: Simple
 license: BSD3
 
 executable uc-tools
-    build-depends: base
+    build-depends: base, language-lua, mtl, containers, lens, text
     main-is: uc-tools.hs
     default-language: Haskell2010
     ghc-options: -fprint-potential-instances
+    other-modules: UCTools.Lua
 
