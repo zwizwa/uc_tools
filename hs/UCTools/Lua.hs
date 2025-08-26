@@ -33,6 +33,7 @@ import Control.Lens
 import Prelude hiding (log)
 import Data.Text
 import Data.Text.Read
+import Text.Pretty.Simple
 
 -- class DSL where
 
@@ -40,7 +41,6 @@ type Table = Map Value Value
 data Value = VFloat Float
            | VInt Int
            | VString Text
-           | VTable Table -- FIXME: Use Indirection
            | VNil
            | VNI String
            | VPtr Object
@@ -67,7 +67,8 @@ instance Ord Object where
 
 data State    = State {
   _locals  :: Table,
-  _globals :: Table
+  _globals :: Table,
+  _nextId  :: Int
   } deriving (Show)
 data Result t = Result State Log t deriving (Show)
 
@@ -95,7 +96,7 @@ insertPath :: Value -> [ Value ] -> Table -> Table
 insertPath v = u where
   u [k] = Data.Map.insert k v
   u (k:ks) = Data.Map.adjust f k where
-    f (VTable t) = VTable $ u ks t
+    f (VPtr (OTable id t)) = VPtr $ OTable id $ u ks t
 
 -- insertPath v = (flip Data.Map.insert v)
 
@@ -119,6 +120,11 @@ unNames = fmap unName
 namesToPath = fmap (VString . unName)
 
 traverse' = flip traverse
+
+makeId = do
+  id <- use nextId
+  nextId %= (+ 1)
+  return id
   
 evalStat stat = do
   -- log $ show stat
@@ -230,21 +236,31 @@ evalExp expr = do
               [k'] <- evalExp k
               [v'] <- evalExp v
               return (k', v')
-              
+
+        id <- makeId
         assIndexed <- traverse indexed arrFields
         assKeyed   <- traverse keyed   keyFields
-        return $ [ VTable $ Data.Map.fromList $ assIndexed ++ assKeyed ]
+        return $ [ VPtr $ OTable id $ Data.Map.fromList $ assIndexed ++ assKeyed ]
         
   ev expr
 
 -- The result of parseFile is a Block.  It seems best to focus on the
 -- file level.
 
-eval :: Block -> Result [Value]
-eval block = Result s l v where
-  EvalM m = evalBlock block
-  s0 = State mempty mempty
+runM :: EvalM t -> Result t
+runM (EvalM m) = Result s l v where
+  s0 = State mempty mempty 0
   ((v, l), s) = State.runState (runWriterT m) s0
+
+eval = runM . evalBlock
+
+-- eval :: Block -> Result [Value]
+-- eval block = Result s l v where
+--   EvalM m = evalBlock block
+--   s0 = State mempty mempty 0
+--   ((v, l), s) = State.runState (runWriterT m) s0
+
+pp = pPrintNoColor
 
 test1 = do
   rv <- parseFile "../lua/test_lua_hs.lua"
@@ -256,13 +272,23 @@ test1 = do
       let (Result state log rv) = eval block
       -- putStrLn $ show state
       putStrLn $ log
-      putStrLn $ show rv
+      -- putStrLn $ show rv
+      pp rv
     Left (sourceRange, msg) -> do
       putStrLn $ show sourceRange
       putStrLn $ msg
-      
-  let t0 = insertPath VNil        [VString "a"] mempty
-      t1 = insertPath (VTable t0) [VString "c"] mempty
-      t2 = insertPath VNil        [VString "c", VString "b"] t1
-  -- putStrLn $ show t2
-  return ()
+
+test2 = do
+  let
+    m = do
+      id0 <- makeId
+      id1 <- makeId
+           
+      let t0 = insertPath VNil                   [VString "a"] mempty
+          t1 = insertPath (VPtr (OTable id0 t0)) [VString "c"] mempty
+          t2 = insertPath VNil                   [VString "c", VString "b"] t1
+      return t2
+
+    (Result state log rv) = runM m
+  pp rv
+  
