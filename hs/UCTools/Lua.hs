@@ -124,18 +124,27 @@ setTable id tab = do
 setLocals  = setTable locals
 setGlobals = setTable globals
 
-setLocal  = setTableField locals   . VString
-setGlobal = setTableField globals  . VString
+setLocal  = setTableField locals  . VString
+setGlobal = setTableField globals . VString
 
 getLocal  = getTableField locals  . VString
 getGlobal = getTableField globals . VString
 
 setVar :: Text -> Value -> EvalM ()
 setVar name val = do
+  logn $ "setVar " ++ show name ++ " " ++ show val
   l <- getLocal name
   case l of
     VNil -> setGlobal name val
     _    -> setLocal  name val
+
+
+setVarPath :: Name -> [Name] -> Value -> EvalM ()
+setVarPath (Name name) [] val = setVar name val
+setVarPath (Name name) (var:fields) val = do
+  tab <- getVar name
+  logn $ "setVarPath tab = " ++ show tab
+    
 
 getVar :: Text -> EvalM Value
 getVar name = do
@@ -144,8 +153,6 @@ getVar name = do
     VNil -> getGlobal name
     _    -> return l
       
-
-
 evalBlock block@(Block stats maybeReturn) = do
   -- logn $ show block
   locals' <- getLocals
@@ -165,10 +172,10 @@ namesToPath = fmap (VString . unName)
 
 traverse' = flip traverse
 
-makeTable = do
+makeTable t = do
   id <- use nextId
   nextId %= (+ 1)
-  objects %= Data.IntMap.insert id (OTable mempty)
+  objects %= Data.IntMap.insert id (OTable t)
   return id
 
 makeFun :: (Maybe Int) -> FunBody -> EvalM Int
@@ -179,12 +186,6 @@ makeFun maybeSelf body = do
   return id
 
     
-
-setVarPath :: Value -> [Name] -> EvalM ()
-setVarPath val = s where
-  s _ = do
-    logn $ "setVarPath"
-    return ()
   
 evalStat stat = do
   -- log $ show stat
@@ -202,19 +203,17 @@ evalStat stat = do
       ev EmptyStat = ni "EmptyStat"
 
       ev ex@(FunAssign (FunName name names maybeName) body) = do
-        let ns = [name] ++ names
-        (allNames, maybeSelf) <-
+        (fieldNames, maybeSelf) <-
           case maybeName of
             Nothing -> do
-              return $ (ns ++ [],  Nothing)
+              return $ (names ++ [],  Nothing)
             Just n  -> do
-              return $ (ns ++ [n], Just (-1))  -- FIXME: Get table ref
-        -- logn $ "body: " ++ show body
+              return $ (names ++ [n], Just (-1))  -- FIXME: Get table ref
         id <- makeFun maybeSelf body
-        setVarPath (VPtr id) allNames
+        setVarPath name fieldNames $ VPtr id
           
       ev ex@(LocalFunAssign (Name name) body) = do
-        logn $ "LocalFunAssign: " ++ show ex
+        -- logn $ "LocalFunAssign: " ++ show ex
         id <- makeFun Nothing body
         setLocal name $ VPtr id
         
@@ -229,15 +228,15 @@ evalStat stat = do
         let vals = Prelude.concat vals'
             -- FIXME: Zip vars with values correct?
             nvs = Prelude.zip names vals 
-        traverse' nvs $ \(Name name, val) -> do
-          setTableField locals (VString name) val
+        traverse' nvs $ \(Name name, val) -> setLocal name val
         return ()
 
-      ev (Assign vars exps) = do
+      ev ex@(Assign vars exps) = do
+        -- logn $ "Assign: " ++ show ex
         vals <- traverse evalExp exps
-        let assign (k, v) = do
-              logn $ "assign " ++ show k ++ " " ++ show v
-              return ()
+        let assign (VarName (Name var), val) = setVar var val
+            assign (var, val) = do
+              logn $ "FIXME: Assign: inner: " ++ show var ++ " " ++ show val
         traverse assign $ Prelude.zip vars $ Prelude.concat vals
         return ()
       
@@ -301,12 +300,12 @@ evalExp expr = do
 
         assIndexed <- traverse indexed arrFields
         assKeyed   <- traverse keyed   keyFields
-        id <- makeTable
-        setTable id $ Data.Map.fromList $ assIndexed ++ assKeyed  
-        
+        id <- makeTable $ Data.Map.fromList $ assIndexed ++ assKeyed  
         return $ [ VPtr id ]
         
   ev expr
+
+
 
 -- The result of parseFile is a Block.  It seems best to focus on the
 -- file level.
@@ -315,11 +314,12 @@ evalExp expr = do
 globals = 0
 locals  = 1
 
-
 runM :: EvalM t -> Result t
 runM (EvalM m) = Result s l v where
-  to0 = OTable mempty
-  obj0 = Data.IntMap.fromList [(globals, to0), (locals, to0)]
+  obj0 = Data.IntMap.fromList [
+    (globals, OTable mempty),
+    (locals,  OTable mempty)
+    ]
   s0 = State 2 obj0
   ((v, l), s) = State.runState (runWriterT m) s0
 
