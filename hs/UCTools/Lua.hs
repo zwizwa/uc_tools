@@ -1,7 +1,9 @@
 -- NEXT:
 -- . write more code in test_lua_hs.lua and fill in the interpreter
---
+-- . represent functions as code or syntax?
 
+-- TODO: Tables really need to be accessed by reference.  It is not
+-- enough to just add an id.
 
 
 -- Lua tools.  Goals:
@@ -35,8 +37,6 @@ import Data.Text
 import Data.Text.Read
 import Text.Pretty.Simple
 
--- class DSL where
-
 type Table = Map Value Value
 data Value = VFloat Float
            | VInt Int
@@ -46,21 +46,19 @@ data Value = VFloat Float
            | VPtr Object
            deriving (Show, Eq, Ord)
 
-  
-
 -- Tables and functions are compared by reference.  This is emulated
 -- by carrying an id which is not mutable by Lua code.  The id also
 -- allows implementation of Ord, which is not implemented for FunBody.
 data Object = OTable Int Table
-            | OFun   Int FunBody
+            | OFun   Int (Maybe Table) FunBody
             deriving (Show, Eq)
 
 instance Ord Object where
   a <= b = (p a) <= (p b) where
     -- Project it onto a representation that does implement Ord,
     -- ignoring irrelevant components.
-    p (OTable id _) = (1, id)
-    p (OFun   id _) = (2, id)
+    p (OTable id _)   = (1, id)
+    p (OFun   id _ _) = (2, id)
 
 
 -- I think that 
@@ -143,28 +141,36 @@ evalStat stat = do
 
       ev ex@(FunAssign (FunName name names maybeName) body) = do
         let ns = [name] ++ names
-            (allNames, isMethod) = case maybeName of
-              Nothing -> (ns ++ [], False)
-              Just n  -> (ns ++ [n], True)
-            path = namesToPath allNames
-        logn $ "body: " ++ show body
-        locals %= insertPath (VNI "body") path
+        (allNames, maybeTable) <-
+          case maybeName of
+            Nothing -> do
+              return $ (ns ++ [],  Nothing :: Maybe Table)
+            Just n  -> do
+              -- FIXME: How to get a reference to the table here?  It
+              -- needs to be stored by name!
+              return $ (ns ++ [n], Just mempty)
+        -- logn $ "body: " ++ show body
+        id <- makeId
+        locals %= insertPath
+          (VPtr $ OFun id maybeTable body)
+          (namesToPath allNames)
+          
       ev (LocalFunAssign name body) = ni "LocalFunAssign"
         
-
-      ev ex@(LocalAssign names (Just exps)) = do
-        logn $ "LocalAssign: " ++ show ex
-        vals' <- traverse evalExp exps
+      ev ex@(LocalAssign names maybeExps) = do
+        -- logn $ "LocalAssign: " ++ show ex
+        vals' <- case maybeExps of
+          Just exps ->
+            traverse evalExp exps
+          Nothing ->
+            -- FIXME: Not clear.  All nil?
+            return $ cycle [[VNil]]
         let vals = Prelude.concat vals'
-            -- FIXME: Does this zip perform the correct return
-            -- inlining?  Lua is weird here.
+            -- FIXME: Zip vars with values correct?
             nvs = Prelude.zip names vals 
         traverse' nvs $ \(Name name, val) -> do
           locals %= Data.Map.insert (VString name) val
         return ()
-      ev ex@(LocalAssign _ Nothing) = do
-        -- Does this just define variables?
-        ni $ "LocalAssign: " ++ show ex
 
       ev (Assign vars exps) = do
         vals <- traverse evalExp exps
@@ -263,22 +269,20 @@ eval = runM . evalBlock
 pp = pPrintNoColor
 
 test1 = do
+  putStrLn "** test1"
   rv <- parseFile "../lua/test_lua_hs.lua"
   case rv of
     Right block -> do
-      -- putStrLn $ show block
-      let doc = pprint block
-      -- putStrLn $ show doc
       let (Result state log rv) = eval block
       -- putStrLn $ show state
-      putStrLn $ log
-      -- putStrLn $ show rv
+      putStr $ log
       pp rv
     Left (sourceRange, msg) -> do
       putStrLn $ show sourceRange
       putStrLn $ msg
 
 test2 = do
+  putStrLn "** test2"
   let
     m = do
       id0 <- makeId
