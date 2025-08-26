@@ -30,6 +30,7 @@ import Control.Monad.Writer
 import qualified Control.Monad.State as State
 import Control.Monad.Fix
 import Data.Map
+import Data.IntMap
 import Data.List
 import Control.Lens
 import Prelude hiding (log)
@@ -43,30 +44,22 @@ data Value = VFloat Float
            | VString Text
            | VNil
            | VNI String
-           | VPtr Object
+           | VPtr Int
            deriving (Show, Eq, Ord)
 
--- Tables and functions are compared by reference.  This is emulated
--- by carrying an id which is not mutable by Lua code.  The id also
--- allows implementation of Ord, which is not implemented for FunBody.
-data Object = OTable Int Table
-            | OFun   Int (Maybe Table) FunBody
+-- Tables and functions are compared by reference, and tables can be
+-- updated in-place.  I don't see a way to avoid putting them in a
+-- store.  I also don't see how I can avoid then manually implementing
+-- GC on that store.
+data Object = OTable Table
+            | OFun   (Maybe Int) FunBody
             deriving (Show, Eq)
-
-instance Ord Object where
-  a <= b = (p a) <= (p b) where
-    -- Project it onto a representation that does implement Ord,
-    -- ignoring irrelevant components.
-    p (OTable id _)   = (1, id)
-    p (OFun   id _ _) = (2, id)
-
 
 -- I think that 
 
 data State    = State {
-  _locals  :: Table,
-  _globals :: Table,
-  _nextId  :: Int
+  _nextId  :: Int,
+  _objects :: IntMap Object
   } deriving (Show)
 data Result t = Result State Log t deriving (Show)
 
@@ -90,19 +83,71 @@ instance MonadFail EvalM where
 
 -- Update nested map from list of keys.  The generic method can use
 -- any Value to index.
-insertPath :: Value -> [ Value ] -> Table -> Table
-insertPath v = u where
-  u [k] = Data.Map.insert k v
-  u (k:ks) = Data.Map.adjust f k where
-    f (VPtr (OTable id t)) = VPtr $ OTable id $ u ks t
+
+-- insertPath :: Value -> [ Value ] -> Table -> Table
+-- insertPath v = u where
+--   u [k] = Data.Map.insert k v
+--   u (k:ks) = Data.Map.adjust f k where
+--     f (VPtr (OTable id t)) = VPtr $ OTable id $ u ks t
+
+-- FIXME: I just want to make a lens for it.
+
+-- Tables are stored in the objects IntMap and use indirection.
+setTableField :: Int -> Value -> Value -> EvalM ()
+setTableField id k v = do
+  -- objects %= Data.IntMap.adjust id (Data.Map.insert key val)
+  -- FIXME: This unrap/rewrap can be done with lenses as well
+  -- The fmap is for Maybe
+  -- objects . at id %= fmap (\(OTable t) -> OTable $ Data.Map.insert k v t)
+  -- I do need a match error when the Table at id doesn't exist.
+  objects . at id %= \(Just (OTable t)) -> Just $ OTable $ Data.Map.insert k v t
+
+getTable :: Int -> EvalM Table
+getTable id = do
+  Just (OTable t) <- use (objects . at id)
+  return t
+
+getTableField :: Int -> Value -> EvalM Value
+getTableField id k = do
+  t <- getTable id
+  case Data.Map.lookup k t of
+    Just v  -> return v
+    Nothing -> return VNil
+
+getLocals  = getTable locals
+getGlobals = getTable globals
+
+setTable :: Int -> Table -> EvalM ()
+setTable id tab = do
+  objects . at id .= (Just $ OTable tab)
+
+setLocals  = setTable locals
+setGlobals = setTable globals
+
+
+
+-- insertPath :: Value -> [ Value ] -> m ()
+-- insertPath v = u where
+--   u [k] = do
+--     objects %= 
+    
+--     Data.Map.insert k v
+
+    
+--   u (k:ks) = Data.Map.adjust f k where
+--     f (VPtr (OTable id t)) = VPtr $ OTable id $ u ks t
+
+
 
 -- insertPath v = (flip Data.Map.insert v)
 
 -- https://hackage.haskell.org/package/language-lua-0.11.0.2/docs/Language-Lua-Syntax.html
 
+
+
 evalBlock block@(Block stats maybeReturn) = do
   -- logn $ show block
-  locals' <- use locals
+  locals' <- getLocals
   traverse evalStat stats
   rvs <- case maybeReturn of
     Nothing -> return [VNil]
@@ -110,7 +155,7 @@ evalBlock block@(Block stats maybeReturn) = do
       -- FIXME: Semantics not clear, how do multiple return values combine?
       vals <- traverse evalExp exprs
       return $ Prelude.concat vals
-  locals .= locals'
+  setLocals locals'
   return rvs
 
 unName (Name n) = n
@@ -119,9 +164,10 @@ namesToPath = fmap (VString . unName)
 
 traverse' = flip traverse
 
-makeId = do
+makeTable = do
   id <- use nextId
   nextId %= (+ 1)
+  objects %= Data.IntMap.insert id (OTable mempty)
   return id
   
 evalStat stat = do
@@ -140,25 +186,27 @@ evalStat stat = do
       ev EmptyStat = ni "EmptyStat"
 
       ev ex@(FunAssign (FunName name names maybeName) body) = do
-        let ns = [name] ++ names
-        (allNames, maybeTable) <-
-          case maybeName of
-            Nothing -> do
-              return $ (ns ++ [],  Nothing :: Maybe Table)
-            Just n  -> do
-              -- FIXME: How to get a reference to the table here?  It
-              -- needs to be stored by name!
-              return $ (ns ++ [n], Just mempty)
-        -- logn $ "body: " ++ show body
-        id <- makeId
-        locals %= insertPath
-          (VPtr $ OFun id maybeTable body)
-          (namesToPath allNames)
+        ni "FunAssign"
+
+      --   let ns = [name] ++ names
+      --   (allNames, maybeTable) <-
+      --     case maybeName of
+      --       Nothing -> do
+      --         return $ (ns ++ [],  Nothing :: Maybe Table)
+      --       Just n  -> do
+      --         -- FIXME: How to get a reference to the table here?  It
+      --         -- needs to be stored by name!
+      --         return $ (ns ++ [n], Just mempty)
+      --   -- logn $ "body: " ++ show body
+      --   id <- makeId
+      --   locals %= insertPath
+      --     (VPtr $ OFun id maybeTable body)
+      --     (namesToPath allNames)
           
       ev (LocalFunAssign name body) = ni "LocalFunAssign"
         
       ev ex@(LocalAssign names maybeExps) = do
-        -- logn $ "LocalAssign: " ++ show ex
+        logn $ "LocalAssign: " ++ show ex
         vals' <- case maybeExps of
           Just exps ->
             traverse evalExp exps
@@ -169,7 +217,7 @@ evalStat stat = do
             -- FIXME: Zip vars with values correct?
             nvs = Prelude.zip names vals 
         traverse' nvs $ \(Name name, val) -> do
-          locals %= Data.Map.insert (VString name) val
+          setTableField locals (VString name) val
         return ()
 
       ev (Assign vars exps) = do
@@ -187,10 +235,11 @@ evalStat stat = do
 -- instead of Value as eval return value.
 evalVar :: Var -> EvalM [Value]
 evalVar var@(VarName (Name name)) = do
-  locals' <- use locals
+  locals' <- getLocals
   case Data.Map.lookup (VString name) locals' of
     Nothing -> do
-      log $ show locals'
+      logn $ "evalVar " ++ show name
+      logn $ show locals'
       return [VNI "evalVar not found"]
     Just val ->
       return [val]
@@ -243,19 +292,28 @@ evalExp expr = do
               [v'] <- evalExp v
               return (k', v')
 
-        id <- makeId
         assIndexed <- traverse indexed arrFields
         assKeyed   <- traverse keyed   keyFields
-        return $ [ VPtr $ OTable id $ Data.Map.fromList $ assIndexed ++ assKeyed ]
+        id <- makeTable
+        setTable id $ Data.Map.fromList $ assIndexed ++ assKeyed  
+        
+        return $ [ VPtr id ]
         
   ev expr
 
 -- The result of parseFile is a Block.  It seems best to focus on the
 -- file level.
 
+-- These can just be hardcoded
+globals = 0
+locals  = 1
+
+
 runM :: EvalM t -> Result t
 runM (EvalM m) = Result s l v where
-  s0 = State mempty mempty 0
+  to0 = OTable mempty
+  obj0 = Data.IntMap.fromList [(globals, to0), (locals, to0)]
+  s0 = State 2 obj0
   ((v, l), s) = State.runState (runWriterT m) s0
 
 eval = runM . evalBlock
@@ -282,17 +340,17 @@ test1 = do
       putStrLn $ msg
 
 test2 = do
-  putStrLn "** test2"
-  let
-    m = do
-      id0 <- makeId
-      id1 <- makeId
+--   putStrLn "** test2"
+--   let
+--     m = do
+--       id0 <- makeId
+--       id1 <- makeId
            
-      let t0 = insertPath VNil                   [VString "a"] mempty
-          t1 = insertPath (VPtr (OTable id0 t0)) [VString "c"] mempty
-          t2 = insertPath VNil                   [VString "c", VString "b"] t1
-      return t2
+--       let t0 = insertPath VNil                   [VString "a"] mempty
+--           t1 = insertPath (VPtr (OTable id0 t0)) [VString "c"] mempty
+--           t2 = insertPath VNil                   [VString "c", VString "b"] t1
+--       return t2
 
-    (Result state log rv) = runM m
-  pp rv
-  
+--     (Result state log rv) = runM m
+--   pp rv
+  return ()
