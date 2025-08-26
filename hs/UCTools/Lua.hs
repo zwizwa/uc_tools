@@ -124,25 +124,26 @@ setTable id tab = do
 setLocals  = setTable locals
 setGlobals = setTable globals
 
+setLocal  = setTableField locals   . VString
+setGlobal = setTableField globals  . VString
 
+getLocal  = getTableField locals  . VString
+getGlobal = getTableField globals . VString
 
--- insertPath :: Value -> [ Value ] -> m ()
--- insertPath v = u where
---   u [k] = do
---     objects %= 
-    
---     Data.Map.insert k v
+setVar :: Text -> Value -> EvalM ()
+setVar name val = do
+  l <- getLocal name
+  case l of
+    VNil -> setGlobal name val
+    _    -> setLocal  name val
 
-    
---   u (k:ks) = Data.Map.adjust f k where
---     f (VPtr (OTable id t)) = VPtr $ OTable id $ u ks t
-
-
-
--- insertPath v = (flip Data.Map.insert v)
-
--- https://hackage.haskell.org/package/language-lua-0.11.0.2/docs/Language-Lua-Syntax.html
-
+getVar :: Text -> EvalM Value
+getVar name = do
+  l <- getLocal name
+  case l of
+    VNil -> getGlobal name
+    _    -> return l
+      
 
 
 evalBlock block@(Block stats maybeReturn) = do
@@ -169,6 +170,21 @@ makeTable = do
   nextId %= (+ 1)
   objects %= Data.IntMap.insert id (OTable mempty)
   return id
+
+makeFun :: (Maybe Int) -> FunBody -> EvalM Int
+makeFun maybeSelf body = do
+  id <- use nextId
+  nextId %= (+ 1)
+  objects %= Data.IntMap.insert id (OFun maybeSelf body)
+  return id
+
+    
+
+setVarPath :: Value -> [Name] -> EvalM ()
+setVarPath val = s where
+  s _ = do
+    logn $ "setVarPath"
+    return ()
   
 evalStat stat = do
   -- log $ show stat
@@ -186,27 +202,24 @@ evalStat stat = do
       ev EmptyStat = ni "EmptyStat"
 
       ev ex@(FunAssign (FunName name names maybeName) body) = do
-        ni "FunAssign"
-
-      --   let ns = [name] ++ names
-      --   (allNames, maybeTable) <-
-      --     case maybeName of
-      --       Nothing -> do
-      --         return $ (ns ++ [],  Nothing :: Maybe Table)
-      --       Just n  -> do
-      --         -- FIXME: How to get a reference to the table here?  It
-      --         -- needs to be stored by name!
-      --         return $ (ns ++ [n], Just mempty)
-      --   -- logn $ "body: " ++ show body
-      --   id <- makeId
-      --   locals %= insertPath
-      --     (VPtr $ OFun id maybeTable body)
-      --     (namesToPath allNames)
+        let ns = [name] ++ names
+        (allNames, maybeSelf) <-
+          case maybeName of
+            Nothing -> do
+              return $ (ns ++ [],  Nothing)
+            Just n  -> do
+              return $ (ns ++ [n], Just (-1))  -- FIXME: Get table ref
+        -- logn $ "body: " ++ show body
+        id <- makeFun maybeSelf body
+        setVarPath (VPtr id) allNames
           
-      ev (LocalFunAssign name body) = ni "LocalFunAssign"
+      ev ex@(LocalFunAssign (Name name) body) = do
+        logn $ "LocalFunAssign: " ++ show ex
+        id <- makeFun Nothing body
+        setLocal name $ VPtr id
         
       ev ex@(LocalAssign names maybeExps) = do
-        logn $ "LocalAssign: " ++ show ex
+        -- logn $ "LocalAssign: " ++ show ex
         vals' <- case maybeExps of
           Just exps ->
             traverse evalExp exps
@@ -223,7 +236,7 @@ evalStat stat = do
       ev (Assign vars exps) = do
         vals <- traverse evalExp exps
         let assign (k, v) = do
-              -- FIXME: figure out lenses
+              logn $ "assign " ++ show k ++ " " ++ show v
               return ()
         traverse assign $ Prelude.zip vars $ Prelude.concat vals
         return ()
@@ -235,14 +248,8 @@ evalStat stat = do
 -- instead of Value as eval return value.
 evalVar :: Var -> EvalM [Value]
 evalVar var@(VarName (Name name)) = do
-  locals' <- getLocals
-  case Data.Map.lookup (VString name) locals' of
-    Nothing -> do
-      logn $ "evalVar " ++ show name
-      logn $ show locals'
-      return [VNI "evalVar not found"]
-    Just val ->
-      return [val]
+  val <- getVar name
+  return [val]
 
 evalFunCall fc = do
   logn $ "FunCall not implemented: " ++ show fc ++ "\n"
@@ -332,8 +339,8 @@ test1 = do
   case rv of
     Right block -> do
       let (Result state log rv) = eval block
-      -- putStrLn $ show state
       putStr $ log
+      pp state
       pp rv
     Left (sourceRange, msg) -> do
       putStrLn $ show sourceRange

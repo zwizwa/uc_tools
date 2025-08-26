@@ -1,7 +1,10 @@
 -- Test file for uc_tools/hs/UCTools/Lua.hs
 local q
-local m = { 123 }
+local m = { test = { } }
 
+local function localfun(a) return a + 1 end
+
+q = 123
 
 -- local m = {
 --    test = {
