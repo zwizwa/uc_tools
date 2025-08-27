@@ -13,7 +13,6 @@ import qualified UCTools.Lua as Lua
 main = do
   putStrLn "uc-tools.hs"
   Lua.test1
-  Lua.test2
               
   
 
