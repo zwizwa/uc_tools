@@ -65,7 +65,7 @@ data Value = VFloat Float
 -- store.  I also don't see how I can avoid then manually implementing
 -- GC on that store.
 data Object = OTable Table
-            | OFun   Bool Table FunBody
+            | OFun   Table FunBody
             deriving (Show, Eq)
 
 -- I think that 
@@ -197,11 +197,14 @@ makeTable t = do
   return id
 
 makeFun :: Bool -> FunBody -> EvalM Int
-makeFun hasSelf body = do
+makeFun hasSelf body@(FunBody names vararg block) = do
   env <- getLocals
   id <- use nextId
   nextId %= (+ 1)
-  objects %= Data.IntMap.insert id (OFun hasSelf env body)
+  let body' = case hasSelf of
+        True  -> (FunBody (Name "self":names) vararg block)
+        False -> body
+  objects %= Data.IntMap.insert id (OFun env body')
   return id
 
     
@@ -230,9 +233,9 @@ evalStat stat = do
         (fieldNames, hasSelf) <-
           case maybeName of
             Nothing -> do
-              return $ (names ++ [],  True)
+              return $ (names ++ [],  False)
             Just n  -> do
-              return $ (names ++ [n], False)
+              return $ (names ++ [n], True)
         id <- makeFun hasSelf body
         setVarPath name fieldNames $ VPtr id
           
@@ -299,7 +302,7 @@ evalFun idFun maybeSelf args = do
   -- FIXME: vararg
   -- FIXME: What is semantics of argument inlining for multiple return
   -- values into argument list?
-  Just (OFun hasSelf capturedEnv
+  Just (OFun capturedEnv
         (FunBody names vararg block)) <- use (objects . at idFun)
   args' <- case args of
     (Args as) -> traverse evalExp as
@@ -351,6 +354,7 @@ evalExp expr = do
         [e1'] <- evalExp e1
         [e2'] <- evalExp e2
         let ops = case binop of
+              -- Use rank 2 type?
               Add -> ((+),(+))
               Sub -> ((-),(-))
               Mul -> ((*),(*))
@@ -413,7 +417,7 @@ evalExp expr = do
 -- Convert evaluator data structure back to syntax.
 serialize (VFloat f) = return $ Number FloatNum $ pack $ show f
 serialize (VInt i) = return $ Number IntNum $ pack $ show i
-serialize (VString s) = return $ String $ pack $ show s -- FIXME: same quoting?
+serialize (VString s) = return $ String $ pack $ show s -- FIXME?
 serialize VNil = return $ Nil
 serialize (VPtr id) = do
   Just obj <- use (objects . at id)
@@ -433,9 +437,7 @@ serialize (VPtr id) = do
       fields <- traverse field $ Data.Map.toList table
       return $ TableConst fields
     -- FIXME: Also serialize the environment
-    (OFun True env (FunBody names vararg block)) -> do
-      return $ EFunDef (FunBody (Name "self":names) vararg block)
-    (OFun False env body) -> do
+    (OFun env body) -> do
       return $ EFunDef body
 
 
