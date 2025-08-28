@@ -23,4 +23,33 @@ m.lam = function(x) return x * x end
 --    }
 -- }
 -- m.c = 567
+
+local a
+
+a = 0
+repeat
+   a = a + 1
+   m.repeat_a = a
+until a > 3
+
+a = 3
+while a ~= 0 do
+   a = a - 1
+   m.while_a = a
+end
+
+do
+   a = 123
+   m.do_a = a
+end
+
+a = 0
+if a == 0 then
+   m.if_a = 0
+else
+   n.if_a = 123
+end
+
+
+
 return m, q, 1+2, m.lam(3)
