@@ -82,6 +82,7 @@ function type_from_extension(filename)
 end
 
 function webserver:response_file(filename)
+   log("filename: " .. filename .. "\n")
    local file = io.open(filename, 'r')
    if file then
       log("->200\n")
@@ -93,6 +94,7 @@ function webserver:response_file(filename)
       self:write(contents)
       file:close()
    else
+      -- os.execute("pwd")
       self:response_404()
    end
 end

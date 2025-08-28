@@ -221,5 +221,11 @@ function lxml.pretty(nodes, tab)
    return expr
 end
 
+-- Add a random tag e.g. to force refrash.
+function lxml.random_tag()
+   local rnd = math.floor(100000 * math.random()) -- force css reload
+   return "r=" .. rnd
+end
+
 
 return lxml

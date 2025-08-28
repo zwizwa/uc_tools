@@ -23,7 +23,7 @@ local logsvg = {}
 
 local prompt = require('prompt')
 local function log(str) io.stderr:write(str) end
-local function log_desc(thing) log(prompt.describe(thing)) end
+local function log_desc(thing) log(prompt.describe(thing) .. "\n") end
 
 
 
@@ -94,6 +94,8 @@ function logsvg.merge_logs(logs, sort_by)
 end
 
 function logsvg.render(e, logs)
+   -- log_desc({logsvg_render_logs=logs})
+
    -- Repel operates on the individual logs
    assert(e.repel)
    assert(e.ticks_per_pixel)
@@ -208,10 +210,10 @@ end
 -- probably be refactored or old should be deleted.
 function logsvg.read_log_parse(filename, config)
    if not config then config = {} end
-   -- log_desc({logsvg_read_log_parse_config = config})
+   -- log_desc({logsvg_read_log_parse = {config = config, filename = filename}})
    -- the default "" matches any message
    -- local sync_re = config.sync_re or "" -- "^ping (.-)"
-   log_desc({sync_re=sync_re})
+   -- log_desc({sync_re=sync_re})
    local max_lines = config.max_lines or 1000
    local bin_to_string = config.bin_to_string
    local lines = {}
@@ -254,7 +256,15 @@ function logsvg.read_log_parse(filename, config)
       assert(timestamp)
       assert(logline)
       if not last then
-         if sync_re and string.match(logline, sync_re) then
+         if not sync_re then
+            -- If there is no sync_re expression we synchronize at the
+            -- first message.
+            log("no sync_re:" .. timestamp .. ":" .. filename .. "\n")
+            last  = timestamp
+            first = timestamp
+         elseif string.match(logline, sync_re) then
+            -- If there is a sync_re expression then wait for it to
+            -- trigger.
             log("sync:" .. timestamp .. ":" .. filename .. "\n")
             last  = timestamp
             first = timestamp
@@ -318,8 +328,10 @@ function logsvg.read_log(filename, config)
    local fist = nil
    local wraps = 0;
 
+   -- log_desc({logsvg_read_log = {filename=filename, config=config}})
+
    for str in io.lines(filename) do
-      --log("line: " .. str .."\n")
+      log("line: " .. str .."\n")
 
       local stamp, logline = string.match(str, "([0123456789abcdef]-) (.*)")
 
@@ -365,6 +377,7 @@ end
 -- For convenience.  This is the "user scenario": convert a list of
 -- microcontroller trace log files to an svg.
 function logsvg.render_logfiles(e, filenames)
+   -- log_desc({logsvg_render_logfiles = filenames})
    assert(e.repel)
    local function process(filename)
       -- Just re-use the environemnt object for parser config as well.
