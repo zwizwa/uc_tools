@@ -94,6 +94,7 @@ function logsvg.merge_logs(logs, sort_by)
 end
 
 function logsvg.render(e, logs)
+   log_desc({logsvg_render_e=e})
    -- log_desc({logsvg_render_logs=logs})
 
    -- Repel operates on the individual logs
@@ -212,7 +213,7 @@ function logsvg.read_log_parse(filename, config)
    if not config then config = {} end
    -- log_desc({logsvg_read_log_parse = {config = config, filename = filename}})
    -- the default "" matches any message
-   -- local sync_re = config.sync_re or "" -- "^ping (.-)"
+   local sync_re = config.sync_re -- or "" -- "^ping (.-)"
    -- log_desc({sync_re=sync_re})
    local max_lines = config.max_lines or 1000
    local bin_to_string = config.bin_to_string

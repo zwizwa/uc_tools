@@ -55,11 +55,18 @@ function webserver:response_css(stylesheet)
    self:write(stylesheet)
 end
 
+function webserver:response_txt(txt)
+   log("->200\n")
+   self:write("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n")
+   self:write(txt)
+end
+
 function webserver:response_content_type(content_type, content)
    log("->200\n")
    self:write("HTTP/1.1 200 OK\r\nContent-Type: " .. content_type .. "\r\n\r\n")
    self:write(content)
 end
+
 
 local extensions = {
    ['.js'] = 'text/javascript',
