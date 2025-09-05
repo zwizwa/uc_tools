@@ -496,15 +496,15 @@ local function render_c(s, graph_name)
    local base_in  = 's->input.output'
    local base_out = 's->output.input'
    local base_code = {
-         {indent, 's->base.in       = (float**)&',base_in, ';\n'},
-         {indent, 's->base.out      = (float**)&',base_out,';\n'},
-         {indent, 's->base.nb_in    = sizeof(',base_in, ')/sizeof(float*);\n'},
-         {indent, 's->base.nb_out   = sizeof(',base_out,')/sizeof(float*);\n'},
-         {indent, 's->base.out_gain = &s->output.state.gain[0];\n'},
-         {indent, 's->base.process  = (graph_base_process_fn)',graph_name,'_graph_process;\n'},
-         {indent, 's->base.buf      = &s->buf[0][0];\n'},
-         {indent, 's->base.buf_size = ',buf_size,';\n'},
-         {indent, 's->base.nb_buf   = ',alloc_count,';\n'},
+         {indent, 's->base.in           = (float**)&',base_in, ';\n'},
+         {indent, 's->base.out          = (float**)&',base_out,';\n'},
+         {indent, 's->base.nb_in        = sizeof(',base_in, ')/sizeof(float*);\n'},
+         {indent, 's->base.nb_out       = sizeof(',base_out,')/sizeof(float*);\n'},
+         {indent, 's->base.output_state = &s->output.state;\n'},
+         {indent, 's->base.process      = (graph_base_process_fn)',graph_name,'_graph_process;\n'},
+         {indent, 's->base.buf          = &s->buf[0][0];\n'},
+         {indent, 's->base.buf_size     = ',buf_size,';\n'},
+         {indent, 's->base.nb_buf       = ',alloc_count,';\n'},
 
    }
 

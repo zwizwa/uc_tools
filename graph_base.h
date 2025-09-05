@@ -20,8 +20,10 @@ struct graph_base {
     float **in;   uintptr_t nb_in;
     float **out;  uintptr_t nb_out;
 
-    /* Optional output gain parameter. */
-    float *out_gain;
+    /* Patch point for application-specific output state.  E.g. for
+       gain, limiter.  Application knows type but not the location, so
+       the code generator will patch it here.  */
+    void *output_state;
 
     /* The main process method. */
     graph_base_process_fn process;

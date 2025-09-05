@@ -51,5 +51,9 @@ else
 end
 
 
+for i=1,10 do
+   m.for_i = i
+end
+
 
 return m, q, 1+2, m.lam(3)
