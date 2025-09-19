@@ -68,6 +68,18 @@ local function imap(fun, arr, start)
 end
 list.imap = imap
 
+-- filter elements in array
+local function filter(fun, arr)
+   assert(fun)
+   assert(arr)
+   local results = {}
+   for _,el in ipairs(arr) do
+      if fun(el) then table.insert(results, el) end
+   end
+   return results
+end
+list.filter = filter
+
 
 local function concat(list_of_lists)
    local result = {}
@@ -106,6 +118,17 @@ function list.to_set(arr)
       tab[el] = true
    end
    return tab
+end
+
+
+function list.append(...)
+   local rv = {}
+   for _,l in ipairs({...}) do
+      for _,el in ipairs(l) do
+         table.insert(rv, el)
+      end
+   end
+   return rv
 end
 
 return list
