@@ -33,8 +33,8 @@ struct tether {
        byte (255 bytes) */
     uint8_t buf[256];
 
-    unsigned int verbose:1;
-    unsigned int progress:1;
+    uint8_t verbose;
+    uint8_t progress:1;
 };
 
 // FIXME: move these to a header
@@ -49,8 +49,8 @@ enum PRIM { MONITOR_3IF_FOR_PRIM(PRIM_ENUM_INIT) };
 
 int fd = -1;
 
-void tether_log(struct tether *s, const char *tag) {
-    if (!s->verbose) return;
+void tether_log_buf(struct tether *s, const char *tag) {
+    if (s->verbose <= 1) return;
     uint8_t len = s->buf[0];
     LOG("%s(%02x)", tag, len);
     for (uint8_t i=0; i<len; i++) {
@@ -75,11 +75,11 @@ void tether_read(struct tether *s) {
         goto again;
     }
     s->read(s, &s->buf[1], s->buf[0]);
-    tether_log(s, "R: ");
+    tether_log_buf(s, "R: ");
 }
 
 void tether_write_flush(struct tether *s) {
-    tether_log(s, "W: ");
+    tether_log_buf(s, "W: ");
     s->write(s, s->buf, s->buf[0]+1);
 }
 
@@ -171,7 +171,7 @@ void tether_read_mem(struct tether *s, uint8_t *buf,
            byte. */
         uint32_t max_chunk = 254;
         uint32_t chunk = (nb_bytes > max_chunk) ? max_chunk : nb_bytes;
-        if (s->verbose) { LOG("%08x %d\n", address, chunk); };
+        if (s->verbose > 1) { LOG("%08x %d\n", address, chunk); };
         tether_cmd_u8(s, NxL, chunk);
         if (s->buf[0] != chunk) {
             ERROR("read_mem %d: s->buf[0] == %d, expected %d\n",
@@ -227,7 +227,7 @@ void tether_write_mem(struct tether *s, const uint8_t *buf,
         if (!max_chunk) max_chunk = 254;
 
         uint32_t chunk = (nb_bytes > max_chunk) ? max_chunk : nb_bytes;
-        if (s->verbose) { LOG("%08x %d\n", address, chunk); };
+        if (s->verbose > 1) { LOG("%08x %d\n", address, chunk); };
         tether_cmd_buf(s, NxS, buf, chunk);
         tether_assert_ack(s);
         address += chunk;
@@ -244,13 +244,15 @@ void tether_write_mem(struct tether *s, const uint8_t *buf,
 }
 
 int tether_verify(struct tether *s, const uint8_t *buf,
-                   uint32_t address, uint32_t in_len,
-                   enum PRIM LDx, enum PRIM NxL) {
+                  uint32_t address, uint32_t in_len,
+                  enum PRIM LDx, enum PRIM NxL) {
     uint8_t buf_verify[in_len];
     tether_read_mem(s, buf_verify, address, in_len, LDx, NxL);
     for (uint32_t i=0; i<in_len; i++) {
         if (buf[i] != buf_verify[i]) {
-            // LOG("%08x diff w=%02x v=%02x\n", address + i, buf[i], buf_verify[i]);
+            if (s->verbose) {
+                LOG("%08x diff w=%02x v=%02x\n", address + i, buf[i], buf_verify[i]);
+            }
             return 0;
         }
     }
@@ -287,7 +289,7 @@ void tether_load(struct tether *s, const char *filename, uint32_t address,
     if (!tether_verify(s, buf, address, in_len, LDx, NxL)) {
         LOG("%08x WARNING: verify failed\n");
     }
-    else { // if (s->verbose)
+    else {
         LOG("%s%08x verify ok\n", tether_3if_tag, address);
     }
 }

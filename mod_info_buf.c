@@ -21,6 +21,7 @@ void abort_busyloop(void) {
 /* Implementation of the base functionality needed by infof.c */
 
 #include "info_buf.h"
+#include "infof.h"
 
 #ifndef INFO_LOGSIZE
 #define INFO_LOGSIZE 10
@@ -61,22 +62,6 @@ KEEP uint32_t info_bytes() {
     return info_buf.hdr.write_next - info_buf.hdr.read_next;
 }
 
-/* This is a quick hack to implement log levels.  Two variables are
-   used.  'threshold' sets the global log level, which gates
-   info_putchar_inner.  'current' sets the threshold of the current
-   logging context, which is modified by statements that support
-   level-based logging, and is put back to 0 after the extent of the
-   log call.
-
-   Practically, too much needs to change to implement the threshold as
-   context that is passed down the calls. The info mechanism was
-   already non-reentrant, so this seems ok as a temporary hack.
-   FIXME: Evaluate this later.
-*/
-
-/* Zero means default behavior: log everything. */
-int32_t info_level_threshold = 0;
-int32_t info_level_current = 0;
 
 uint32_t info_overflow_errors = 0;
 
@@ -126,6 +111,9 @@ KEEP int info_write(uint8_t *buf, uintptr_t size) {
 }
 #endif
 
+
+
+
 /* This might not be necessary. */
 int info_bin(uint32_t stamp, uint8_t *buf, uintptr_t size) {
     /* Do one check, then write the buffer if it fits in a tight loop. */
@@ -152,7 +140,7 @@ KEEP int info_putchar_raw(int c) {
 #if 0 // A quick way to turn off logging
     return 0;
 #else
-    if (info_level_threshold > info_level_current) return 0;
+    if (info_buf.hdr.level_threshold > info_buf.hdr.level_current) return 0;
     uint8_t buf = c;
     return info_write(&buf, 1);
 #endif
@@ -213,5 +201,36 @@ KEEP uint32_t info_read_crlf(uint8_t *buf, uint32_t len) {
         info_buf.hdr.read_next++;
     }
 }
+
+// from infof.c
+// 20221103 The formatter is abstracted in an NS module
+#define NS(name) CONCAT(info_,name)
+// no context def/ref, context is global
+#define info_CTX_DEF
+#define info_CTX_REF
+// The original routine did not use a context parameter.
+typedef void *_info_ctx_t;
+#include "ns_infof.c"
+#undef NS
+
+int infof(const char *fmt, ...) {
+    /* Bypass everything if not enabled. */
+    if (info_buf.hdr.level_threshold > info_buf.hdr.level_current) return 0;
+    va_list ap;
+    va_start(ap, fmt);
+    int rv = info_vf(fmt, ap);
+    va_end(ap);
+    return rv;
+}
+
+
+/* The easiest way to avoid malloc() on the target is to make sure
+   it's not in there.  Clobber some of the functions that might pull
+   it in. */
+
+#define printf  dont_use_printf
+#define putchar dont_use_putchar
+
+
 #endif
 #endif

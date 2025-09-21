@@ -48,12 +48,6 @@
 
 
 
-/* The easiest way to avoid malloc() on the target is to make sure
-   it's not in there.  See infof.c for a printf replacement. */
-#define printf  dont_use_printf
-#define putchar dont_use_putchar
-
-
 
 /* For debugging: keep a function in the firmware image, even if it's
    not referenced.  All otherwise unused functions get
