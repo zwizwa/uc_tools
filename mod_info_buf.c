@@ -24,7 +24,8 @@ void abort_busyloop(void) {
 #include "infof.h"
 
 #ifndef INFO_LOGSIZE
-#define INFO_LOGSIZE 10
+#error need INFO_LOGSIZE
+//#define INFO_LOGSIZE 10
 #endif
 
 #define INFO_SIZE (1 << INFO_LOGSIZE)
@@ -49,8 +50,8 @@ int info_putchar(int c) { return 0; }
 #include <stdint.h>
 #include <string.h>
 // Put it in a single object, for easy external debugger access
-struct info_buf info_buf = { .hdr = { .logsize = INFO_LOGSIZE } };
-
+uint8_t info_buf_buf[INFO_SIZE];
+struct info_buf info_buf;
 
 KEEP void info_clear(void) {
     memset(&info_buf,0,sizeof(info_buf));
