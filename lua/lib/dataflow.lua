@@ -23,6 +23,7 @@
 require('lure.log')
 local list   = require('lib.tools.list')
 local iolist = require('lure.iolist')
+local tab    = require('lure.tab')
 local map    = list.map
 local concat = list.concat
 local cproc  = require('lib.cproc')
@@ -814,14 +815,24 @@ local function named(names, values)
 end
 
 
+-- Sort the nodes and params so that diffs of the txt file are cleaner.
+
 function osc_preset_txt(graph)
    local nodes = graph.nodes
    local txt = {}
    assert(nodes)
 
-   for _,node in ipairs(nodes) do
+   local node_index = {}
+   for _,node in ipairs(nodes) do node_index[node.name] = node end
+   local node_keys = tab.keys(node_index, {sort = true})
+
+   for _,node_key in ipairs(node_keys) do
+      local node = node_index[node_key]
       local flat_init = nested_to_flat_osc(node.init or {})
-      for param,val in pairs(flat_init) do
+      local params = tab.keys(flat_init, {sort = true})
+
+      for _, param in ipairs(params) do
+         local val = flat_init[param]
          -- The val is a 'Maybe' type.
          if val then
             table.insert(
