@@ -58,7 +58,7 @@ end
 --    end
 -- end
 
-function tab.keys(t)
+function tab.keys(t,cfg)
    assert(t)
    cfg = cfg or {}
    local keys = {}
