@@ -58,10 +58,11 @@ end
 --    end
 -- end
 
-function tab:keys(cfg)
+function tab.keys(t)
+   assert(t)
    cfg = cfg or {}
    local keys = {}
-   for k, _ in pairs(self) do table.insert(keys, k) end
+   for k, _ in pairs(t) do table.insert(keys, k) end
    if cfg.sort == true then
       table.sort(keys)
    elseif type(cfg.sort) == 'function' then
@@ -69,8 +70,8 @@ function tab:keys(cfg)
    end
    return keys
 end
-function tab:sorted_keys()
-   return tab.keys({sort = true})
+function tab.sorted_keys(t)
+   return tab.keys(t, {sort = true})
 end
 
 
