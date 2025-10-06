@@ -134,18 +134,20 @@ function actor.task.init(scheduler, task)
 end
 
 function actor.task:resume()
+   local log_ = self.log or log
+
    local co = self.coroutine
    local ok, rv = coroutine.resume(co)
    if not ok then
       -- log("resume->false\n")
       local statusmsg = coroutine.status(co)
       local traceback = debug.traceback(co)
-      log("actor.task:resume_error: status: " .. statusmsg .. "\n")
-      log("actor.task:resume_error: traceback:\n")
+      log_("actor.task:resume_error: status: " .. statusmsg .. "\n")
+      log_("actor.task:resume_error: traceback:\n")
       -- If not nil this is the Lua error message.
       if (rv) then log(rv .. "\n") end
-      log(traceback)
-      log("\n")
+      log_(traceback)
+      log_("\n")
       self:exit()
    else
       -- Note that when the coroutine "runs of the end", ok will be
@@ -155,7 +157,7 @@ function actor.task:resume()
       --
       local statusmsg = coroutine.status(co)
       if statusmsg ~= "suspended" then
-         log("actor.task:resume_ok: status=" .. statusmsg .. "\n")
+         log_("actor.task:resume_ok: status=" .. statusmsg .. "\n")
          self:exit()
       end
    end
