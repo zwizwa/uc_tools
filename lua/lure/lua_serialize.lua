@@ -4,6 +4,9 @@
 
 local m = {}
 
+-- FIXME: This should only use lure. modules
+local list = require('lib.tools.list')
+
 m.unprintable = {
    ['loop']     = '#<loop>',
    ['function'] = '#<function>',
@@ -46,7 +49,7 @@ function m.make_serializer(cfg)
 
             log("{ ")
 
-            for k,v in pairs(obj) do
+            for k,v in list.sorted_pairs(obj) do
                indent(level)
                if type(k) == 'number' then
                   log('[')
