@@ -333,7 +333,7 @@ function m.parallel(env, spec, size)
    local flat_params = nested_to_flat_c(nested_params)
    --log_desc({flat_params = flat_params})
 
-   for c_name, c_type in pairs(flat_params) do
+   for c_name, c_type in list.sorted_pairs(flat_params) do
        table.insert(
           setters, {
              'static inline void ',pname,'_set_',c_name,'(',struct,' *s, ',c_type,' v) {\n',

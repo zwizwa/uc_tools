@@ -270,7 +270,7 @@ local function analyze(s)
    for_buf(pass2_buf_reference, pass2_buf_alloc)
 
    local types = {}
-   for k in pairs(did_type) do table.insert(types, k) end
+   for k in list.sorted_pairs(did_type) do table.insert(types, k) end
 
    local rv = {buf=buf,connect=connect,use_stat=use_stat,edge=edge,types=types}
    -- log_desc(rv)
@@ -414,7 +414,7 @@ local function render_c(s, graph_name)
          table.insert(init_code, {indent, type_name,'_init(',state,');\n'})
          local flat_init = nested_to_flat_c(node.init)
          -- log_desc({flat_init = flat_init, nested_init = node.init})
-         for name, value in pairs(flat_init) do
+         for name, value in list.sorted_pairs(flat_init) do
             -- Value is a 'Maybe' type.  Don't generate the
             -- initializer if value is false.
             if value then
@@ -645,7 +645,7 @@ local function graph_compiler()
       assert(instance.out_ports)
 
       -- FIXME: removing all functions to make it serializable
-      for k,v in pairs(instance) do
+      for k,v in list.sorted_pairs(instance) do
          if type(v) == 'function' then
             instance[k] = '#<removed>'
          end

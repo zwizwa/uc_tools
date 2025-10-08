@@ -112,6 +112,7 @@ function iolist.w(iol, maybe_filename, opts)
             os.remove(new_filename)
          else
             maybe_logf("new %s\n", old_filename)
+            os.execute(string.format("diff %s %s", old_filename, new_filename))
             os.remove(old_filename)
             os.rename(new_filename, old_filename)
          end
