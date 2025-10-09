@@ -35,6 +35,11 @@
 #define FWSTREAM_ERR_NOT_WRITTEN 7
 #define FWSTREAM_ERR_BAD_REPORT 8
 
+
+#ifndef FWSTREAM_LOG
+#define FWSTREAM_LOG LOG
+#endif
+
 struct fwstream;
 
 struct fwstream {
@@ -78,6 +83,8 @@ struct fwstream {
        implementation-specific error codes. */
     int32_t write_status;
 
+    // uint8_t verbose:1;
+
 };
 
 static inline void
@@ -111,13 +118,13 @@ fwstream_new_priority(struct fwstream *s, const struct gdbstub_config *config) {
             priority = c->priority + 1;
         }
         else {
-            LOG("fwstream_ctrl_crc: %x != %x\n", c->ctrl_crc, crc);
+            FWSTREAM_LOG("fwstream_ctrl_crc: %x != %x\n", c->ctrl_crc, crc);
         }
     }
     else {
         /* Test path: config can have _start and _endx set to zero to
            indicate there is no target Flash. */
-        LOG("fwstream_ctrl_crc: no gdbstub_control\n");
+        FWSTREAM_LOG("fwstream_ctrl_crc: no gdbstub_control\n");
     }
     return priority;
 
@@ -145,7 +152,7 @@ fwstream_push(struct fwstream *s, uintptr_t chunk_nb, const uint8_t *chunk_data)
 
     /* Start ignoring once the sequence is broken. */
     if (chunk_nb != s->expected_chunk_nb) {
-        LOG("chunk_nb = %d, expected = %d\n", chunk_nb, s->expected_chunk_nb);
+        FWSTREAM_LOG("chunk_nb = %d, expected = %d\n", chunk_nb, s->expected_chunk_nb);
         return FWSTREAM_ERR_GAP;
     }
     s->expected_chunk_nb = chunk_nb + 1;
@@ -177,12 +184,12 @@ fwstream_push(struct fwstream *s, uintptr_t chunk_nb, const uint8_t *chunk_data)
         uint32_t max_size = partition_config_max_firmware_size(s->partition_config);
 
         if (max_size && (size_padded > max_size)) {
-            LOG("fwstream: max_size=0x%x, size_padded=0x%x\n", max_size, size_padded);
+            FWSTREAM_LOG("fwstream: max_size=0x%x, size_padded=0x%x\n", max_size, size_padded);
             return FWSTREAM_ERR_FW_SIZE;
         }
         s->control_chunk = size_padded / s->chunk_size;
 
-        LOG("fwstream: partition: %x %x %d (0x%x)\n",
+        FWSTREAM_LOG("fwstream: partition: %x %x %d (0x%x)\n",
             start, endx, size_bytes, size_bytes);
 
     }
@@ -195,27 +202,27 @@ fwstream_push(struct fwstream *s, uintptr_t chunk_nb, const uint8_t *chunk_data)
         if ((c->size != sizeof(struct gdbstub_control))) return FWSTREAM_ERR_CTRL_SIZE;
         uint32_t ctrl_crc = fwstream_ctrl_crc(s, c);
 
-        LOG("crc ctrl: %08x (%08x)\n", ctrl_crc, c->ctrl_crc);
+        FWSTREAM_LOG("crc ctrl: %08x (%08x)\n", ctrl_crc, c->ctrl_crc);
         if (ctrl_crc != c->ctrl_crc) return FWSTREAM_ERR_CTRL_CRC;
 
         /* Validate the control header, assuming it fits in one chunk,
            then validate the incremental checksum. */
-        LOG("crc fw:   %08x (%08x)\n", s->checksum_acc, c->fw_crc);
+        FWSTREAM_LOG("crc fw:   %08x (%08x)\n", s->checksum_acc, c->fw_crc);
         if (s->checksum_acc != c->fw_crc) return FWSTREAM_ERR_FW_CRC;
 
         /* Optionally update the priority. */
         if (c->priority != s->priority) {
-            LOG("priority: %d -> %d\n", c->priority, s->priority);
+            FWSTREAM_LOG("priority: %d -> %d\n", c->priority, s->priority);
             /* Chunk is const, so replace control block chunk with copy. */
             new_c = *c;
             chunk_data = (const uint8_t*)&new_c;
             new_c.priority = s->priority;
             new_c.ctrl_crc = fwstream_ctrl_crc(s, &new_c);
-            LOG("crc ctrl: %08x (updated)\n", new_c.ctrl_crc);
+            FWSTREAM_LOG("crc ctrl: %08x (updated)\n", new_c.ctrl_crc);
         }
 
         s->valid = 1;
-        LOG("fw receive OK\n");
+        FWSTREAM_LOG("fw receive OK\n");
     }
 
     /* Write chunk. */
