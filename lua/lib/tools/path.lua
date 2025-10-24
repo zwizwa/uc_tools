@@ -236,6 +236,27 @@ local function list_to_dotted(list)
    return table.concat(list, separator)
 end
 
+local function match_wildcard_list(pattern, path)
+   if #pattern ~= #path then return false end
+   for i=1,#pattern do
+      if pattern[i] == '*' then
+         -- This should have the same behavor as osc.h wildcard
+         -- matching.  Generalize here when C code is generalized.
+      else
+         if pattern[i] ~= path[i] then return false end
+      end
+   end
+   return true
+end
+local function match_wildcard_dotted(wildcard_dotted, path_dotted)
+   -- First split them up, then iterate
+   local wildcard = dotted_to_list(wildcard_dotted)
+   local path     = dotted_to_list(path_dotted)
+   local rv = match_wildcard_list(wildcard, path)
+   -- log_desc({w=wildcard_dotted,p=path_dotted,rv=rv})
+   return rv
+end
+
 
 return {
          nested_put = nested_put,
@@ -247,6 +268,8 @@ return {
          indexer_to_nested = indexer_to_nested,
          list_to_symbolic_dotted = list_to_symbolic_dotted,
          list_to_dotted = list_to_dotted,
+         match_wildcard_list = match_wildcard_list,
+         match_wildcard_dotted = match_wildcard_dotted,
 }
 
 end
