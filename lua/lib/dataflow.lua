@@ -29,8 +29,11 @@ local concat = list.concat
 local cproc  = require('lib.cproc')
 
 local path = require('lib.tools.path')
-local nested_to_flat_c = path({separator='_'}).nested_to_flat
-local nested_to_flat_osc = path({separator='/'}).nested_to_flat
+local osc_path = path({separator='/'})
+local c_path   = path({separator='_'})
+
+local nested_to_flat_c = c_path.nested_to_flat
+local nested_to_flat_osc = osc_path.nested_to_flat
 
 
 -- The 'w_' functions take iolist and write to stdout
@@ -817,10 +820,20 @@ end
 
 -- Sort the nodes and params so that diffs of the txt file are cleaner.
 
-function osc_preset_txt(graph)
+function osc_preset_txt(graph, maybe_wildcards)
    local nodes = graph.nodes
    local txt = {}
    assert(nodes)
+
+   local wildcards = maybe_wildcards or { }
+   local function match_wildcards(id)
+      for _,w in ipairs(wildcards) do
+         if osc_path.match_wildcard_dotted(w, id) then return w end
+      end
+      return false
+   end
+   local wildcard_vals = {}
+
 
    local node_index = {}
    for _,node in ipairs(nodes) do node_index[node.name] = node end
@@ -832,12 +845,28 @@ function osc_preset_txt(graph)
       local params = tab.keys(flat_init, {sort = true})
 
       for _, param in ipairs(params) do
+         local flat_param = table.concat({'/',node.name,'/',param})
          local val = flat_init[param]
-         -- The val is a 'Maybe' type.
+         local function insert_param(param_name)
+            table.insert(txt, {param_name,' ',val,'\n'})
+         end
          if val then
-            table.insert(
-               txt,
-               {'/',node.name,'/',param,' ',val,'\n'})
+            local wildcard_param = match_wildcards(flat_param)
+            if wildcard_param then
+               -- Wilcard param with default.
+
+               -- The first match is used as the default value for the
+               -- wildcard.  Not sure if this is a good way to go
+               -- about it, but the projection from set to
+               -- representative has to happen somewhere.
+               if not wildcard_vals[wildcard_param] then
+                  wildcard_vals[wildcard_param] = val
+                  insert_param(wildcard_param)
+               end
+            else
+               -- Regular param with default.
+               insert_param(flat_param)
+            end
          end
       end
    end
