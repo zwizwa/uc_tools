@@ -12,4 +12,12 @@
     f(__VA_ARGS__); \
 })
 
+#define CALL_THUMB_PTR(pfun, ...) ({ \
+    uintptr_t addr = ((uintptr_t)pfun) | 1; \
+    typeof(pfun) f = (void*)addr; \
+    /* LOG("f=%p\n", f); */ \
+    f(__VA_ARGS__); \
+})
+
+
 #endif
