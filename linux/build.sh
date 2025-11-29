@@ -22,9 +22,11 @@ case "$TYPE" in
         dump_closure_to_file ${O}.build
         rm -rf "$O"
 
+        # echo "ARCH=$ARCH"
         [ -z "$GCC" ] && . $UC_TOOLS/linux/env.$ARCH.sh
 
         # set -x
+        # echo "GCC=$GCC"
 
         $GCC \
             $CFLAGS \
@@ -52,16 +54,25 @@ case "$TYPE" in
         rm -f "$ELF"
 
         [ -z "$GCC" ] && . $UC_TOOLS/linux/env.$ARCH.sh
-        # For linux applications we do not use linker scripts.
-        # Dynamic linking is the default.  FIXME: This no longer
-        # insists on the "dynamic" name, such that link type can still
-        # be used as a tag to e.g. provide different linker parameters
-        # in the build system.
-        # if [ $(basename "$LD") != dynamic.$ARCH.ld ]; then
-        #     echo "Only dynamic linking: ARCH=$ARCH LD=$LD"
-        #     exit 1
-        # fi
-        $GCC $LDFLAGS $LDFLAGS_EXTRA -Wl,-Map=$MAP -o $ELF $O $O_SYSTEM $A $LDLIBS
+
+        # HACK: use the dummy name of the linker script to influence
+        # linking, e.g. I basically want a static link on NixOS MIPS
+        # with musl and no other deps.
+        BN_LD=$(basename "$LD")
+        echo "BN_LD-$BN_LD" >&2
+        case "$BN_LD" in
+            *)
+                # Dynamic linking is the default.  FIXME: This no longer
+                # insists on the "dynamic" name, such that link type can still
+                # be used as a tag to e.g. provide different linker parameters
+                # in the build system.
+                # if [ $(basename "$LD") != dynamic.$ARCH.ld ]; then
+                #     echo "Only dynamic linking: ARCH=$ARCH LD=$LD"
+                #     exit 1
+                # fi
+                set -x
+                $GCC $LDFLAGS $LDFLAGS_EXTRA -Wl,-Map=$MAP -o $ELF $O $O_SYSTEM $A $LDLIBS
+        esac
         ;;
     so)
         assert_vars LD ARCH MAP SO A

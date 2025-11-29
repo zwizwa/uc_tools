@@ -9,6 +9,11 @@ fi
 . $ARMV7_NIX_DEV/env.sh
 # echo "using GCC=$GCC" >&2
 
+if [ -z "$GCC" ]; then
+    echo "GCC not set in $ARMV7_NIX_DEV/env.sh"
+    exit 1
+fi
+
 
 # Since we support multiple platform build configurations anyway, it
 # is easy to drop in this file and also support building a lib.host.a
