@@ -116,7 +116,6 @@ void gdbstub_interpret(struct gdbstub *stub);
     "<memory type=\"ram\" start=\"0x40000000\" length=\"0xBFFFF000\"/>" \
 "</memory-map>"
 
-
 // high-density: page size 2k
 #define GDBSTUB_MEMORY_MAP_STM32F103RD \
 "<memory-map>" \
@@ -136,6 +135,16 @@ void gdbstub_interpret(struct gdbstub *stub);
     "</memory>" \
     "<memory type=\"ram\" start=\"0x40000000\" length=\"0xBFFFF000\"/>" \
 "</memory-map>"
+
+#define GDBSTUB_MEMORY_MAP_APM32E103RET6 \
+"<memory-map>" \
+    "<memory type=\"ram\" start=\"0x20000000\" length=\"0x20000\"/>" \
+    "<memory type=\"flash\" start=\"0x8000000\" length=\"0x80000\">" \
+        "<property name=\"blocksize\">1024</property>" \
+    "</memory>" \
+    "<memory type=\"ram\" start=\"0x40000000\" length=\"0xBFFFF000\"/>" \
+"</memory-map>"
+
 
 
 

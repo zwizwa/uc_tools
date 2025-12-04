@@ -33,7 +33,10 @@
 
 #include "stm32f103/rsp_packet.c"
 #include "stm32f103/gdbstub.c"
-const char gdbstub_memory_map[] = GDBSTUB_MEMORY_MAP_STM32F103CB;
+const char gdbstub_memory_map[] =
+    //GDBSTUB_MEMORY_MAP_STM32F103CB;
+    GDBSTUB_MEMORY_MAP_APM32E103RET6;
+
 struct gdbstub_config _config;
 
 
