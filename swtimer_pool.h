@@ -25,14 +25,22 @@
 #error Need SWTIMER_POOL_SIZE
 #endif
 
-  
+#if SWTIMER_POOL_SIZE <= 256
+typedef uint8_t swtimer_event_index_t;
+#else
+typedef uint16_t swtimer_event_index_t;
+#endif
+
+CT_ASSERT(swtimer_event_index_size,
+          (1<<(sizeof(swtimer_event_index_t)*8)) >= SWTIMER_POOL_SIZE);
+
 #include "swtimer.h"
 
 typedef struct {
-    uint8_t top;
-    uint8_t stack[SWTIMER_POOL_SIZE];
+    swtimer_event_index_t top;
+    swtimer_event_index_t stack[SWTIMER_POOL_SIZE];
 } swtimer_event_free_stack_t;
-typedef uint8_t swtimer_event_free_element_t;
+typedef swtimer_event_index_t swtimer_event_free_element_t;
 #define NS(s) swtimer_event_free##s
 #include "ns_stack.h"
 #undef NS
