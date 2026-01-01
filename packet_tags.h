@@ -78,6 +78,13 @@
    command and executed.   The NR is currently not used. */
 
 
+/* Synth_tools uses 0x1xxx
+   TAG_IEEE ad hoc ieee floating point conventions, uses 16 bit subtag. */
+#define TAG_IEEE        0x1EEE      // 16 bit high bits of tag
+#define TAG_IEEE_ARRAY  0x1EEE0000  // raw 32 bit LE float array
+#define TAG_IEEE_MATRIX 0x1EEE0001  // 2x2 LE float matrix with size prefix in float
+
+
 /* Reserved tags and ranges:
 
    0x4xxx IPv4 standard slip
@@ -92,10 +99,10 @@
 
    https://en.wikipedia.org/wiki/EtherType
 
-   Other projects using this protocol:
+   Other proprietary projects using this protocol:
 
    0xC8xx, 0xC9xx, 0x2D2D // C8
-
+   0xA1xx                 // Areal
 
 */
 
@@ -106,5 +113,6 @@
    constructed by appending TAG_REPLY, the return address, and any
    payload message.
 */
+
 
 #endif
