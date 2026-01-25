@@ -111,9 +111,15 @@ function iolist.w(iol, maybe_filename, opts)
             maybe_logf("old %s\n", old_filename)
             os.remove(new_filename)
          else
-            maybe_logf("new %s\n", old_filename)
             -- os.execute(string.format("diff %s %s", old_filename, new_filename))
-            os.remove(old_filename)
+            if opts.keep_old_suffix then
+               local keep_old_filename = old_filename .. opts.keep_old_suffix
+               maybe_logf("new %s (saved old as %s)\n", old_filename, keep_old_filename)
+               os.rename(old_filename, keep_old_filename)
+            else
+               maybe_logf("new %s\n", old_filename)
+               os.remove(old_filename)
+            end
             os.rename(new_filename, old_filename)
          end
       end
@@ -131,6 +137,9 @@ function iolist.w_preserve_if_same(iol, maybe_filename)
       -- well to make it clear which files changed.
       preserve_if_same = true,
       logf = logf,
+      -- When there is new contents, keep the old file and add this
+      -- suffix.
+      keep_old_suffix = ".old",
    }
    return iolist.w(iol, maybe_filename, opt)
 end
