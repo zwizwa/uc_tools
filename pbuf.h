@@ -78,6 +78,14 @@ static inline void pbuf_write(struct pbuf *p, const uint8_t *buf, uint32_t len) 
         pbuf_put(p, buf[i]);
     }
 }
+static inline void pbuf_pad(struct pbuf *p, uint8_t pad_with, uint32_t to_size) {
+    int need_pad = ((int32_t)to_size) - ((int32_t)p->count);
+    while (need_pad > 0) {
+        pbuf_put(p, pad_with);
+        need_pad--;
+    }
+}
+
 static inline void pbuf_zero_terminate(struct pbuf *p) {
     /* Zero-terminate if size is at least 1.  Truncate if necessary. */
     pbuf_put(p, 0);
