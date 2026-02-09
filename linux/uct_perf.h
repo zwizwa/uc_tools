@@ -13,7 +13,7 @@ static inline long perf_event_open(struct perf_event_attr *hw_event, pid_t pid,
     return syscall(__NR_perf_event_open, hw_event, pid, cpu, group_fd, flags);
 }
 
-static inline int assert_uct_perf_open(void) {
+static inline int uct_perf_open(void) {
     struct perf_event_attr pe;
     memset(&pe, 0, sizeof(pe));
     pe.type = PERF_TYPE_HARDWARE;
@@ -26,7 +26,6 @@ static inline int assert_uct_perf_open(void) {
     int fd = perf_event_open(&pe, 0, -1, -1, 0);
     if (fd == -1) {
         perror("perf_event_open");
-        ABORT;
     }
     return fd;
 }
@@ -44,8 +43,9 @@ static void uct_perf_close(int fd) {
     close(fd);
 }
 
-static inline int uct_perf_test(void) {
-    int fd = assert_uct_perf_open();
+static inline void uct_perf_test(void) {
+    int fd = uct_perf_open();
+    ASSERT(fd != -1);
     uct_perf_start(fd);
     long long count = uct_perf_stop(fd);
     LOG("cycles = %lld\n", count);
