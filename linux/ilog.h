@@ -75,6 +75,7 @@ static inline void ilog_close(struct ilog *v) {
 static inline uint64_t ilog_floats_fd(int fd, uint32_t cmd,
                                       const float *vec, uint32_t len) {
     ASSERT(fd != -1);
+    // LOG("ilog_floats_fd %p %d\n", vec, len);
     uint32_t vec_bytes = sizeof(*vec) * len;
     uint8_t header[] = {
         U32_BE(vec_bytes + 8),
@@ -82,7 +83,7 @@ static inline uint64_t ilog_floats_fd(int fd, uint32_t cmd,
         U32_BE(cmd),
     };
     uint32_t header_bytes = sizeof(header);
-    assert_write(fd, (const void*)&header, header_bytes);
+    assert_write(fd, (const void*)header, header_bytes);
     assert_write(fd, (const void*)vec, vec_bytes);
     return header_bytes + vec_bytes;
 }
@@ -95,13 +96,16 @@ static inline void ilog_sync(struct ilog *v) {
     fdatasync(v->index_fd);
 }
 
-static inline void ilog_floats(struct ilog *v, uint32_t cmd,
-                               const float *vec, uint32_t len) {
-    if (!v) return; // Allow NULL to disable log
+static inline int64_t ilog_floats(struct ilog *v, uint32_t cmd,
+                                  const float *vec, uint32_t len) {
+    // Allow NULL to disable log and make that the fast path.
+    if (likely(!v)) return -1;
+
     ilog_write_index(v);
     v->nb_bytes += ilog_floats_fd(v->log_fd, cmd, vec, len);
-    v->nb_messages++;
+    uint64_t rv = v->nb_messages++;
     ilog_sync(v);
+    return rv;
 }
 
 
