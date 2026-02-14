@@ -35,6 +35,9 @@ static inline int ilog_is_stdout(const char *filename) {
     return 1;
 }
 
+#define ILOG_OPEN_READ_FLAGS O_RDONLY
+#define ILOG_OPEN_WRITE_FLAGS O_WRONLY | O_TRUNC | O_CREAT
+
 static inline void ilog_open_with_flags(struct ilog *v,
                                         const char *basename, int flags) {
     memset(v, 0, sizeof(*v));
@@ -45,6 +48,7 @@ static inline void ilog_open_with_flags(struct ilog *v,
 
     sprintf(name, "%s.index", basename);
     v->index_fd = ilog_open_fd(name, flags); // optional when reading
+
 }
 static inline void ilog_open_stdout(struct ilog *v) {
     memset(v, 0, sizeof(*v));
@@ -55,16 +59,18 @@ static inline void ilog_open_stdout(struct ilog *v) {
 // FIXME: if basename is "-" then write to stdout.
 static inline void ilog_open_write(struct ilog *v, const char *basename) {
     if (ilog_is_stdout(basename)) {
+        LOG("ilog writing to stdout\n");
         ilog_open_stdout(v);
     }
     else {
-        int flags = O_WRONLY | O_TRUNC | O_CREAT;
+        int flags = ILOG_OPEN_WRITE_FLAGS;
         ilog_open_with_flags(v, basename, flags);
         ASSERT_ERRNO(v->index_fd);
     }
 }
+static inline void ilog_recreate_index_file(struct ilog_read *vr, const char *basename);
 static inline void ilog_open_read(struct ilog_read *vr, const char *basename) {
-    int flags = O_RDONLY;
+    int flags = ILOG_OPEN_READ_FLAGS;
     ilog_open_with_flags(&vr->ilog, basename, flags);
 
     /* Map the messages. */
@@ -73,17 +79,17 @@ static inline void ilog_open_read(struct ilog_read *vr, const char *basename) {
     ASSERT(MAP_FAILED != vr->message);
     vr->ilog.nb_bytes = vr->message_size;
 
-    /* Map the index. */
+    /* If the index file does not exist it needs to be recreated. */
     if (-1 == vr->ilog.index_fd) {
-        vr->index = NULL;
-        vr->index_size = 0;
+        ilog_recreate_index_file(vr, basename);
+        ASSERT(-1 != vr->ilog.index_fd);
     }
-    else {
-        ASSERT_ERRNO(vr->index_size = lseek(vr->ilog.index_fd, 0, SEEK_END));
-        vr->index = mmap(NULL, vr->index_size, PROT_READ, MAP_SHARED, vr->ilog.index_fd, 0);
-        ASSERT(MAP_FAILED != vr->index);
-        vr->ilog.nb_messages = vr->index_size / sizeof(uint64_t); /* nb index messages */
-    }
+
+    /* Map the index. */
+    ASSERT_ERRNO(vr->index_size = lseek(vr->ilog.index_fd, 0, SEEK_END));
+    vr->index = mmap(NULL, vr->index_size, PROT_READ, MAP_SHARED, vr->ilog.index_fd, 0);
+    ASSERT(MAP_FAILED != vr->index);
+    vr->ilog.nb_messages = vr->index_size / sizeof(uint64_t); /* nb index messages */
 }
 static inline const uint8_t *ilog_get(struct ilog_read *vr, int i) {
     ASSERT(i >= 0);
@@ -115,7 +121,9 @@ static inline uint64_t ilog_floats_fd(int fd, uint32_t cmd,
     return header_bytes + vec_bytes;
 }
 static inline void ilog_write_index(struct ilog *v) {
-    assert_write(v->index_fd, (const void*)&v->nb_bytes, sizeof(v->nb_bytes));
+    if (v->index_fd != -1) {
+        assert_write(v->index_fd, (const void*)&v->nb_bytes, sizeof(v->nb_bytes));
+    }
 
 }
 static inline void ilog_sync(struct ilog *v) {
@@ -196,11 +204,11 @@ static inline void ilog_matrix_zip_wrap(void *state, const uint8_t *msg_a, const
     uint32_t len_a = read_be(msg_a, 4); // Size is always present
     uint32_t len_b = read_be(msg_b, 4);
     ASSERT(len_a == len_b);
-    uint32_t hdr_len = 4 * (1 + 2);
+    uint32_t hdr_len = 4 * (1 /* tag */ + 2 /* dims */);
     ASSERT(len_a >=  hdr_len);
     ASSERT(0 == memcmp(msg_a+4, msg_b+4, hdr_len)); // Headers should be identicial
     ASSERT(0x1F320001 == read_be(msg_a+4, 4)); // TAG_FLOAT_MATRIX
-    const uint32_t *dims = (void*) (msg_a + 8);
+    const uint32_t *dims = (void*) (msg_a + 8); // FIXME: This assumes host order
     const float *fa = (void*) (msg_a + 16);
     const float *fb = (void*) (msg_b + 16);
     wstate->f(wstate->state, dims, fa, fb);
@@ -214,6 +222,26 @@ static inline void ilog_matrix_zip(ilog_matrix_zip_fn f,
     ilog_zip(ilog_matrix_zip_wrap, a, b, &wstate);
 }
 
+
+
+static inline void ilog_recreate_index_file(struct ilog_read *vr, const char *basename) {
+    char name[strlen(basename) + 6 + 1];
+    sprintf(name, "%s.index", basename);
+    int fd = -1;
+    ASSERT_ERRNO(fd = ilog_open_fd(name, ILOG_OPEN_WRITE_FLAGS));
+
+    /* This assumes the contents is already memory-mapped. */
+    ASSERT(vr->message);
+    const uint8_t *m = vr->message;
+    uint64_t offset = 0;
+    while (offset < vr->message_size ) {
+        uint32_t len = read_be(m, 4);
+        assert_write(fd, (const uint8_t*)&offset, sizeof(offset));
+        offset += len + 4;
+    }
+    close(fd);
+    ASSERT_ERRNO(vr->ilog.index_fd = ilog_open_fd(name , ILOG_OPEN_READ_FLAGS));
+}
 
 
 #endif
