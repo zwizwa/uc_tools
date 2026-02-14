@@ -177,10 +177,10 @@ static inline int64_t ilog_matrix(struct ilog *v,
 /* Iteration.  Note that it doesn't make much sense to provide
    stateless functions in the absence of an allocator. */
 typedef void (*ilog_zip_fn)(void*, const uint8_t *msg_a, const uint8_t *msg_b);
-static inline int64_t ilog_zip(ilog_zip_fn f,
-                               struct ilog_read *a,
-                               struct ilog_read *b,
-                               void *state) {
+static inline void ilog_zip(ilog_zip_fn f,
+                            struct ilog_read *a,
+                            struct ilog_read *b,
+                            void *state) {
     uint64_t na = a->ilog.nb_messages;
     uint64_t nb = b->ilog.nb_messages;
     if (na != nb) {
@@ -190,6 +190,16 @@ static inline int64_t ilog_zip(ilog_zip_fn f,
         const uint8_t *msg_a = ilog_get(a, i);
         const uint8_t *msg_b = ilog_get(b, i);
         f(state, msg_a, msg_b);
+    }
+}
+typedef void (*ilog_for_fn)(void*, const uint8_t *msg_a);
+static inline void ilog_for(ilog_for_fn f,
+                            struct ilog_read *a,
+                            void *state) {
+    uint64_t na = a->ilog.nb_messages;
+    for (uint64_t i = 0; i<na; i++) {
+        const uint8_t *msg_a = ilog_get(a, i);
+        f(state, msg_a);
     }
 }
 
@@ -220,6 +230,29 @@ static inline void ilog_matrix_zip(ilog_matrix_zip_fn f,
     /* Header needs to be the same. */
     struct ilog_matrix_zip_wrap wstate = { .f = f, .state = state };
     ilog_zip(ilog_matrix_zip_wrap, a, b, &wstate);
+}
+
+typedef void (*ilog_matrix_for_fn)(void *state, const uint32_t *dims, const float *a);
+struct ilog_matrix_for_wrap {
+    ilog_matrix_for_fn f;  // user function
+    void *state;           // user state
+};
+static inline void ilog_matrix_for_wrap(void *state, const uint8_t *msg_a) {
+    struct ilog_matrix_for_wrap *wstate = state;
+    uint32_t len_a = read_be(msg_a, 4); // Size is always present
+    uint32_t hdr_len = 4 * (1 /* tag */ + 2 /* dims */);
+    ASSERT(len_a >=  hdr_len);
+    ASSERT(0x1F320001 == read_be(msg_a+4, 4)); // TAG_FLOAT_MATRIX
+    const uint32_t *dims = (void*) (msg_a + 8); // FIXME: This assumes host order
+    const float *fa = (void*) (msg_a + 16);
+    wstate->f(wstate->state, dims, fa);
+}
+static inline void ilog_matrix_for(ilog_matrix_for_fn f,
+                                   struct ilog_read *a,
+                                   void *state) {
+    /* Header needs to be the same. */
+    struct ilog_matrix_for_wrap wstate = { .f = f, .state = state };
+    ilog_for(ilog_matrix_for_wrap, a, &wstate);
 }
 
 
