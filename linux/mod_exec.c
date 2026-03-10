@@ -62,10 +62,10 @@ int exec_main(int argc, char **argv) {
             /* Handle Erlang command.  Needs to be atomic, so blocking
                read is used here. */
             uint8_t len_buf[4];
-            assert_read(0, len_buf, 4);
+            assert_read_fixed(0, len_buf, 4);
             uint32_t len = read_be(len_buf, 4);
             uint8_t buf[len];
-            assert_read(0, buf, len);
+            assert_read_fixed(0, buf, len);
             // FIXME: HANDLE
         }
         else {

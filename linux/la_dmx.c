@@ -32,7 +32,7 @@ int main(int argc, char **argv) {
     uint8_t in_buf[256 * 1024]; // Logic8 write size.
     struct la_event e = {};
     for(;;) {
-        ssize_t n = assert_read(0, in_buf, sizeof(in_buf));
+        ssize_t n = assert_read_once(0, in_buf, sizeof(in_buf));
         for(size_t i=0; i<n; i++) {
             e.value = in_buf[i];
             FOR_PORTS(PUSH)

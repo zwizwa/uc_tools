@@ -9,13 +9,13 @@
 
 uint32_t assert_read_be(int fd, uint32_t nb) {
     uint8_t buf[nb];
-    assert_read(fd, buf, sizeof(buf));
+    assert_read_fixed(fd, buf, sizeof(buf));
     return read_be(buf, nb);
 }
 
 #define LET_NEXT_MSG(msg,len,fd)          \
     uint32_t len = assert_read_be(fd, 4); \
     uint8_t msg[len];                     \
-    assert_read(fd, msg, len);
+    assert_read_fixed(fd, msg, len);
 
 #endif // TAG_PROTOCOL_H

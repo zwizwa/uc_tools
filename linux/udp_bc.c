@@ -38,7 +38,8 @@ int main(int argc, char **argv) {
         uint32_t len = assert_read_be(0, 4);
         uint16_t tag = assert_read_be(0, 2);
         uint8_t msg[len];
-        assert_read(0, msg, len);
+        LOG("WARNING: Fixed a bug here.  Don't know where it is used.\n");
+        assert_read_fixed(0, msg, len-2);
         switch(tag) {
         case 0xFFFB: {
             ASSERT(len >= 2);

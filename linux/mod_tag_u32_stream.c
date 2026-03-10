@@ -15,7 +15,7 @@ void write_packet(const uint8_t *buf, uint32_t buf_size) {
 #define SEND_TAG_U32_BUF_WRITE(...) write_packet( __VA_ARGS__)
 static inline uint32_t read_uint(uint32_t nb) {
     uint8_t buf[nb];
-    assert_read(0, buf, nb);
+    assert_read_fixed(0, buf, nb);
     return read_be(buf, nb);
 }
 #define READ_VAR(type,var) \
@@ -51,7 +51,7 @@ int tag_u32_loop(void) {
         if (1) {
             uint8_t buf[nb_bytes + 1];
             s.bytes = buf;
-            assert_read(0,buf,nb_bytes);
+            assert_read_fixed(0,buf,nb_bytes);
             buf[nb_bytes] = 0;
             //LOG("buf = %s\n", buf);
             handle_tag_u32(&s);

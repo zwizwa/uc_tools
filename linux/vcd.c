@@ -61,7 +61,7 @@ int main(int argc, char **argv) {
     uint8_t buf[256 * 1024];
 
     size_t total = 0;
-    ssize_t n = assert_read(0, buf, sizeof(buf));
+    ssize_t n = assert_read_once(0, buf, sizeof(buf));
     ASSERT(n > 0);
     vcd_header(&s, buf[0]);
     for(;;) {
@@ -69,7 +69,7 @@ int main(int argc, char **argv) {
             vcd_sample(&s, buf[i]);
         }
         total += n;
-        n = assert_read(0, buf, sizeof(buf));
+        n = assert_read_once(0, buf, sizeof(buf));
         if (n == 0) break;
     }
     vcd_footer(&s, total);

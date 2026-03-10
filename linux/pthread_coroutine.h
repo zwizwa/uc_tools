@@ -26,7 +26,7 @@ static inline void pthread_coroutine_wakeup(struct pthread_coroutine *cor) {
 }
 static inline void pthread_coroutine_wait(struct pthread_coroutine *cor) {
     uint8_t dummy = 0;
-    assert_read(cor->wakeup[PTHREAD_COROUTINE_PIPE_READ_END], &dummy, 1);
+    assert_read_once(cor->wakeup[PTHREAD_COROUTINE_PIPE_READ_END], &dummy, 1);
 }
 static inline void pthread_coroutine_init(
     struct pthread_coroutine *cor,

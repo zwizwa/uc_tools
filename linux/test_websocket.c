@@ -6,7 +6,7 @@
 #include "assert_write.h"
 
 intptr_t read_(struct blocking_io *c, uint8_t *buf, uintptr_t len) {
-    return assert_read(0, buf, len);
+    return assert_read_once(0, buf, len);
 }
 intptr_t write_(struct blocking_io *c, const uint8_t *buf, uintptr_t len) {
     assert_write(1, buf, len);
