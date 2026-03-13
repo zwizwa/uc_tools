@@ -4,7 +4,7 @@
 #include "macros.h"
 #include <unistd.h>
 
-static inline ssize_t assert_read(int fd, void *vbuf, size_t nb) {
+static inline ssize_t assert_read_once(int fd, void *vbuf, size_t nb) {
     unsigned char *buf = vbuf;
     //LOG("assert_read(%d,%p,%d)\n", fd, buf, nb);
     if (nb == 0) return 0;
@@ -34,7 +34,7 @@ static inline ssize_t assert_read_fixed(int fd, void *vbuf, size_t nb) {
     unsigned char *buf = vbuf;
     size_t got = 0;
     while (got < nb) {
-        ssize_t rv = assert_read(fd, buf+got, nb-got);
+        ssize_t rv = assert_read_once(fd, buf+got, nb-got);
         ASSERT(rv > 0);
         got += rv;
         // LOG("got=%d, rv=%d, nb=%d\n", got, rv, nb);

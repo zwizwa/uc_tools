@@ -32,6 +32,7 @@
 #include "uct_byteswap.h"
 
 #include <stdint.h>
+#include <inttypes.h>
 
 /* In pure mode the ties to blocking_io and the rest of the C http
    server are not made. */
@@ -179,7 +180,7 @@ static inline ws_err_t ws_write_msg_nolock(ws_io_t *io,
     return WS_OK;
 
   error_exit:
-    WS_LOG_ERROR("ws_write_msg %d", error);
+    WS_LOG_ERROR("ws_write_msg %d", (void*)error);
     return error;
 }
 

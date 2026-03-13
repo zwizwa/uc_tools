@@ -87,7 +87,7 @@ ws_err_t websocket_push(struct blocking_io *io, struct ws_message *m) {
 
     (void)id;
     if(s.error) {
-        LOG("error %d\n", s.error);
+        LOG("error %d\n", (int)(uintptr_t)s.error);
     }
     return 0;
 }

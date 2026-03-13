@@ -33,6 +33,10 @@ struct graph_base {
     uint32_t nb_buf;
     uint32_t buf_size;
 
+    /* Callback for the graph_bp() function. */
+    void (*graph_bp)(struct graph_base *, uint32_t node_nb);
+    uint32_t nb_nodes;
+
 };
 
 /* Connect any of the internal buffers to an output. */
@@ -48,6 +52,16 @@ static inline void graph_monitor(struct graph_base *b,
   badarg:
     LOG("graph_monitor: bad argument: buf_nb = %d, out_nb = %d\n",
         buf_nb, out_nb);
+}
+
+/* The '_bp' refers to "breakpoint".  A call to this function is
+   inserted by the code generator in between the _loop() functions.
+   Can be used for timestamping or any other inspection that runs in
+   between _loop calls.  The node_nb starts at 0 before calling the
+   first function and ends with slot_nb == number of nodes _after_ the
+   last function.  See the generated _process() functions. */
+static inline void graph_bp(struct graph_base *b, uint32_t node_nb) {
+    if (unlikely(b->graph_bp)) { b->graph_bp(b, node_nb); }
 }
 
 

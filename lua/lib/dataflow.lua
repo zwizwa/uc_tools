@@ -315,7 +315,7 @@ local function render_c(s, graph_name)
    local null_out = {}
 
    -- First pass
-   for _,node in ipairs(s.nodes) do
+   for node_nb,node in ipairs(s.nodes) do
       -- Get the processor definition
       -- log_desc({node=node})
       local type_name = node.type_name or node.extern_name
@@ -432,7 +432,9 @@ local function render_c(s, graph_name)
       -- correct place.
       table.insert(
          process_code,
-         {indent, type_name, '_loop(&s->',node.name,', nb);\n'})
+         {indent,
+          'graph_bp(&s->base,',node_nb-1,'); ',
+          type_name, '_loop(&s->',node.name,', nb);\n'})
 
       -- Per-type struct and process only need to be done once
       assert(type_name)
@@ -473,6 +475,12 @@ local function render_c(s, graph_name)
       end
 
    end
+   -- All other markers are befor the _loop() calls.  Add one more
+   -- after the last.
+   table.insert(
+      process_code,
+      {indent,
+       'graph_bp(&s->base,',#s.nodes,');\n'})
 
    -- Second pass
    -- log_desc({null_out=null_out})
@@ -509,6 +517,7 @@ local function render_c(s, graph_name)
          {indent, 's->base.buf          = &s->buf[0][0];\n'},
          {indent, 's->base.buf_size     = ',buf_size,';\n'},
          {indent, 's->base.nb_buf       = ',alloc_count,';\n'},
+         {indent, 's->base.nb_nodes     = ',#s.nodes,';\n'},
 
    }
 

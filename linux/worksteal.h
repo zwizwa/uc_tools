@@ -1,3 +1,6 @@
+// NOTE: This can probably be removed.  I'm going to try lace first.
+// https://github.com/trolando/lace
+
 #ifndef WORKSTEAL_H
 #define WORKSTEAL_H
 
