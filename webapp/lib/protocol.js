@@ -79,7 +79,7 @@ function read_arr(env) {
     return read_multi(size, _ => read_type(env, type));
 }
 function read_bin(env) {
-    var size = read_int(env)
+    var size = read_int(env);
     return read_bytes(env, size);
 }
 function read_sym(env) {

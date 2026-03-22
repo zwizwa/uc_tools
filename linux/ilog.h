@@ -89,16 +89,16 @@ static inline void ilog_open_read(struct ilog_read *vr, const char *basename) {
 
     /* Map the index. */
     ASSERT_ERRNO(vr->index_size = lseek(vr->ilog.index_fd, 0, SEEK_END));
-    LOG("index_size = %d\n", vr->index_size);
+    //LOG("index_size = %d\n", vr->index_size);
     vr->index = mmap(NULL, vr->index_size, PROT_READ, MAP_SHARED, vr->ilog.index_fd, 0);
     ASSERT(MAP_FAILED != vr->index);
     vr->ilog.nb_messages = vr->index_size / sizeof(uint64_t); /* nb index messages */
-    LOG("nb_messages = %d\n", vr->ilog.nb_messages);
+    //LOG("nb_messages = %d\n", vr->ilog.nb_messages);
 }
 static inline const uint8_t *ilog_get(struct ilog_read *vr, int i) {
     ASSERT(i >= 0);
     if (i >= vr->ilog.nb_messages) {
-        ERROR("index=%d, nb_messages=%d\n", i, vr->ilog.nb_messages);
+        ERROR("index=%d, nb_messages=%d\n", i, (int)vr->ilog.nb_messages);
     }
     uint64_t offset = vr->index[i];
     return vr->message + offset;
@@ -149,20 +149,6 @@ static inline int64_t ilog_floats(struct ilog *v, uint32_t cmd,
     return rv;
 }
 
-// FIXME: The iterator unpacking should be done in terms of generic
-// unpack routines like this, because those are needed in isolation as
-// well.
-static inline void ilog_unpack_float_matrix(const uint8_t *msg,
-                                            uint32_t **pdims, float **pdata) {
-    uint32_t len = read_be(msg, 4); // Size is always present
-    ASSERT(len > 12);
-    *pdata = (void*) (msg + 16);
-    ASSERT(0x1F320001 == read_be(msg + 4, 4)); // TAG_FLOAT_MATRIX
-    uint32_t *dims = (void*) (msg + 8);
-    *pdims = dims;
-    uint32_t nb_floats = dims[0] * dims[1];
-    ASSERT(len == 12 + 4 * nb_floats);
-}
 
 static inline uint64_t ilog_matrix_fd(int fd,
                                       const uint32_t *dims,
@@ -251,6 +237,21 @@ static inline void ilog_matrix_zip(ilog_matrix_zip_fn f,
     /* Header needs to be the same. */
     struct ilog_matrix_zip_wrap wstate = { .f = f, .state = state };
     ilog_zip(ilog_matrix_zip_wrap, a, b, &wstate);
+}
+
+// FIXME: The iterator unpacking should be done in terms of generic
+// unpack routines like this, because those are needed in isolation as
+// well.
+static inline void ilog_unpack_float_matrix(const uint8_t *msg,
+                                            uint32_t **pdims, float **pdata) {
+    uint32_t len = read_be(msg, 4); // Size is always present
+    ASSERT(len >= 12);
+    *pdata = (void*) (msg + 16);
+    ASSERT(0x1F320001 == read_be(msg + 4, 4)); // TAG_FLOAT_MATRIX
+    uint32_t *dims = (void*) (msg + 8);
+    *pdims = dims;
+    uint32_t nb_floats = dims[0] * dims[1];
+    ASSERT(len == 12 + 4 * nb_floats);
 }
 
 typedef void (*ilog_matrix_for_fn)(void *state, const uint32_t *dims, const float *a);
