@@ -7,12 +7,12 @@ var ws;
 
 var user_dispatch;
 
-function start(dispatch) {
+function start(dispatch, on_open) {
     user_dispatch = dispatch
     var proto = ({'https:': 'wss://', 'http:': 'ws://'})[window.location.protocol];
     ws = new WebSocket(proto + location.host + '/ws');
     ws.onclose   = function()    { console.log('ws: close'); }
-    ws.onopen    = function()    { console.log('ws: open'); }
+    ws.onopen    = function()    { console.log('ws: open');  on_open()}
     ws.onmessage = function(raw_msg) {
         /* Just buffer it for now.  Much easier to work with. */
         raw_msg.data.arrayBuffer().then(
