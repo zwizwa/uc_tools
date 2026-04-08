@@ -98,6 +98,10 @@ int flashdump_info(
 /* bin2fw <bin> <offset> */
 int main(int argc, char **argv) {
     ASSERT(argc == 4);
-    return flashdump_info(argv[1], argv[2], argv[3]);
+    return flashdump_info(
+        argv[1], // binary image
+        argv[2], // offset of partition header
+        argv[3]  // output format
+        );
 }
 

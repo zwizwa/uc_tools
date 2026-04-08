@@ -8,7 +8,7 @@
 #include "hw_bootloader.h"
 
 const char gdbstub_memory_map[] = GDBSTUB_MEMORY_MAP_STM32F103C8;
-const uint32_t flash_page_size_log = 10; // 1k
+const uint32_t flash_page_size_log = GDBSTUB_PAGE_LOGSIZE; // 1k
 
 
 /* Config is stored in a separate Flash block and overwritten when we

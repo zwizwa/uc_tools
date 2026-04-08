@@ -52,6 +52,11 @@ extern struct gdbstub_config config;
 #define MEM_WRITE_PARTITIONS_ENDX 0x08020000
 #endif
 
+// FIXME: This should just be removed and replaced with code that
+// always has pc != NULL in hw_mem_write_generic()
+#ifndef MEM_WRITE_LOGSIZE_DEFAULT
+#define MEM_WRITE_LOGSIZE_DEFAULT 10
+#endif
 
 int32_t hw_mem_write_generic(const struct partition_config *pc,
                              uint32_t addr, const uint8_t *buf, uint32_t len) {
@@ -60,7 +65,7 @@ int32_t hw_mem_write_generic(const struct partition_config *pc,
        Otherwise, revert to previous behavior for backwards
        compatibility.  A lot of old code depends on this routine
        having stable semantics. */
-    const uint32_t block_logsize = pc ? pc->page_logsize : 10;
+    const uint32_t block_logsize = pc ? pc->page_logsize : MEM_WRITE_LOGSIZE_DEFAULT;
     const uint32_t block_size = 1 << block_logsize;
 
     /* Various memory protections. */
@@ -114,10 +119,13 @@ static inline int32_t hw_mem_write_in_partition(
     return hw_mem_write_generic(pc, addr, buf, len);
 }
 
-
+#if 1
+// It's best to just remove this altogether because it depends on the
+// chip.  It is much better to always pass the partition_config.
 static inline int32_t hw_mem_write(uint32_t addr, const uint8_t *buf, uint32_t len) {
     return hw_mem_write_generic(NULL, addr, buf, len);
 }
+#endif
 
 
 int32_t hw_mem_write_log(uint32_t addr, const uint8_t *buf, uint32_t len) {
