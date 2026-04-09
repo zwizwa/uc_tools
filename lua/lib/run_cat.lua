@@ -154,6 +154,9 @@ end
 
 function cat:ps() log_desc(self.ds) end
 function cat:p()  log_desc(self:pop()) end
+function cat:ww() log(self:pop() .. " ") end
+function cat:nl() log("\n") end
+
 local function op2(fun)
    return
       function(self)
