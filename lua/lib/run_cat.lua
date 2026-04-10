@@ -20,7 +20,7 @@ local read = cfg.read_cat({
 local cat = {}
 
 local function push(self, v)
-   assert(v)
+   assert(v ~= nil)
    table.insert(self.ds, v)
    return rv
 end
@@ -37,16 +37,25 @@ function cat:execute()
 end
 
 function cat:interpret()
+   self:compile()
+   self:execute()
+end
+
+local function compile_push(self, thing)
+   push(self, function() push(self, thing) end)
+end
+
+function cat:compile(dont_abort_on_error)
    local w = self:pop()
 
    -- New style literals
    if type(w) == 'table' then
       if (w.tag == 'data') then
          -- Unquote data
-         return push(self, w.data)
+         return compile_push(self, w.data)
       elseif (w.tag == 'code') then
          -- Keep it quoted
-         return push(self, w)
+         return compile_push(self, w)
       else
          error("unknown tag '" .. (w.tag or 'nil') .. "'")
       end
@@ -58,14 +67,13 @@ function cat:interpret()
    -- Number literals
    local val = tonumber(w)
    if val then
-      return push(self, val)
+      return compile_push(self, val)
    end
 
    -- Dictionary words
    local f = self[w]
    if f then
-      push(self, f)
-      return self:execute()
+      return push(self, f)
    end
 
    -- Command script
@@ -74,8 +82,11 @@ function cat:interpret()
       local f = io.open(script, "r")
       if f ~= nil then
          f:close()
-         push(self, script)
-         return self:interpret_file()
+         local function do_script()
+            push(self, script)
+            return self:interpret_file()
+         end
+         return push(self, do_script)
       end
    end
 
@@ -87,8 +98,11 @@ function cat:interpret()
          f:close()
          if true then
             -- run it using loadscript to allow reloading
-            push(self, w)
-            return self:plugin()
+            local function do_plugin()
+               push(self, w)
+               return self:plugin()
+            end
+            return push(self, do_plugin)
          else
             -- run it using require which gives better error handling
             -- FIXME: maybe perform require when script fails?
@@ -97,14 +111,18 @@ function cat:interpret()
    end
 
    -- FIXME: This should abort to toplevel.
-   log_desc({error='undefined',word=w})
-   self:abort()
+   if dont_abort_on_error then
+      push(self, false)
+   else
+      log_desc({error='undefined',word=w})
+      self:abort()
+   end
 
 end
 
 
 
-function lookup(self, w)
+function metatable_index(self, w)
    -- It's useful to have an extra level here: user can add
    -- dictionarys to the mixins array.
    local val
@@ -130,13 +148,16 @@ end
 
 function cat.new(env, mixins)
    local obj = { ds = {}, env = env, mixins = mixins or {}, base = cat }
-   setmetatable(obj, {__index = lookup })
+   setmetatable(obj, {__index = metatable_index })
    -- obj isn't always needed so pass it as second value
    return obj
 end
 
 
-
+function cat:top()
+   local n = #self.ds
+   return self.ds[n]
+end
 
 function cat:pop()
    local n = #self.ds
