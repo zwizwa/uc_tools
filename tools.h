@@ -126,8 +126,22 @@ static inline void *mini_memcpy(void *dest, const void *src, uintptr_t n) {
     for (uintptr_t i=0; i<n; i++) { *d++ = *s++; };
     return dest;
 }
+static inline volatile void *mini_memcpy_volatile(volatile void *dest,
+                                                  const volatile void *src, uintptr_t n) {
+    volatile uint8_t *d = dest;
+    const volatile uint8_t *s = src;
+    for (uintptr_t i=0; i<n; i++) { *d++ = *s++; };
+    return dest;
+}
+
+
 static inline void *mini_memset(void *s, int c, uintptr_t n) {
     uint8_t *p = s;
+    for (uintptr_t i=0; i<n; i++) { *p++ = c; };
+    return s;
+}
+static inline volatile void *mini_memset_volatile(volatile void *s, int c, uintptr_t n) {
+    volatile uint8_t *p = s;
     for (uintptr_t i=0; i<n; i++) { *p++ = c; };
     return s;
 }
