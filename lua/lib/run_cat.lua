@@ -29,7 +29,8 @@ function cat:execute()
    local f = self:pop()
    assert(f)
    if type(f) == 'function' then
-      return f(self)
+      local rv = f(self)
+      return rv
    elseif type(f) == 'table' and f.tag == 'code' then
       push(self, f.code)
       return self:interpret_words()
@@ -100,7 +101,8 @@ function cat:compile(dont_abort_on_error)
             -- run it using loadscript to allow reloading
             local function do_plugin()
                push(self, w)
-               return self:plugin()
+               local rv = self:plugin()
+               return rv
             end
             return push(self, do_plugin)
          else
