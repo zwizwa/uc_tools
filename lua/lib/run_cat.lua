@@ -237,5 +237,25 @@ function cat:interpret_file()
    self:interpret_string()
 end
 
+function cat:swap()
+   local b = self:pop()
+   local a = self:pop()
+   push(self, b)
+   push(self, a)
+end
+
+function cat:ifte()
+   local cond = self:pop()
+   -- Map other types to numbers.
+   if cond == true then cond = 1 end
+   if cond == ""   then cond = 0 end
+   if type(cond) ~= 'number' then cond = 1 end
+   if cond == 0 then
+      self:swap()
+   end
+   self:pop()
+   self:execute()
+end
+
 return cat
 end
