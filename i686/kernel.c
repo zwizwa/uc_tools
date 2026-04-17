@@ -10,38 +10,28 @@ struct app {
     struct text_console log;
     struct idt idt;
 };
-void app_init(struct app *app) {
-    text_console_init(&app->log);
-    text_console_putstr(&app->log, "app_init()");
-    // Initialize the interrupt controller.  Interrupts are on after
-    // this, but all IRQs are masked.
-    init_pic(&app->idt);
-};
 
 struct app app;
 
-#if 0
-void keyboard_handler(void) {
-    uint8_t scancode = inb(0x60);
-    // app.log.video[0] = scancode;
-    (void)scancode;
-    outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
-}
-#endif
 
 __attribute__((naked))
-void keyboard_isr(void) {
-    __asm__ volatile(
-        "pusha"          "\n\t"
-        "cld"            "\n\t"   // set movs direction
-        "in $0x60, %al"  "\n\t"   // read scancode
-        // "call keyboard_handler" "\n\t"
-        "mov $0x20, %al" "\n\t"
-        "out %al, $0x20" "\n\t"   // end-of-interrupt to master pic
-        "popa"           "\n\t"
-        "iret"           "\n\t"
-    );
+static void keyboard_isr(void) {
+    isr_begin();
+    uint8_t scancode = inb(0x60);
+    app.log.video[0] = scancode;
+    outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
+    isr_end();
 }
+
+
+void app_init(struct app *app) {
+    text_console_init(&app->log);
+    text_console_putstr(&app->log, "app_init()");
+    idt_init(&app->idt,
+             keyboard_isr);
+};
+
+
 
 
 
@@ -58,13 +48,11 @@ void kmain(void) {
     // initialize app data
     app_init(&app);
 
-    // Enable keyboard interrupt
-    outb(0x21, 0b11111101); // only IRQ1 unmasked
 
-    volatile uint32_t *vw = (typeof(vw))0xB8000;
+    //volatile uint32_t *vw = (typeof(vw))0xB8000;
 
   loop:
-    (*vw)++;
+    //(*vw)++;
     hlt();
     goto loop;
 }
