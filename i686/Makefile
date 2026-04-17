@@ -15,7 +15,7 @@ CFLAGS = \
 
 .PHONY: all clean run
 
-all: zpxe.nbp
+all: zpxe.nbp kernel.dasm
 
 zpxe.nbp: boot.nbp kernel.bin
 	cat boot.nbp kernel.bin >$@
@@ -47,6 +47,8 @@ boot.dsk: boot.asm
 	rm -f $@
 	$(OBJDUMP) -d $< >$@.tmp
 	mv $@.tmp $@
+
+kernel.o: hw_i686.h
 
 # Test in QEMU loading as a floppy.  This will need a loader if it
 # gets bigger than the boot sector.

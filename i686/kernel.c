@@ -1,111 +1,70 @@
 #include <stdint.h>
+#include "text_console.h"
+
 extern uint8_t __bss_start;
 extern uint8_t __bss_end;
 
-#include "hw_i686.h"
-#include "tools.h"
-#define memset mini_memset
-#define memcpy mini_memcpy
-
-struct log {
-    volatile char *video;
-    uint8_t col;
-    uint8_t row;
-    uint8_t nb_rows;
-    uint8_t nb_cols;
-    uint8_t attrib;
-};
-void log_init(struct log *log) {
-    memset(log, 0, sizeof(*log));
-    log->attrib = 0x07;
-    log->video = (volatile char *)0xB8000;
-    log->nb_cols = 80;
-    log->nb_rows = 25;
-    /* Start at the bottom to cause a scroll at first character writen. */
-    log->col = 0;
-    log->row = log->nb_rows;
-}
-
-void log_scroll(struct log *log) {
-    // Note: mini_memcpy that allows backwards overlapping copy.
-    uint32_t row_size     = 2 * log->nb_cols;
-    uint32_t rows_m1_size = row_size * (log->nb_rows - 1);
-    mini_memcpy_volatile(
-        log->video,
-        (void*)(log->video + row_size),
-        rows_m1_size);
-    mini_memset_volatile(
-        log->video + rows_m1_size,
-        0,
-        row_size);
-}
-static inline uint32_t log_offset(struct log *log) {
-    return 2 * (log->nb_cols * log->row + log->col);
-}
-void log_putchar(struct log *log, char c) {
-    while (log->row >= log->nb_rows) {
-        log_scroll(log);
-        log->col = 0;
-        log->row--;
-    }
-    if (c == '\n') {
-        // move to new line
-        log->col = 0;
-        log->row++;
-    }
-    else {
-        typeof (log->video) v = log->video + log_offset(log);
-        *v++ = c;
-        *v++ = log->attrib;
-        log->col++;
-    }
-    if (log->col == log->nb_cols) {
-        // wrap end-of-line
-        log->col = 0;
-        log->row++;
-    }
-}
-void log_putstr(struct log *log, char *str) {
-    while (*str) {
-        log_putchar(log, *str++);
-    }
-}
 
 // Put everything in a single static struct.
 struct app {
-    struct log log;
+    struct text_console log;
+    struct idt idt;
 };
 void app_init(struct app *app) {
-    log_init(&app->log);
-    log_putstr(&app->log, "app_init()");
+    text_console_init(&app->log);
+    text_console_putstr(&app->log, "app_init()");
+    // Initialize the interrupt controller.  Interrupts are on after
+    // this, but all IRQs are masked.
+    init_pic(&app->idt);
 };
 
 struct app app;
 
+#if 0
+void keyboard_handler(void) {
+    uint8_t scancode = inb(0x60);
+    // app.log.video[0] = scancode;
+    (void)scancode;
+    outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
+}
+#endif
+
+__attribute__((naked))
+void keyboard_isr(void) {
+    __asm__ volatile(
+        "pusha"          "\n\t"
+        "cld"            "\n\t"   // set movs direction
+        "in $0x60, %al"  "\n\t"   // read scancode
+        // "call keyboard_handler" "\n\t"
+        "mov $0x20, %al" "\n\t"
+        "out %al, $0x20" "\n\t"   // end-of-interrupt to master pic
+        "popa"           "\n\t"
+        "iret"           "\n\t"
+    );
+}
+
+
+
 __attribute__ ((section (".kmain")))
 void kmain(void) {
+
+    // Before jumping here, the bootloader loads from media if needed,
+    // enables A20, turns off interrupts, switches to protected mode
+    // and jumps here.
 
     // initialize .bss segment to zero
     mini_memset(&__bss_start, 0, &__bss_end - &__bss_start);
 
-#if 0
-    // initialize video memory
-    volatile char *video = (volatile char *)0xB8000;
-    for (int i=0; i<80*25; i++) {
-        video[i*2] = '.';
-        video[i*2+1] = 0x0F; // white on black
-    }
-#endif
-
     // initialize app data
     app_init(&app);
 
-    // enable keyboard interrupt
+    // Enable keyboard interrupt
     outb(0x21, 0b11111101); // only IRQ1 unmasked
-    // https://claude.ai/chat/05381f76-0d4a-4083-a1b7-d114e392d17d
+
+    volatile uint32_t *vw = (typeof(vw))0xB8000;
 
   loop:
+    (*vw)++;
     hlt();
-    
     goto loop;
 }

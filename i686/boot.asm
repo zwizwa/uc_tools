@@ -27,13 +27,8 @@ start:
     sti                         ; Re-enable interrupts
 
     mov si, msg_banner
-    call print_string
+    call print_string_nl
 
-    mov si, msg_newline
-    call print_string
-
-    mov si, msg_prompt
-    call print_string
                                                                                            ; First enable the A20 line
     ; https://claude.ai/chat/f4693772-1425-4e1f-a287-f974e0cff4ac
     mov ax, 0x2401
@@ -41,15 +36,11 @@ start:
     jnc .a20_ok
     ret
     mov si, msg_a20_failed
-    call print_string
+    call print_string_nl
 .a20_ok:
 
-    ;; In case anything goes wrong start the console input.
-    ; jmp input_loop
 
-%ifdef FLOPPY
-   jmp load
-%else
+%ifndef FLOPPY
    jmp load_done
 %endif
 
@@ -110,7 +101,7 @@ load_track:
 
 error:
     mov si, msg_disk_error
-    call print_string
+    call print_string_nl
 .hang:
     hlt
     jmp .hang
@@ -148,94 +139,27 @@ print_char_inner:
     pop ds
     ret
 
-
-; ----- Main Input Loop -----
-input_loop:
-
-    ; Use hlt to avoid the busyloop.  This makes qemu more efficient.
-    sti
-    hlt                ; sleep until any interrupt fires
-    mov ah, 0x01       ; int 0x16 ah=1: check if key available (non-blocking)
-    int 0x16
-    jz input_loop
-
-    ; Wait for a keypress (blocking)
-    ; INT 16h, AH=00h: Wait for key
-    ;   Returns: AH = scan code, AL = ASCII character
-    xor ah, ah
-    int 0x16
-
-    ; Check for ESC key (ASCII 0x1B)
-    cmp al, 0x1B
-    je do_reboot
-
-    ; Check for Enter key (ASCII 0x0D)
-    cmp al, 0x0D
-    je do_enter
-
-    ; Check for Backspace (ASCII 0x08)
-    cmp al, 0x08
-    je do_backspace
-
-    ; Check for DEL (ASCII 0x7F)
-    cmp al, 0x7f
-    je do_backspace
-
-    ; Ignore non-printable characters (below space)
-    cmp al, 0x20
-    jb input_loop
-
-    ; Echo the printable character to the screen
-    call print_char
-
-    jmp input_loop
-
-; ----- Handle Enter Key -----
-do_enter:
-    ; Print newline (CR+LF)
+print_string_nl:        
+    call print_string
     mov si, msg_newline
     call print_string
+    ret
 
-    ; Print a new prompt
-    mov si, msg_prompt
-    call print_string
 
-    jmp input_loop
 
-; ----- Handle Backspace -----
-do_backspace:
-    ; Move cursor back, print space (erase), move cursor back again
-    mov al, 0x08
-    call print_char
-    mov al, ' '
-    call print_char
-    mov al, 0x08
-    call print_char
-
-    jmp input_loop
-
-; ----- Reboot -----
-do_reboot:
-    mov si, msg_newline
-    call print_string
-
-    ; Reboot via BIOS: jump to reset vector
-    jmp 0xFFFF:0x0000
-
-msg_banner:
-    db 'zpxe!', 0
-msg_prompt:
-    db '> ', 0
 msg_newline:
     db 0x0D, 0x0A, 0    
+msg_banner:
+    db 'booting', 0
 msg_a20_failed:
-    db "A20 enable failed", 0x0D, 0x0A, 0
+    db "!A20", 0x0D, 0x0A, 0
 msg_disk_error:
-    db "disk error", 0
+    db "!disk", 0
 
 
 load_done:
 
+    ; Disable the cursor
     mov ah, 02h       ; Set cursor position
     mov bh, 00h       ; Page 0
     mov dh, 25        ; Row 25 (off-screen in 80x25 mode)
@@ -259,50 +183,9 @@ load_done:
     mov gs, ax
     mov ss, ax
 
-    jmp 0x08:protected_mode
+    ; Jump into 32bit code segment.
+    jmp 0x08:kernel
 
-[BITS 32]
-protected_mode:
-
-    ; https://claude.ai/chat/c083247d-58de-4198-88e8-d762f99823a3
-
-    ; The 8259 PIC maps IRQ 0–7 to interrupts 0x08–0x0F by default,
-    ; which collides with CPU exceptions in protected mode (e.g., IRQ
-    ; 0 = timer hits the same vector as Double Fault). They need to be
-    ; remapped.
-
-
-    ; Remap PIC1 (master) to 0x20-0x27, PIC2 (slave) to 0x28-0x2F
-    mov al, 0x11       ; ICW1: init + ICW4 needed
-    out 0x20, al       ; master PIC command
-    out 0xA0, al       ; slave PIC command
-
-    mov al, 0x20       ; ICW2: master starts at 0x20
-    out 0x21, al
-    mov al, 0x28       ; ICW2: slave starts at 0x28
-    out 0xA1, al
-
-    mov al, 0x04       ; ICW3: master has slave on IRQ2
-    out 0x21, al
-    mov al, 0x02       ; ICW3: slave cascade identity
-    out 0xA1, al
-
-    mov al, 0x01       ; ICW4: 8086 mode
-    out 0x21, al
-    out 0xA1, al
-
-    ; Mask all IRQs except IRQ1 (keyboard)
-;    mov al, 0xFD       ; 1111 1101 — only IRQ1 unmasked
-    mov al, 0xFF        ; mask all on master
-    out 0x21, al
-
-    mov al, 0xFF       ; mask all on slave
-    out 0xA1, al
-
-
-; FIXME: set up IDT
-
-    jmp kernel
 
 
 
@@ -326,11 +209,11 @@ gdt_end:
     dw 0xaa55                  ; Bootable marker
 
 
-; Dummy kernel just for testing.
 
-
+[BITS 32]
 kernel:
-%ifdef  DUMMY_KERNEL
+
+%ifdef  TESTKERNEL
     mov ebx, 0xB8000
     mov ecx, 80*25
 .fill_screen:
