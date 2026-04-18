@@ -1,6 +1,6 @@
 NASM = nasm
 # QEMU = qemu-system-i386 -nographic -no-reboot -m 16
-QEMU = qemu-system-i386 -m 16
+QEMU = qemu-system-i386 -m 16 -display gtk,zoom-to-fit=on
 # QEMU = qemu-kvm -m 16
 GCC = i686-elf-gcc -ffreestanding -nostdlib -m32
 LD = i686-elf-ld
@@ -15,13 +15,17 @@ CFLAGS = \
 
 .PHONY: all clean run
 
-all: zpxe.nbp kernel.dasm
+all: kernel.nbp kernel.dsk kernel.dasm
 
-zpxe.nbp: boot.nbp kernel.bin
+kernel.nbp: boot.nbp kernel.bin
 	cat boot.nbp kernel.bin >$@
 
+kernel.dsk: boot.dsk kernel.bin
+	cat boot.dsk kernel.bin >$@
+#	truncate -s %1474560 $@
+
 clean:
-	rm -f *.bin *.elf zpxe.dsk zpxe.nbp *~ *.dasm *.o
+	rm -f *.bin *.elf boot.dsk boot.nbp test.nbp kernel.dsk kernel.nbp *~ *.dasm *.o
 
 
 # 512 byte boot sectors for NBP and floppy, loaded at 0x7C00.  This
@@ -29,6 +33,10 @@ clean:
 # mode before jumping into the C kernel.
 boot.nbp: boot.asm
 	$(NASM) -f bin -o $@ $<
+
+test.nbp: boot.asm
+	$(NASM) -dTESTKERNEL -f bin -o $@ $<
+
 boot.dsk: boot.asm
 	$(NASM) -dFLOPPY -f bin -o $@ $<
 
@@ -48,26 +56,32 @@ boot.dsk: boot.asm
 	$(OBJDUMP) -d $< >$@.tmp
 	mv $@.tmp $@
 
-kernel.o: hw_i686.h
+kernel.o: hw_i686.h text_console.h
 
 # Test in QEMU loading as a floppy.  This will need a loader if it
 # gets bigger than the boot sector.
-qemu_dsk: zpxe.dsk
+qemu_dsk: kernel.dsk
+	@echo "WARNING: floppy image does not reload on reboot"
+	@echo "WARNING: use qemu_nbp instead"
 	$(QEMU) -drive file=$<,format=raw,if=floppy -boot a
 
 # Test in QEMU using ipxe and internal tftp server.  This is a bit
 # slow due to the DHCP step.
-qemu_nbp_slow: zpxe.nbp
+qemu_nbp_slow: kernel.nbp
 	$(QEMU) -boot n -netdev user,id=net0,tftp=.,bootfile=$< -device virtio-net,netdev=net0
 
 # Faster boot with ipxe boot floppy compiled with static ip and hard coded boot file.
 # See /i/tom/git/ipxe/qemu.sh
 DSK=ipxe-qemu.dsk
-qemu_nbp: zpxe.nbp
+qemu_nbp: kernel.nbp
 	$(QEMU) -drive file=$(DSK),format=raw,if=floppy -boot a -netdev user,id=net0,tftp=. -device virtio-net,netdev=net0
 
 
 # Push it to the boot server.
-push: zpxe.nbp
-	scp $< root@rackhub:/etc/net/tftpboot/
+NBP = kernel.nbp test.nbp
+push: $(NBP)
+	scp $(NBP) root@rackhub:/etc/net/tftpboot/
 
+
+
+# sudo /i/tom/floppies/gotek.sh kernel.dsk /dev/sdf 4

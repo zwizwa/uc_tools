@@ -29,82 +29,105 @@ start:
     mov si, msg_banner
     call print_string_nl
 
-                                                                                           ; First enable the A20 line
+    ; First enable the A20 line
     ; https://claude.ai/chat/f4693772-1425-4e1f-a287-f974e0cff4ac
+    ; FIXME: This works on qemu but not on my 2 real machines.
     mov ax, 0x2401
     int 0x15
     jnc .a20_ok
-    ret
     mov si, msg_a20_failed
     call print_string_nl
 .a20_ok:
 
 
 %ifndef FLOPPY
-   jmp load_done
-%endif
+    jmp load_done
 
-
-
-;;; This currently only works for the first track.  I don't really
-;;; need it yet: all hosts I want to run this on support netboot or
-;;; can be made to netboot using an ipxe floppy, including qemu.
-
-;;; It seems simpler to use extended read call ah=0x42
-;;; https://claude.ai/chat/4229f038-c4b4-4c99-89c8-506a306f3b0a
-
-load:
+%else
     ; reset floppy
     xor ax, ax
     int 0x13
 
-    mov bx, 0x7E0           ; after bootsector
-    mov cl, 2               ; start at sector 2 (sector after boot sector)
-    mov al, 17              ; first read sector count (others are 18)
-    mov ch, 0               ; cylinder 0
-    mov dh, 0               ; head 0
+    ; read a number of tracks
+    mov ax, 0
+    mov cx, 10   ; nb tracks
+next_track:
     call load_track
-    call load_track
-    call load_track
-      
-    jmp 0x0000:load_done    ; jump to loaded code
+    add ax, 1
+    sub cx, 1
+    jnz next_track
 
+    mov si, msg_newline
+    call print_string
+
+    ; Turn off the floppy motor
+    ; Bit 2 = controller enable, bit 3 = DMA enable
+    ; Bits 4-7 = motor enable for drives 3-0 (all off)
+    mov dx, 3F2h
+    mov al, 0Ch     
+    out dx, al
+    ; Claude had some more notes about making sure there are no spurious interrupts.
+    ; https://claude.ai/chat/936c13d4-8692-4c76-a0fe-96919f65f6ec
+
+    jmp load_done
+ 
+
+
+    ; FIXME: Can't cross DMA boundary, but can't easily keep the overwrite either.
+    ; So maybe use an explicit destination for the data:
+    ; load track 0 at 0x7C00
+    ; load other tracks at e.g. 0x500 and copy to destination
+
+
+    ; Use track addressing
+    ; This re-loads 0x7C00 to keep code simpler.
 load_track:
-    push bx
-    mov es, bx
-    xor bx, bx              ; es:bx = destination
-    mov dl, 0               ; drive 0 (floppy A:)
-    mov ah, 0x02            ; BIOS read sectors
-    int 0x13
-    jc error
-    pop bx
-
-;;; advance segment in bx
-    push ax
     push cx
-    push dx
-    mov cx, 0x20
-    mov ah, 0
-    mul cx                      
-    add bx, ax                  ; bx = bx + 0x20 * nb_sec
-    pop dx
-    pop cx
+    push bx
+    push ax
+    push ax
+    mov dh, al
+    and dh, 1      ; head
+    shr ax, 1
+    mov ch, al     ; cylinder number
     pop ax
+    mov bx, 32*17  ; segments per sector * nb_sectors
+    mul bx
+    add ax, 0x7C0  ; base segment
 
-    mov al, 18                  ; next track nb_sec always the same
-    mov cl,  1                  ; start sector always 1
-    xor dh,  1                  ; flip head
-    jz .no_inc_cyl              ; if 1->0 inc cyl
-    inc ch
-.no_inc_cyl:
+    call print_hex_word
+
+    mov es, ax     ; es:dx is destination
+    xor bx, bx
+    mov cl, 1      ; start at sector 1
+    mov al, 17     ; read 17 sectors
+    mov dl, 0      ; drive A
+    mov ah, 0x02   ; BIOS read sectors
+    int 0x13
+    call print_hex_word
+    ; jc disk_error
+    mov si, msg_newline
+    call print_string
+    pop ax
+    pop bx
+    pop cx
     ret
 
-error:
-    mov si, msg_disk_error
+disk_error:
+    push ax
+    mov si, msg_newline
+    call print_string
+    pop ax
+    call print_hex_byte
+    mov si, msg_disk_error   
     call print_string_nl
-.hang:
+    call spin
+
+spin:   
     hlt
-    jmp .hang
+    jmp spin
+
+%endif
 
 ; print_string: Print a null-terminated string pointed to by DS:SI
 print_string:
@@ -139,6 +162,36 @@ print_char_inner:
     pop ds
     ret
 
+print_nibble:
+    and ax, 0xF
+    push si
+    mov si, hex_table
+    add si, ax
+    lodsb
+    pop si
+    jmp print_char
+
+print_hex_byte:
+    push ax
+    shr ax, 4
+    call print_nibble
+    pop ax
+    call print_nibble
+    ret
+
+hex_table:
+    db "0123456789ABCDEF"
+
+print_hex_word:
+    push ax
+    push ax
+    shr ax, 8
+    call print_hex_byte
+    pop ax
+    call print_hex_byte
+    pop ax
+    ret
+
 print_string_nl:        
     call print_string
     mov si, msg_newline
@@ -152,19 +205,16 @@ msg_newline:
 msg_banner:
     db 'booting', 0
 msg_a20_failed:
-    db "!A20", 0x0D, 0x0A, 0
+    db "!A20", 0
 msg_disk_error:
     db "!disk", 0
 
 
-load_done:
 
-    ; Disable the cursor
-    mov ah, 02h       ; Set cursor position
-    mov bh, 00h       ; Page 0
-    mov dh, 25        ; Row 25 (off-screen in 80x25 mode)
-    mov dl, 00h       ; Column 0
-    int 10h
+
+
+
+load_done:
 
     ; Load the GDT
     lgdt [gdt_descriptor]
@@ -184,9 +234,7 @@ load_done:
     mov ss, ax
 
     ; Jump into 32bit code segment.
-    jmp 0x08:kernel
-
-
+    jmp 0x08:protected_mode
 
 
 ; Global Descriptor Table (GDT)
@@ -204,16 +252,20 @@ gdt_descriptor:
 
 gdt_end:
 
+[BITS 32]
+protected_mode: 
+    mov ebx, 0xB8000 + (2 * 79)
+    mov byte [ebx], '?'
+    jmp kernel
 
     times 510 - ($ - $$) db 0  ; Pad to floppy bootsector size
     dw 0xaa55                  ; Bootable marker
 
 
-
-[BITS 32]
 kernel:
 
 %ifdef  TESTKERNEL
+
     mov ebx, 0xB8000
     mov ecx, 80*25
 .fill_screen:

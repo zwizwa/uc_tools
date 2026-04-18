@@ -16,15 +16,44 @@ struct text_console {
     uint8_t nb_cols;
     uint8_t attrib;
 };
+static inline void text_console_set_cursor(struct text_console *log) {
+    set_cursor_pos(log->col + log->row * log->nb_cols);
+}
+static inline void text_console_clear(struct text_console *log) {
+    log->row = 0;
+    log->col = 0;
+    for (int i = 0; i < log->nb_cols*log->nb_rows; i++) {
+        log->video[i*2] = ' ';
+        log->video[i*2+1] = log->attrib;
+    }
+    text_console_set_cursor(log);
+}
+
+#define VIDEO ((volatile uint8_t *)0xB8000)
+
 static inline void text_console_init(struct text_console *log) {
     memset(log, 0, sizeof(*log));
     log->attrib = 0x07;
-    log->video = (volatile char *)0xB8000;
+    log->video = VIDEO;
     log->nb_cols = 80;
     log->nb_rows = 25;
-    /* Start at the bottom to cause a scroll at first character writen. */
-    log->col = 0;
-    log->row = log->nb_rows;
+    switch(2) {
+    case 1:
+        /* Start at the bottom to cause a scroll at first character writen. */
+        log->col = 0;
+        log->row = log->nb_rows;
+        break;
+    case 2:
+        /* Get cursor from display registers.  This is also where bios
+           stopped writing to screen right after booting. */
+        uint16_t pos = get_cursor_pos();
+        log->row = pos / log->nb_cols;
+        log->col = pos % log->nb_cols;
+        break;
+    case 3:
+        text_console_clear(log);
+        break;
+    }
 }
 
 static inline void text_console_scroll(struct text_console *log) {
@@ -43,16 +72,39 @@ static inline void text_console_scroll(struct text_console *log) {
 static inline uint32_t text_console_offset(struct text_console *log) {
     return 2 * (log->nb_cols * log->row + log->col);
 }
-static inline void text_console_putchar(struct text_console *log, char c) {
+static inline void text_console_maybe_scroll(struct text_console *log) {
     while (log->row >= log->nb_rows) {
         text_console_scroll(log);
         log->col = 0;
         log->row--;
     }
-    if (c == '\n') {
+}
+static inline void text_console_putchar(struct text_console *log, uint8_t c) {
+    if (c == 0) {
+        // ignore null
+    }
+    else if (c > 127) {
+        // ignore non-standard control codes
+    }
+    else if (c == 27) {
+        // Keyboard controller (8042) reset — pulse the CPU reset line
+        // Some alternatives here:
+        // https://claude.ai/chat/0be89304-9906-4b33-bf8c-f11e477fda0c
+        outb(0x64, 0xFE);
+    }
+    else if (c == '\n') {
         // move to new line
         log->col = 0;
         log->row++;
+    }
+    else if (c == 8) {
+        if (log->col > 0) {
+            // erase previous character if not on first col
+            log->col--;
+            typeof (log->video) v = log->video + text_console_offset(log);
+            *v++ = ' ';
+            *v++ = log->attrib;
+        }
     }
     else {
         typeof (log->video) v = log->video + text_console_offset(log);
@@ -65,16 +117,12 @@ static inline void text_console_putchar(struct text_console *log, char c) {
         log->col = 0;
         log->row++;
     }
+    text_console_maybe_scroll(log);
+    text_console_set_cursor(log);
 }
 static inline void text_console_putstr(struct text_console *log, char *str) {
     while (*str) {
         text_console_putchar(log, *str++);
-    }
-}
-static inline void text_console_clear(struct text_console *log) {
-    for (int i = 0; i < log->nb_cols*log->nb_rows; i++) {
-        log->video[i*2] = '.';
-        log->video[i*2+1] = 0x0F; // white on black
     }
 }
 
