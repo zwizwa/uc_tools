@@ -10,7 +10,9 @@
 #include "stm32f103/gdbstub_api.h"
 #include <stdio.h>
 
-uint8_t flash[0x20000];
+// #define FLASH_SIZE 0x20000  // old 128k uC
+#define FLASH_SIZE 0x40000     // new 256k
+uint8_t flash[FLASH_SIZE];
 
 void assert_flash(uint32_t addr) {
     ASSERT(addr >= 0x08000000);
@@ -30,10 +32,15 @@ void partition_info(uint32_t offset, const char *format) {
 
     uint32_t block_logsize = 10;
     uint32_t span_pad = (((span-1)>>block_logsize)+1)<<block_logsize;
+
+    LOG("span_pad 0x%08x\n", span_pad);
+
     ASSERT(span_pad <= sizeof(flash) + sizeof(struct gdbstub_control));
 
     struct gdbstub_control *control = (void*)(fw_u8 + span_pad);
     ASSERT(control->size <= (1 << block_logsize));
+    ASSERT(control->size > 4);
+
     uint32_t ctrl_crc = crc32b((uint8_t*)control, control->size - 4);
     LOG("ctrl_crc 0x%08x\n", ctrl_crc);
     ASSERT(ctrl_crc == control->ctrl_crc);
@@ -81,9 +88,9 @@ int flashdump_info(
     FILE *f;
     ASSERT(NULL != (f = fopen(bin, "r")));
     ASSERT(0 == fseek(f, 0, SEEK_END));
-    ASSERT(sizeof(flash) == ftell(f));
+    ASSERT_EQ(sizeof(flash), ftell(f));
     ASSERT(0 == fseek(f, 0, SEEK_SET));
-    ASSERT(sizeof(flash) == fread(flash, 1, sizeof(flash), f));
+    ASSERT_EQ(sizeof(flash), fread(flash, 1, sizeof(flash), f));
 
     LOG("%d bytes read\n", sizeof(flash));
 

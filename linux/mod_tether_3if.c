@@ -465,6 +465,13 @@ int tether_interpret(struct tether *s) {
         return tether_next(s, 2);
     }
 
+    /* Dump STM/Geehy 256k flash */
+    if (!strcmp(cmd,"dump_flash_256")) { /* flash_binfile */
+        ASSERT(s->nb_words >= 2);
+        tether_dump_flash(s, s->word[1], 0x08000000, 256*1024);
+        return tether_next(s, 2);
+    }
+
     /* Dump stm32f103 20k ram */
     if (!strcmp(cmd,"dump_ram_20")) { /* ram_binfile */
         ASSERT(s->nb_words >= 2);
