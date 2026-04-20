@@ -10,13 +10,41 @@
 #include "stm32f103/gdbstub_api.h"
 #include <stdio.h>
 
+// FIXME: This is now hardcoded for the 512k Geehy devices.
+
+// FIXME: It should probably get the flash size from the file size,
+// and the block size from the partition header.
+
 // #define FLASH_SIZE 0x20000  // old 128k uC
+// #define FLASH_LOG_BLOCKSIZE 10
+
 #define FLASH_SIZE 0x40000     // new 256k
+#define FLASH_LOG_BLOCKSIZE 11
 uint8_t flash[FLASH_SIZE];
 
 void assert_flash(uint32_t addr) {
     ASSERT(addr >= 0x08000000);
     ASSERT(addr < (0x08000000 + sizeof(flash)));
+}
+
+static inline void log_hex(void *vdata, uint32_t n) {
+    int bytes_per_line = 16;
+    uint8_t *data = vdata;
+    for (int i=0; i<n; i++) {
+        if (((i+0) % bytes_per_line) == 0) {
+            LOG("%04x", i);
+        }
+        if (((i+0) % (bytes_per_line/2)) == 0) {
+            LOG(" ");
+        }
+        LOG(" %02x", data[i]);
+        if (((i+1) % bytes_per_line) == 0) {
+            LOG("\n");
+        }
+    }
+    if ((n % bytes_per_line) != 0) {
+        LOG("\n");
+    }
 }
 
 void partition_info(uint32_t offset, const char *format) {
@@ -30,14 +58,17 @@ void partition_info(uint32_t offset, const char *format) {
 
     uint32_t span = endx - start;
 
-    uint32_t block_logsize = 10;
+    uint32_t block_logsize = FLASH_LOG_BLOCKSIZE;
     uint32_t span_pad = (((span-1)>>block_logsize)+1)<<block_logsize;
 
-    LOG("span_pad 0x%08x\n", span_pad);
+    LOG("ctl      0x%08x\n", 0x08000000 + span_pad);
 
     ASSERT(span_pad <= sizeof(flash) + sizeof(struct gdbstub_control));
 
     struct gdbstub_control *control = (void*)(fw_u8 + span_pad);
+    log_hex(control, sizeof(*control));
+
+
     ASSERT(control->size <= (1 << block_logsize));
     ASSERT(control->size > 4);
 
