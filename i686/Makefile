@@ -22,7 +22,7 @@ kernel.nbp: boot.nbp kernel.bin
 
 kernel.dsk: boot.dsk kernel.bin
 	cat boot.dsk kernel.bin >$@
-#	truncate -s %1474560 $@
+	truncate -s %512 $@
 
 clean:
 	rm -f *.bin *.elf boot.dsk boot.nbp test.nbp kernel.dsk kernel.nbp *~ *.dasm *.o
@@ -61,7 +61,7 @@ kernel.o: hw_i686.h text_console.h
 # Test in QEMU loading as a floppy.  This will need a loader if it
 # gets bigger than the boot sector.
 qemu_dsk: kernel.dsk
-	@echo "WARNING: floppy image does not reload on reboot"
+	@echo "WARNING: floppy image does not reload on qemu reboot"
 	@echo "WARNING: use qemu_nbp instead"
 	$(QEMU) -drive file=$<,format=raw,if=floppy -boot a
 
@@ -82,6 +82,9 @@ NBP = kernel.nbp test.nbp
 push: $(NBP)
 	scp $(NBP) root@rackhub:/etc/net/tftpboot/
 
+# USB floppy drive
+%.dd: %.dsk
+	sudo dd if=$< of=/dev/disk/by-id/usb-TEAC_TEAC_FD-05PUB
 
-
+# gotek:
 # sudo /i/tom/floppies/gotek.sh kernel.dsk /dev/sdf 4

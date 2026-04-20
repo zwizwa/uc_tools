@@ -97,15 +97,31 @@ static void com1_isr(void) {
     isr_end();
 }
 
+void pci_cb_fn(void *vapp, struct pci_function *f) {
+    struct app *app = vapp;
+    text_console_infof(
+        &app->log, "%04 %04 %02 %02 %02\n",
+        f->vendor,
+        f->device,
+        f->class,
+        f->subclass,
+        f->hdr);
+
+}
 
 void app_init(struct app *app) {
     text_console_init(&app->log);
-    text_console_putstr(&app->log, "app_init()\n");
+    //text_console_putstr(&app->log, "app_init()\n");
+    text_console_infof(&app->log, "app_init %p\n", app);
     const struct idt_isr isr = {
         .keyboard_isr = keyboard_isr,
         .com1_isr     = com1_isr,
     };
     idt_init(&app->idt, &isr);
+
+    struct pci_cb cb = { .fun = pci_cb_fn, .ctx = &app };
+    pci_enumerate(&cb);
+
 };
 
 
