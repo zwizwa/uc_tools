@@ -51,6 +51,16 @@ BOOTLOADER_DEFAULT_SERVICE()
 void monitor_init(void) {
 }
 
+#elif MONITOR_CUSTOM_ENABLED
+/* Parent module will implement _read _write for custom loaders,
+   e.g. to make interop ewith main app easier. */
+void     monitor_write(const uint8_t *buf, uint32_t size);
+uint32_t monitor_read(uint8_t *buf, uint32_t size);
+void     monitor_init(void);
+BOOTLOADER_SERVICE(monitor_read,
+                   monitor_write,
+                   NULL)
+
 #elif MONITOR_ENABLED
 /* Experimental 3-Instruction Forth */
 #include "mod_monitor.c"
