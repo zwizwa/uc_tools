@@ -15,6 +15,7 @@ struct text_console {
     uint8_t nb_rows;
     uint8_t nb_cols;
     uint8_t attrib;
+    uint8_t use_cli;
 };
 static inline void text_console_set_cursor(struct text_console *log) {
     set_cursor_pos(log->col + log->row * log->nb_cols);
@@ -79,6 +80,8 @@ static inline void text_console_maybe_scroll(struct text_console *log) {
         log->row--;
     }
 }
+static inline void text_console_putstr(struct text_console *log, char *str);
+
 static inline void text_console_putchar_nocli(struct text_console *log, uint8_t c) {
     if (c == 0) {
         // ignore null
@@ -90,6 +93,7 @@ static inline void text_console_putchar_nocli(struct text_console *log, uint8_t 
         // Keyboard controller (8042) reset — pulse the CPU reset line
         // Some alternatives here:
         // https://claude.ai/chat/0be89304-9906-4b33-bf8c-f11e477fda0c
+        text_console_putstr(log, "reboot...\n");
         outb(0x64, 0xFE);
     }
     else if (c == '\n') {
@@ -121,9 +125,12 @@ static inline void text_console_putchar_nocli(struct text_console *log, uint8_t 
     text_console_set_cursor(log);
 }
 static inline void text_console_putchar(struct text_console *log, uint8_t c) {
-    cli();
+    /* This can still be used from interrupt handler and initial setup
+       code which has interrupts off. */
+    int ie =interrupts_enabled();
+    if(ie) cli();
     text_console_putchar_nocli(log, c);
-    sti();
+    if(ie) sti();
 }
 static inline void text_console_putstr(struct text_console *log, char *str) {
     while (*str) {

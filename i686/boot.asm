@@ -26,6 +26,18 @@ start:
     mov sp, 0x7C00              ; Stack grows down from load address
     sti                         ; Re-enable interrupts
 
+    ; https://claude.ai/chat/22c77dcf-e200-42e0-8b70-f9fabd27b804
+    ; different text mode
+    ;mov ax, 0x4F02
+    ;mov bx, 0x010C   ; 0109, 010A, 010B, 010C
+    ;int 0x10
+
+    ;mov ax, 0x0003   ; set 80x25 color text first
+    ;int 0x10
+    ;mov ax, 0x1112   ; load 8x8 ROM font, recalc CRTC for 50 rows
+    ;mov bl, 0x00
+    ;int 0x10
+
     mov si, msg_banner
     call print_string_nl
 

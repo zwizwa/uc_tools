@@ -65,22 +65,35 @@ qemu_dsk: kernel.dsk
 	@echo "WARNING: use qemu_nbp instead"
 	$(QEMU) -drive file=$<,format=raw,if=floppy -boot a
 
-# Test in QEMU using ipxe and internal tftp server.  This is a bit
-# slow due to the DHCP step.
-qemu_nbp_slow: kernel.nbp
-	$(QEMU) -boot n -netdev user,id=net0,tftp=.,bootfile=$< -device virtio-net,netdev=net0
+# Test in QEMU using ipxe and user mode networking with internal tftp
+# server.  This is a bit slow due to the DHCP step.
+#qemu_nbp_slow: kernel.nbp
+#	$(QEMU) -boot n -netdev user,id=net0,tftp=.,bootfile=$< -device virtio-net,netdev=net0
+
+
+
 
 # Faster boot with ipxe boot floppy compiled with static ip and hard coded boot file.
 # See /i/tom/git/ipxe/qemu.sh
+# Copy the boot floppy image to avoid locks on the NFS share
+# Using rtl8139 instead of virtio-net
 DSK=ipxe-qemu.dsk
 qemu_nbp: kernel.nbp
-	$(QEMU) -drive file=$(DSK),format=raw,if=floppy -boot a -netdev user,id=net0,tftp=. -device virtio-net,netdev=net0
+	cp -a $(DSK) /tmp/$(DSK)
+	$(QEMU) -drive file=/tmp/$(DSK),format=raw,if=floppy -boot a -netdev user,id=net0,tftp=. -device rtl8139,netdev=net0
+
 
 
 # Push it to the boot server.
 NBP = kernel.nbp test.nbp
 push: $(NBP)
 	scp $(NBP) root@rackhub:/etc/net/tftpboot/
+
+# Then boot it in qemu
+qemu_br1: push
+#	$(QEMU) -boot n -netdev bridge,id=net0,br=br1 -device rtl8139,netdev=net0
+	sudo $(QEMU) -drive file=ipxe-qemu-br1.dsk,format=raw,if=floppy -boot a -netdev bridge,id=net0,br=br1 -device rtl8139,netdev=net0
+
 
 # USB floppy drive
 %.dd: %.dsk
