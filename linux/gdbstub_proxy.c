@@ -9,7 +9,19 @@
 #define LOG(...) fprintf(stderr, __VA_ARGS__)
 
 #include "stm32f103/gdbstub.h"
+
+// FIXME: Machine parameters should probably be configurable.  This is
+// just set here for the one I actually use these days.
+#if 0
 const char gdbstub_memory_map[] = GDBSTUB_MEMORY_MAP_STM32F103CB;
+uint8_t ram[0x5000] = {};
+uint8_t rom[0x20000] = {};
+#else
+const char gdbstub_memory_map[] = GDBSTUB_MEMORY_MAP_APM32E103RET6;
+uint8_t ram[0x20000] = {};
+uint8_t rom[0x40000] = {};
+#endif
+
 struct gdbstub_config _config;
 
 // FIXME: These are not in the lib.  Why?
@@ -21,8 +33,6 @@ struct gdbstub_config _config;
 
 GDBSTUB_INSTANCE(gdbstub, gdbstub_default_commands);
 
-uint8_t ram[0x5000] = {};
-uint8_t rom[0x20000] = {};
 
 
 // All write access is stubbed out.
@@ -41,11 +51,11 @@ int32_t mem_write32(uint32_t addr, uint32_t val) {
 
 uint8_t mem_read(uint32_t addr) {
     if ((addr >= 0x20000000) &&
-        (addr <  0x20005000)) {
+        (addr <  0x20000000 + sizeof(ram))) {
         return ram[addr - 0x20000000];
     }
     if ((addr >= 0x08000000) &&
-        (addr <  0x08020000)) {
+        (addr <  0x08000000 + sizeof(rom))) {
         return rom[addr - 0x08000000];
     }
     return 0x55;

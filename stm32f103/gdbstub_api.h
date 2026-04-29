@@ -250,7 +250,9 @@ struct gdbstub_config {
 #define GDBSTUB_CONFIG_INDEX_FLASH_ENDX  16
 #define GDBSTUB_CONFIG_INDEX_CONTROL     18
 #define GDBSTUB_CONFIG_INDEX_FWTAG       19
+#define GDBSTUB_CONFIG_INDEX_DATA        20
 #define GDBSTUB_CONFIG_INDEX_CMD_3IF     22
+#define GDBSTUB_CONFIG_NB_U32            32
 
 extern struct gdbstub_config _config; // FLASH
 

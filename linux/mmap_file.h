@@ -115,9 +115,9 @@ static inline const void *mmap_file_open_ro(struct mmap_file *ref,
 }
 
 
-static inline const void *mmap_file_open_rw(struct mmap_file *ref,
-                                            const char *file,
-                                            uintptr_t nb_bytes) {
+static inline void *mmap_file_open_rw(struct mmap_file *ref,
+                                      const char *file,
+                                      uintptr_t nb_bytes) {
     memset(ref,0,sizeof(*ref));
 
     /* Open the file for read-write, create if necessary. */
