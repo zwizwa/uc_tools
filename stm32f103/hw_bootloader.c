@@ -10,6 +10,19 @@
 #error UNKNOWN_HW
 #endif
 
+/* Regarding the proposed poll_data_rx() fix, see git blame for this
+   comment to see the proposed commented-out code.  The problem is
+   that there the callback that decrements tx_buf_sema is only
+   installed after the USB configuration process is finished.  If
+   poll_data_rx() increments tx_buf_sema due to application sending
+   data before USB is configured, the communication gets stuck.  I
+   tried the proposal here but I am not sure if it works.  My test
+   gave strange results.  It might be because there is always serial
+   port configuration necessary at the OS end before the serial port
+   is in raw mode, so it seems in general it is best that the firmware
+   only sends something after it has received a command from the host.
+   That behavior hides the tx_buf_sema bug. */
+
 extern struct gdbstub_service service;
 
 // cdcacm_desc.c
@@ -24,6 +37,7 @@ static const char * usb_strings[3];
 uint8_t rx_buf[64];
 uint8_t tx_buf[64];
 uint32_t tx_buf_sema;
+//uint8_t poll_data_tx_ok;
 
 /* Send len bytes from tx_buf */
 static void data_tx(uint32_t len) {
@@ -32,6 +46,7 @@ static void data_tx(uint32_t len) {
 }
 /* Poll output state machine. */
 static void poll_data_tx(void) {
+    //if (!poll_data_tx_ok) return;
     if (tx_buf_sema > 0) return; // busy
     uint32_t len = io->read(tx_buf, sizeof(tx_buf));
     if (len) data_tx(len);
@@ -61,6 +76,7 @@ static void cdcacm_set_config(usbd_device *usbd_dev, uint16_t wValue) {
     (void)wValue;
     cdcacm_set_config_with_callbacks(usbd_dev, data_rx_cb, data_tx_cb);
     usbd_register_reset_callback(usbd_dev, bootloader_io_reset);
+    //poll_data_tx_ok = 1;
 }
 
 char serial_hex[25];
