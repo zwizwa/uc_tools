@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <string.h>
 
 
 #if 1
@@ -9,6 +10,8 @@ void debugf(const char *fmt, ...);
 #endif
 
 #include "text_console.h"
+
+
 
 extern uint8_t __bss_start;
 extern uint8_t __bss_end;
@@ -23,11 +26,32 @@ struct app {
 
 struct app g_app;
 
-// Use this for debugging only if there is no direct path to app->log.
+
+
+/* Instantiate printf-style logging on top of _putchar for both text
+   console ans serial port. */
+static inline void debug_putchar(struct app *app, char c) {
+    text_console_putchar(&app->log, c);
+    com1_putchar(c);
+}
+#define NS(tag) debug_##tag
+#define debug_CTX_DEF struct app *app,
+#define debug_CTX_REF app,
+#include "ns_infof.c"
+#undef NS
+static inline int debug_infof(struct app *app, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    int rv = debug_vf(app, fmt, ap);
+    va_end(ap);
+    return rv;
+}
+// Note that it is really difficult to make this refer to app because
+// I want logging to be available everywhere.  So I guess it is ok.
 void debugf(const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
-    int rv = text_console_info_vf(&g_app.log, fmt, ap);
+    int rv = debug_vf(&g_app, fmt, ap);
     va_end(ap);
 }
 
@@ -76,8 +100,8 @@ const uint8_t kbd_US[128] = {
 
 void rtl8139_status(void) {
     struct rtl8139 *s = &g_app.rtl8139;
-    text_console_infof(
-        &g_app.log,
+    debug_infof(
+        &g_app,
         "CBR=%04x CAPR=%04x MPC=%d ISR=%d CMD=%02x MSR=%02x RCR=%08x\n"
         ,inw(s->iobase + RTL_CBR)
         ,inw(s->iobase + RTL_CAPR)
@@ -87,6 +111,12 @@ void rtl8139_status(void) {
         ,inb(s->iobase + RTL_MSR)
         ,inl(s->iobase + RTL_RCR)
         );
+}
+
+void forth_write(const uint8_t *buf, uint32_t len);
+void console_putchar(uint8_t byte) {
+    debug_putchar(&g_app, byte);
+    forth_write(&byte, 1);
 }
 
 
@@ -102,8 +132,19 @@ static void keyboard_isr(void) {
         if (ascii == KBD_F1) {
             rtl8139_status();
         }
+        else if (ascii == 27) {
+            // Keyboard controller (8042) reset — pulse the CPU reset line
+            // Some alternatives here:
+            // https://claude.ai/chat/0be89304-9906-4b33-bf8c-f11e477fda0c
+            reboot();
+        }
         else {
+#if 0
             text_console_putchar(&g_app.log, ascii);
+#else
+            console_putchar(ascii);
+#endif
+
         }
     }
     else {
@@ -125,11 +166,13 @@ static void com1_isr(void) {
         if (lsr & (LSR_OVERRUN_ERR | LSR_PARITY_ERR | LSR_FRAMING_ERR)) {
             /* drop or log — byte is still worth passing up in most designs */
         }
-        text_console_putchar(&g_app.log, byte);
+
+        // text_console_putchar(&g_app.log, byte);
+#if 0
         com1_putchar(byte);
-        if (byte == '\r') {
-            com1_putchar('\n');
-        }
+#else
+        console_putchar(byte);
+#endif
 
     }
 
@@ -152,8 +195,8 @@ static void rtl8139_isr(void) {
 
 void pci_cb_fn(void *vapp, struct pci_function *f) {
     struct app *app = vapp;
-    text_console_infof(
-        &app->log,
+    debug_infof(
+        app,
         // Imitate linux lspci -n
         "%02x:%02x.%d %02x%02x: %04x:%04x\n",
         f->bus, f->dev, f->func,
@@ -164,8 +207,8 @@ void pci_cb_fn(void *vapp, struct pci_function *f) {
         (f->device == 0x8139)) {
         struct rtl8139 *rtl = &app->rtl8139;
         rtl8139_init(rtl, f);
-        text_console_infof(
-            &app->log,
+        debug_infof(
+            app,
             "rtl8139 io=%04x irq=%d mac=%02x:%02x:%02x:%02x:%02x:%02x\n",
             rtl->iobase,
             rtl->irq,
@@ -178,10 +221,13 @@ void pci_cb_fn(void *vapp, struct pci_function *f) {
     }
 }
 
+
+
+
 void app_init(struct app *app) {
     text_console_init(&app->log);
     //text_console_putstr(&app->log, "app_init()\n");
-    text_console_infof(&app->log, "app_init %p\n", app);
+    debug_infof(app, "app_init %p\n", app);
 
     // scan PCI bus before setting up interrupts
     struct pci_cb cb = { .fun = pci_cb_fn, .ctx = app };
@@ -202,6 +248,26 @@ void app_init(struct app *app) {
 
 };
 
+
+
+/* The uc_tools Forth */
+#define strlen mini_strlen
+#define strcmp mini_strcmp
+#define FORTH_OUT_INFO 1
+#include "tools.c"
+#include "forth.h"
+void hello(void) {
+    LOG("hello!\n");
+}
+void reboot(void) {
+    LOG("reboot...\n");
+    outb(0x64, 0xFE);
+}
+#define FORTH_WORDS        \
+    {"hello",  (w)hello},  \
+    {"reboot", (w)reboot}, \
+
+#include "mod_forth.c"
 
 
 
@@ -228,9 +294,15 @@ void kmain(void) {
     app_init(&g_app);
 
     //volatile uint32_t *vw = (typeof(vw))0xB8000;
+    // forth_write_word("hello");
+
+    forth_start();
 
   loop:
     //(*vw)++;
     hlt();
     goto loop;
 }
+
+
+

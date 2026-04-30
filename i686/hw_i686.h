@@ -90,9 +90,15 @@ static inline int interrupts_enabled(void) {
 #define LSR_THR_EMPTY    0x20  /* Transmitter Holding Register empty */
 #define LSR_TX_IDLE      0x40  /* Transmitter fully idle (THR + shift reg) */
 
-static void com1_putchar(uint8_t byte) {
+static void com1_write_byte(uint8_t byte) {
     while (!(inb(COM1_LSR) & LSR_THR_EMPTY)) { }
     outb(COM1_DATA, byte);
+}
+static void com1_putchar(uint8_t byte) {
+    com1_write_byte(byte);
+    if (byte == '\n') {
+        com1_write_byte('\r');
+    }
 }
 static void com1_putstr(uint8_t *str) {
     while(*str) {
@@ -265,17 +271,16 @@ static inline void idt_init(struct idt *idt,
         if (isr->com1_isr) {
             idt_set(idt, 4, isr->com1_isr);
             com1_init();
-            com1_putstr("kernel\r\n");
         }
         if (isr->rtl8139.irq) {
-            LOG("enable rtl8139 irq %d\n", isr->rtl8139.irq);
+            //LOG("enable rtl8139 irq %d\n", isr->rtl8139.irq);
             idt_set(idt, isr->rtl8139.irq, isr->rtl8139.isr);
         }
     }
 
-    LOG("irq enables %02x %02x\n",
-        idt->master_enable,
-        idt->slave_enable);
+    //LOG("irq enables %02x %02x\n",
+    //    idt->master_enable,
+    //    idt->slave_enable);
 
     outb(0x21, ~idt->master_enable);
     outb(0xA1, ~idt->slave_enable);
@@ -303,9 +308,21 @@ static inline uint16_t get_cursor_pos(void) {
     pos |= ((uint16_t)crtc_read(CRTC_CURSOR_LOC_HI)) << 8;
     return pos;
 }
+
+static inline void top_left(uint32_t word, int nb_digits) {
+    volatile uint8_t *v = (void*)0xB8000;
+    static const uint8_t hex[16] = "0123456789ABCDEF";
+    for (int i=nb_digits-1; i>=0; i--) {
+        *v++ = hex[(word >> (i*4)) & 0xF];
+        *v++ = 0x17;
+    }
+}
+
+
 static inline void set_cursor_pos(uint16_t pos) {
     crtc_write(CRTC_CURSOR_LOC_LO, pos & 0xFF);
-    crtc_write(CRTC_CURSOR_LOC_HI, pos >> 8);
+    crtc_write(CRTC_CURSOR_LOC_HI, (pos >> 8) & 0xFF);
+    // top_left(pos,4);
 }
 
 
@@ -460,29 +477,28 @@ static inline void pci_enumerate(struct pci_cb *cb) {
 
 
 // RCR bits 12:11 — RBLEN
-//  00  →  8K  + 16 bytes
-//  01  →  16K + 16 bytes
-//  10  →  32K + 16 bytes
-//  11  →  64K + 16 bytes
+//  00  8K
+//  01  16K
+//  10  32K
+//  11  64K
 
-// 0 = 8k
-// 1 = 16k
-// 2 = 32k
-// 3 = 64k
-
-// There seems to be no reason to pick anything less than the maximum
-// 0 is not enough in practice
-#define RCR_RBLEN_TAG 0
-#define RTL8139_RX_BUF_LEN (1<<(RCR_RBLEN_TAG+13))
-#define RCR_RBLEN (RCR_RBLEN_TAG<<11)
+// There seems to be no reason to pick anything less than the maximum.
+// The 8K is not enough in practice, but can be used to debug RX reset
+// with flooded ethernet.
+#define RCR_RBLEN 3
+#define RCR_RBLEN_SHIFT 11
+#define RTL8139_RX_BUF_LEN (1<<(RCR_RBLEN+13))
 
 struct rtl8139 {
     uint8_t  rx_buf[RTL8139_RX_BUF_LEN + 2048];
+    uint32_t rx_offset;
+    uint32_t count;
     uint32_t iobase;
     uint8_t  irq;
-    uint32_t rx_offset;
     uint8_t  mac[6];
 };
+
+const uint8_t progress[8] = {'-','\\','|','/','-','\\','|','/'};
 
 static inline void log_hex(const uint8_t *buf, uint32_t len) {
     for (int i=0; i<len; i++) {
@@ -531,9 +547,7 @@ static inline void rtl8139_rx_poll(struct rtl8139 *s) {
 
         //LOG("offset %04x->%04x\n", o0, o1);
         volatile uint8_t *top_right = (void*)(0xB8000 + 2*79);
-        (*top_right)++;;
-
-        
+        (*top_right) = progress[(s->count++)&7];
 
         // Tell card we've consumed up to here.
         // CAPR is written as rx_offset-16, a hardware quirk
@@ -550,17 +564,15 @@ static inline void rtl8139_reset(struct rtl8139 *s) {
     // Enable RX + TX
     outb(s->iobase + RTL_CMD, CMD_RE | CMD_TE);
 
-    // Set RX config:
-    //    - Accept broadcast + physical match + multicast
-    //    - 16K ring, wrap enabled, unlimited DMA
+    // Set RX config
     uint32_t rcr_val =
-        RCR_AAP | // all packets
+        //RCR_AAP | // all packets
         RCR_AB | RCR_APM | RCR_AM |
-        RCR_WRAP | RCR_RBLEN | RCR_MXDMA_UNLIM |
+        RCR_WRAP | (RCR_RBLEN << RCR_RBLEN_SHIFT) | RCR_MXDMA_UNLIM |
         RCR_RXFTH_NONE;
-
     outl(s->iobase + RTL_RCR, rcr_val);
 
+    // Offfset of next packet
     s->rx_offset = 0;
 
 }
@@ -613,8 +625,7 @@ static inline void rtl8139_init(struct rtl8139 *s,
         s->mac[i] = inb(s->iobase + RTL_IDR0 + i);
     }
 
-    LOG("RTL8139_RX_BUF_LEN=%d, RCR_RBLEN_TAG=%d\n",
-        RTL8139_RX_BUF_LEN, RCR_RBLEN_TAG);
+    // LOG("RTL8139_RX_BUF_LEN=%d\n", RTL8139_RX_BUF_LEN);
 
 
     // Enable PCI Bus Mastering + I/O Space

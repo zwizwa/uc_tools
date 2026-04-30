@@ -18,7 +18,10 @@ struct text_console {
     uint8_t use_cli;
 };
 static inline void text_console_set_cursor(struct text_console *log) {
-    set_cursor_pos(log->col + log->row * log->nb_cols);
+    uint16_t pos = log->row;
+    pos *= log->nb_cols;
+    pos += log->col;
+    set_cursor_pos(pos);
 }
 static inline void text_console_clear(struct text_console *log) {
     log->row = 0;
@@ -65,10 +68,11 @@ static inline void text_console_scroll(struct text_console *log) {
         log->video,
         (void*)(log->video + row_size),
         rows_m1_size);
-    mini_memset_volatile(
-        log->video + rows_m1_size,
-        0,
-        row_size);
+    volatile uint8_t *v = (void*)log->video + rows_m1_size;
+    for (int i=0; i<log->nb_cols; i++) {
+        *v++ = ' ';
+        *v++ = log->attrib;
+    }
 }
 static inline uint32_t text_console_offset(struct text_console *log) {
     return 2 * (log->nb_cols * log->row + log->col);
@@ -82,19 +86,13 @@ static inline void text_console_maybe_scroll(struct text_console *log) {
 }
 static inline void text_console_putstr(struct text_console *log, char *str);
 
+void reboot(void);
 static inline void text_console_putchar_nocli(struct text_console *log, uint8_t c) {
     if (c == 0) {
         // ignore null
     }
     else if (c > 127) {
         // ignore non-standard control codes
-    }
-    else if (c == 27) {
-        // Keyboard controller (8042) reset — pulse the CPU reset line
-        // Some alternatives here:
-        // https://claude.ai/chat/0be89304-9906-4b33-bf8c-f11e477fda0c
-        text_console_putstr(log, "reboot...\n");
-        outb(0x64, 0xFE);
     }
     else if (c == '\n') {
         // move to new line
@@ -139,39 +137,5 @@ static inline void text_console_putstr(struct text_console *log, char *str) {
 }
 
 
-/* I want two conflicting things here:
-
-   - Have a memory-mapped text console to have a straightforward way
-     to do widgets etc.
-
-   - Support serial port as well.
-
-   For now I only want serial port for sequential logging, so it is
-   probably ok to create an API tap point for putchar and puth putstr
-   and infof on top of that.
-
-   For now it is just attached directly to the text console.
-
-   Below instantiates the ns_info.c module providing:
-   text_console_info_vf
-
-*/
-
-static inline void text_console_info_putchar(struct text_console *log, char c) {
-    text_console_putchar(log, c);
-}
-#define NS(tag) text_console_info_##tag
-#define text_console_info_CTX_DEF struct text_console *log,
-#define text_console_info_CTX_REF log,
-#include "ns_infof.c"
-#undef NS
-static inline void text_console_infof(struct text_console *log,
-                                      const char *fmt,
-                                      ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    int rv = text_console_info_vf(log, fmt, ap);
-    va_end(ap);
-}
 
 #endif
