@@ -9,8 +9,15 @@ void debugf(const char *fmt, ...);
 #define LOG(...)
 #endif
 
+/* PC (VGA) text console. */
 #include "text_console.h"
 
+/* Command line editor. */
+#include "line_editor.h"
+
+/* Telnet and ANSI terminal interface. */
+#define TELNET_NO_INIT
+#include "telnet.h"
 
 
 extern uint8_t __bss_start;
@@ -22,6 +29,10 @@ struct app {
     struct text_console log;
     struct idt idt;
     struct rtl8139 rtl8139;
+    struct telnet telnet;
+    struct line_editor line_editor;
+    struct pbuf line_editor_pbuf;
+    uint8_t line_editor_pbuf_buf[128];
 };
 
 struct app g_app;
@@ -66,7 +77,7 @@ void debugf(const char *fmt, ...) {
 const uint8_t kbd_US[128] = {
     0,  27, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', '\b',
     '\t', /* <-- Tab */
-    'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', '\n',
+    'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', '\r',
     KBD_CTRL, /* <-- control key */
     'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', '\'', '`',  8,
     '\\', 'z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/',  KBD_SHIFT,
@@ -114,9 +125,30 @@ void rtl8139_status(void) {
 }
 
 void forth_write(const uint8_t *buf, uint32_t len);
-void console_putchar(uint8_t byte) {
-    debug_putchar(&g_app, byte);
+
+/* Send a raw character from serial port terminal to the command
+   interpreter and perform echo with the needed CR LF conversion.
+
+   This is how I understand the convention:
+
+   - The ENTER key coming in on COM1 looks like '\r'
+   - The '\r and '\n' characters sent to COM1 separate CR and LF
+   - The '\r' in printf is CR, the '\n' is CR,LF
+
+*/
+
+void app_keyboard_input(struct app *app, uint8_t byte) {
+#if 0
+    debug_putchar(app, byte);
+    if (byte == '\r') {
+        debug_putchar(app, '\n');
+    }
     forth_write(&byte, 1);
+#elseif 0
+    line_editor_push(&app->line_editor, byte);
+#else
+    telnet_write_input(&app->telnet, &byte, 1);
+#endif
 }
 
 
@@ -139,12 +171,8 @@ static void keyboard_isr(void) {
             reboot();
         }
         else {
-#if 0
-            text_console_putchar(&g_app.log, ascii);
-#else
-            console_putchar(ascii);
-#endif
-
+            // The encoding emulates a serial terminal.
+            app_keyboard_input(&g_app, ascii);
         }
     }
     else {
@@ -162,18 +190,19 @@ static void com1_isr(void) {
     while ((lsr = inb(COM1_LSR)) & LSR_DATA_READY) {
         uint8_t byte = inb(COM1_DATA);
 
+        if (1) {
+            // FIXME: This seems to crash.
+            static const uint8_t hex[16] = "0123456789ABCDEF";
+            volatile uint8_t *v = (void*)0xB8000;
+            v[0] = hex[(byte >> 4) & 0xF]; v[1] = 0x17;
+            v[2] = hex[(byte >> 0) & 0xF]; v[3] = 0x17;
+        }
+
         /* Optionally inspect lsr for framing/parity/overrun errors */
         if (lsr & (LSR_OVERRUN_ERR | LSR_PARITY_ERR | LSR_FRAMING_ERR)) {
             /* drop or log — byte is still worth passing up in most designs */
         }
-
-        // text_console_putchar(&g_app.log, byte);
-#if 0
-        com1_putchar(byte);
-#else
-        console_putchar(byte);
-#endif
-
+        app_keyboard_input(&g_app, byte);
     }
 
 
@@ -222,9 +251,63 @@ void pci_cb_fn(void *vapp, struct pci_function *f) {
 }
 
 
+void app_echo(void *vapp, uint8_t byte) {
+    struct app *app = vapp;
+    text_console_putchar(&app->log, byte);
+    com1_putchar(byte);
+}
+void app_line(void *vapp, const uint8_t *buf, uint32_t bytes) {
+    // FIXME
+}
 
+
+void telnet_write_output(struct telnet *, const uint8_t *bytes, uintptr_t len) {
+    for (uintptr_t i=0; i<len; i++) {
+        debug_putchar(&g_app, bytes[i]);
+    }
+}
+void telnet_event(struct telnet *t, uintptr_t event) {
+    //LOG("event 0x%x\n", event);
+    uint8_t byte = event & 0xFF;
+    event &= ~0xff;
+    switch(event) {
+    case TELNET_EVENT_LINE:
+        if (0) {
+            LOG("<LINE:");
+            for(uint32_t i=0; i<t->nb_char; i++) {
+                LOG("%c", t->line[i]);
+            }
+            LOG(">\n");
+        }
+        // forth_accept() expects white space termination
+        // maybe move this into telnet.h code
+        if (t->nb_char >= sizeof(t->line)) {
+            t->nb_char = sizeof(t->line) - 1; 
+        }
+        t->line[t->nb_char++] = '\n';
+        forth_write(t->line, t->nb_char);
+        break;
+    case TELNET_EVENT_ESCAPE:
+        LOG("<ESC:");
+        for(uint32_t i=0; i<t->nb_esc; i++) {
+            LOG("%c", t->esc[i]);
+        }
+        LOG(">\n");
+        break;
+    default:
+        break;
+    }
+}
 
 void app_init(struct app *app) {
+
+    PBUF_INIT(app->line_editor_pbuf);
+    line_editor_init(&app->line_editor,
+                     &app->line_editor_pbuf,
+                     app_echo,
+                     app_line,
+                     app);
+
     text_console_init(&app->log);
     //text_console_putstr(&app->log, "app_init()\n");
     debug_infof(app, "app_init %p\n", app);
@@ -242,6 +325,10 @@ void app_init(struct app *app) {
     isr.rtl8139.irq = app->rtl8139.irq; // nonzero acts as enable
 
     idt_init(&app->idt, &isr);
+
+    telnet_init(&app->telnet,
+                telnet_write_output,
+                telnet_event);
 
     app->log.use_cli = 0;
     sti();

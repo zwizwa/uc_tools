@@ -406,6 +406,11 @@ w forth_find(const char *word) {
     return (w)0;
 }
 
+/* A note on design: I think this is a recurring idea.  The forth
+   should not do echo and line editing.  That is easy enough to
+   abstract as a separate component so that forth only sees full
+   lines. */
+
 uintptr_t forth_accept(uint8_t *buf, uintptr_t len) {
     /* Written char count. */
     uintptr_t i = 0;
@@ -417,6 +422,7 @@ uintptr_t forth_accept(uint8_t *buf, uintptr_t len) {
         case CBUF_EAGAIN:
             /* No complete word. */
             return 0;
+
         case '\t':
         case '\n':
         case '\r':

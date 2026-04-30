@@ -95,10 +95,11 @@ static void com1_write_byte(uint8_t byte) {
     outb(COM1_DATA, byte);
 }
 static void com1_putchar(uint8_t byte) {
-    com1_write_byte(byte);
-    if (byte == '\n') {
+    int raw = 0;  // FIXME: put all com config in a struct
+    if (!raw && (byte == '\n')) {
         com1_write_byte('\r');
     }
+    com1_write_byte(byte);
 }
 static void com1_putstr(uint8_t *str) {
     while(*str) {

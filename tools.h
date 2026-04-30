@@ -116,8 +116,8 @@ static inline int mini_strcmp(const char *s1, const char *s2) {
     while (*p1 && *p1 == *p2) { ++p1; ++p2; }
     return (*p1 > *p2) - (*p2 > *p1);
 }
-static inline size_t mini_strlen(const char *s1) {
-    size_t len = 0;
+static inline int mini_strlen(const char *s1) {
+    int len = 0;
     while(*s1++) { len++; }
     return len;
 }

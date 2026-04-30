@@ -15,7 +15,8 @@ struct text_console {
     uint8_t nb_rows;
     uint8_t nb_cols;
     uint8_t attrib;
-    uint8_t use_cli;
+    uint8_t use_cli:1;
+    uint8_t raw:1;
 };
 static inline void text_console_set_cursor(struct text_console *log) {
     uint16_t pos = log->row;
@@ -95,9 +96,16 @@ static inline void text_console_putchar_nocli(struct text_console *log, uint8_t 
         // ignore non-standard control codes
     }
     else if (c == '\n') {
-        // move to new line
-        log->col = 0;
+        if (!log->raw) {
+            // insert carriage return
+            log->col = 0;
+        }
+        // newline
         log->row++;
+    }
+    else if (c == '\r') {
+        // carriage return
+        log->col = 0;
     }
     else if (c == 8) {
         if (log->col > 0) {

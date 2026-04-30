@@ -56,7 +56,7 @@ boot.dsk: boot.asm
 	$(OBJDUMP) -d $< >$@.tmp
 	mv $@.tmp $@
 
-kernel.o: hw_i686.h text_console.h
+kernel.o: hw_i686.h text_console.h $(UC_TOOLS)/line_editor.h
 
 # Test in QEMU loading as a floppy.  This will need a loader if it
 # gets bigger than the boot sector.
