@@ -3,10 +3,8 @@
 #define TEXT_CONSOLE_H
 
 #include "hw_i686_crtc.h"
-
 #include "tools.h"
-#define memset mini_memset
-#define memcpy mini_memcpy
+#include <strings.h>
 
 struct text_console {
     volatile char *video;

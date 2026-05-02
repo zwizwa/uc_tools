@@ -1,16 +1,6 @@
 ; Loaded at 0x7C00 by PXE firmware in 16-bit real mode
 ; Or just the first sector loaded at 0x7C00 by BIOS floppy boot.  
 
-; I don't think I need BIOS for anything other than initial message
-; display, floppy/disk load, then switch to protected mode and use raw
-; access.  If network is needed I'll have to write a driver using
-; direct I/O.
-;
-; Leave the console I/O in there for debugging or interaction with the
-; loader.
-;
-; I think I just want the loader to jump into C at 0x7E00.
-
 
 [BITS 16]                       ; 16-bit real mode
 [ORG 0x7C00]                    ; PXE loads NBP at 0x7C00
@@ -49,6 +39,7 @@ start:
     jnc .a20_ok
     mov si, msg_a20_failed
     call print_string_nl
+    ; It fails on hardware.  Not an issue for now since kernel is still small.
 .a20_ok:
 
 
@@ -86,6 +77,9 @@ next_track:
 
 
     ; FIXME: Can't cross DMA boundary, but can't easily keep the overwrite either.
+    ; I did see this work on the X230 BIOS.
+    ; Not an issue for now since kernel is still small.
+
     ; So maybe use an explicit destination for the data:
     ; load track 0 at 0x7C00
     ; load other tracks at e.g. 0x500 and copy to destination

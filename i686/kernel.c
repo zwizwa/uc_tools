@@ -12,6 +12,8 @@ void kernel_infof(const char *fmt, ...);
 #define LOG(...)
 #endif
 
+
+
 /* Hardware access. */
 #include "hw_i686_interrupts.h"
 #include "hw_i686_com.h"
@@ -158,7 +160,6 @@ __attribute__((naked))
 static void rtl8139_isr(void) {
     isr_begin();
     static uint32_t count = 0;
-    spinner(2, count++);
     //LOG("rt8139 isr\n");
     rtl8139_isr_inner(&g_app.rtl8139);
     outb(0xA0, 0x20); // End Of Interrupt (EOI) to slave PIC
@@ -232,17 +233,39 @@ void app_init(struct app *app) {
 
 /* The uc_tools Forth Instantiated at the end so it can easly
    reference all code in kernel.c compilation unit. */
-#define strlen mini_strlen
-#define strcmp mini_strcmp
 #define FORTH_OUT_INFO 1
 #include "tools.c"
 #include "forth.h"
 void hello(void) {
     LOG("hello!\n");
 }
-#define FORTH_WORDS        \
-    {"hello",  (w)hello},  \
-    {"reboot", (w)reboot}, \
+#include "ethernet.h"
+void f1(void) {
+#if 1
+    struct __attribute__((packed)) {
+        struct mac mac;
+        uint32_t data;
+    } packet;
+    memset(packet.mac.d_mac, 0xFF, 6);
+    memcpy(packet.mac.s_mac, g_app.rtl8139.mac, 6);
+    packet.mac.ethertype = HTONS(0x88A4);
+    packet.data          = HTONL(0x12345678);
+#else
+    uint8_t packet[] = {
+        0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
+        0x01,0x02,0x03,0x04,0x05,0x06,
+        0x88,0xA4,
+    };
+#endif
+    rtl8139_transmit(&g_app.rtl8139, &packet, sizeof(packet));
+}
+
+#define W(word) {#word, (w)word}
+
+#define FORTH_WORDS\
+    W(hello),      \
+    W(reboot),     \
+    W(f1),         \
 
 #include "mod_forth.c"
 
@@ -287,4 +310,21 @@ void kmain(void) {
 }
 
 
+/* Smaller re-implementations of libc functions.  Include these in the
+   main image to override libc. */
 
+void *memcpy(void *dest, const void *src, size_t n) {
+    return mini_memcpy(dest, src, n);
+}
+int strcmp(const char *s1, const char *s2) {
+    return mini_strcmp(s1, s2);
+}
+size_t strlen(const char *s1) {
+    return mini_strlen(s1);
+}
+char *strcpy(char *dst, const char *src) {
+    return mini_strcpy(dst, src);
+}
+void *memset(void *s, int c, size_t n) {
+    return mini_memset(s, c, n);
+}

@@ -83,6 +83,7 @@ const uint8_t pc_keyboard_shifted[128] = {
 int pc_keyboard_shift = 0;
 
 void reboot(void);
+void f1(void);
 void keyboard_input(uint8_t ascii);
 static inline void pc_keyboard_scancode(uint8_t scancode) {
     int release = !!(scancode & 0x80);
@@ -102,6 +103,7 @@ static inline void pc_keyboard_scancode(uint8_t scancode) {
     else { // press
         // FIXME: locking / buffering?
         if (ascii == KBD_F1) {
+            f1();
             // rtl8139_status();
         }
         else if (ascii == 27) {
