@@ -83,19 +83,17 @@ const uint8_t pc_keyboard_shifted[128] = {
 int pc_keyboard_shift = 0;
 
 void reboot(void);
+void keyboard_input(uint8_t ascii);
 static inline void pc_keyboard_scancode(uint8_t scancode) {
     int release = !!(scancode & 0x80);
     scancode &= 0x7F;
 
-#if 1
     uint8_t ascii =
         (pc_keyboard_shift ?
          pc_keyboard_shifted :
          pc_keyboard_normal)
         [scancode];
-#else
-    uint8_t ascii = pc_keyboard_normal[scancode];
-#endif
+
     if (release) {
         if (ascii == KBD_SHIFT) {
             pc_keyboard_shift = 0;
@@ -117,7 +115,7 @@ static inline void pc_keyboard_scancode(uint8_t scancode) {
         }
         else {
             // The encoding emulates a serial terminal.
-            app_keyboard_input(&g_app, ascii);
+            keyboard_input(ascii);
         }
     }
 }

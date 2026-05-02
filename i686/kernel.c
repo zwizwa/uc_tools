@@ -1,215 +1,90 @@
-#include <stdint.h>
-#include <string.h>
+/* Kernel compiled with i686-elf-gcc.  Supports -march=i486 as well. */
 
+/* Debug logging is defined globally before including any
+   functionality.  If it is not defined, headers should assume LOG()
+   to be a no-op.  It is too hard to try to always access this via
+   object pointers. */
 
 #if 1
-void debugf(const char *fmt, ...);
-#define LOG(...) debugf(__VA_ARGS__)
+void kernel_infof(const char *fmt, ...);
+#define LOG(...) kernel_infof(__VA_ARGS__)
 #else
 #define LOG(...)
 #endif
 
+/* Hardware access. */
+#include "hw_i686_interrupts.h"
+#include "hw_i686_com.h"
+#include "hw_i686_spinner.h"
+#include "hw_i686_rtl8139.h"
+
 /* PC (VGA) text console. */
 #include "text_console.h"
-
-/* Command line editor. */
-#include "line_editor.h"
 
 /* Telnet and ANSI terminal interface. */
 #define TELNET_NO_INIT
 #include "telnet.h"
 
-
-extern uint8_t __bss_start;
-extern uint8_t __bss_end;
-
-
-// Put everything in a single static struct.
+/* All application state is in a single struct which make debugging a
+   bit easier in case we ever do core dumps or gdb stub. */
 struct app {
     struct text_console log;
     struct idt idt;
     struct rtl8139 rtl8139;
     struct telnet telnet;
-    struct line_editor line_editor;
-    struct pbuf line_editor_pbuf;
-    uint8_t line_editor_pbuf_buf[128];
 };
-
 struct app g_app;
 
 
 
-/* Instantiate printf-style logging on top of _putchar for both text
-   console ans serial port. */
-static inline void debug_putchar(struct app *app, char c) {
+
+
+/* Comand and keyboard I/O
+   - COM1 and PC keyboard can both be used as input
+   - Text output goes to both COM1 and vga console
+   - Text input is parsed by Telnet / ANSI terminal layer
+   - And passed on to forth command interpreter */
+static inline void app_info_putchar(struct app *app, char c) {
     text_console_putchar(&app->log, c);
     com1_putchar(c);
 }
-#define NS(tag) debug_##tag
-#define debug_CTX_DEF struct app *app,
-#define debug_CTX_REF app,
+#define NS(tag) app_info_##tag
+#define app_info_CTX_DEF struct app *app,
+#define app_info_CTX_REF app,
 #include "ns_infof.c"
 #undef NS
-static inline int debug_infof(struct app *app, const char *fmt, ...) {
+#if 0
+/* This is the "proper" way to do logging, but in practice it is too
+   hard to not treat logging as globally accessible functionality, so
+   just use the LOG() macro instead. */
+static inline int app_infof(struct app *app, const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
-    int rv = debug_vf(app, fmt, ap);
+    int rv = app_info_vf(app, fmt, ap);
     va_end(ap);
     return rv;
 }
-// Note that it is really difficult to make this refer to app because
-// I want logging to be available everywhere.  So I guess it is ok.
-void debugf(const char *fmt, ...) {
+#endif
+/* Support LOG() without app reference. */
+void kernel_infof(const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
-    int rv = debug_vf(&g_app, fmt, ap);
+    int rv = app_info_vf(&g_app, fmt, ap);
     va_end(ap);
 }
-
-
-
-
-void rtl8139_status(void) {
-    struct rtl8139 *s = &g_app.rtl8139;
-    debug_infof(
-        &g_app,
-        "CBR=%04x CAPR=%04x MPC=%d ISR=%d CMD=%02x MSR=%02x RCR=%08x\n"
-        ,inw(s->iobase + RTL_CBR)
-        ,inw(s->iobase + RTL_CAPR)
-        ,inl(s->iobase + RTL_MPC)
-        ,inw(s->iobase + RTL_ISR)
-        ,inb(s->iobase + RTL_CMD)
-        ,inb(s->iobase + RTL_MSR)
-        ,inl(s->iobase + RTL_RCR)
-        );
-}
-
-void forth_write(const uint8_t *buf, uint32_t len);
-
-/* Send a raw character from serial port terminal to the command
-   interpreter and perform echo with the needed CR LF conversion.
-
-   This is how I understand the convention:
-
-   - The ENTER key coming in on COM1 looks like '\r'
-   - The '\r and '\n' characters sent to COM1 separate CR and LF
-   - The '\r' in printf is CR, the '\n' is CR,LF
-
-*/
-
+/* COM1, Keyboard input */
 void app_keyboard_input(struct app *app, uint8_t byte) {
-#if 0
-    debug_putchar(app, byte);
-    if (byte == '\r') {
-        debug_putchar(app, '\n');
-    }
-    forth_write(&byte, 1);
-#elseif 0
-    line_editor_push(&app->line_editor, byte);
-#else
     telnet_write_input(&app->telnet, &byte, 1);
-#endif
 }
-
-
+void keyboard_input(uint8_t ascii) {
+    app_keyboard_input(&g_app, ascii);
+}
 #include "mod_pc_keyboard.c"
-
-
-
-__attribute__((naked))
-static void keyboard_isr(void) {
-    isr_begin();
-    uint8_t scancode = inb(0x60);
-#if 1
-    pc_keyboard_scancode(scancode);
-#else
-    LOG("[%02x]", scancode);
-#endif
-    outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
-    isr_end();
-}
-
-__attribute__((naked))
-static void com1_isr(void) {
-    isr_begin();
-    uint8_t lsr;
-    while ((lsr = inb(COM1_LSR)) & LSR_DATA_READY) {
-        uint8_t byte = inb(COM1_DATA);
-
-        if (1) {
-            // FIXME: This seems to crash.
-            static const uint8_t hex[16] = "0123456789ABCDEF";
-            volatile uint8_t *v = (void*)0xB8000;
-            v[0] = hex[(byte >> 4) & 0xF]; v[1] = 0x17;
-            v[2] = hex[(byte >> 0) & 0xF]; v[3] = 0x17;
-        }
-
-        /* Optionally inspect lsr for framing/parity/overrun errors */
-        if (lsr & (LSR_OVERRUN_ERR | LSR_PARITY_ERR | LSR_FRAMING_ERR)) {
-            /* drop or log — byte is still worth passing up in most designs */
-        }
-        app_keyboard_input(&g_app, byte);
-    }
-
-
-    outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
-    isr_end();
-}
-
-
-__attribute__((naked))
-static void rtl8139_isr(void) {
-    isr_begin();
-    //LOG("rt8139 isr\n");
-    rtl8139_isr_inner(&g_app.rtl8139);
-    outb(0xA0, 0x20); // End Of Interrupt (EOI) to slave PIC
-    outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
-    isr_end();
-}
-
-
-void pci_cb_fn(void *vapp, struct pci_function *f) {
-    struct app *app = vapp;
-    debug_infof(
-        app,
-        // Imitate linux lspci -n
-        "%02x:%02x.%d %02x%02x: %04x:%04x\n",
-        f->bus, f->dev, f->func,
-        f->class, f->subclass,
-        f->vendor, f->device
-        );
-    if ((f->vendor == 0x10ec) &&
-        (f->device == 0x8139)) {
-        struct rtl8139 *rtl = &app->rtl8139;
-        rtl8139_init(rtl, f);
-        debug_infof(
-            app,
-            "rtl8139 io=%04x irq=%d mac=%02x:%02x:%02x:%02x:%02x:%02x\n",
-            rtl->iobase,
-            rtl->irq,
-            rtl->mac[0],
-            rtl->mac[1],
-            rtl->mac[2],
-            rtl->mac[3],
-            rtl->mac[4],
-            rtl->mac[5]);
-    }
-}
-
-
-void app_echo(void *vapp, uint8_t byte) {
-    struct app *app = vapp;
-    text_console_putchar(&app->log, byte);
-    com1_putchar(byte);
-}
-void app_line(void *vapp, const uint8_t *buf, uint32_t bytes) {
-    // FIXME
-}
-
-
+/* Telnet output and input handler */
+void forth_write(const uint8_t *line, uint32_t nb_char);
 void telnet_write_output(struct telnet *, const uint8_t *bytes, uintptr_t len) {
     for (uintptr_t i=0; i<len; i++) {
-        debug_putchar(&g_app, bytes[i]);
+        app_info_putchar(&g_app, bytes[i]);
     }
 }
 void telnet_event(struct telnet *t, uintptr_t event) {
@@ -225,13 +100,15 @@ void telnet_event(struct telnet *t, uintptr_t event) {
             }
             LOG(">\n");
         }
-        // forth_accept() expects white space termination
-        // maybe move this into telnet.h code
-        if (t->nb_char >= sizeof(t->line)) {
-            t->nb_char = sizeof(t->line) - 1; 
+        else {
+            // forth_accept() expects white space termination
+            // maybe move this into telnet.h code
+            if (t->nb_char >= sizeof(t->line)) {
+                t->nb_char = sizeof(t->line) - 1;
+            }
+            t->line[t->nb_char++] = '\n';
+            forth_write(t->line, t->nb_char);
         }
-        t->line[t->nb_char++] = '\n';
-        forth_write(t->line, t->nb_char);
         break;
     case TELNET_EVENT_ESCAPE:
         LOG("<ESC:");
@@ -245,18 +122,88 @@ void telnet_event(struct telnet *t, uintptr_t event) {
     }
 }
 
+
+
+/* ISRs */
+__attribute__((naked))
+static void keyboard_isr(void) {
+    isr_begin();
+    static uint32_t count = 0;
+    spinner(0, count++);
+    while (inb(0x64) & 1) {
+        uint8_t scancode = inb(0x60);
+        pc_keyboard_scancode(scancode);
+    }
+    outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
+    isr_end();
+}
+__attribute__((naked))
+static void com1_isr(void) {
+    isr_begin();
+    static uint32_t count = 0;
+    spinner(1, count++);
+    uint8_t lsr;
+    while ((lsr = inb(COM1_LSR)) & LSR_DATA_READY) {
+        uint8_t byte = inb(COM1_DATA);
+        /* Optionally inspect lsr for framing/parity/overrun errors */
+        if (lsr & (LSR_OVERRUN_ERR | LSR_PARITY_ERR | LSR_FRAMING_ERR)) {
+            /* drop or log — byte is still worth passing up in most designs */
+        }
+        app_keyboard_input(&g_app, byte);
+    }
+    outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
+    isr_end();
+}
+__attribute__((naked))
+static void rtl8139_isr(void) {
+    isr_begin();
+    static uint32_t count = 0;
+    spinner(2, count++);
+    //LOG("rt8139 isr\n");
+    rtl8139_isr_inner(&g_app.rtl8139);
+    outb(0xA0, 0x20); // End Of Interrupt (EOI) to slave PIC
+    outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
+    isr_end();
+}
+
+
+/* PCI scanning callback for driver instantiation. */
+void pci_cb_fn(void *vapp, struct pci_function *f) {
+    struct app *app = vapp;
+    // Imitate linux lspci -n
+    LOG("%02x:%02x.%d %02x%02x: %04x:%04x\n",
+        f->bus, f->dev, f->func,
+        f->class, f->subclass,
+        f->vendor, f->device
+        );
+    if ((f->vendor == 0x10ec) &&
+        (f->device == 0x8139)) {
+        struct rtl8139 *rtl = &app->rtl8139;
+        rtl8139_init(rtl, f);
+        LOG("rtl8139 io=%04x irq=%d mac=%02x:%02x:%02x:%02x:%02x:%02x\n",
+            rtl->iobase,
+            rtl->irq,
+            rtl->mac[0],
+            rtl->mac[1],
+            rtl->mac[2],
+            rtl->mac[3],
+            rtl->mac[4],
+            rtl->mac[5]);
+    }
+}
+
+
+/* Application init, called after memory is initialized. */
 void app_init(struct app *app) {
 
-    PBUF_INIT(app->line_editor_pbuf);
-    line_editor_init(&app->line_editor,
-                     &app->line_editor_pbuf,
-                     app_echo,
-                     app_line,
-                     app);
-
+    /* Init text console first, because LOG() depends on this.  Note
+       that LOG() also depends on COM1 write but that seems to be ok
+       without init for now: just use whatever BIOS configured in the
+       UART. */
     text_console_init(&app->log);
+
     //text_console_putstr(&app->log, "app_init()\n");
-    debug_infof(app, "app_init %p\n", app);
+    LOG("app_init %p\n", app);
 
     // scan PCI bus before setting up interrupts
     struct pci_cb cb = { .fun = pci_cb_fn, .ctx = app };
@@ -283,7 +230,8 @@ void app_init(struct app *app) {
 
 
 
-/* The uc_tools Forth */
+/* The uc_tools Forth Instantiated at the end so it can easly
+   reference all code in kernel.c compilation unit. */
 #define strlen mini_strlen
 #define strcmp mini_strcmp
 #define FORTH_OUT_INFO 1
@@ -291,10 +239,6 @@ void app_init(struct app *app) {
 #include "forth.h"
 void hello(void) {
     LOG("hello!\n");
-}
-void reboot(void) {
-    LOG("reboot...\n");
-    outb(0x64, 0xFE);
 }
 #define FORTH_WORDS        \
     {"hello",  (w)hello},  \
@@ -305,34 +249,39 @@ void reboot(void) {
 
 
 
+/* Before jumping here, the bootloader loads from media if needed,
+   enables A20, turns off interrupts, switches to protected mode.
+   This code is located 512 bytes into the disk or NBP image and is
+   loaded at 0x7E00, right after the boot sector at 0x7C00.  Stack is
+   set up (below 7C00).*/
 __attribute__ ((section (".kmain")))
+__attribute__ ((naked))
 void kmain(void) {
 
-    // Before jumping here, the bootloader loads from media if needed,
-    // enables A20, turns off interrupts, switches to protected mode
-    // and jumps here.
-
-    // Before doing anything, write something to the top right corner
-    // of the screen.  This is for the floppy loader which writes a ?
-    // there.
+    /* Before doing anything, write something to the top right corner
+       of the screen to indicate that we got at least this far.  The
+       floppy loader writes a ? there before jumping here.  This will
+       later be overwritten by the top status line from the
+       text_console object. */
     VIDEO[79*2] = '!';
 
-    // initialize .bss segment
-    mini_memset_volatile(
-        &__bss_start,
-        0,
-        &__bss_end - &__bss_start);
+    /* Initialize memory.  */
+    extern uint8_t __bss_start;
+    extern uint8_t __bss_end;
+    mini_memset_volatile(&__bss_start, 0, &__bss_end - &__bss_start);
 
-    // initialize app data
+    /* Initialize hardware and app functionality. */
     app_init(&g_app);
 
-    //volatile uint32_t *vw = (typeof(vw))0xB8000;
-    // forth_write_word("hello");
-
+    /* Start the forth interpreter. */
     forth_start();
 
+    /* Main loop currently doesn't do anything.  Later this would be
+       the place to handle non-real-time events, i.e. the "bottom
+       half" interrupt routines. */
   loop:
-    //(*vw)++;
+    /* Wait for next interrupt.  This is crucial to make QEMU more
+       efficient. */
     hlt();
     goto loop;
 }

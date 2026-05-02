@@ -2,7 +2,7 @@
 #ifndef TEXT_CONSOLE_H
 #define TEXT_CONSOLE_H
 
-#include "hw_i686.h"
+#include "hw_i686_crtc.h"
 
 #include "tools.h"
 #define memset mini_memset
@@ -15,6 +15,7 @@ struct text_console {
     uint8_t nb_rows;
     uint8_t nb_cols;
     uint8_t attrib;
+    uint8_t top_rows;
     uint8_t use_cli:1;
     uint8_t raw:1;
 };
@@ -36,12 +37,22 @@ static inline void text_console_clear(struct text_console *log) {
 
 #define VIDEO ((volatile uint8_t *)0xB8000)
 
+static inline void text_console_clear_top(struct text_console *log) {
+    volatile uint8_t *v = (void*)log->video;
+    for (int i=0; i<log->nb_cols*log->top_rows; i++) {
+        *v++ = ' ';
+        *v++ = 0x17;
+    }
+}
+
 static inline void text_console_init(struct text_console *log) {
     memset(log, 0, sizeof(*log));
     log->attrib = 0x07;
     log->video = VIDEO;
     log->nb_cols = 80;
     log->nb_rows = 25;
+    log->top_rows = 1;
+    text_console_clear_top(log);
     switch(2) {
     case 1:
         /* Start at the bottom to cause a scroll at first character writen. */
@@ -60,16 +71,18 @@ static inline void text_console_init(struct text_console *log) {
         break;
     }
 }
-
 static inline void text_console_scroll(struct text_console *log) {
+
+    uint32_t row_size   = 2 * log->nb_cols;
+    uint32_t bytes_top  = log->top_rows * row_size;
+    uint32_t bytes_move = row_size * (log->nb_rows - 1 - log->top_rows);
+
     // Note: mini_memcpy that allows backwards overlapping copy.
-    uint32_t row_size     = 2 * log->nb_cols;
-    uint32_t rows_m1_size = row_size * (log->nb_rows - 1);
     mini_memcpy_volatile(
-        log->video,
-        (void*)(log->video + row_size),
-        rows_m1_size);
-    volatile uint8_t *v = (void*)log->video + rows_m1_size;
+        /* dst */ log->video + bytes_top,
+        /* src */ log->video + bytes_top + row_size,
+        bytes_move);
+    volatile uint8_t *v = (void*)log->video + bytes_top + bytes_move;
     for (int i=0; i<log->nb_cols; i++) {
         *v++ = ' ';
         *v++ = log->attrib;

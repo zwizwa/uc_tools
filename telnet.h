@@ -196,6 +196,7 @@ static inline void telnet_tick(struct telnet *s, int32_t telnet_tick_input) {
         s->event(s, TELNET_EVENT_FLUSH);
         s->event(s, TELNET_EVENT_INTERRUPT);
         goto next;
+    case 8:
     case 127:
         if (s->nb_char > 0) {
             TELNET_WRITE_OUTPUT(s, '\b',' ','\b');

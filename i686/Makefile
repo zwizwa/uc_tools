@@ -1,8 +1,9 @@
 NASM = nasm
 # QEMU = qemu-system-i386 -nographic -no-reboot -m 16
-QEMU = qemu-system-i386 -m 16 -display gtk,zoom-to-fit=on
+# QEMU = qemu-system-i386 -m 16 -display gtk,zoom-to-fit=on -serial stdio
+QEMU = qemu-system-i386 -m 16 -display sdl,gl=on -serial stdio
 # QEMU = qemu-kvm -m 16
-GCC = i686-elf-gcc -ffreestanding -nostdlib -m32
+GCC = i686-elf-gcc -ffreestanding -nostdlib -m32 -march=i486
 LD = i686-elf-ld
 OBJCOPY = i686-elf-objcopy
 OBJDUMP = i686-elf-objdump
@@ -10,12 +11,16 @@ OBJDUMP = i686-elf-objdump
 UC_TOOLS=..
 
 CFLAGS = \
-	-I$(UC_TOOLS)
+	-I$(UC_TOOLS) \
+	-Os \
 
 
 .PHONY: all clean run
 
 all: kernel.nbp kernel.dsk kernel.dasm
+
+DEPS := $(shell find -name '*.d')
+-include $(DEPS)
 
 kernel.nbp: boot.nbp kernel.bin
 	cat boot.nbp kernel.bin >$@
@@ -43,7 +48,7 @@ boot.dsk: boot.asm
 
 # Kernel is C code, loaded at 0x7E00 after the boot sector.
 %.o: %.c
-	$(GCC) $(CFLAGS) -Os -c $< -o $@
+	$(GCC) $(CFLAGS) -MD -MF $(patsubst %.o,%.d,$@) -c $< -o $@
 
 %.elf: %.o kernel.ld
 	$(LD) -T kernel.ld -o $@ $<
@@ -55,8 +60,6 @@ boot.dsk: boot.asm
 	rm -f $@
 	$(OBJDUMP) -d $< >$@.tmp
 	mv $@.tmp $@
-
-kernel.o: hw_i686.h text_console.h $(UC_TOOLS)/line_editor.h
 
 # Test in QEMU loading as a floppy.  This will need a loader if it
 # gets bigger than the boot sector.
@@ -75,24 +78,27 @@ qemu_dsk: kernel.dsk
 
 # Faster boot with ipxe boot floppy compiled with static ip and hard coded boot file.
 # See /i/tom/git/ipxe/qemu.sh
-# Copy the boot floppy image to avoid locks on the NFS share
+# Copy the boot floppy image to local /tmp avoid locks on the NFS share
 # Using rtl8139 instead of virtio-net
 DSK=ipxe-qemu.dsk
 qemu_nbp: kernel.nbp
-	cp -a $(DSK) /tmp/$(DSK)
-	$(QEMU) -drive file=/tmp/$(DSK),format=raw,if=floppy -boot a -netdev user,id=net0,tftp=. -device rtl8139,netdev=net0
+	cp -a ipxe-qemu.dsk /tmp/$<.boot
+	$(QEMU) -drive file=/tmp/$<.boot,format=raw,if=floppy -boot a -netdev user,id=net0,tftp=. -device rtl8139,netdev=net0
 
 
 
 # Push it to the boot server.
 NBP = kernel.nbp test.nbp
+TFTPBOOT = root@rackhub:/etc/net/tftpboot/
 push: $(NBP)
-	scp $(NBP) root@rackhub:/etc/net/tftpboot/
+	scp $(NBP) $(TFTPBOOT)
 
 # Then boot it in qemu
-qemu_br1: push
+qemu_br1: kernel.nbp
+	scp $< $(TFTPBOOT)
 #	$(QEMU) -boot n -netdev bridge,id=net0,br=br1 -device rtl8139,netdev=net0
-	sudo $(QEMU) -drive file=ipxe-qemu-br1.dsk,format=raw,if=floppy -boot a -netdev bridge,id=net0,br=br1 -device rtl8139,netdev=net0
+	cp -a ipxe-qemu-br1.dsk /tmp/$<.boot
+	sudo $(QEMU) -drive file=/tmp/$<.boot,format=raw,if=floppy -boot a -netdev bridge,id=net0,br=br1 -device rtl8139,netdev=net0
 
 
 # USB floppy drive
