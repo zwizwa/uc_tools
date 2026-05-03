@@ -12,6 +12,7 @@ UC_TOOLS=..
 
 CFLAGS = \
 	-I$(UC_TOOLS) \
+	-DVERSION=\"$(shell ./version.sh)\" \
 	-Os \
 
 

@@ -30,6 +30,7 @@ void kernel_infof(const char *fmt, ...);
 /* All application state is in a single struct which make debugging a
    bit easier in case we ever do core dumps or gdb stub. */
 struct app {
+    volatile uint32_t event;
     struct text_console log;
     struct idt idt;
     struct rtl8139 rtl8139;
@@ -202,6 +203,7 @@ void app_init(struct app *app) {
        without init for now: just use whatever BIOS configured in the
        UART. */
     text_console_init(&app->log);
+    com1_init();
 
     //text_console_putstr(&app->log, "app_init()\n");
     LOG("app_init %p\n", app);
@@ -260,11 +262,21 @@ void f1(void) {
     rtl8139_transmit(&g_app.rtl8139, &packet, sizeof(packet));
 }
 
-#define W(word) {#word, (w)word}
+#define EVENT_RESTART (1<<0)
+void restart(void) {
+#if 0
+    g_app.event |= EVENT_RESTART;
+#else
+    cli_and_restart();
+#endif
+}
 
+
+#define W(word) {#word, (w)word}
 #define FORTH_WORDS\
     W(hello),      \
     W(reboot),     \
+    W(restart),    \
     W(f1),         \
 
 #include "mod_forth.c"
@@ -295,6 +307,8 @@ void kmain(void) {
 
     /* Initialize hardware and app functionality. */
     app_init(&g_app);
+
+    LOG("version %s\n", VERSION);
 
     /* Start the forth interpreter. */
     forth_start();

@@ -83,6 +83,20 @@ static inline void reboot(void) {
     outb(0x64, 0xFE);
 }
 
+static inline void cli_and_restart(void) {
+
+    // FIXME: keyboard gets stuck after 2-3 restarts, but serial port
+    // and rtl8139 are still ok.
+
+    LOG("restart...\n");
+    cli();
+    __asm__ __volatile__ (
+        "movl $0x7C00, %%esp"   "\n\t"
+        "ljmp $0x08, $0x7E00"   "\n\t"
+        : : : "memory"
+        );
+}
+
 
 
 #endif

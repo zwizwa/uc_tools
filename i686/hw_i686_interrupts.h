@@ -78,9 +78,18 @@ static inline void init_pic(void) {
     // After the 4 ICWx are written, the x1 ports take the mask bits.
     // 1=masked, 0=active.
 
-    // Mask all IRQs and turn on interrupts.
+    // Mask all IRQs
     outb(0x21, 0b11111111);
     outb(0xA1, 0b11111111);
+
+    // Send EOI for anything that might be in-service.  This as added
+    // to make "restart" command to work when entered on the keyboard,
+    // likely has to do with the enter key release interrupt that
+    // needs to be acknowledged.
+    outb(0x20, 0x20);
+    outb(0xA0, 0x20);
+
+
 
 }
 
@@ -141,7 +150,6 @@ void idt_set(struct idt *idt,
 
 // Note that this leaves interrupts off such that caller can do some
 // more setup before enabling interrupts.
-static inline void com1_init(void);
 static inline void idt_init(struct idt *idt,
                             const struct idt_isr *isr) {
 
@@ -162,8 +170,6 @@ static inline void idt_init(struct idt *idt,
         }
         if (isr->com1_isr) {
             idt_set(idt, 4, isr->com1_isr);
-            // FIXME: Remove hard-coded reference to com1_init
-            com1_init();
         }
         if (isr->rtl8139.irq) {
             //LOG("enable rtl8139 irq %d\n", isr->rtl8139.irq);

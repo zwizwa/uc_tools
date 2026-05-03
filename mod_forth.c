@@ -513,7 +513,7 @@ void forth_write_echo(const uint8_t *buf, uintptr_t len) {
 }
 
 void forth_start(void) {
-    LOG("forth_start()\n");
+    //LOG("forth_start()\n");
     CBUF_INIT(forth_in);
 #if FORTH_OUT_INFO
 #else

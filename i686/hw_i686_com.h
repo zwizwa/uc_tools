@@ -40,6 +40,26 @@ static void com1_putstr(uint8_t *str) {
     }
 }
 static void com1_init(void) {
+
+    /* disable interrupts while configuring */
+    outb(COM1_IER, 0x00);
+
+#if 1
+    /* divisor:
+       1 -> 115200
+       3 -> 38400
+       6 -> 19200
+    */
+
+    // FIXME: Not sure if this is correct.  Just use the startup value.
+    outb(COM1_LCR,  0x80);   /* DLAB = 1, access divisor latch */
+    outb(COM1_DATA, 0x01);   /* divisor low */
+    outb(COM1_IER,  0x00);   /* divisor high */
+
+    outb(COM1_LCR,  0x03);   /* DLAB = 0, 8 bits, no parity, 1 stop */
+    outb(COM1_FCR,  0xC7);   /* enable FIFO, clear RX/TX, 14-byte trigger */
+#endif
+
     /* DTR, RTS, OUT2 (OUT2 gates IRQs on PCs) */
     outb(COM1_MCR, 0x0B);
     /* enable "Received Data Available" interrupt */
