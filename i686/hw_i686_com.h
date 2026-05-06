@@ -7,13 +7,12 @@
 // https://claude.ai/chat/c5b674e0-3495-485e-ad01-2746fbd8b669
 
 /* COM1 I/O ports */
-#define COM1_BASE   0x3F8
-#define COM1_DATA   (COM1_BASE + 0)  /* RBR: Receive Buffer Register */
-#define COM1_IER    (COM1_BASE + 1)  /* Interrupt Enable Register */
-#define COM1_FCR    (COM1_BASE + 2)  /* FIFO Control Register */
-#define COM1_LCR    (COM1_BASE + 3)  /* Line Control Register */
-#define COM1_MCR    (COM1_BASE + 4)  /* Modem Control Register */
-#define COM1_LSR    (COM1_BASE + 5)  /* Line Status Register */
+#define UART_DATA   0  /* RBR: Receive Buffer Register */
+#define UART_IER    1  /* Interrupt Enable Register */
+#define UART_FCR    2  /* FIFO Control Register */
+#define UART_LCR    3  /* Line Control Register */
+#define UART_MCR    4  /* Modem Control Register */
+#define UART_LSR    5  /* Line Status Register */
 
 /* LSR bits */
 #define LSR_DATA_READY   0x01
@@ -23,47 +22,81 @@
 #define LSR_THR_EMPTY    0x20  /* Transmitter Holding Register empty */
 #define LSR_TX_IDLE      0x40  /* Transmitter fully idle (THR + shift reg) */
 
-static void com1_write_byte(uint8_t byte) {
-    while (!(inb(COM1_LSR) & LSR_THR_EMPTY)) { }
-    outb(COM1_DATA, byte);
+/* On PC, uart is assumed to be 16550 */
+struct uart {
+    uint16_t iobase;
+    uint8_t  irq;
+};
+
+static void uart_write_byte(struct uart *s, uint8_t byte) {
+    while (!(inb(s->iobase + UART_LSR) & LSR_THR_EMPTY)) { }
+    outb(s->iobase + UART_DATA, byte);
 }
-static void com1_putchar(uint8_t byte) {
+static void uart_putchar(struct uart *s, uint8_t byte) {
     int raw = 0;  // FIXME: put all com config in a struct
     if (!raw && (byte == '\n')) {
-        com1_write_byte('\r');
+        uart_write_byte(s, '\r');
     }
-    com1_write_byte(byte);
+    uart_write_byte(s, byte);
 }
-static void com1_putstr(uint8_t *str) {
+static void uart_putstr(struct uart *s, uint8_t *str) {
     while(*str) {
-        com1_putchar(*str++);
+        uart_putchar(s, *str++);
     }
 }
-static void com1_init(void) {
 
-    /* disable interrupts while configuring */
-    outb(COM1_IER, 0x00);
+typedef void (*uart_sink_fn)(void *, uint8_t);
+static void uart_isr(struct uart *s, uart_sink_fn sink, void *ctx) {
+    uint8_t lsr;
+    while ((lsr = inb(s->iobase + UART_LSR)) & LSR_DATA_READY) {
+        uint8_t byte = inb(s->iobase + UART_DATA);
+        /* Optionally inspect lsr for framing/parity/overrun errors */
+        if (lsr & (LSR_OVERRUN_ERR | LSR_PARITY_ERR | LSR_FRAMING_ERR)) {
+            /* drop or log — byte is still worth passing up in most designs */
+        }
+        sink(ctx, byte);
+    }
+}
 
-#if 1
+static void uart_init(struct uart *s) {
+
     /* divisor:
        1 -> 115200
        3 -> 38400
-       6 -> 19200
-    */
+       6 -> 19200 */
 
-    // FIXME: Not sure if this is correct.  Just use the startup value.
-    outb(COM1_LCR,  0x80);   /* DLAB = 1, access divisor latch */
-    outb(COM1_DATA, 0x01);   /* divisor low */
-    outb(COM1_IER,  0x00);   /* divisor high */
+    /* disable interrupts while configuring */
+    outb(s->iobase + UART_IER,  0x00);
 
-    outb(COM1_LCR,  0x03);   /* DLAB = 0, 8 bits, no parity, 1 stop */
-    outb(COM1_FCR,  0xC7);   /* enable FIFO, clear RX/TX, 14-byte trigger */
-#endif
+    outb(s->iobase + UART_LCR,  0x80);   /* DLAB = 1, access divisor latch */
+    outb(s->iobase + UART_DATA, 0x01);   /* divisor low */
+    outb(s->iobase + UART_IER,  0x00);   /* divisor high */
+
+    outb(s->iobase + UART_LCR,  0x03);   /* DLAB = 0, 8 bits, no parity, 1 stop */
+    outb(s->iobase + UART_FCR,  0xC7);   /* enable FIFO, clear RX/TX, 14-byte trigger */
 
     /* DTR, RTS, OUT2 (OUT2 gates IRQs on PCs) */
-    outb(COM1_MCR, 0x0B);
+    outb(s->iobase + UART_MCR,  0x0B);
     /* enable "Received Data Available" interrupt */
-    outb(COM1_IER, 0x01);
+    outb(s->iobase + UART_IER,  0x01);
+}
+
+/* OLD */
+struct uart com1 = {
+    .iobase = 0x3F8,
+    .irq    = 4,
+};
+static void com1_write_byte(uint8_t byte) {
+    uart_write_byte(&com1, byte);
+}
+static void com1_putchar(uint8_t byte) {
+    uart_putchar(&com1, byte);
+}
+static void com1_putstr(uint8_t *str) {
+    uart_putstr(&com1, str);
+}
+static void com1_init(void) {
+    uart_init(&com1);
 }
 
 

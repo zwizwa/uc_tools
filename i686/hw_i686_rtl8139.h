@@ -19,6 +19,9 @@
 
 /* RTL8139 */
 
+#define RTL8139_VENDOR  0x10ec
+#define RTL8139_DEVICE  0x8139
+
 #define RTL_IDR0        0x00   // MAC address (6 bytes)
 #define RTL_MAR0        0x08   // Multicast filter
 #define RTL_TSD0        0x10   // Transmit Status (4 descriptors: 0x10-0x1C)
@@ -252,11 +255,23 @@ static inline void rtl8139_isr_inner(struct rtl8139 *s) {
     // Caller will EOI to PIC
 }
 
+static inline void rtl8139_status(struct rtl8139 *s) {
+    LOG("CBR=%04x CAPR=%04x MPC=%d ISR=%d CMD=%02x MSR=%02x RCR=%08x\n"
+        ,inw(s->iobase + RTL_CBR)
+        ,inw(s->iobase + RTL_CAPR)
+        ,inl(s->iobase + RTL_MPC)
+        ,inw(s->iobase + RTL_ISR)
+        ,inb(s->iobase + RTL_CMD)
+        ,inb(s->iobase + RTL_MSR)
+        ,inl(s->iobase + RTL_RCR)
+        );
+}
+
 
 static inline void rtl8139_init(struct rtl8139 *s,
                                 const struct pci_function *f) {
-    s->iobase = pci_function_read32(f, 0x10) & ~3; // BAR0, strip I/O bit
-    s->irq    = pci_function_read32(f, 0x3C) & 0xFF;
+    s->iobase = pci_function_read32(f, PCI_CFG_BAR0) & ~3; // BAR0, strip I/O bit
+    s->irq    = pci_function_read32(f, PCI_CFG_IRQ) & 0xFF;
 
 
     for (int i = 0; i < 6; i++) {
@@ -303,19 +318,19 @@ static inline void rtl8139_init(struct rtl8139 *s,
 
     // uint8_t msr = inb(s->iobase + 0x58);
     // LOG("msr = %02x\n", msr);
+
+    LOG("rtl8139 io=%04x irq=%d mac=%02x:%02x:%02x:%02x:%02x:%02x\n",
+        s->iobase,
+        s->irq,
+        s->mac[0],
+        s->mac[1],
+        s->mac[2],
+        s->mac[3],
+        s->mac[4],
+        s->mac[5]);
+
 }
 
-static inline void rtl8139_status(struct rtl8139 *s) {
-    LOG("CBR=%04x CAPR=%04x MPC=%d ISR=%d CMD=%02x MSR=%02x RCR=%08x\n"
-        ,inw(s->iobase + RTL_CBR)
-        ,inw(s->iobase + RTL_CAPR)
-        ,inl(s->iobase + RTL_MPC)
-        ,inw(s->iobase + RTL_ISR)
-        ,inb(s->iobase + RTL_CMD)
-        ,inb(s->iobase + RTL_MSR)
-        ,inl(s->iobase + RTL_RCR)
-        );
-}
 
 
 #endif

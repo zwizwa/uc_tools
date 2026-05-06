@@ -19,6 +19,7 @@ void kernel_infof(const char *fmt, ...);
 #include "hw_i686_com.h"
 #include "hw_i686_spinner.h"
 #include "hw_i686_rtl8139.h"
+#include "hw_i686_mcs9865.h"
 
 /* PC (VGA) text console. */
 #include "text_console.h"
@@ -34,6 +35,7 @@ struct app {
     struct text_console log;
     struct idt idt;
     struct rtl8139 rtl8139;
+    struct mcs9865 mcs9865;
     struct telnet telnet;
 };
 struct app g_app;
@@ -50,6 +52,9 @@ struct app g_app;
 static inline void app_info_putchar(struct app *app, char c) {
     text_console_putchar(&app->log, c);
     com1_putchar(c);
+    if (app->mcs9865.uart.irq) {
+        uart_putchar(&app->mcs9865.uart, c);
+    }
 }
 #define NS(tag) app_info_##tag
 #define app_info_CTX_DEF struct app *app,
@@ -145,15 +150,7 @@ static void com1_isr(void) {
     isr_begin();
     static uint32_t count = 0;
     spinner(1, count++);
-    uint8_t lsr;
-    while ((lsr = inb(COM1_LSR)) & LSR_DATA_READY) {
-        uint8_t byte = inb(COM1_DATA);
-        /* Optionally inspect lsr for framing/parity/overrun errors */
-        if (lsr & (LSR_OVERRUN_ERR | LSR_PARITY_ERR | LSR_FRAMING_ERR)) {
-            /* drop or log — byte is still worth passing up in most designs */
-        }
-        app_keyboard_input(&g_app, byte);
-    }
+    uart_isr(&com1, (uart_sink_fn)app_keyboard_input, &g_app);
     outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
     isr_end();
 }
@@ -161,12 +158,23 @@ __attribute__((naked))
 static void rtl8139_isr(void) {
     isr_begin();
     static uint32_t count = 0;
-    //LOG("rt8139 isr\n");
     rtl8139_isr_inner(&g_app.rtl8139);
     outb(0xA0, 0x20); // End Of Interrupt (EOI) to slave PIC
     outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
     isr_end();
 }
+__attribute__((naked))
+static void mcs9865_isr(void) {
+    // This is only the first COM port
+    isr_begin();
+    static uint32_t count = 0;
+    spinner(5, count++);
+    uart_isr(&g_app.mcs9865.uart, (uart_sink_fn)app_keyboard_input, &g_app);
+    outb(0xA0, 0x20); // End Of Interrupt (EOI) to slave PIC
+    outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
+    isr_end();
+}
+
 
 
 /* PCI scanning callback for driver instantiation. */
@@ -178,19 +186,15 @@ void pci_cb_fn(void *vapp, struct pci_function *f) {
         f->class, f->subclass,
         f->vendor, f->device
         );
-    if ((f->vendor == 0x10ec) &&
-        (f->device == 0x8139)) {
-        struct rtl8139 *rtl = &app->rtl8139;
-        rtl8139_init(rtl, f);
-        LOG("rtl8139 io=%04x irq=%d mac=%02x:%02x:%02x:%02x:%02x:%02x\n",
-            rtl->iobase,
-            rtl->irq,
-            rtl->mac[0],
-            rtl->mac[1],
-            rtl->mac[2],
-            rtl->mac[3],
-            rtl->mac[4],
-            rtl->mac[5]);
+    if ((f->vendor == RTL8139_VENDOR) &&
+        (f->device == RTL8139_DEVICE)) {
+        struct rtl8139 *d = &app->rtl8139;
+        rtl8139_init(d, f);
+    }
+    if ((f->vendor == MCS9865_VENDOR) &&
+        (f->device == MCS9865_DEVICE)) {
+        struct mcs9865 *d = &app->mcs9865;
+        mcs9865_init(d, f);
     }
 }
 
@@ -217,8 +221,11 @@ void app_init(struct app *app) {
         .keyboard_isr = keyboard_isr,
         .com1_isr     = com1_isr,
         .rtl8139      = { .isr = rtl8139_isr },
+        .mcs9865      = { .isr = mcs9865_isr },
     };
-    isr.rtl8139.irq = app->rtl8139.irq; // nonzero acts as enable
+    // nonzero irq acts as enable for these
+    isr.rtl8139.irq = app->rtl8139.irq;
+    isr.mcs9865.irq = app->mcs9865.uart.irq;
 
     idt_init(&app->idt, &isr);
 

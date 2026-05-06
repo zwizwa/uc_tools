@@ -9,6 +9,11 @@
 #define PCI_CONFIG_ADDRESS  0xCF8
 #define PCI_CONFIG_DATA     0xCFC
 
+#define PCI_CFG_IRQ  0x3C
+#define PCI_CFG_BAR0 0x10
+#define PCI_CFG_BAR1 0x14
+
+
 static inline uint32_t pci_config_addr(uint8_t bus, uint8_t dev, uint8_t func, uint8_t offset) {
     uint32_t addr = (1u << 31)           // Enable bit
                   | ((uint32_t)bus  << 16)

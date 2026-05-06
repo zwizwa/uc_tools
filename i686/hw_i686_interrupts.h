@@ -107,13 +107,16 @@ static inline void __attribute__((__always_inline__)) isr_end(void) {
 
 }
 
+struct idt_isr_entry {
+    void (*isr)(void);
+    uint8_t irq;
+};
+
 struct idt_isr {
     void (*keyboard_isr)(void);
     void (*com1_isr)(void);
-    struct {
-        void (*isr)(void);
-        uint8_t irq;
-    } rtl8139;
+    struct idt_isr_entry rtl8139;
+    struct idt_isr_entry mcs9865;
 };
 
 void idt_set_master(struct idt *idt,
@@ -172,9 +175,13 @@ static inline void idt_init(struct idt *idt,
             idt_set(idt, 4, isr->com1_isr);
         }
         if (isr->rtl8139.irq) {
-            //LOG("enable rtl8139 irq %d\n", isr->rtl8139.irq);
             idt_set(idt, isr->rtl8139.irq, isr->rtl8139.isr);
         }
+        if (isr->mcs9865.irq) {
+            LOG("enable mcs9865 irq=%d\n", isr->mcs9865.irq);
+            idt_set(idt, isr->mcs9865.irq, isr->mcs9865.isr);
+        }
+
     }
 
     //LOG("irq enables %02x %02x\n",
