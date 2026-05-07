@@ -213,8 +213,6 @@ void app_init(struct app *app) {
     text_console_init(&app->log);
     com1_init();
 
-    log_mem(0xA000, 0x20);
-
     //text_console_putstr(&app->log, "app_init()\n");
     LOG("app_init %p\n", app);
 
