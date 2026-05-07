@@ -51,9 +51,40 @@ start:
     xor ax, ax
     int 0x13
 
+    call load_track_0
+    call load_track_1
+    jmp load_done
+
+
+load_track_0:
+    mov ax, 0x7E0   ;; load after bootsector
+    call print_hex_word
+    mov es, ax
+    xor bx, bx
+    xor dx, dx      ;; head 0, drive 0
+    mov cx, 0x0002  ;; cylinder 0, start sector 2
+    mov ax, 0x0211  ;; ah=0x02,  number of sectors al=17
+    int 0x13
+    call print_hex_word_nl
+    ret
+
+load_track_1:
+    mov ax, 0xA00   ;; load after first track
+    mov es, ax
+    call print_hex_word
+    xor bx, bx
+    mov dx, 0x0100  ;; head 1, drive 0
+    mov cx, 0x0001  ;; cylinder 0, start sector 1
+    mov ax, 0x0212  ;; ah=0x02,  number of sectors al=18
+    int 0x13
+    call print_hex_word_nl
+    ret
+
+
+load_rest_fixme:
     ; read a number of tracks
     mov ax, 0
-    mov cx, 10   ; nb tracks
+    mov cx, 2   ; nb tracks
 next_track:
     call load_track
     add ax, 1
@@ -98,26 +129,92 @@ load_track:
     mov ch, al     ; cylinder number
     pop ax
     mov bx, 32*17  ; segments per sector * nb_sectors
+    push dx        ; mul overwrites dx
     mul bx
     add ax, 0x7C0  ; base segment
+    pop dx
 
-    call print_hex_word
 
-    mov es, ax     ; es:dx is destination
-    xor bx, bx
-    mov cl, 1      ; start at sector 1
-    mov al, 17     ; read 17 sectors
-    mov dl, 0      ; drive A
-    mov ah, 0x02   ; BIOS read sectors
-    int 0x13
-    call print_hex_word
+    ;call print_hex_word
+    
+
+
+    mov bx, ax     ; bx:0000 is destination
+    call bios_read_track
+    ;call print_hex_word
     ; jc disk_error
-    mov si, msg_newline
-    call print_string
+    ;mov si, msg_newline
+    ;mov si, msg_dot
+    ;call print_string
     pop ax
     pop bx
     pop cx
     ret
+
+; This behaves like BIOS read sectors command, but works around the
+; DMA boundary crossing limitation by bouncing to 0000:0500 for all
+; but the first track.
+
+; bx is the segment number
+; clobbers ds,es,si,di,cx,bx
+bounce_read_track:
+    cmp bx, 0x07C0
+    jz bios_read_track
+    push ds
+    push bx        ; original destination segment
+    mov bx, 0x0050 ; use the 0000:0500 scratch area
+    push bx
+    call bios_read_track
+
+    pop ds         ; ds:0000 is source       (0050:0000)
+    pop es         ; es:0000 is destination  next track in memory
+    xor si, si
+    xor di, di
+    mov cx, 17*512/2 ; number of words in track
+    rep movsw
+
+    pop ds
+    ret
+
+print_bios_read_track:  
+    ; cylinder
+    mov al, ch
+    call print_hex_byte
+    mov al, ','
+    call print_char
+    ; head
+    mov al, dh
+    call print_hex_byte
+    mov al, '>'
+    call print_char
+    ; dst seg
+    mov ax, bx
+    call print_hex_word
+    mov al, '='
+    call print_char
+
+    ret
+
+; bx:0000 is where to load the data
+; dh head
+; ch cylinder
+bios_read_track:
+    call print_bios_read_track
+
+    mov cl, 1      ; start at sector 1
+    mov al, 17     ; read 17 sectors
+    mov dl, 0      ; drive A
+    mov es, bx
+    xor bx, bx
+    mov ah, 0x02   ; BIOS read sectors
+    int 0x13
+
+    call print_hex_byte
+    mov si, msg_newline
+    call print_string
+
+    ret
+
 
 disk_error:
     push ax
@@ -198,6 +295,12 @@ print_hex_word:
     pop ax
     ret
 
+print_hex_word_nl:
+    call print_hex_word
+    mov si, msg_newline
+    call print_string
+    ret
+
 print_string_nl:        
     call print_string
     mov si, msg_newline
@@ -205,7 +308,8 @@ print_string_nl:
     ret
 
 
-
+msg_dot:
+    db '.', 0
 msg_newline:
     db 0x0D, 0x0A, 0    
 msg_banner:

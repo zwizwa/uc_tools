@@ -198,6 +198,10 @@ void pci_cb_fn(void *vapp, struct pci_function *f) {
     }
 }
 
+void log_mem(uint32_t addr, uint32_t len) {
+    LOG("%08x:\n", addr);
+    log_hex((uint8_t*)addr, len);
+}
 
 /* Application init, called after memory is initialized. */
 void app_init(struct app *app) {
@@ -208,6 +212,8 @@ void app_init(struct app *app) {
        UART. */
     text_console_init(&app->log);
     com1_init();
+
+    log_mem(0xA000, 0x20);
 
     //text_console_putstr(&app->log, "app_init()\n");
     LOG("app_init %p\n", app);
@@ -238,16 +244,6 @@ void app_init(struct app *app) {
 
 };
 
-
-
-/* The uc_tools Forth Instantiated at the end so it can easly
-   reference all code in kernel.c compilation unit. */
-#define FORTH_OUT_INFO 1
-#include "tools.c"
-#include "forth.h"
-void hello(void) {
-    LOG("hello!\n");
-}
 #include "ethernet.h"
 void f1(void) {
 #if 1
@@ -269,6 +265,18 @@ void f1(void) {
     rtl8139_transmit(&g_app.rtl8139, &packet, sizeof(packet));
 }
 
+
+
+#if 1
+
+/* The uc_tools Forth Instantiated at the end so it can easly
+   reference all code in kernel.c compilation unit. */
+#define FORTH_OUT_INFO 1
+#include "tools.c"
+#include "forth.h"
+void hello(void) {
+    LOG("hello!\n");
+}
 #define EVENT_RESTART (1<<0)
 void restart(void) {
 #if 0
@@ -277,7 +285,6 @@ void restart(void) {
     cli_and_restart();
 #endif
 }
-
 
 #define W(word) {#word, (w)word}
 #define FORTH_WORDS\
@@ -288,7 +295,10 @@ void restart(void) {
 
 #include "mod_forth.c"
 
-
+#else
+void forth_start(void) {}
+void forth_write(const uint8_t *buf, uint32_t len) {}
+#endif
 
 
 /* Before jumping here, the bootloader loads from media if needed,

@@ -102,24 +102,6 @@ struct rtl8139 {
     uint8_t  tx_index:2;
 };
 
-static inline void log_hex(const uint8_t *buf, uint32_t len) {
-    for (int i=0; i<len; i++) {
-        if (i % 16 == 0) {
-            LOG("%04x ", i);
-        }
-        LOG(" %02x", buf[i]);
-        if (i % 16 == 7) {
-           LOG(" ");
-        }
-        if (i % 16 == 15) {
-            LOG("\n");
-        }
-    }
-    if ((len % 16) != 0) {
-        LOG("\n");
-    }
-}
-
 static inline void rtl8139_rx_poll(struct rtl8139 *s) {
     // CMD bit 0 = RX buffer empty
     uint32_t mask = (RTL8139_RX_BUF_LEN - 1) & (~3);

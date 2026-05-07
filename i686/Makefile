@@ -26,9 +26,17 @@ DEPS := $(shell find -name '*.d')
 kernel.nbp: boot.nbp kernel.bin
 	cat boot.nbp kernel.bin >$@
 
+#  512 sector size
+# 9216 track size (18 sectors)
 kernel.dsk: boot.dsk kernel.bin
 	cat boot.dsk kernel.bin >$@
+	ls -l $@
+	truncate -s %9216 $@
+	ls -l $@
+	echo "Hello!" >>$@
+	ls -l $@
 	truncate -s %512 $@
+	ls -l $@
 
 clean:
 	rm -f *.bin *.elf boot.dsk boot.nbp test.nbp kernel.dsk kernel.nbp *~ *.dasm *.o

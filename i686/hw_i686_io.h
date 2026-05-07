@@ -3,6 +3,27 @@
 
 #include <stdint.h>
 
+
+static inline void log_hex(const uint8_t *buf, uint32_t len) {
+    for (int i=0; i<len; i++) {
+        if (i % 16 == 0) {
+            LOG("%04x ", i);
+        }
+        LOG(" %02x", buf[i]);
+        if (i % 16 == 7) {
+           LOG(" ");
+        }
+        if (i % 16 == 15) {
+            LOG("\n");
+        }
+    }
+    if ((len % 16) != 0) {
+        LOG("\n");
+    }
+}
+
+
+
 // https://flint.cs.yale.edu/cs422/doc/art-of-asm/pdf/
 
 // https://claude.ai/chat/4749c67f-e209-4871-a53e-3474ed0adf94
