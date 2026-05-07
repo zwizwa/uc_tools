@@ -30,11 +30,6 @@ kernel.nbp: boot.nbp kernel.bin
 # 9216 track size (18 sectors)
 kernel.dsk: boot.dsk kernel.bin
 	cat boot.dsk kernel.bin >$@
-	ls -l $@
-	truncate -s %9216 $@
-	ls -l $@
-	echo "Hello!" >>$@
-	ls -l $@
 	truncate -s %512 $@
 	ls -l $@
 
@@ -75,7 +70,7 @@ boot.dsk: boot.asm
 qemu_dsk: kernel.dsk
 	@echo "WARNING: floppy image does not reload on qemu reboot"
 	@echo "WARNING: use qemu_nbp instead"
-	$(QEMU) -drive file=$<,format=raw,if=floppy -boot a
+	$(QEMU) -drive file=$<,format=raw,if=floppy -boot a -netdev user,id=net0 -device rtl8139,netdev=net0
 
 # Test in QEMU using ipxe and user mode networking with internal tftp
 # server.  This is a bit slow due to the DHCP step.

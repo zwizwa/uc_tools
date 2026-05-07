@@ -55,12 +55,11 @@ start:
     call load_track_0
 
     ; load other full tracks after that
-    mov ax, 1   ; next track to read
-    mov cx, 5   ; nb of tracks to read
+    mov ax, 1   ; first full track to read
 next_track:
     call load_track
     add ax, 1
-    sub cx, 1
+    cmp ax, 5   ; endx = total tracks to read
     jnz next_track
 
     call newline
@@ -118,12 +117,10 @@ load_track:
     pop cx
     ret
 
-; This behaves like BIOS read sectors command, but works around the
-; DMA boundary crossing limitation by bouncing to 0000:0500 for all
-; but the first track.
 
 ; bx is the segment number
 ; clobbers ds,es,si,di,cx,bx
+; track is bounced to scratch area to avoid DMA 64k boundary issues on direct load
 bounce_read_track:
     push ds
     push bx        ; original destination segment
@@ -144,6 +141,8 @@ bounce_read_track:
     call print_char
     mov ax, es
     call print_hex_word
+    mov al, '0'
+    call print_char
     call newline
 
     ret
@@ -181,6 +180,8 @@ print_bios_read_track:
     ; dst seg
     mov ax, es
     call print_hex_word
+    mov al, '0'
+    call print_char
     mov al, ':'
     call print_char
     pop ax
