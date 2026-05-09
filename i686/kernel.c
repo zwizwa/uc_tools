@@ -20,6 +20,7 @@ void kernel_infof(const char *fmt, ...);
 #include "hw_i686_spinner.h"
 #include "hw_i686_rtl8139.h"
 #include "hw_i686_mcs9865.h"
+#include "hw_i686_dp83815.h"
 
 /* PC (VGA) text console. */
 #include "text_console.h"
@@ -32,9 +33,11 @@ void kernel_infof(const char *fmt, ...);
    bit easier in case we ever do core dumps or gdb stub. */
 struct app {
     volatile uint32_t event;
+    struct uart com1;
     struct text_console log;
     struct idt idt;
     struct rtl8139 rtl8139;
+    struct dp83815 dp83815;
     struct mcs9865 mcs9865;
     struct telnet telnet;
 };
@@ -51,7 +54,9 @@ struct app g_app;
    - And passed on to forth command interpreter */
 static inline void app_info_putchar(struct app *app, char c) {
     text_console_putchar(&app->log, c);
-    com1_putchar(c);
+    if (app->com1.irq) {
+        uart_putchar(&app->com1, c);
+    }
     if (app->mcs9865.uart.irq) {
         uart_putchar(&app->mcs9865.uart, c);
     }
@@ -150,7 +155,7 @@ static void com1_isr(void) {
     isr_begin();
     static uint32_t count = 0;
     spinner(1, count++);
-    uart_isr(&com1, (uart_sink_fn)app_keyboard_input, &g_app);
+    uart_isr(&g_app.com1, (uart_sink_fn)app_keyboard_input, &g_app);
     outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
     isr_end();
 }
@@ -159,6 +164,16 @@ static void rtl8139_isr(void) {
     isr_begin();
     static uint32_t count = 0;
     rtl8139_isr_inner(&g_app.rtl8139);
+    outb(0xA0, 0x20); // End Of Interrupt (EOI) to slave PIC
+    outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
+    isr_end();
+}
+__attribute__((naked))
+static void dp83815_isr(void) {
+    isr_begin();
+    static uint32_t count = 0;
+    spinner(8, count++);
+    dp83815_isr_inner(&g_app.dp83815);
     outb(0xA0, 0x20); // End Of Interrupt (EOI) to slave PIC
     outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
     isr_end();
@@ -191,6 +206,11 @@ void pci_cb_fn(void *vapp, struct pci_function *f) {
         struct rtl8139 *d = &app->rtl8139;
         rtl8139_init(d, f);
     }
+    if ((f->vendor == DP83815_VENDOR) &&
+        (f->device == DP83815_DEVICE)) {
+        struct dp83815 *d = &app->dp83815;
+        dp83815_init(d, f);
+    }
     if ((f->vendor == MCS9865_VENDOR) &&
         (f->device == MCS9865_DEVICE)) {
         struct mcs9865 *d = &app->mcs9865;
@@ -211,7 +231,13 @@ void app_init(struct app *app) {
        without init for now: just use whatever BIOS configured in the
        UART. */
     text_console_init(&app->log);
-    com1_init();
+
+#if 1
+    g_app.com1.iobase = 0x3F8;
+    g_app.com1.irq = 4;
+    uart_init(&g_app.com1);
+    uart_putstr(&g_app.com1, "com1 initialized\n");
+#endif
 
     //text_console_putstr(&app->log, "app_init()\n");
     LOG("app_init %p\n", app);
@@ -221,15 +247,17 @@ void app_init(struct app *app) {
     pci_enumerate(&cb);
 
     // initialize interrupt table
+    // nonzero irq acts as enable for these
+
+    // FIXME: Turn this into a linked list, or an array that can be
+    // defined in the "config space", e.g. kernel.c
     struct idt_isr isr = {
         .keyboard_isr = keyboard_isr,
-        .com1_isr     = com1_isr,
-        .rtl8139      = { .isr = rtl8139_isr },
-        .mcs9865      = { .isr = mcs9865_isr },
+        .com1         = { .isr = com1_isr,    .irq = app->com1.irq },
+        .rtl8139      = { .isr = rtl8139_isr, .irq = app->rtl8139.irq },
+        .dp83815      = { .isr = dp83815_isr, .irq = app->dp83815.irq },
+        .mcs9865      = { .isr = mcs9865_isr, .irq = app->mcs9865.uart.irq },
     };
-    // nonzero irq acts as enable for these
-    isr.rtl8139.irq = app->rtl8139.irq;
-    isr.mcs9865.irq = app->mcs9865.uart.irq;
 
     idt_init(&app->idt, &isr);
 

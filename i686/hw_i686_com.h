@@ -81,24 +81,5 @@ static void uart_init(struct uart *s) {
     outb(s->iobase + UART_IER,  0x01);
 }
 
-/* OLD */
-struct uart com1 = {
-    .iobase = 0x3F8,
-    .irq    = 4,
-};
-static void com1_write_byte(uint8_t byte) {
-    uart_write_byte(&com1, byte);
-}
-static void com1_putchar(uint8_t byte) {
-    uart_putchar(&com1, byte);
-}
-static void com1_putstr(uint8_t *str) {
-    uart_putstr(&com1, str);
-}
-static void com1_init(void) {
-    uart_init(&com1);
-}
-
-
 
 #endif

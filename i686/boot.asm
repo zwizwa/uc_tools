@@ -81,8 +81,8 @@ load_track_0:
     mov es, ax
     xor bx, bx
     xor dx, dx      ;; head 0, drive 0
-    mov cx, 0x0002  ;; cylinder 0, start sector 2
-    mov ax, 0x0211  ;; ah=0x02,  number of sectors al=17
+    mov cx, 0x0002  ;; cylinder 0, start sector 2 = sector after bootsector
+    mov ax, 0x0211  ;; bios function 0x02, number of sectors 0x11 = 17 = 18-1
     call print_bios_read_track
     int 0x13
     call print_hex_word_nl
