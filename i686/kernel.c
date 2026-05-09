@@ -21,6 +21,7 @@ void kernel_infof(const char *fmt, ...);
 #include "hw_i686_rtl8139.h"
 #include "hw_i686_mcs9865.h"
 #include "hw_i686_dp83815.h"
+#include "hw_i686_sunix.h"
 
 /* PC (VGA) text console. */
 #include "text_console.h"
@@ -35,11 +36,12 @@ struct app {
     volatile uint32_t event;
     struct uart com1;
     struct text_console log;
+    struct telnet telnet;
     struct idt idt;
     struct rtl8139 rtl8139;
     struct dp83815 dp83815;
     struct mcs9865 mcs9865;
-    struct telnet telnet;
+    struct sunix sunix;
 };
 struct app g_app;
 
@@ -59,6 +61,9 @@ static inline void app_info_putchar(struct app *app, char c) {
     }
     if (app->mcs9865.uart.irq) {
         uart_putchar(&app->mcs9865.uart, c);
+    }
+    if (app->sunix.uart.irq) {
+        uart_putchar(&app->sunix.uart, c);
     }
 }
 #define NS(tag) app_info_##tag
@@ -188,8 +193,18 @@ static void mcs9865_isr(void) {
     outb(0xA0, 0x20); // End Of Interrupt (EOI) to slave PIC
     outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
     isr_end();
-}
 
+}
+__attribute__((naked))
+static void sunix_isr(void) {
+    isr_begin();
+    static uint32_t count = 0;
+    spinner(6, count++);
+    uart_isr(&g_app.sunix.uart, (uart_sink_fn)app_keyboard_input, &g_app);
+    outb(0xA0, 0x20); // End Of Interrupt (EOI) to slave PIC
+    outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
+    isr_end();
+}
 
 
 /* PCI scanning callback for driver instantiation. */
@@ -216,6 +231,11 @@ void pci_cb_fn(void *vapp, struct pci_function *f) {
         struct mcs9865 *d = &app->mcs9865;
         mcs9865_init(d, f);
     }
+    if ((f->vendor == SUNIX_VENDOR) &&
+        (f->device == SUNIX_DEVICE)) {
+        struct sunix *d = &app->sunix;
+        sunix_init(d, f);
+    }
 }
 
 void log_mem(uint32_t addr, uint32_t len) {
@@ -235,8 +255,8 @@ void app_init(struct app *app) {
 #if 1
     g_app.com1.iobase = 0x3F8;
     g_app.com1.irq = 4;
-    uart_init(&g_app.com1);
-    uart_putstr(&g_app.com1, "com1 initialized\n");
+    uart_init(&g_app.com1, 1);
+    //uart_putstr(&g_app.com1, "com1 initialized\n");
 #endif
 
     //text_console_putstr(&app->log, "app_init()\n");
@@ -257,6 +277,7 @@ void app_init(struct app *app) {
         .rtl8139      = { .isr = rtl8139_isr, .irq = app->rtl8139.irq },
         .dp83815      = { .isr = dp83815_isr, .irq = app->dp83815.irq },
         .mcs9865      = { .isr = mcs9865_isr, .irq = app->mcs9865.uart.irq },
+        .sunix        = { .isr = sunix_isr,   .irq = app->sunix.uart.irq },
     };
 
     idt_init(&app->idt, &isr);

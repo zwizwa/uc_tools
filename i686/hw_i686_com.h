@@ -58,7 +58,7 @@ static void uart_isr(struct uart *s, uart_sink_fn sink, void *ctx) {
     }
 }
 
-static void uart_init(struct uart *s) {
+static void uart_init(struct uart *s, uint16_t div) {
 
     /* divisor:
        1 -> 115200
@@ -69,8 +69,8 @@ static void uart_init(struct uart *s) {
     outb(s->iobase + UART_IER,  0x00);
 
     outb(s->iobase + UART_LCR,  0x80);   /* DLAB = 1, access divisor latch */
-    outb(s->iobase + UART_DATA, 0x01);   /* divisor low */
-    outb(s->iobase + UART_IER,  0x00);   /* divisor high */
+    outb(s->iobase + UART_DATA, div & 0xFF); /* divisor low */
+    outb(s->iobase + UART_IER,  div >> 8);   /* divisor high */
 
     outb(s->iobase + UART_LCR,  0x03);   /* DLAB = 0, 8 bits, no parity, 1 stop */
     outb(s->iobase + UART_FCR,  0xC7);   /* enable FIFO, clear RX/TX, 14-byte trigger */

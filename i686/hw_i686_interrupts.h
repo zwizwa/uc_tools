@@ -118,6 +118,7 @@ struct idt_isr {
     struct idt_isr_entry rtl8139;
     struct idt_isr_entry mcs9865;
     struct idt_isr_entry dp83815;
+    struct idt_isr_entry sunix;
 };
 
 void idt_set_master(struct idt *idt,
@@ -185,6 +186,10 @@ static inline void idt_init(struct idt *idt,
         if (isr->mcs9865.irq) {
             LOG("enable mcs9865 irq=%d\n", isr->mcs9865.irq);
             idt_set(idt, isr->mcs9865.irq, isr->mcs9865.isr);
+        }
+        if (isr->sunix.irq) {
+            LOG("enable sunix irq=%d\n", isr->sunix.irq);
+            idt_set(idt, isr->sunix.irq, isr->sunix.isr);
         }
 
     }

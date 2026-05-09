@@ -32,7 +32,7 @@ static inline void mcs9865_init(struct mcs9865 *s, const struct pci_function *f)
         s->ioextra,
         s->uart.irq);
     LOG("uart init io=%04x\n", s->uart.iobase);
-    uart_init(&s->uart);
+    uart_init(&s->uart, 1);
     uart_putstr(&s->uart, "mcs9865 ok\n");
 
 }
