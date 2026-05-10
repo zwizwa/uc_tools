@@ -39,7 +39,7 @@ static void uart_putchar(struct uart *s, uint8_t byte) {
     }
     uart_write_byte(s, byte);
 }
-static void uart_putstr(struct uart *s, uint8_t *str) {
+static void uart_putstr(struct uart *s, char *str) {
     while(*str) {
         uart_putchar(s, *str++);
     }

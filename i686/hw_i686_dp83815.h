@@ -81,6 +81,7 @@ static inline void dp83815_isr_inner(struct dp83815 *s) {
 
         uint32_t cs = s->rxring[s->rx_head].cmdsts;
         uint32_t len = cs & DP83815_DESC_SIZE_MASK;
+        (void)len;
 
         /* OK bit is 25; if clear, packet had an error - drop it. */
         if (!(cs & 0x047F0000)) {

@@ -26,7 +26,7 @@ struct mux_monitor {
     uint8_t monitor:1;
 };
 
-static void mux_monitor(struct mux_monitor *s, uint8_t byte) {
+static inline void mux_monitor_putchar(struct mux_monitor *s, uint8_t byte) {
     if (s->monitor) {
       monitor:
         /* When monitor mode is active, keep sending data until we get
@@ -36,7 +36,7 @@ static void mux_monitor(struct mux_monitor *s, uint8_t byte) {
             s->monitor = 0;
         }
     }
-    else if (byte = 0x10) {
+    else if (byte == 0x10) {
         /* If DLE is received, switch to monitor */
         s->monitor = 1;
         s->app_switch_to_monitor(s->app);

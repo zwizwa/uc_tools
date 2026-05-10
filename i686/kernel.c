@@ -6,7 +6,7 @@
    object pointers. */
 
 #if 1
-void kernel_infof(const char *fmt, ...);
+int kernel_infof(const char *fmt, ...);
 #define LOG(...) kernel_infof(__VA_ARGS__)
 #else
 #define LOG(...)
@@ -97,16 +97,26 @@ static inline int app_infof(struct app *app, const char *fmt, ...) {
 }
 #endif
 /* Support LOG() without app reference. */
-void kernel_infof(const char *fmt, ...) {
+int kernel_infof(const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
     int rv = app_info_vf(&g_app, fmt, ap);
     va_end(ap);
+    return rv;
 }
 /* COM port, Keyboard input */
 void app_keyboard_input(void *vapp, uint8_t byte) {
     struct app *app = vapp;
     telnet_write_input(&app->telnet, &byte, 1);
+}
+/* COM port is multiplexed with monitor. */
+void app_com_input(void *vapp, uint8_t byte) {
+    struct app *app = vapp;
+#if 0
+    mux_monitor_putchar(&app->mux_monitor, byte);
+#else
+    app_keyboard_input(app, byte);
+#endif
 }
 void keyboard_input(uint8_t ascii) {
     app_keyboard_input(&g_app, ascii);
@@ -122,6 +132,7 @@ void telnet_write_output(struct telnet *, const uint8_t *bytes, uintptr_t len) {
 void telnet_event(struct telnet *t, uintptr_t event) {
     //LOG("event 0x%x\n", event);
     uint8_t byte = event & 0xFF;
+    (void)byte;
     event &= ~0xff;
     switch(event) {
     case TELNET_EVENT_LINE:
@@ -174,14 +185,13 @@ static void com1_isr(void) {
     isr_begin();
     static uint32_t count = 0;
     spinner(1, count++);
-    uart_isr(&g_app.com1, (uart_sink_fn)app_keyboard_input, &g_app);
+    uart_isr(&g_app.com1, (uart_sink_fn)app_com_input, &g_app);
     outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
     isr_end();
 }
 __attribute__((naked))
 static void rtl8139_isr(void) {
     isr_begin();
-    static uint32_t count = 0;
     rtl8139_isr_inner(&g_app.rtl8139);
     outb(0xA0, 0x20); // End Of Interrupt (EOI) to slave PIC
     outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
@@ -203,7 +213,7 @@ static void mcs9865_isr(void) {
     isr_begin();
     static uint32_t count = 0;
     spinner(5, count++);
-    uart_isr(&g_app.mcs9865.uart, (uart_sink_fn)app_keyboard_input, &g_app);
+    uart_isr(&g_app.mcs9865.uart, (uart_sink_fn)app_com_input, &g_app);
     outb(0xA0, 0x20); // End Of Interrupt (EOI) to slave PIC
     outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
     isr_end();
@@ -214,7 +224,7 @@ static void sunix_isr(void) {
     isr_begin();
     static uint32_t count = 0;
     spinner(6, count++);
-    uart_isr(&g_app.sunix.uart, (uart_sink_fn)app_keyboard_input, &g_app);
+    uart_isr(&g_app.sunix.uart, (uart_sink_fn)app_com_input, &g_app);
     outb(0xA0, 0x20); // End Of Interrupt (EOI) to slave PIC
     outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
     isr_end();
@@ -267,7 +277,7 @@ int app_mon_putchar(void *vapp, uint8_t byte) {
     /* This means that logging should not go to the monitor port.  API
        probably needs to change to also witch back. */
     struct app *app = vapp;
-    monitor_3if_push_key(&app->monitor_3if, byte);\
+    monitor_3if_push_key(&app->monitor_3if, byte);
     // FIXME: This is the protocol switch conditiion.
     return 0;
 }
@@ -286,7 +296,7 @@ void app_init(struct app *app) {
        so set it up asap. */
     app->mux_monitor.app = &app;
     app->mux_monitor.app_putchar = app_keyboard_input;
-    app->mux_monitor.app_switch_to_monitor = app_switch_to_monitor;
+    app->mux_monitor.switch_to_monitor = app_switch_to_monitor;
     app->mux_monitor.mon_putchar = app_mon_putchar;
 
 
@@ -296,6 +306,8 @@ void app_init(struct app *app) {
     uart_init(&g_app.com1, 1);
     //uart_putstr(&g_app.com1, "com1 initialized\n");
 #endif
+
+
 
     //text_console_putstr(&app->log, "app_init()\n");
     LOG("app_init %p\n", app);
@@ -310,12 +322,12 @@ void app_init(struct app *app) {
     // FIXME: Turn this into a linked list, or an array that can be
     // defined in the "config space", e.g. kernel.c
     struct idt_isr isr = {
-        .keyboard_isr = keyboard_isr,
-        .com1         = { .isr = com1_isr,    .irq = app->com1.irq },
-        .rtl8139      = { .isr = rtl8139_isr, .irq = app->rtl8139.irq },
-        .dp83815      = { .isr = dp83815_isr, .irq = app->dp83815.irq },
-        .mcs9865      = { .isr = mcs9865_isr, .irq = app->mcs9865.uart.irq },
-        .sunix        = { .isr = sunix_isr,   .irq = app->sunix.uart.irq },
+        .keyboard     = { .isr = keyboard_isr, .irq = 1 },
+        .com1         = { .isr = com1_isr,     .irq = app->com1.irq },
+        .rtl8139      = { .isr = rtl8139_isr,  .irq = app->rtl8139.irq },
+        .dp83815      = { .isr = dp83815_isr,  .irq = app->dp83815.irq },
+        .mcs9865      = { .isr = mcs9865_isr,  .irq = app->mcs9865.uart.irq },
+        .sunix        = { .isr = sunix_isr,    .irq = app->sunix.uart.irq },
     };
 
     idt_init(&app->idt, &isr);
@@ -376,6 +388,7 @@ void restart(void) {
     W(hello),      \
     W(reboot),     \
     W(restart),    \
+    W(shutdown),   \
     W(f1),         \
 
 #include "mod_forth.c"

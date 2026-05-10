@@ -113,7 +113,7 @@ struct idt_isr_entry {
 };
 
 struct idt_isr {
-    void (*keyboard_isr)(void);
+    struct idt_isr_entry keyboard;
     struct idt_isr_entry com1;
     struct idt_isr_entry rtl8139;
     struct idt_isr_entry mcs9865;
@@ -170,8 +170,8 @@ static inline void idt_init(struct idt *idt,
     idt->master_enable = 0;
     idt->slave_enable = 0;
     if (isr) {
-        if (isr->keyboard_isr) {
-            idt_set(idt, 1, isr->keyboard_isr);
+        if (isr->keyboard.irq) {
+            idt_set(idt, isr->keyboard.irq, isr->keyboard.isr);
         }
         if (isr->com1.irq) {
             idt_set(idt, isr->com1.irq, isr->com1.isr);

@@ -7,7 +7,7 @@
 #include <strings.h>
 
 struct text_console {
-    volatile char *video;
+    volatile uint8_t *video;
     uint8_t col;
     uint8_t row;
     uint8_t nb_rows;

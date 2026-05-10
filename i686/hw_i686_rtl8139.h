@@ -107,7 +107,7 @@ static inline void rtl8139_rx_poll(struct rtl8139 *s) {
     uint32_t mask = (RTL8139_RX_BUF_LEN - 1) & (~3);
     while (!(inb(s->iobase + RTL_CMD) & 0x01)) {
         uint8_t *entry = s->rx_buf + s->rx_offset;
-        uint32_t o0 = s->rx_offset;
+        //uint32_t o0 = s->rx_offset;
 
         uint16_t rx_status = *(uint16_t *)(entry + 0);
         uint16_t rx_len    = *(uint16_t *)(entry + 2); // includes 4-byte CRC
@@ -119,6 +119,8 @@ static inline void rtl8139_rx_poll(struct rtl8139 *s) {
 
         uint8_t  *pkt     = entry + 4;
         uint16_t  pkt_len = rx_len - 4; // strip CRC
+        (void)pkt;
+        (void)pkt_len;
 
         // Hand packet up to your network stack
         // ethernet_receive(pkt, pkt_len);
@@ -127,7 +129,7 @@ static inline void rtl8139_rx_poll(struct rtl8139 *s) {
 
         // Advance read pointer — DWORD aligned, wrapped.
         s->rx_offset = (s->rx_offset + 4 + rx_len + 3) & mask;
-        uint32_t o1 = s->rx_offset;
+        //uint32_t o1 = s->rx_offset;
 
         //LOG("offset %04x->%04x\n", o0, o1);
         //volatile uint8_t *top_right = (void*)(0xB8000 + 2*79);
@@ -162,7 +164,8 @@ int rtl8139_transmit(struct rtl8139 *s, const void *data, uint16_t len) {
     memcpy(buf, data, len);
 
     if (len < 60) {
-        uint16_t pad = 60 - len;
+        // FIXME zero the buffer
+        // uint16_t pad = 60 - len;
         // memset(
         len = 60;
     }
@@ -206,8 +209,7 @@ static inline void rtl8139_isr_inner(struct rtl8139 *s) {
     // Acknowledge all raised interrupts
     outw(s->iobase + RTL_ISR, status);
 
-    uint16_t status_ = inw(s->iobase + RTL_ISR);
-
+    //uint16_t status_ = inw(s->iobase + RTL_ISR);
     //LOG("rtl8139 interrupt %02x %02x\n", status, status_);
     if (status & INT_ROK) {
         spinner(2, s->rx_isr_count++);

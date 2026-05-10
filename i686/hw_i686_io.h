@@ -104,11 +104,17 @@ static inline void reboot(void) {
     outb(0x64, 0xFE);
 }
 
+// -device isa-debug-exit,iobase=0xf4,iosize=0x04
+// qemu exits using exit((code << 1) | 1)
+static inline void qemu_exit(uint16_t code) {
+    LOG("qemu_exit(%d) -> %d\n", code, (code<<1)|1);
+    outw(0xf4, code);
+}
+static inline void shutdown(void) {
+    qemu_exit(0);
+}
+
 static inline void cli_and_restart(void) {
-
-    // FIXME: keyboard gets stuck after 2-3 restarts, but serial port
-    // and rtl8139 are still ok.
-
     LOG("restart...\n");
     cli();
     __asm__ __volatile__ (
