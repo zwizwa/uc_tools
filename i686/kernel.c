@@ -12,6 +12,13 @@ void kernel_infof(const char *fmt, ...);
 #define LOG(...)
 #endif
 
+#define for_device(m) \
+    m(rtl8139) \
+    m(dp83815) \
+    m(mcs9865) \
+    m(sunix) \
+
+#define STRUCT(name) struct name name;
 
 
 /* Hardware access. */
@@ -30,6 +37,13 @@ void kernel_infof(const char *fmt, ...);
 #define TELNET_NO_INIT
 #include "telnet.h"
 
+/* Monitor vs. text command multiplexer. */
+#include "mux_monitor.h"
+
+/* Support for 3if monitor. */
+#include "mod_monitor_3if.c"
+
+
 /* All application state is in a single struct which make debugging a
    bit easier in case we ever do core dumps or gdb stub. */
 struct app {
@@ -38,10 +52,9 @@ struct app {
     struct text_console log;
     struct telnet telnet;
     struct idt idt;
-    struct rtl8139 rtl8139;
-    struct dp83815 dp83815;
-    struct mcs9865 mcs9865;
-    struct sunix sunix;
+    struct mux_monitor mux_monitor;
+    struct monitor_3if monitor_3if;
+    for_device(STRUCT)
 };
 struct app g_app;
 
@@ -90,8 +103,9 @@ void kernel_infof(const char *fmt, ...) {
     int rv = app_info_vf(&g_app, fmt, ap);
     va_end(ap);
 }
-/* COM1, Keyboard input */
-void app_keyboard_input(struct app *app, uint8_t byte) {
+/* COM port, Keyboard input */
+void app_keyboard_input(void *vapp, uint8_t byte) {
+    struct app *app = vapp;
     telnet_write_input(&app->telnet, &byte, 1);
 }
 void keyboard_input(uint8_t ascii) {
@@ -243,6 +257,22 @@ void log_mem(uint32_t addr, uint32_t len) {
     log_hex((uint8_t*)addr, len);
 }
 
+void app_switch_to_monitor(void *vapp) {
+    /* This means that logging should not go to the monitor port.  API
+       probably needs to change to also witch back. */
+    struct app *app = vapp;
+    (void)app;
+}
+int app_mon_putchar(void *vapp, uint8_t byte) {
+    /* This means that logging should not go to the monitor port.  API
+       probably needs to change to also witch back. */
+    struct app *app = vapp;
+    monitor_3if_push_key(&app->monitor_3if, byte);\
+    // FIXME: This is the protocol switch conditiion.
+    return 0;
+}
+
+
 /* Application init, called after memory is initialized. */
 void app_init(struct app *app) {
 
@@ -251,6 +281,14 @@ void app_init(struct app *app) {
        without init for now: just use whatever BIOS configured in the
        UART. */
     text_console_init(&app->log);
+
+    /* The 3if monitor multiplexing s used in the logging path as well
+       so set it up asap. */
+    app->mux_monitor.app = &app;
+    app->mux_monitor.app_putchar = app_keyboard_input;
+    app->mux_monitor.app_switch_to_monitor = app_switch_to_monitor;
+    app->mux_monitor.mon_putchar = app_mon_putchar;
+
 
 #if 1
     g_app.com1.iobase = 0x3F8;
@@ -347,6 +385,27 @@ void forth_start(void) {}
 void forth_write(const uint8_t *buf, uint32_t len) {}
 #endif
 
+/* Smaller re-implementations of libc functions.  Include these in the
+   main image to override libc. */
+
+void *memcpy(void *dest, const void *src, size_t n) {
+    return mini_memcpy(dest, src, n);
+}
+int strcmp(const char *s1, const char *s2) {
+    return mini_strcmp(s1, s2);
+}
+size_t strlen(const char *s1) {
+    return mini_strlen(s1);
+}
+char *strcpy(char *dst, const char *src) {
+    return mini_strcpy(dst, src);
+}
+void *memset(void *s, int c, size_t n) {
+    return mini_memset(s, c, n);
+}
+
+
+
 
 /* Before jumping here, the bootloader loads from media if needed,
    enables A20, turns off interrupts, switches to protected mode.
@@ -388,21 +447,3 @@ void kmain(void) {
 }
 
 
-/* Smaller re-implementations of libc functions.  Include these in the
-   main image to override libc. */
-
-void *memcpy(void *dest, const void *src, size_t n) {
-    return mini_memcpy(dest, src, n);
-}
-int strcmp(const char *s1, const char *s2) {
-    return mini_strcmp(s1, s2);
-}
-size_t strlen(const char *s1) {
-    return mini_strlen(s1);
-}
-char *strcpy(char *dst, const char *src) {
-    return mini_strcpy(dst, src);
-}
-void *memset(void *s, int c, size_t n) {
-    return mini_memset(s, c, n);
-}
