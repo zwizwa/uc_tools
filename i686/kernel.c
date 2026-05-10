@@ -37,23 +37,23 @@ int kernel_infof(const char *fmt, ...);
 #define TELNET_NO_INIT
 #include "telnet.h"
 
-/* Monitor vs. text command multiplexer. */
-#include "mux_monitor.h"
-
 /* Support for 3if monitor. */
 #include "mod_monitor_3if.c"
 
 
 /* All application state is in a single struct which make debugging a
    bit easier in case we ever do core dumps or gdb stub. */
+struct app;
 struct app {
     volatile uint32_t event;
     struct uart com1;
     struct text_console log;
     struct telnet telnet;
     struct idt idt;
-    struct mux_monitor mux_monitor;
     struct monitor_3if monitor_3if;
+    void (*com_input)(struct app *, uint8_t);
+    void (*com_output)(struct app *, uint8_t);
+    uint32_t nb_zeros;
     for_device(STRUCT)
 };
 struct app g_app;
@@ -67,8 +67,11 @@ struct app g_app;
    - Text output goes to both COM1 and vga console
    - Text input is parsed by Telnet / ANSI terminal layer
    - And passed on to forth command interpreter */
-static inline void app_info_putchar(struct app *app, char c) {
-    text_console_putchar(&app->log, c);
+static inline void app_com_putchar(struct app *app, uint8_t c) {
+
+    // FIXME: It's better to just have one com port and set it with a
+    // pointer.  Default would be com1.
+
     if (app->com1.irq) {
         uart_putchar(&app->com1, c);
     }
@@ -77,6 +80,12 @@ static inline void app_info_putchar(struct app *app, char c) {
     }
     if (app->sunix.uart.irq) {
         uart_putchar(&app->sunix.uart, c);
+    }
+}
+static inline void app_info_putchar(struct app *app, uint8_t c) {
+    text_console_putchar(&app->log, c);
+    if (app->com_output) {
+        app->com_output(app, c);
     }
 }
 #define NS(tag) app_info_##tag
@@ -105,18 +114,36 @@ int kernel_infof(const char *fmt, ...) {
     return rv;
 }
 /* COM port, Keyboard input */
-void app_keyboard_input(void *vapp, uint8_t byte) {
-    struct app *app = vapp;
+void app_keyboard_input(struct app *app, uint8_t byte);
+void app_monitor_input(struct app *app, uint8_t byte) {
+    if (byte == 0) { app->nb_zeros++; }
+    else { app->nb_zeros = 0; }
+    if (app->nb_zeros >= 3) {
+        app->com_input = app_keyboard_input;
+        app->com_output = app_com_putchar;
+        LOG("switch to commands\n");
+    }
+    monitor_3if_push_key(&app->monitor_3if, byte);
+}
+void app_keyboard_input(struct app *app, uint8_t byte) {
+    if (byte == 0) {
+        /* NULL is used to swtich from text command input to monitor
+           input.  The monitor will switch back text command mode
+           explicitly.  To test: terminal C-space sends NULL. */
+        app->com_input = app_monitor_input;
+        app->com_output = NULL;
+        // FIXME: Make sure that text log is not going to com
+        // This will only go to the text console.
+        LOG("switched to monitor\n");
+        app->nb_zeros = 0;
+    }
     telnet_write_input(&app->telnet, &byte, 1);
 }
-/* COM port is multiplexed with monitor. */
+
+/* COM port input can be re-routed to monitor. */
 void app_com_input(void *vapp, uint8_t byte) {
     struct app *app = vapp;
-#if 0
-    mux_monitor_putchar(&app->mux_monitor, byte);
-#else
-    app_keyboard_input(app, byte);
-#endif
+    app->com_input(app, byte);
 }
 void keyboard_input(uint8_t ascii) {
     app_keyboard_input(&g_app, ascii);
@@ -286,18 +313,15 @@ int app_mon_putchar(void *vapp, uint8_t byte) {
 /* Application init, called after memory is initialized. */
 void app_init(struct app *app) {
 
+    /* Start up with com port connected as command keyboard input. */
+    app->com_input = app_keyboard_input;
+    app->com_output = app_com_putchar;
+
     /* Init text console first, because LOG() depends on this.  Note
        that LOG() also depends on COM1 write but that seems to be ok
        without init for now: just use whatever BIOS configured in the
        UART. */
     text_console_init(&app->log);
-
-    /* The 3if monitor multiplexing s used in the logging path as well
-       so set it up asap. */
-    app->mux_monitor.app = &app;
-    app->mux_monitor.app_putchar = app_keyboard_input;
-    app->mux_monitor.switch_to_monitor = app_switch_to_monitor;
-    app->mux_monitor.mon_putchar = app_mon_putchar;
 
 
 #if 1
