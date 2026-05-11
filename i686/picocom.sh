@@ -1,6 +1,8 @@
 #!/bin/sh
 
-# Connect picocom to qemu's COM1
+# Connect picocom or other program to qemu's COM1
+PICOCOM="picocom -q"
+[ ! -z "$1" ] && PICOCOM="$1"
 
 # I tried many combinations, eventually settled on:
 # - tmux with pane-exited -> kill-session
@@ -33,13 +35,13 @@ trap cleanup SIGHUP
 
 WORKAROUND=0
 if [ "$TERM" == rxvt-unicode-256color ]; then
-    # OSC 10/11 bug workaround
+    # urxvt OSC 10/11 bug workaround
     WORKAROUND=2
 fi
 
 tmux new-session -d -s $SESSION "exec socat PTY,link=$PTY,raw,echo=0 EXEC:'./qemu.sh -serial stdio'"
 tmux set-hook -t $SESSION pane-exited "kill-session -t $SESSION"
-tmux split-window -t $SESSION "while [ ! -e $PTY ]; do sleep $SLEEP; done; sleep $WORKAROUND; clear; exec picocom -q $PTY"
+tmux split-window -t $SESSION "while [ ! -e $PTY ]; do sleep $SLEEP; done; sleep $WORKAROUND; clear; set -x; exec $PICOCOM $PTY"
 tmux select-layout -t $SESSION  even-vertical 
 tmux resize-pane -t $SESSION -Z
 tmux attach -t $SESSION

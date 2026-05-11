@@ -13,6 +13,9 @@
 #define PCI_CFG_BAR0 0x10
 #define PCI_CFG_BAR1 0x14
 
+#define PCI_CFG_SUBSYSTEM_VENDOR_ID   0x2C
+#define PCI_CFG_SUBSYSTEM_ID          0x2E
+
 
 static inline uint32_t pci_config_addr(uint8_t bus, uint8_t dev, uint8_t func, uint8_t offset) {
     uint32_t addr = (1u << 31)           // Enable bit

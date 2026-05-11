@@ -29,6 +29,7 @@ int kernel_infof(const char *fmt, ...);
 #include "hw_i686_mcs9865.h"
 #include "hw_i686_dp83815.h"
 #include "hw_i686_sunix.h"
+#include "hw_i686_echo.h"
 
 /* PC (VGA) text console. */
 #include "text_console.h"
@@ -51,6 +52,7 @@ struct app {
     struct telnet telnet;
     struct idt idt;
     struct monitor_3if monitor_3if;
+    struct echo echo;
     void (*com_input)(struct app *, uint8_t);
     void (*com_output)(struct app *, uint8_t);
     uint32_t nb_zeros;
@@ -259,7 +261,20 @@ static void sunix_isr(void) {
 
 
 /* PCI scanning callback for driver instantiation. */
-void pci_cb_fn(void *vapp, struct pci_function *f) {
+void pci_phase1(void *vapp, struct pci_function *f) {
+    struct app *app = vapp;
+    if ((f->vendor == MCS9865_VENDOR) &&
+        (f->device == MCS9865_DEVICE)) {
+        struct mcs9865 *d = &app->mcs9865;
+        mcs9865_init(d, f);
+    }
+    if ((f->vendor == SUNIX_VENDOR) &&
+        (f->device == SUNIX_DEVICE)) {
+        struct sunix *d = &app->sunix;
+        sunix_init(d, f);
+    }
+}
+void pci_phase2(void *vapp, struct pci_function *f) {
     struct app *app = vapp;
     // Imitate linux lspci -n
     LOG("%02x:%02x.%d %02x%02x: %04x:%04x\n",
@@ -279,13 +294,17 @@ void pci_cb_fn(void *vapp, struct pci_function *f) {
     }
     if ((f->vendor == MCS9865_VENDOR) &&
         (f->device == MCS9865_DEVICE)) {
-        struct mcs9865 *d = &app->mcs9865;
-        mcs9865_init(d, f);
+        //LOG("mcs9865 initialized in phase 1\n");
     }
     if ((f->vendor == SUNIX_VENDOR) &&
         (f->device == SUNIX_DEVICE)) {
-        struct sunix *d = &app->sunix;
-        sunix_init(d, f);
+        //LOG("sunix initialized in phase 1\n");
+    }
+    if ((f->vendor == ECHO_VENDOR) &&
+        (f->device == ECHO_DEVICE)) {
+        //LOG("sunix initialized in phase 1\n");
+        struct echo *d = &app->echo;
+        echo_init(d, f);
     }
 }
 
@@ -336,9 +355,17 @@ void app_init(struct app *app) {
     //text_console_putstr(&app->log, "app_init()\n");
     LOG("app_init %p\n", app);
 
-    // scan PCI bus before setting up interrupts
-    struct pci_cb cb = { .fun = pci_cb_fn, .ctx = app };
-    pci_enumerate(&cb);
+    // Scan PCI bus before setting up interrupts.  Do this in two
+    // phases to first get the serial ports initialized to log the
+    // init phase of other devices.
+    {
+        struct pci_cb cb = { .fun = pci_phase1, .ctx = app };
+        pci_enumerate(&cb);
+    }
+    {
+        struct pci_cb cb = { .fun = pci_phase2, .ctx = app };
+        pci_enumerate(&cb);
+    }
 
     // initialize interrupt table
     // nonzero irq acts as enable for these
@@ -387,6 +414,9 @@ void f1(void) {
 }
 
 
+void f2(void) {
+}
+
 
 #if 1
 
@@ -414,6 +444,7 @@ void restart(void) {
     W(restart),    \
     W(shutdown),   \
     W(f1),         \
+    W(f2),         \
 
 #include "mod_forth.c"
 

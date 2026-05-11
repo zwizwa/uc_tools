@@ -4,6 +4,8 @@
 #include "hw_i686_pci.h"
 
 // https://claude.ai/chat/93209308-2baf-42e1-8a88-3594552a998e
+// https://www.ti.com/lit/ds/symlink/dp83815.pdf?ts=1778398931364
+// md5://84116e37f15283934347cb91a43b37d0
 
 #define DP83815_VENDOR  0x100b
 #define DP83815_DEVICE  0x0020
@@ -17,6 +19,7 @@
 #define DP83815_RXDP    0x30    /* Rx Descriptor Pointer */
 #define DP83815_RCFG    0x34    /* Rx Configuration */
 #define DP83815_RFCR    0x48    /* Rx Filter Control */
+#define DP83815_RFDR    0x4C
 
 /* CR bits */
 #define DP83815_CR_RXE  (1 << 2)
@@ -59,6 +62,7 @@ struct dp83815 {
     uint32_t rx_head;
     uint8_t *mmio;   /* set by your PCI code from BAR1 */
     uint8_t irq;
+    uint8_t mac[6];
 };
 
 static inline void dp83815_wr(struct dp83815 *s, uint32_t off, uint32_t v) {
@@ -108,6 +112,38 @@ static inline void dp83815_reset(struct dp83815 *s) {
         ;  /* hardware clears RST when done */
 }
 
+static inline void dp83815_write(struct dp83815 *s, uint32_t addr, uint32_t value)  {
+    *(volatile uint32_t *)(s->mmio + addr) = value;
+}
+static inline uint32_t dp83815_read(struct dp83815 *s, uint32_t addr)  {
+    return *(volatile uint32_t *)(s->mmio + addr);
+}
+// Receive Filter read
+static inline uint32_t dp83815_rf_read(struct dp83815 *s, uint32_t addr)  {
+    // Write address to control register, read data register.
+    dp83815_write(s, DP83815_RFCR, addr);
+    return dp83815_read(s, DP83815_RFDR);
+}
+
+static inline void dp83815_rf_write(struct dp83815 *s, uint32_t addr, uint32_t value)  {
+    // Write address to control register, read data register.
+    *(volatile uint32_t *)(s->mmio + DP83815_RFCR) = addr;
+    *(volatile uint32_t *)(s->mmio + DP83815_RFDR) = value;
+}
+static inline void dp83815_get_mac(struct dp83815 *s) {
+    *((uint16_t*)&s->mac[0]) = dp83815_rf_read(s, 0);
+    *((uint16_t*)&s->mac[2]) = dp83815_rf_read(s, 2);
+    *((uint16_t*)&s->mac[4]) = dp83815_rf_read(s, 4);
+    LOG("dp83815 mac %02x:%02x:%02x:%02x:%02x:%02x\n",
+        s->mac[0],s->mac[1],s->mac[2],
+        s->mac[3],s->mac[4],s->mac[5]);
+}
+static inline void dp83815_set_mac(struct dp83815 *s) {
+    dp83815_rf_write(s, 0, *((uint16_t*)&s->mac[0]));
+    dp83815_rf_write(s, 2, *((uint16_t*)&s->mac[2]));
+    dp83815_rf_write(s, 4, *((uint16_t*)&s->mac[4]));
+}
+
 static inline void dp83815_init(struct dp83815 *s,
                                 const struct pci_function *f) {
 
@@ -115,7 +151,20 @@ static inline void dp83815_init(struct dp83815 *s,
     s->irq  = pci_function_read32(f, PCI_CFG_IRQ) & 0xFF;
     LOG("dp83815 mmio=%08x irq=%d\n", s->mmio, s->irq);
 
+
+    // Read mac address (test card is 00:02:E3:0B:8D:BA)
+
+    // Note that iPXE reads the EEPROM. I don't want to implement the
+    // bitbang that is necessary for that, but it might be more
+    // robust.  MAC address should be loaded into receive filter after
+    // boot and after iPXE.  Both are verified on my machine.
+    dp83815_get_mac(s);
     dp83815_reset(s);
+
+    // But after reset it is set to zero.  So maybe just don't reset
+    // the chip?  What else is deleted?
+    dp83815_set_mac(s);
+    dp83815_get_mac(s);
 
     uint16_t cmd = pci_function_read16(f, 0x04);
     /* want bits: 0x02 (memory space) | 0x04 (bus master) set,
