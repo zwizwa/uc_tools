@@ -153,6 +153,10 @@ int db_open_cmd(lua_State *L) {
         exit(1);
     }
     sqlite3_enable_load_extension(db->db, 1);
+
+    int timeout_ms = 5000;
+    sqlite3_busy_timeout(db->db, timeout_ms);
+
     return 0;
 }
 
