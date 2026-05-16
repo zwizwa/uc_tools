@@ -35,6 +35,23 @@ function tab:add_defaults(defaults)
    return self
 end
 
+-- The combination of in-place updates and the existence of nil makes
+-- that there are many ways to do this.  This pattern occurs e.g. in
+-- creating config maps when the base case (default) is constructed
+-- locally (and can be updated in place), but the overrides should be
+-- read-only (e.g. are not "owned" by the function that calls this).
+-- This is different than add_defaults() because this can override
+-- true with false, but not true with nil == not defined.
+function tab:add_overrides(overrides)
+   assert(overrides)
+   for k,v in pairs(overrides) do
+      self[k] = v
+   end
+   return self
+end
+
+
+
 -- FIXME: Fix when alert.
 -- Split in two: wrapper function, and iterator.
 -- -- Flatten a table of list | string into list, dereferencing strings.

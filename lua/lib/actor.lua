@@ -90,7 +90,7 @@ function actor.scheduler:spawn(body, task)
    task.coroutine = coroutine.create(
       function()
          body(task)
-         task:exit()
+         task:exit('normal')
       end)
    -- local m2 = collectgarbage('count')
    -- log("coroutine_size(kb): " .. 1024*(m2-m1) .."\n")
@@ -148,7 +148,7 @@ function actor.task:resume()
       if (rv) then log(rv .. "\n") end
       log_(traceback)
       log_("\n")
-      self:exit()
+      self:exit('error')
    else
       -- Note that when the coroutine "runs of the end", ok will be
       -- true, but coroutine.status will return dead.  In that case
@@ -158,7 +158,7 @@ function actor.task:resume()
       local statusmsg = coroutine.status(co)
       if statusmsg ~= "suspended" then
          log_("actor.task:resume_ok: status=" .. statusmsg .. "\n")
-         self:exit()
+         self:exit('normal')
       end
    end
    return status
@@ -171,6 +171,9 @@ end
 
 -- Called when the coroutine is dead.
 function actor.task:exit(reason)
+   -- If no reason is given we assume this is a normal exit.
+   reason = reason or 'normal'
+
    -- Send a message to all tasks monitoring this one.
    for ref, tsk in pairs(self.monitor) do
       tsk:send({self, {'down', ref, reason}})
