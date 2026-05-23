@@ -257,11 +257,19 @@ function actor_uv.spawn_process(scheduler, executable, args, body, push, error_h
       task.stdout:start_read(read_callback("stdout"))
       task.stderr:start_read(read_callback("stderr"))
 
+      -- This callback can be patched to e.g. allow restart to perform
+      -- some operations once the uv handles are set up again.
+      task.post_start()
+
    end
-   uv_spawn()
 
    -- To restart just the uv process, keeping the actor alive.
    task.restart = uv_spawn
+
+   -- Initialize this to no-op.
+   task.post_start = function() end
+
+   uv_spawn()
 
    -- Spawn the task.  It can use task:recv() to pop the mailbox,
    -- which will give tagged {port, ...} messages for incoming pipe
