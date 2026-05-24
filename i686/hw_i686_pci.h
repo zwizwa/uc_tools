@@ -12,6 +12,8 @@
 #define PCI_CFG_IRQ  0x3C
 #define PCI_CFG_BAR0 0x10
 #define PCI_CFG_BAR1 0x14
+#define PCI_CFG_BAR2 0x18
+#define PCI_CFG_BAR3 0x1C
 
 #define PCI_CFG_SUBSYSTEM_VENDOR_ID   0x2C
 #define PCI_CFG_SUBSYSTEM_ID          0x2E
@@ -74,6 +76,50 @@ static inline uint16_t pci_function_read16(const struct pci_function *f, uint8_t
 }
 static inline void pci_function_write16(const struct pci_function *f, uint8_t offset, uint16_t val) {
     return pci_config_write16(f->bus, f->dev, f->func, offset, val);
+}
+
+static inline uint32_t pci_function_bar_io(const struct pci_function *f,
+                                           uint32_t offset) {
+    uint16_t bar = pci_function_read32(f, offset);
+    if ((bar & 1) != 1) { ERROR("bad bar_io: %08x", bar); }
+    return bar & ~3;
+}
+static inline uint32_t pci_function_bar0_io(const struct pci_function *f) {
+    return pci_function_bar_io(f, PCI_CFG_BAR0);
+}
+static inline uint32_t pci_function_bar1_io(const struct pci_function *f) {
+    return pci_function_bar_io(f, PCI_CFG_BAR1);
+}
+static inline uint32_t pci_function_bar2_io(const struct pci_function *f) {
+    return pci_function_bar_io(f, PCI_CFG_BAR2);
+}
+static inline uint32_t pci_function_bar3_io(const struct pci_function *f) {
+    return pci_function_bar_io(f, PCI_CFG_BAR3);
+}
+
+static inline uint32_t pci_function_bar_mem(const struct pci_function *f,
+                                           uint32_t offset) {
+    uint32_t bar = pci_function_read32(f, offset);
+    if ((bar & 1) != 0) { ERROR("bad bar_mem: %08x", bar); }
+    return bar & ~0xF;
+}
+static inline uint32_t pci_function_bar0_mem(const struct pci_function *f) {
+    return pci_function_bar_mem(f, PCI_CFG_BAR0);
+}
+static inline uint32_t pci_function_bar1_mem(const struct pci_function *f) {
+    return pci_function_bar_mem(f, PCI_CFG_BAR1);
+}
+static inline uint32_t pci_function_bar2_mem(const struct pci_function *f) {
+    return pci_function_bar_mem(f, PCI_CFG_BAR2);
+}
+static inline uint32_t pci_function_bar3_mem(const struct pci_function *f) {
+    return pci_function_bar_mem(f, PCI_CFG_BAR3);
+}
+
+
+
+static inline uint8_t pci_function_irq(const struct pci_function *f) {
+    return pci_function_read32(f, PCI_CFG_IRQ) & 0xFF;
 }
 
 

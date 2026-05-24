@@ -4,8 +4,9 @@
 #include "hw_i686_com.h"
 #include "hw_i686_pci.h"
 
-#define SUNIX_VENDOR 0x1fd4
-#define SUNIX_DEVICE 0x1999
+// SUN2410
+#define sunix_vendor 0x1fd4
+#define sunix_device 0x1999
 
 struct sunix {
     struct uart uart;

@@ -112,14 +112,6 @@ struct idt_isr_entry {
     uint8_t irq;
 };
 
-struct idt_isr {
-    struct idt_isr_entry keyboard;
-    struct idt_isr_entry com1;
-    struct idt_isr_entry rtl8139;
-    struct idt_isr_entry mcs9865;
-    struct idt_isr_entry dp83815;
-    struct idt_isr_entry sunix;
-};
 
 void idt_set_master(struct idt *idt,
                     int irq,
@@ -156,7 +148,7 @@ void idt_set(struct idt *idt,
 // Note that this leaves interrupts off such that caller can do some
 // more setup before enabling interrupts.
 static inline void idt_init(struct idt *idt,
-                            const struct idt_isr *isr) {
+                            const struct idt_isr_entry *isrs) {
 
     init_pic();
 
@@ -169,29 +161,11 @@ static inline void idt_init(struct idt *idt,
     }
     idt->master_enable = 0;
     idt->slave_enable = 0;
-    if (isr) {
-        if (isr->keyboard.irq) {
-            idt_set(idt, isr->keyboard.irq, isr->keyboard.isr);
-        }
-        if (isr->com1.irq) {
-            idt_set(idt, isr->com1.irq, isr->com1.isr);
-        }
-        if (isr->rtl8139.irq) {
-            idt_set(idt, isr->rtl8139.irq, isr->rtl8139.isr);
-        }
-        if (isr->dp83815.irq) {
-            idt_set(idt, isr->dp83815.irq, isr->dp83815.isr);
-            LOG("enable dp83815 irq=%d\n", isr->dp83815.irq);
-        }
-        if (isr->mcs9865.irq) {
-            LOG("enable mcs9865 irq=%d\n", isr->mcs9865.irq);
-            idt_set(idt, isr->mcs9865.irq, isr->mcs9865.isr);
-        }
-        if (isr->sunix.irq) {
-            LOG("enable sunix irq=%d\n", isr->sunix.irq);
-            idt_set(idt, isr->sunix.irq, isr->sunix.isr);
-        }
 
+    for (const struct idt_isr_entry *isr = isrs; isr->isr; isr++) {
+        if (isr->irq) {
+            idt_set(idt, isr->irq, isr->isr);
+        }
     }
 
     //LOG("irq enables %02x %02x\n",

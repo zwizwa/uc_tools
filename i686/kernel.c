@@ -12,11 +12,29 @@ int kernel_infof(const char *fmt, ...);
 #define LOG(...)
 #endif
 
-#define for_device(m) \
+#define ASSERT_WARN(cond) { if (!(cond)) LOG("ASSERT FAILED: " #cond); }
+#define ASSERT(cond) { if (!(cond)) ERROR("ASSERT FAILED: " #cond); }
+#define ERROR(...) { LOG(__VA_ARGS__); halt(); }
+
+
+#define for_device_phase1(m) \
+    m(mcs9865) \
+    m(mcs9904) \
+    m(sunix) \
+
+#define for_device_phase2(m) \
     m(rtl8139) \
     m(dp83815) \
-    m(mcs9865) \
-    m(sunix) \
+    m(oxchip) \
+    m(echo) \
+    m(ice) \
+    m(emu10k) \
+
+#define for_device_disabled(m) \
+
+
+#define for_device(m) \
+    for_device_phase1(m) for_device_phase2(m)
 
 #define STRUCT(name) struct name name;
 
@@ -27,9 +45,13 @@ int kernel_infof(const char *fmt, ...);
 #include "hw_i686_spinner.h"
 #include "hw_i686_rtl8139.h"
 #include "hw_i686_mcs9865.h"
+#include "hw_i686_mcs9904.h"
 #include "hw_i686_dp83815.h"
 #include "hw_i686_sunix.h"
+#include "hw_i686_oxchip.h"
+#include "hw_i686_ice.h"
 #include "hw_i686_echo.h"
+#include "hw_i686_emu10k.h"
 
 /* PC (VGA) text console. */
 #include "text_console.h"
@@ -52,7 +74,6 @@ struct app {
     struct telnet telnet;
     struct idt idt;
     struct monitor_3if monitor_3if;
-    struct echo echo;
     void (*com_input)(struct app *, uint8_t);
     void (*com_output)(struct app *, uint8_t);
     uint32_t nb_zeros;
@@ -77,8 +98,8 @@ static inline void app_com_putchar(struct app *app, uint8_t c) {
     if (app->com1.irq) {
         uart_putchar(&app->com1, c);
     }
-    if (app->mcs9865.uart.irq) {
-        uart_putchar(&app->mcs9865.uart, c);
+    if (app->mcs9865.uart[0].uart.irq) {
+        uart_putchar(&app->mcs9865.uart[0].uart, c);
     }
     if (app->sunix.uart.irq) {
         uart_putchar(&app->sunix.uart, c);
@@ -242,7 +263,7 @@ static void mcs9865_isr(void) {
     isr_begin();
     static uint32_t count = 0;
     spinner(5, count++);
-    uart_isr(&g_app.mcs9865.uart, (uart_sink_fn)app_com_input, &g_app);
+    uart_isr(&g_app.mcs9865.uart[0].uart, (uart_sink_fn)app_com_input, &g_app);
     outb(0xA0, 0x20); // End Of Interrupt (EOI) to slave PIC
     outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
     isr_end();
@@ -259,20 +280,16 @@ static void sunix_isr(void) {
     isr_end();
 }
 
+#define PCI_INIT(x) \
+    if ((f->vendor == x##_vendor) && \
+        (f->device == x##_device)) \
+        x##_init(&app->x, f);
+
 
 /* PCI scanning callback for driver instantiation. */
 void pci_phase1(void *vapp, struct pci_function *f) {
     struct app *app = vapp;
-    if ((f->vendor == MCS9865_VENDOR) &&
-        (f->device == MCS9865_DEVICE)) {
-        struct mcs9865 *d = &app->mcs9865;
-        mcs9865_init(d, f);
-    }
-    if ((f->vendor == SUNIX_VENDOR) &&
-        (f->device == SUNIX_DEVICE)) {
-        struct sunix *d = &app->sunix;
-        sunix_init(d, f);
-    }
+    for_device_phase1(PCI_INIT)
 }
 void pci_phase2(void *vapp, struct pci_function *f) {
     struct app *app = vapp;
@@ -282,30 +299,7 @@ void pci_phase2(void *vapp, struct pci_function *f) {
         f->class, f->subclass,
         f->vendor, f->device
         );
-    if ((f->vendor == RTL8139_VENDOR) &&
-        (f->device == RTL8139_DEVICE)) {
-        struct rtl8139 *d = &app->rtl8139;
-        rtl8139_init(d, f);
-    }
-    if ((f->vendor == DP83815_VENDOR) &&
-        (f->device == DP83815_DEVICE)) {
-        struct dp83815 *d = &app->dp83815;
-        dp83815_init(d, f);
-    }
-    if ((f->vendor == MCS9865_VENDOR) &&
-        (f->device == MCS9865_DEVICE)) {
-        //LOG("mcs9865 initialized in phase 1\n");
-    }
-    if ((f->vendor == SUNIX_VENDOR) &&
-        (f->device == SUNIX_DEVICE)) {
-        //LOG("sunix initialized in phase 1\n");
-    }
-    if ((f->vendor == ECHO_VENDOR) &&
-        (f->device == ECHO_DEVICE)) {
-        //LOG("sunix initialized in phase 1\n");
-        struct echo *d = &app->echo;
-        echo_init(d, f);
-    }
+    for_device_phase2(PCI_INIT)
 }
 
 void log_mem(uint32_t addr, uint32_t len) {
@@ -369,19 +363,17 @@ void app_init(struct app *app) {
 
     // initialize interrupt table
     // nonzero irq acts as enable for these
-
-    // FIXME: Turn this into a linked list, or an array that can be
-    // defined in the "config space", e.g. kernel.c
-    struct idt_isr isr = {
-        .keyboard     = { .isr = keyboard_isr, .irq = 1 },
-        .com1         = { .isr = com1_isr,     .irq = app->com1.irq },
-        .rtl8139      = { .isr = rtl8139_isr,  .irq = app->rtl8139.irq },
-        .dp83815      = { .isr = dp83815_isr,  .irq = app->dp83815.irq },
-        .mcs9865      = { .isr = mcs9865_isr,  .irq = app->mcs9865.uart.irq },
-        .sunix        = { .isr = sunix_isr,    .irq = app->sunix.uart.irq },
+    struct idt_isr_entry isrs[] = {
+        { .isr = keyboard_isr, .irq = 1 },
+        { .isr = com1_isr,     .irq = app->com1.irq },
+        { .isr = rtl8139_isr,  .irq = app->rtl8139.irq },
+        { .isr = dp83815_isr,  .irq = app->dp83815.irq },
+        { .isr = mcs9865_isr,  .irq = app->mcs9865.uart[0].uart.irq },
+        { .isr = sunix_isr,    .irq = app->sunix.uart.irq },
+        {} // END-OF-LIST
     };
 
-    idt_init(&app->idt, &isr);
+    idt_init(&app->idt, isrs);
 
     telnet_init(&app->telnet,
                 telnet_write_output,
@@ -393,7 +385,8 @@ void app_init(struct app *app) {
 };
 
 #include "ethernet.h"
-void f1(void) {
+void test_send(void) {
+
 #if 1
     struct __attribute__((packed)) {
         struct mac mac;
@@ -411,6 +404,11 @@ void f1(void) {
     };
 #endif
     rtl8139_transmit(&g_app.rtl8139, &packet, sizeof(packet));
+}
+
+void f1(void) {
+    par_pulse(&g_app.mcs9865.par);
+    // test_send();
 }
 
 

@@ -7,8 +7,8 @@
 // https://www.ti.com/lit/ds/symlink/dp83815.pdf?ts=1778398931364
 // md5://84116e37f15283934347cb91a43b37d0
 
-#define DP83815_VENDOR  0x100b
-#define DP83815_DEVICE  0x0020
+#define dp83815_vendor  0x100b
+#define dp83815_device  0x0020
 
 
 /* DP83815 register offsets (operational, BAR1) */

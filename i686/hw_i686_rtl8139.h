@@ -19,8 +19,8 @@
 
 /* RTL8139 */
 
-#define RTL8139_VENDOR  0x10ec
-#define RTL8139_DEVICE  0x8139
+#define rtl8139_vendor  0x10ec
+#define rtl8139_device  0x8139
 
 #define RTL_IDR0        0x00   // MAC address (6 bytes)
 #define RTL_MAR0        0x08   // Multicast filter

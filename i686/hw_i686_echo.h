@@ -1,8 +1,8 @@
 #ifndef HW_I686_ECHO_H
 #define HW_I686_ECHO_H
 
-#define ECHO_VENDOR  0x1057  /* Motorola */
-#define ECHO_DEVICE  0x1801  /* Echo */
+#define echo_vendor  0x1057  /* motorola */
+#define echo_device  0x1801  /* echo */
 
 struct echo {
     uint32_t mmio;
@@ -17,7 +17,7 @@ static inline void echo_init(struct echo *s,
     uint32_t sub_vendor = pci_function_read16(f, PCI_CFG_SUBSYSTEM_VENDOR_ID);
     uint32_t sub_id     = pci_function_read16(f, PCI_CFG_SUBSYSTEM_ID);
     LOG("echo %04x:%04x\n", sub_vendor, sub_id);
-    
+
 }
 
 
