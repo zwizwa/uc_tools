@@ -100,6 +100,10 @@ struct rtl8139 {
     uint8_t  mac[6];
     struct rtl8139_tx tx[4];
     uint8_t  tx_index:2;
+
+    void (*rx)(void *, const uint8_t *, uint32_t);
+    void *ctx;
+
 };
 
 static inline void rtl8139_rx_poll(struct rtl8139 *s) {
@@ -123,7 +127,7 @@ static inline void rtl8139_rx_poll(struct rtl8139 *s) {
         (void)pkt_len;
 
         // Hand packet up to your network stack
-        // ethernet_receive(pkt, pkt_len);
+        s->rx(s->ctx, pkt, pkt_len);
         //LOG("pkt len=%d\n", pkt_len);
         //log_hex(pkt, pkt_len);
 
@@ -251,12 +255,15 @@ static inline void rtl8139_status(struct rtl8139 *s) {
         );
 }
 
+static inline void rtl8139_rx_ignore(void *s, const uint8_t *data, uint32_t len) {
+}
 
 static inline void rtl8139_init(struct rtl8139 *s,
                                 const struct pci_function *f) {
     s->iobase = pci_function_read32(f, PCI_CFG_BAR0) & ~3; // BAR0, strip I/O bit
     s->irq    = pci_function_read32(f, PCI_CFG_IRQ) & 0xFF;
 
+    s->rx = rtl8139_rx_ignore;
 
     for (int i = 0; i < 6; i++) {
         s->mac[i] = inb(s->iobase + RTL_IDR0 + i);

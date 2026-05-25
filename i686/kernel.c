@@ -63,12 +63,15 @@ int kernel_infof(const char *fmt, ...);
 /* Support for 3if monitor. */
 #include "mod_monitor_3if.c"
 
+/* Minimalistic tftp to download kernel update. */
+#include "tftp.h"
 
 /* All application state is in a single struct which make debugging a
    bit easier in case we ever do core dumps or gdb stub. */
 struct app;
 struct app {
     volatile uint32_t event;
+    struct tftp tftp;
     struct uart com1;
     struct text_console log;
     struct telnet telnet;
@@ -323,6 +326,22 @@ int app_mon_putchar(void *vapp, uint8_t byte) {
 }
 
 
+void app_send(void *vapp, const uint8_t *data, uint32_t len) {
+    LOG("app_send %d\n", len);
+    struct app *app = vapp;
+    if (app->rtl8139.irq) {
+        rtl8139_transmit(&app->rtl8139, data, len);
+    }
+}
+void app_rx(void *vapp, const uint8_t *data, uint32_t len) {
+    //LOG("app_rx %p\n", vapp);
+    struct app *app = vapp;
+    if(app->tftp.next) {
+        tftp_rx(&app->tftp, data, len);
+    }
+}
+
+
 /* Application init, called after memory is initialized. */
 void app_init(struct app *app) {
 
@@ -378,6 +397,17 @@ void app_init(struct app *app) {
     telnet_init(&app->telnet,
                 telnet_write_output,
                 telnet_event);
+
+    // hook tftp state machine to network card if initialized
+    if (app->rtl8139.irq) {
+        LOG("connecting tftp to rtl813\n");
+        tftp_init(&app->tftp, app_send, app);
+        memcpy(app->tftp.mac, app->rtl8139.mac, 6);
+        app->rtl8139.ctx = app;
+        app->rtl8139.rx  = app_rx; // last
+        uint8_t ip[4] = {10,1,3,222};
+        memcpy(app->tftp.ip, ip, 4);
+    }
 
     app->log.use_cli = 0;
     sti();
@@ -459,6 +489,9 @@ void *memcpy(void *dest, const void *src, size_t n) {
 }
 int strcmp(const char *s1, const char *s2) {
     return mini_strcmp(s1, s2);
+}
+int memcmp(const void *s1, const void *s2, size_t len) {
+    return mini_memcmp(s1, s2, len);
 }
 size_t strlen(const char *s1) {
     return mini_strlen(s1);

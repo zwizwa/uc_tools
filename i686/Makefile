@@ -1,4 +1,7 @@
 NASM = nasm
+
+# Use CTRL-ALT-G to escape a qemu window when it takes focus.
+
 # QEMU = qemu-system-i386 -nographic -no-reboot -m 16
 # QEMU = qemu-system-i386 -m 16 -display gtk,zoom-to-fit=on -serial stdio
 QEMU = qemu-system-i386 -m 16 -display sdl,gl=on -serial stdio -device isa-debug-exit,iobase=0xf4,iosize=0x04
