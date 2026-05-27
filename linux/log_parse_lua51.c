@@ -80,13 +80,13 @@ static int cmd_new_log_file(lua_State *L) {
     push_log_file(L, (const char*)filename);
     return 1;
 }
-static struct log_file_ud *L_log_file(lua_State *L, int index) {
+static struct log_file_ud *log_file_L(lua_State *L, int index) {
     ASSERT(luaL_checkudata(L, index, T_LOG_FILE));
     struct log_file_ud *ud = lua_touserdata(L, index);
     return ud;
 }
 static int gc_log_file(lua_State *L) {
-    struct log_file_ud *ud = L_log_file(L, 1);
+    struct log_file_ud *ud = log_file_L(L, 1);
     struct mmap_file *file = &ud->file;
     //LOG("gc_log_file() %p fd=%d\n", ud, file->fd);
     mmap_file_close(file);
@@ -253,7 +253,7 @@ static int cmd_new_log_parse(lua_State *L) {
     push_log_parse(L);
     return 1;
 }
-static struct log_parse_ud *L_log_parse(lua_State *L, int index) {
+static struct log_parse_ud *log_parse_L(lua_State *L, int index) {
     ASSERT(luaL_checkudata(L, index, T_LOG_PARSE));
     struct log_parse_ud *ud = lua_touserdata(L, index);
     return ud;
@@ -277,7 +277,7 @@ static void log_parse_parameterize(
    log line or binary message a callback is invoked, which pushes a
    string to the Lua stack. */
 static int to_thing_mv(lua_State *L, struct log_parse_cbs *cb) {
-    struct log_parse_ud *ud = L_log_parse(L, -2);
+    struct log_parse_ud *ud = log_parse_L(L, -2);
     const uint8_t *data = (const uint8_t *)lua_tostring(L, -1);
     size_t len;
     if (data) {
@@ -391,7 +391,7 @@ void parse_continue_buffered_at_offset(
 static struct log_parse_ud *log_parse_next_cb(
     lua_State *L, struct log_parse_cbs *cb)
 {
-    struct log_parse_ud *ud_parse = L_log_parse(L, -2);
+    struct log_parse_ud *ud_parse = log_parse_L(L, -2);
 
     if (lua_isnumber(L, -1)) {
         int fd = luaL_checkint(L, -1);
@@ -399,7 +399,7 @@ static struct log_parse_ud *log_parse_next_cb(
         parse_continue_buffered_at_offset(ud_parse, fd);
     }
     else {
-        struct log_file_ud *ud_file = L_log_file(L, -1);
+        struct log_file_ud *ud_file = log_file_L(L, -1);
         bind_parse(ud_parse, ud_file);
         // FIXME: check that offset is actually inside the file
         log_parse_parameterize(L, ud_parse, cb, LOG_PARSE_STATUS_YIELD);
@@ -429,9 +429,9 @@ static log_parse_status_t ts_find_cb(
     }
 }
 static int cmd_wind_prefix(lua_State *L) {
-    uint8_t prefix                = L_number(L, -1);
-    struct log_file_ud *ud_file   = L_log_file(L, -2);
-    struct log_parse_ud *ud_parse = L_log_parse(L, -3);
+    uint8_t prefix                = number_L(L, -1);
+    struct log_file_ud *ud_file   = log_file_L(L, -2);
+    struct log_parse_ud *ud_parse = log_parse_L(L, -3);
     bind_parse(ud_parse, ud_file);
     ud_parse->L = L;
     ud_parse->nb_rv = 0;

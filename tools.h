@@ -2,6 +2,9 @@
 #define TOOLS_H
 
 #include <stdint.h>
+#include <stddef.h>  // for size_t which is GCC, not libc
+
+#include "macros.h"  // for unlikely()
 
 uint8_t hex_int2char(uint32_t i);
 uint32_t hex_char2int_ignore(uint8_t ch); // ignore invalid (return 0)

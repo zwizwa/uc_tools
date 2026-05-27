@@ -16,6 +16,14 @@
 
 #include "macros.h"
 
+/* Stack read + type check
+
+   Note that there was some inconsistency regarding string_L and
+   L_string naming convention.  I am converting everything to string_L
+   because of ns_lua_struct.h generated type unpackers.
+
+*/
+
 static inline const char* assert_lua_tostring(lua_State *L, int index) {
     ASSERT(index < 0);
     if (index < 0) {
@@ -25,14 +33,13 @@ static inline const char* assert_lua_tostring(lua_State *L, int index) {
     return lua_tostring(L, index);
 }
 
-
-static inline const lua_Number L_number(lua_State *L, int index) {
+static inline const lua_Number number_L(lua_State *L, int index) {
     ASSERT(lua_isnumber(L, index));
     lua_Number n = lua_tonumber(L, index);
     return n;
 }
 
-static const char *string_L(lua_State *L, int index, size_t *len) {
+static inline const char *string_L(lua_State *L, int index, size_t *len) {
     ASSERT(lua_isstring(L, index));
     if (len) {
         return lua_tolstring(L, index, len);

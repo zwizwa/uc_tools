@@ -180,8 +180,10 @@ static inline ws_err_t ws_write_msg_nolock(ws_io_t *io,
     return WS_OK;
 
   error_exit:
-    WS_LOG_ERROR("ws_write_msg %d", (void*)error);
-    return error;
+    {
+        WS_LOG_ERROR("ws_write_msg", error);
+        return error;
+    }
 }
 
 

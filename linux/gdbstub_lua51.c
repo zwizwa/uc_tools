@@ -68,17 +68,6 @@ static void stub_init(struct stub *s) {
 #include "ns_lua_struct.h"
 #undef NS
 
-/* Stack read + type check */
-static inline const lua_Number number_L(lua_State *L, int index) {
-    ASSERT(lua_isnumber(L, index));
-    lua_Number n = lua_tonumber(L, index);
-    return n;
-}
-static const char *string_L(lua_State *L, int index, size_t *len) {
-    ASSERT(lua_isstring(L, index));
-    return lua_tolstring(L, index, len);
-}
-
 /* Protocol read/write */
 // FIXME: Can probably be removed in favor of putchar and interpret.
 static int stub_write_cmd(lua_State *L) {

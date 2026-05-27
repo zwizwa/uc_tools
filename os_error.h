@@ -61,7 +61,7 @@ static inline os_error_t os_result_unpack(os_result_t r, uintptr_t *pval) {
 intptr_t os_interror(os_error_t e) { return (intptr_t)e; }
 
 #define OS_LOG_ERROR(_tag, _e)                                  \
-    LOG(_tag ": %d %s\n", os_interror(_e), os_strerror(_e))
+    LOG(_tag ": %d %s\n", os_interror((os_error_t)_e), os_strerror(_e))
 
 
 
