@@ -53,6 +53,17 @@ static inline uint16_t bsd_checksum_inc(const uint8_t *buf, uint32_t len, uint16
     return state;
 }
 
+// Same, but use >8 bit input words.
+static inline uint16_t bsd_checksum_inc16(const uint16_t *buf, uint32_t len, uint16_t state) {
+    for(int i=0; i<len; i++) {
+        state = (state >> 1) + ((state & 1) << 15);
+        state += buf[i];
+    }
+    return state;
+}
+
+
+
 /*
 
 Flash checksum:
