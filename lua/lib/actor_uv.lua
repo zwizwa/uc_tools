@@ -142,8 +142,16 @@ function actor_uv.spawn_tcp_server(scheduler, serv_obj)
             if err then
                -- Task will close socket after delivering response, so
                -- we only get here on error.
-               log("error,disconnect\n")
-               task:halt()
+               -- log_desc({err=err, errno=err:no(), errmsg=err:msg()})
+               if (-4095 == err:no()) then
+                  -- EOF
+                  log("tcp_server: disconnect\n")
+               else
+                  log("tcp_server: error %d %s\n", err:no(), err:msg())
+               end
+               if task.halt then
+                  task:halt()
+               end
             else
                -- log("push: " .. data)
                task.push(data)

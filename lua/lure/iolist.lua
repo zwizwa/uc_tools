@@ -76,16 +76,74 @@ function iolist.join(connect_el, arr)
    return out_arr
 end
 
-function iolist.w(iol, maybe_filename)
-   if (type(maybe_filename) == 'string') then
+function iolist.w(iol, maybe_filename, opts)
+   opts = opts or {}
+   local maybe_logf = opts.logf or function() end
 
-      local file = io.open(maybe_filename, "w")
-      iolist.write_to_stream(file, iol)
-      file:close()
+   if (type(maybe_filename) == 'string') then
+      local function write_to_file(filename)
+         -- logf("writing iol to %s\n", filename)
+         local file = io.open(filename, "w")
+         iolist.write_to_stream(file, iol)
+         file:close()
+      end
+      local function read_from_file(filename)
+         -- logf("reading from to %s\n", filename)
+         local file = io.open(filename, "r")
+         if file then
+            local contents = file:read("*a")
+            -- logf("contents %d\n", #contents)
+            file:close()
+            return contents
+         end
+      end
+      if not opts.preserve_if_same then
+         -- Just overwrite it
+         write_to_file(maybe_filename)
+      else
+         -- Only overwrite if changed
+         local old_filename = maybe_filename
+         local new_filename = old_filename .. ".new"
+         write_to_file(new_filename)
+         local old = read_from_file(old_filename)
+         local new = read_from_file(new_filename)
+         if old == new then
+            maybe_logf("old %s\n", old_filename)
+            os.remove(new_filename)
+         else
+            -- os.execute(string.format("diff %s %s", old_filename, new_filename))
+            if opts.keep_old_suffix then
+               local keep_old_filename = old_filename .. opts.keep_old_suffix
+               maybe_logf("new %s (saved old as %s)\n", old_filename, keep_old_filename)
+               os.rename(old_filename, keep_old_filename)
+            else
+               maybe_logf("new %s\n", old_filename)
+               os.remove(old_filename)
+            end
+            os.rename(new_filename, old_filename)
+         end
+      end
    else
       iolist.write_to_stream(io.stdout, iol)
    end
 end
+
+function iolist.w_preserve_if_same(iol, maybe_filename)
+   local opt = {
+      -- Don't write the file if the contents is the same so it
+      -- integrates better in a build system.  Typically generating
+      -- source files is fast but recompiling the system that depends
+      -- on them is not.  When this is enabled we enable logging as
+      -- well to make it clear which files changed.
+      preserve_if_same = true,
+      logf = logf,
+      -- When there is new contents, keep the old file and add this
+      -- suffix.
+      keep_old_suffix = ".old",
+   }
+   return iolist.w(iol, maybe_filename, opt)
+end
+
 
 function iolist.prefix(sep, list, start)
    return map(function(p) return({sep,p}) end, list, start)

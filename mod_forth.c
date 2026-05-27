@@ -406,6 +406,10 @@ w forth_find(const char *word) {
     return (w)0;
 }
 
+/* The forth should not do echo and line editing.  That is easy enough
+   to abstract as a separate component so that forth only sees full
+   lines. */
+
 uintptr_t forth_accept(uint8_t *buf, uintptr_t len) {
     /* Written char count. */
     uintptr_t i = 0;
@@ -417,6 +421,7 @@ uintptr_t forth_accept(uint8_t *buf, uintptr_t len) {
         case CBUF_EAGAIN:
             /* No complete word. */
             return 0;
+
         case '\t':
         case '\n':
         case '\r':
@@ -432,7 +437,7 @@ uintptr_t forth_accept(uint8_t *buf, uintptr_t len) {
                 // FIXME: there is no error mechanism to signal bad words.
                 cbuf_drop(&forth_in, i);
 
-                // LOG("w:%d\n", i);
+                //LOG("w:%d\n", i);
                 return i;
             }
             break;
@@ -467,7 +472,7 @@ void forth_write(const uint8_t *buf, uint32_t len) {
         word[len] = 0;
         w xt = forth_find((const char*)&word[0]);
         if (xt.i) {
-            //LOG("xt:  %08x %s\n", xt, word);
+            // LOG("xt:  %08x %s\n", xt, word);
             run(xt);
         }
         else {
@@ -486,7 +491,9 @@ void forth_write(const uint8_t *buf, uint32_t len) {
     }
 }
 void forth_write_str(const char *str) {
-    forth_write((uint8_t*)str, strlen(str));
+    int len = strlen(str);
+    // LOG("len = %d\n", len);
+    forth_write((uint8_t*)str, len);
 }
 void forth_write_word(const char *word) {
     forth_write_str(word);
@@ -506,7 +513,7 @@ void forth_write_echo(const uint8_t *buf, uintptr_t len) {
 }
 
 void forth_start(void) {
-    LOG("forth_start()\n");
+    //LOG("forth_start()\n");
     CBUF_INIT(forth_in);
 #if FORTH_OUT_INFO
 #else

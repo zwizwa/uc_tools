@@ -4,6 +4,9 @@
 
 local m = {}
 
+-- FIXME: This should only use lure. modules
+local list = require('lib.tools.list')
+
 m.unprintable = {
    ['loop']     = '#<loop>',
    ['function'] = '#<function>',
@@ -34,6 +37,8 @@ function m.make_serializer(cfg)
       end
 
       fmt = {
+         ['boolean'] = function(obj, level) log(tostring(obj)) end,
+         ['string'] = function(obj, level) log(string.format("%q",obj)) end,
          ['table'] = function(obj,level)
             assert(level)
             if (visited[obj]) then
@@ -44,11 +49,16 @@ function m.make_serializer(cfg)
 
             log("{ ")
 
-            for k,v in pairs(obj) do
+            for k,v in list.sorted_pairs(obj) do
                indent(level)
                if type(k) == 'number' then
                   log('[')
                   log(tostring(k))
+                  log(']')
+               elseif type(k) == 'string' then
+                  -- Just keep it simple: always quote.
+                  log('[')
+                  log(string.format("%q",k))
                   log(']')
                else
                   log_obj(k, level+1)

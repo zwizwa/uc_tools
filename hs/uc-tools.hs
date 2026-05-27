@@ -6,9 +6,14 @@
 -- use of Haskell as a DSL embedding language by avoiding monads in
 -- tagless final DSLs (if they are only there to capture sharing).
 
+{-# LANGUAGE OverloadedStrings #-}
+
+import qualified UCTools.Lua as Lua
 
 main = do
   putStrLn "uc-tools.hs"
+  Lua.test1
+              
   
 
   

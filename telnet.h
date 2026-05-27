@@ -1,5 +1,5 @@
-#ifndef MOD_TELNET
-#define MOD_TELNET
+#ifndef TELNET_H
+#define TELNET_H
 
 #include "macros.h"
 
@@ -78,7 +78,7 @@ const uint8_t telnet_init_bytes[] = {
 #endif
 
 #ifndef TELNET_ESCAPE_BUF_SIZE
-#define TELNET_ESCAPE_BUF_SIZE 13 // How many are needed here?
+#define TELNET_ESCAPE_BUF_SIZE 16 // How many are needed here?
 #endif
 
 #define TELNET_EVENT_LINE       0x100
@@ -191,12 +191,12 @@ static inline void telnet_tick(struct telnet *s, int32_t telnet_tick_input) {
             goto interpret_cmd;
         }
     }
-    
     case 3:
         interrupt:
         s->event(s, TELNET_EVENT_FLUSH);
         s->event(s, TELNET_EVENT_INTERRUPT);
         goto next;
+    case 8:
     case 127:
         if (s->nb_char > 0) {
             TELNET_WRITE_OUTPUT(s, '\b',' ','\b');
@@ -276,7 +276,6 @@ static inline void telnet_write_input(struct telnet *s,
     }
 }
 
-// FIXME: Add commands or f1/f2 to telnet to do some basic controls.
 struct telnet_cmd {
     const char *cmd;
     void (*fun)(struct telnet *);
@@ -336,7 +335,9 @@ static inline void telnet_init(struct telnet *s,
     /* FIXME: Make this optional for ANSY TTY on serial port + also
        don't interpret TELNET codes in that case.  It does seem to
        work though. */
+#ifndef TELNET_NO_INIT
     write_output(s, telnet_init_bytes, sizeof(telnet_init_bytes));
+#endif
 
     /* Dummy tick, run task up to NEXT, waiting for first byte. */
     telnet_tick(s, -1);

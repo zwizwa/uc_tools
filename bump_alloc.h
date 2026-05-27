@@ -8,7 +8,7 @@
    (e.g. zero-terminated strings), and make sure algnment follows what
    the the C compiler does.  Make sure all bytes that are allocated
    are actually written. */
-
+#include <stdint.h>
 struct bump_alloc {
     uintptr_t addr;
     void *buf;

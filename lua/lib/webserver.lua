@@ -22,6 +22,11 @@ function webserver:write(str)
    return self:write_socket(self.socket, str)
 end
 
+
+-- FIXME: This is mostly for dynamically generated content, so maybe
+-- make "Cache-Control: no-store" a default?
+-- https://stackoverflow.com/questions/866822/why-both-no-cache-and-no-store-should-be-used-in-http-response
+
 function webserver:response_html(lxml_element)
    -- local function write_cb() log("write_cb\n") end
    log("->200\n")
@@ -151,6 +156,13 @@ function webserver:upgrade_websocket(hdrs)
 
    -- Send response header
    self:response_upgrade_websocket(hdrs)
+
+   function dbg_message(msg)
+      local encoded = ws.websocket_encode(wsp, msg)
+      self.socket:write(encoded)
+   end
+   --dbg_message("hello\n")
+   --dbg_message("123\n")
 
 end
 

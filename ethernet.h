@@ -1,6 +1,7 @@
 #ifndef ETHERNET_H
 #define ETHERNET_H
 
+
 // FIXME: actually make these platform independent
 
 #define NTOHS(w) ((((w)&0xFF00) >> 8) | (((w)&0x00FF) << 8))
@@ -48,6 +49,8 @@ static inline uint16_t ip_checksum(const void *vdata, size_t length) {
 
 // http://www.microhowto.info/howto/calculate_an_internet_protocol_checksum_in_c.html
 
+#define ETHERTYPE_ICMP 0x0800
+#define ETHERTYPE_ARP  0x0806
 
 struct __attribute__((packed)) mac {
     uint8_t d_mac[6];
@@ -55,6 +58,24 @@ struct __attribute__((packed)) mac {
     uint16_t ethertype;
     // uint32_t checksum follows payload
 } ;
+
+#define ETH_ALEN        6
+#define ARP_HTYPE_ETH   0x0001
+#define ARP_PTYPE_IPV4  0x0800
+#define ARP_OP_REQUEST  0x0001
+#define ARP_OP_REPLY    0x0002
+
+struct __attribute__((packed)) arp {
+    uint16_t htype;              /* hardware type        */
+    uint16_t ptype;              /* protocol type        */
+    uint8_t  hlen;               /* hardware addr length */
+    uint8_t  plen;               /* protocol addr length */
+    uint16_t oper;               /* operation            */
+    uint8_t  sha[ETH_ALEN];      /* sender hardware addr */
+    uint8_t  spa[4];             /* sender protocol addr */
+    uint8_t  tha[ETH_ALEN];      /* target hardware addr */
+    uint8_t  tpa[4];             /* target protocol addr */
+};
 struct __attribute__((packed)) ip {
     uint8_t version_ihl;
     uint8_t dscp_ecn;
@@ -67,7 +88,14 @@ struct __attribute__((packed)) ip {
     uint8_t s_ip[4];
     uint8_t d_ip[4];
     // options if IHL>5
-} ;
+};
+#define ICMP_PING 8
+struct __attribute__((packed)) icmp {
+    uint8_t type;
+    uint8_t code;
+    uint16_t checksum;
+};
+
 struct __attribute__((packed)) udp {
     uint16_t s_port;
     uint16_t d_port;

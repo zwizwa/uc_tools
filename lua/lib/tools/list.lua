@@ -120,7 +120,6 @@ function list.to_set(arr)
    return tab
 end
 
-
 function list.append(...)
    local rv = {}
    for _,l in ipairs({...}) do
@@ -130,6 +129,25 @@ function list.append(...)
    end
    return rv
 end
+
+
+-- list.sorted_pairs = pairs
+function list.sorted_pairs(tab)
+   local keys = list.keys(tab)
+   table.sort(keys)
+   local i = 1
+   -- Return an iterator
+   local function next()
+      local k = keys[i]
+      if k ~= nil then
+         local v = tab[k]
+         i = i + 1
+         return k, v
+      end
+   end
+   return next
+end
+
 
 return list
 

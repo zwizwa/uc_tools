@@ -4,6 +4,10 @@ local mod = {}
 function log(str)
    io.stderr:write(str)
 end
+function logf(...)
+   local str = string.format(...)
+   log(str)
+end
 function log_w(...)
    function w(thing)
       if type(thing) == 'table' then

@@ -84,6 +84,7 @@ build = {
     ['lure.test_backend_gdb'] = 'test_backend_gdb.lua',
     ['lure.test_backend_js'] = 'test_backend_js.lua',
     ['lure.test_backend_lua'] = 'test_backend_lua.lua',
+    ['lure.test_diff'] = 'test_diff.lua',
     ['lure.test_hoas_match'] = 'test_hoas_match.lua',
     ['lure.test'] = 'test.lua',
     ['lure.test_lua_serialize'] = 'test_lua_serialize.lua',
@@ -101,6 +102,7 @@ build = {
     ['lure.test_smc'] = 'test_smc.lua',
     ['lure.test_syntax_rules'] = 'test_syntax_rules.lua',
     ['lure.test_unify'] = 'test_unify.lua',
+    ['lure.tree'] = 'tree.lua',
     ['lure.unify'] = 'unify.lua',
   }
 }

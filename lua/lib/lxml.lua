@@ -47,6 +47,7 @@ end
 local self_closing = {
    input = true,
    link = true,
+   img = true,
 }
 
 local lxml = {}

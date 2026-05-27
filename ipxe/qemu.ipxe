@@ -1,0 +1,9 @@
+#!ipxe
+:retry
+isset ${net0/mac} || goto retry
+ifopen net0
+set net0/ip 10.0.2.15
+set net0/netmask 255.255.255.0
+set net0/gateway 10.0.2.2
+# dhcp
+chain tftp://10.0.2.2/kernel.nbp

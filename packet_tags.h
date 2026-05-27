@@ -78,6 +78,34 @@
    command and executed.   The NR is currently not used. */
 
 
+/* Synth_tools uses 0x1xxx for number collections with LE data order.
+   TAG_IEEE ad hoc ieee floating point conventions, uses 16 bit subtag.
+   The substructure I've been using for 1EEE and 1532 is:
+   - BE size u32
+   - BE tag  u32 (e.g. 0x1F320000 or 0x1F32, 0x0000)
+   - LE tag  s32 (ad hoc application command, see e.g. synth_tools test_fft.c)
+   - LE data
+   I finally gave up resisting using both BE and LE in the same
+   protocol, using the established BE uc_tools headers headers to wrap
+   older ad hoc LE data protocols.  This is just a manifestation of
+   the "grain boundary" problem: integration of designs with different
+   orgins.  Basically, wrapping should be independent of content, and
+   content is determined by application.
+
+   FIXME: Add extra command field to the _MATRIX tags?  Or use a
+   xxxx0002 subtag for that?
+
+*/
+#define TAG_FLOATS        0x1F32      // 16 bit high bits of tag (F:float 32)
+#define TAG_FLOATS_ARRAY  0x1F320000  // raw 32 bit LE float array with extra command
+#define TAG_FLOATS_MATRIX 0x1F320001  // 2D LE float matrix with LE uint32_t size prefix, rows, columns
+
+/* Same, but for integers (also embedding Galois fields) */
+#define TAG_INTS        0x1532      // 16 bit high bits of tag (5:signed 32)
+#define TAG_INTS_ARRAY  0x15320000  // raw int32_t LE array with extra command
+#define TAG_INTS_MATRIX 0x15320001  // 2D int32_t matrix with size prefix like TAG_FLOATS_MATRIX
+
+
 /* Reserved tags and ranges:
 
    0x4xxx IPv4 standard slip
@@ -92,10 +120,10 @@
 
    https://en.wikipedia.org/wiki/EtherType
 
-   Other projects using this protocol:
+   Other proprietary projects using this protocol:
 
    0xC8xx, 0xC9xx, 0x2D2D // C8
-
+   0xA1xx                 // Areal
 
 */
 
@@ -106,5 +134,6 @@
    constructed by appending TAG_REPLY, the return address, and any
    payload message.
 */
+
 
 #endif

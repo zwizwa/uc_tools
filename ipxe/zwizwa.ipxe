@@ -1,0 +1,4 @@
+#!ipxe
+dhcp
+chain tftp://10.1.3.2/zwizwa.ipxe
+

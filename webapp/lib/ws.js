@@ -5,11 +5,14 @@ var check = tools.check;
 
 var ws;
 
-function start() {
+var user_dispatch;
+
+function start(dispatch, on_open) {
+    user_dispatch = dispatch
     var proto = ({'https:': 'wss://', 'http:': 'ws://'})[window.location.protocol];
     ws = new WebSocket(proto + location.host + '/ws');
     ws.onclose   = function()    { console.log('ws: close'); }
-    ws.onopen    = function()    { console.log('ws: open'); }
+    ws.onopen    = function()    { console.log('ws: open');  on_open()}
     ws.onmessage = function(raw_msg) {
         /* Just buffer it for now.  Much easier to work with. */
         raw_msg.data.arrayBuffer().then(
@@ -32,13 +35,19 @@ function start() {
    modify it in place before passing it on. */
 function dispatch(msg) {
     // console.log('dispatch',msg);
-    msg.unpack(
-        tag => {
-            // FIXME: map tag to instance
-            var el = check(document.getElementById("wave"));
-            check(el.handle);
-            el.handle(msg);
-        })
+    if (user_dispatch == undefined) {
+        msg.unpack(
+            tag => {
+                // FIXME: map tag to instance
+                console.log(msg, tag)
+                var el = check(document.getElementById("wave"));
+                check(el.handle);
+                el.handle(msg);
+            })
+    }
+    else {
+        user_dispatch(msg);
+    }
 }
 function send(o) {
     ws.send(protocol.to_arrayBuffer(o))

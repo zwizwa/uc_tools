@@ -23,6 +23,8 @@ local function run()
       local str = m.serialize(obj)
       log(str)
       local new_obj = eval(str)
+      assert(obj)
+      assert(new_obj)
       assert(tree.is_equal(obj, new_obj))
    end
 
@@ -34,8 +36,6 @@ local function run()
    test({a=0.123})
    -- test({def="abc"})  -- FIXME: String quoting
    -- error("debug_stop")
-
-   test()
 
 end
 

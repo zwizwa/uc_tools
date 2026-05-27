@@ -29,10 +29,11 @@ void websocket_parse_init(struct websocket_parse *s) {
 #undef NS
 
 
-static const char *string_L(lua_State *L, int index, size_t *len) {
-    ASSERT(lua_isstring(L, index));
-    return lua_tolstring(L, index, len);
-}
+//static const char *string_L(lua_State *L, int index, size_t *len) {
+//    ASSERT(lua_isstring(L, index));
+//    return lua_tolstring(L, index, len);
+//}
+
 static int websocket_sha1_cmd(lua_State *L) {
     uint8_t websocket_sha1[SHA1_BLOCK_SIZE];
     size_t len = 0;
@@ -80,6 +81,53 @@ static int websocket_parse_push_chunk_cmd(lua_State *L) {
     return s->nb_rv;
 }
 
+// Encode a message for sending
+// FIXME: Additional config table for Text/Binary encoding
+static int websocket_encode_cmd(lua_State *L) {
+
+    struct websocket_parse *s = &websocket_parse_L(L, 1)->base;
+    size_t str_len = 0;
+    const char *str = string_L(L, 2, &str_len);
+    //LOG("websocket_encode: str_len=%d\n", str_len);
+
+    /* The struct ws_message does not have a const buffer pointer.  I
+       do not remember if it is written. Probably not, but just be
+       safe here and copy. */
+    uint8_t buf[str_len]; memcpy(buf, str, str_len);
+
+    /* Connect a temp buffer allocated on stack. */
+    struct cbuf out; uint8_t out_buf[1024];
+    CBUF_INIT(out);
+    s->ws_buf.out = &out;
+
+    struct ws_message msg = {
+        .opcode = 1,  // Text Frame
+        //.opcode = 2,  // Binary Frame
+        .fin = 1,
+        .mask = 0,
+        .buf = buf,
+        .len = str_len,
+    };
+
+    int rv;
+    if ((rv = setjmp(s->ws_buf.jmp_buf))) {
+        LOG("websocket_encode: error=%d\n", rv);
+        return 0;
+    }
+    ws_write_msg_nolock(&s->ws_buf, &msg);
+
+
+    /* Disconnect temp buffer. */
+    s->ws_buf.out = NULL;
+
+    /* Return buffer contents. */
+    int nb = cbuf_elements(&out);
+    //LOG("websocket_encod: nb=%d\n", nb);
+    lua_pushlstring(L, (const char*)out.buf, nb);
+    return 1;
+}
+
+
 
 static void new_metatable(lua_State *L, const char *t_name, int (*gc)(lua_State *)) {
     luaL_newmetatable(L, t_name);
@@ -94,5 +142,6 @@ int luaopen_webserver_lua51(lua_State *L) {
     DEF_CFUN(websocket_sha1);
     DEF_CFUN(websocket_parse_new);
     DEF_CFUN(websocket_parse_push_chunk);
+    DEF_CFUN(websocket_encode);
     return 1;
 }

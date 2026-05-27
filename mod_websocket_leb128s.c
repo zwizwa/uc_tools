@@ -6,7 +6,7 @@
    directory tree handler. */
 
 #ifndef WEBSOCKET_MSG_BUF
-#define WEBSOCKET_MSG_BUF (4*1024) // FIXME: This will need to be managed differently
+#define WEBSOCKET_MSG_BUF (100*1024) // FIXME: This will need to be managed differently
 #endif
 
 
@@ -87,7 +87,7 @@ ws_err_t websocket_push(struct blocking_io *io, struct ws_message *m) {
 
     (void)id;
     if(s.error) {
-        LOG("error %d\n", s.error);
+        LOG("error %d\n", (int)(uintptr_t)s.error);
     }
     return 0;
 }

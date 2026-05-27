@@ -43,3 +43,8 @@ a.out*
 esp/*/plugin/sram.ld
 *.opam
 gambit
+*.exe
+result
+*.dsk
+*.nbp
+

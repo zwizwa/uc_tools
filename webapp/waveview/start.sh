@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # Start http listener that serves files in this directory.
 # Start reading at index.html
@@ -14,5 +14,5 @@ echo "serving $webroot" >&2
 exec gdb 2>&1 \
      --quiet \
      --eval-command="file $HERE/../../linux/$ELF" \
-     --eval-command="run $webroot /home/tom/TEST/test.raw" \
+     --eval-command="run $webroot /i/tom/TEST/test.raw" \
      --eval-command="bt"

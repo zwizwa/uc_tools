@@ -32,6 +32,7 @@
 #include "uct_byteswap.h"
 
 #include <stdint.h>
+#include <inttypes.h>
 
 /* In pure mode the ties to blocking_io and the rest of the C http
    server are not made. */
@@ -44,7 +45,7 @@
 #endif
 
 #define WS_READ(io, buf, len) { if(0) goto error_exit; ws_buf_read(io, buf, len); }
-#define WS_WRITE(io, buf, len) {(void)io; (void)buf; (void)len; if(0) goto error_exit;}
+#define WS_WRITE(io, buf, len) { ws_buf_write(io, buf, len); if(0) goto error_exit; }
 #define WS_OK 0
 #define WS_IO_T struct ws_buf
 #define WS_LOG_ERROR LOG
@@ -52,8 +53,11 @@
 #include "cbuf.h"
 struct ws_buf {
     jmp_buf jmp_buf;
-    struct cbuf in;  uint8_t in_buf[1024];
-    struct cbuf *out; // ??? how to do this
+    struct cbuf in;   uint8_t in_buf[1024];
+    /* This can just be a temp buffer on the stack that lives during
+       the extent of a ws_write_msg_nolock() call just to create the
+       encoded message in the out buffer.  */
+    struct cbuf *out;
 };
 static inline void ws_buf_init(struct ws_buf *ws_io) {
     CBUF_INIT(ws_io->in);
@@ -67,6 +71,17 @@ WS_ERR_T ws_buf_read(struct ws_buf *ws_io, uint8_t *buf, size_t len) {
     cbuf_read(&ws_io->in, buf, len);
     return WS_OK;
 }
+WS_ERR_T ws_buf_write(struct ws_buf *ws_io, const uint8_t *buf, size_t len) {
+    ASSERT(ws_io->out);
+    uint32_t room = cbuf_room(ws_io->out);
+    if (room < len) {
+        /* Buffer overflow. */
+        longjmp(ws_io->jmp_buf, 1);
+    }
+    cbuf_write(ws_io->out, buf, len);
+    return WS_OK;
+}
+
 #endif
 
 
@@ -165,7 +180,7 @@ static inline ws_err_t ws_write_msg_nolock(ws_io_t *io,
     return WS_OK;
 
   error_exit:
-    WS_LOG_ERROR("ws_write_msg", error);
+    WS_LOG_ERROR("ws_write_msg %d", (void*)error);
     return error;
 }
 
@@ -218,7 +233,7 @@ static inline ws_err_t ws_read_msg_body(ws_io_t *io,
     }
 
   error_exit:
-    WS_LOG_ERROR("ws_read_msg_body", error);
+    WS_LOG_ERROR("ws_read_msg_body %d", error);
     return error;
 }
 static inline ws_err_t ws_read_msg(ws_io_t *io, ws_push_fn push) {
@@ -247,7 +262,7 @@ static inline ws_err_t ws_read_msg(ws_io_t *io, ws_push_fn push) {
     }
 
   error_exit:
-    WS_LOG_ERROR("ws_read_msg", error);
+    WS_LOG_ERROR("ws_read_msg %d", error);
     return error;
 }
 

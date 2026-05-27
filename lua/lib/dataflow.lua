@@ -23,19 +23,22 @@
 require('lure.log')
 local list   = require('lib.tools.list')
 local iolist = require('lure.iolist')
+local tab    = require('lure.tab')
 local map    = list.map
 local concat = list.concat
 local cproc  = require('lib.cproc')
 
 local path = require('lib.tools.path')
-local nested_to_flat_c = path({separator='_'}).nested_to_flat
-local nested_to_flat_osc = path({separator='/'}).nested_to_flat
+local osc_path = path({separator='/'})
+local c_path   = path({separator='_'})
+
+local nested_to_flat_c = c_path.nested_to_flat
+local nested_to_flat_osc = osc_path.nested_to_flat
 
 
 -- The 'w_' functions take iolist and write to stdout
 -- The 'render_' functions will render to iolist
-
-local w    = iolist.w
+local w    = iolist.w_preserve_if_same
 local join = iolist.join
 
 
@@ -270,7 +273,7 @@ local function analyze(s)
    for_buf(pass2_buf_reference, pass2_buf_alloc)
 
    local types = {}
-   for k in pairs(did_type) do table.insert(types, k) end
+   for k in list.sorted_pairs(did_type) do table.insert(types, k) end
 
    local rv = {buf=buf,connect=connect,use_stat=use_stat,edge=edge,types=types}
    -- log_desc(rv)
@@ -312,7 +315,7 @@ local function render_c(s, graph_name)
    local null_out = {}
 
    -- First pass
-   for _,node in ipairs(s.nodes) do
+   for node_nb,node in ipairs(s.nodes) do
       -- Get the processor definition
       -- log_desc({node=node})
       local type_name = node.type_name or node.extern_name
@@ -414,7 +417,7 @@ local function render_c(s, graph_name)
          table.insert(init_code, {indent, type_name,'_init(',state,');\n'})
          local flat_init = nested_to_flat_c(node.init)
          -- log_desc({flat_init = flat_init, nested_init = node.init})
-         for name, value in pairs(flat_init) do
+         for name, value in list.sorted_pairs(flat_init) do
             -- Value is a 'Maybe' type.  Don't generate the
             -- initializer if value is false.
             if value then
@@ -429,7 +432,9 @@ local function render_c(s, graph_name)
       -- correct place.
       table.insert(
          process_code,
-         {indent, type_name, '_loop(&s->',node.name,', nb);\n'})
+         {indent,
+          'graph_bp(&s->base,',node_nb-1,'); ',
+          type_name, '_loop(&s->',node.name,', nb);\n'})
 
       -- Per-type struct and process only need to be done once
       assert(type_name)
@@ -470,6 +475,12 @@ local function render_c(s, graph_name)
       end
 
    end
+   -- All other markers are befor the _loop() calls.  Add one more
+   -- after the last.
+   table.insert(
+      process_code,
+      {indent,
+       'graph_bp(&s->base,',#s.nodes,');\n'})
 
    -- Second pass
    -- log_desc({null_out=null_out})
@@ -497,14 +508,16 @@ local function render_c(s, graph_name)
    local base_in  = 's->input.output'
    local base_out = 's->output.input'
    local base_code = {
-         {indent, 's->base.in       = (float**)&',base_in, ';\n'},
-         {indent, 's->base.out      = (float**)&',base_out,';\n'},
-         {indent, 's->base.nb_in    = sizeof(',base_in, ')/sizeof(float*);\n'},
-         {indent, 's->base.nb_out   = sizeof(',base_out,')/sizeof(float*);\n'},
-         {indent, 's->base.process  = (graph_base_process_fn)',graph_name,'_graph_process;\n'},
-         {indent, 's->base.buf      = &s->buf[0][0];\n'},
-         {indent, 's->base.buf_size = ',buf_size,';\n'},
-         {indent, 's->base.nb_buf   = ',alloc_count,';\n'},
+         {indent, 's->base.in           = (float**)&',base_in, ';\n'},
+         {indent, 's->base.out          = (float**)&',base_out,';\n'},
+         {indent, 's->base.nb_in        = sizeof(',base_in, ')/sizeof(float*);\n'},
+         {indent, 's->base.nb_out       = sizeof(',base_out,')/sizeof(float*);\n'},
+         {indent, 's->base.output_state = &s->output.state;\n'},
+         {indent, 's->base.process      = (graph_base_process_fn)',graph_name,'_graph_process;\n'},
+         {indent, 's->base.buf          = &s->buf[0][0];\n'},
+         {indent, 's->base.buf_size     = ',buf_size,';\n'},
+         {indent, 's->base.nb_buf       = ',alloc_count,';\n'},
+         {indent, 's->base.nb_nodes     = ',#s.nodes,';\n'},
 
    }
 
@@ -602,6 +615,7 @@ local function graph_compiler()
    local c = { }
 
    function c:app(typ, name, ...)
+      -- log_desc({app_args = {typ, name, {...}}})
       assert(typ)
       assert(type(name) == 'string')
       local ins = {...}
@@ -643,7 +657,7 @@ local function graph_compiler()
       assert(instance.out_ports)
 
       -- FIXME: removing all functions to make it serializable
-      for k,v in pairs(instance) do
+      for k,v in list.sorted_pairs(instance) do
          if type(v) == 'function' then
             instance[k] = '#<removed>'
          end
@@ -752,16 +766,22 @@ function t.cproc_op(cproc_spec, init, pretty_args)
 end
 
 
--- FIXME: This is a special generated one.
-function t.matrix_op(type_name, in_names, out_names)
+-- This is used for t_output, which does not behave like a normal
+-- processor for code generation but will look like one from the patch
+-- perspective.
+function t.matrix_op(type_name, in_names, out_names, init)
    return function (c, name, nb_inputs)
+      -- log_desc({t_matrix_op_nb_inputs = nb_inputs})
       return {
          type_name  = type_name,
          out_ports  = out_names,
          input_name = in_names,
+         init = init,
       }
    end
 end
+
+-- This is used to wrap externally defined (not cproc API) C processing routines.
 function t.extern_matrix_op(type_name, in_names, out_names, maybe_init)
    return function (c, name, nb_inputs)
       return {
@@ -807,26 +827,61 @@ local function named(names, values)
 end
 
 
-function osc_preset_txt(graph)
+-- Sort the nodes and params so that diffs of the txt file are cleaner.
+
+function osc_preset_txt(graph, maybe_wildcards)
    local nodes = graph.nodes
    local txt = {}
    assert(nodes)
 
-   for _,node in ipairs(nodes) do
+   local wildcards = maybe_wildcards or { }
+   local function match_wildcards(id)
+      for _,w in ipairs(wildcards) do
+         if osc_path.match_wildcard_dotted(w, id) then return w end
+      end
+      return false
+   end
+   local wildcard_vals = {}
+
+
+   local node_index = {}
+   for _,node in ipairs(nodes) do node_index[node.name] = node end
+   local node_keys = tab.keys(node_index, {sort = true})
+
+   for _,node_key in ipairs(node_keys) do
+      local node = node_index[node_key]
       local flat_init = nested_to_flat_osc(node.init or {})
-      for param,val in pairs(flat_init) do
-         -- The val is a 'Maybe' type.
+      local params = tab.keys(flat_init, {sort = true})
+
+      for _, param in ipairs(params) do
+         local flat_param = table.concat({'/',node.name,'/',param})
+         local val = flat_init[param]
+         local function insert_param(param_name)
+            table.insert(txt, {param_name,' ',val,'\n'})
+         end
          if val then
-            table.insert(
-               txt,
-               {'/',node.name,'/',param,' ',val,'\n'})
+            local wildcard_param = match_wildcards(flat_param)
+            if wildcard_param then
+               -- Wilcard param with default.
+
+               -- The first match is used as the default value for the
+               -- wildcard.  Not sure if this is a good way to go
+               -- about it, but the projection from set to
+               -- representative has to happen somewhere.
+               if not wildcard_vals[wildcard_param] then
+                  wildcard_vals[wildcard_param] = val
+                  insert_param(wildcard_param)
+               end
+            else
+               -- Regular param with default.
+               insert_param(flat_param)
+            end
          end
       end
    end
 
    return txt
 end
-
 
 
 
@@ -912,6 +967,8 @@ return {
    map = map,
    named = named,
    concat = concat,
+
+   osc_load_preset_txt = osc_load_preset_txt,
 
 }
 

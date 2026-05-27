@@ -116,6 +116,23 @@ static inline int mini_strcmp(const char *s1, const char *s2) {
     while (*p1 && *p1 == *p2) { ++p1; ++p2; }
     return (*p1 > *p2) - (*p2 > *p1);
 }
+static inline int mini_memcmp(const void *v1, const void *v2, size_t len) {
+    const uint8_t *u1 = v1;
+    const uint8_t *u2 = v2;
+    for (size_t i=0; i<len; i++) {
+        if (unlikely(u1[i] != u2[i])) {
+            if (u1[i] < u2[i]) return -1;
+            else return 1;
+        }
+    }
+    return 0;
+}
+
+static inline int mini_strlen(const char *s1) {
+    int len = 0;
+    while(*s1++) { len++; }
+    return len;
+}
 static inline char *mini_strcpy(char *dst, const char *src) {
     while(*src) { *dst++ = *src++; }
     return dst;
@@ -126,8 +143,22 @@ static inline void *mini_memcpy(void *dest, const void *src, uintptr_t n) {
     for (uintptr_t i=0; i<n; i++) { *d++ = *s++; };
     return dest;
 }
+static inline volatile void *mini_memcpy_volatile(volatile void *dest,
+                                                  const volatile void *src, uintptr_t n) {
+    volatile uint8_t *d = dest;
+    const volatile uint8_t *s = src;
+    for (uintptr_t i=0; i<n; i++) { *d++ = *s++; };
+    return dest;
+}
+
+
 static inline void *mini_memset(void *s, int c, uintptr_t n) {
     uint8_t *p = s;
+    for (uintptr_t i=0; i<n; i++) { *p++ = c; };
+    return s;
+}
+static inline volatile void *mini_memset_volatile(volatile void *s, int c, uintptr_t n) {
+    volatile uint8_t *p = s;
     for (uintptr_t i=0; i<n; i++) { *p++ = c; };
     return s;
 }
