@@ -111,6 +111,43 @@ static inline void ilog_close(struct ilog *v) {
     v->log_fd = -1;
     v->index_fd = -1;
 }
+
+
+static inline void ilog_write_index(struct ilog *v) {
+    if (v->index_fd != -1) {
+        assert_write(v->index_fd, (const void*)&v->nb_bytes, sizeof(v->nb_bytes));
+    }
+
+}
+static inline void ilog_sync(struct ilog *v) {
+    fdatasync(v->log_fd);
+    fdatasync(v->index_fd);
+}
+
+
+/* msg contains a complete packet including the 16bit tag, but no size field */
+static inline uint64_t ilog_raw_fd(int fd, const void *msg, uint32_t len) {
+    ASSERT(fd != -1);
+    uint8_t header[] = {
+        U32_BE(len),
+    };
+    uint32_t header_bytes = sizeof(header);
+    assert_write(fd, (const void*)header, header_bytes);
+    assert_write(fd, msg, len);
+    return header_bytes + len;
+}
+static inline int64_t ilog_raw(struct ilog *v, const void *msg, uint32_t len) {
+    // Allow NULL to disable log and make that the fast path.
+    if (likely(!v)) return -1;
+    ilog_write_index(v);
+    v->nb_bytes += ilog_raw_fd(v->log_fd, msg, len);
+    uint64_t rv = v->nb_messages++;
+    ilog_sync(v);
+    return rv;
+}
+
+
+
 static inline uint64_t ilog_floats_fd(int fd, uint32_t cmd,
                                       const float *vec, uint32_t len) {
     ASSERT(fd != -1);
@@ -125,16 +162,6 @@ static inline uint64_t ilog_floats_fd(int fd, uint32_t cmd,
     assert_write(fd, (const void*)header, header_bytes);
     assert_write(fd, (const void*)vec, vec_bytes);
     return header_bytes + vec_bytes;
-}
-static inline void ilog_write_index(struct ilog *v) {
-    if (v->index_fd != -1) {
-        assert_write(v->index_fd, (const void*)&v->nb_bytes, sizeof(v->nb_bytes));
-    }
-
-}
-static inline void ilog_sync(struct ilog *v) {
-    fdatasync(v->log_fd);
-    fdatasync(v->index_fd);
 }
 
 static inline int64_t ilog_floats(struct ilog *v, uint32_t cmd,
