@@ -126,21 +126,24 @@ static inline void ilog_sync(struct ilog *v) {
 
 
 /* msg contains a complete packet including the 16bit tag, but no size field */
-static inline uint64_t ilog_raw_fd(int fd, const void *msg, uint32_t len) {
+static inline uint64_t ilog_raw_fd(int fd,
+                                   const void *hdr,  uint32_t hdr_len,
+                                   const void *data, uint32_t data_len) {
     ASSERT(fd != -1);
-    uint8_t header[] = {
-        U32_BE(len),
-    };
-    uint32_t header_bytes = sizeof(header);
-    assert_write(fd, (const void*)header, header_bytes);
-    assert_write(fd, msg, len);
-    return header_bytes + len;
+    uint8_t size[4] = { U32_BE(hdr_len + data_len) };
+    assert_write(fd, (const void*)size, 4);
+    assert_write(fd, hdr, hdr_len);
+    assert_write(fd, data, data_len);
+    return 4 + hdr_len + data_len;
 }
-static inline int64_t ilog_raw(struct ilog *v, const void *msg, uint32_t len) {
+static inline int64_t ilog_raw(struct ilog *v,
+                               const void *hdr,  uint32_t hdr_len,
+                               const void *data, uint32_t data_len) {
+
     // Allow NULL to disable log and make that the fast path.
     if (likely(!v)) return -1;
     ilog_write_index(v);
-    v->nb_bytes += ilog_raw_fd(v->log_fd, msg, len);
+    v->nb_bytes += ilog_raw_fd(v->log_fd, hdr, hdr_len, data, data_len);
     uint64_t rv = v->nb_messages++;
     ilog_sync(v);
     return rv;

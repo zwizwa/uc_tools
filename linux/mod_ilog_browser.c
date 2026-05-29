@@ -10,16 +10,18 @@
 #include "macros.h"
 #include "ilog.h"
 
-static volatile sig_atomic_t resized = 0;   /* 1 so we lay out once at start */
+static volatile sig_atomic_t resized = 0;
 static void ib_on_winch(int sig) {
     (void)sig;
-    resized = 1;            /* only touch a sig_atomic_t flag — nothing else */
+    // will be read when wgetch() returns ERR
+    resized = 1;
 }
 
 void ib_install_signal_handler(void) {
     struct sigaction sa = {0};
     sa.sa_handler = ib_on_winch;
-    sigaction(SIGWINCH, &sa, NULL);   /* note: no SA_RESTART, see below */
+    // no SA_RESTART so wgetch() will return ERR
+    sigaction(SIGWINCH, &sa, NULL);
 }
 
 struct ilog_browser {
@@ -34,19 +36,17 @@ struct ilog_browser {
     struct ilog_read ilog;
 };
 
+// Defined outside this module.
+void ib_format_message(struct ilog_browser *s, int index, char *buf, int max_chars);
+
+
+
 int ib_nb_items(struct ilog_browser *s) {
     return s->ilog.ilog.nb_messages;
 }
 
 
-/* Get a string representation of the message at index. */
-void ib_format_message(struct ilog_browser *s, int index,
-                   char *buf, int max_chars) {
-    sprintf(buf, "Message %d", index);
-}
-
-
-/* draw_row: render one item at its on-screen row, highlighted or not. */
+// render message on the correct row, highlighting on/off
 void ib_draw_row(struct ilog_browser *s, int index, int highlight) {
     int y = (index) - s->top;
     if ((highlight)) wattron(s->list_w, A_REVERSE);
@@ -56,7 +56,7 @@ void ib_draw_row(struct ilog_browser *s, int index, int highlight) {
     if ((highlight)) wattroff(s->list_w, A_REVERSE);
 }
 
-/* full list repaint — used on startup and after a page jump/scroll */
+// redraw all messages in the message window
 void ib_redraw_list(struct ilog_browser *s) {
     werase(s->list_w);
     for (int i = s->top; i < s->top + s->rows && i < ib_nb_items(s); i++) {
@@ -64,15 +64,15 @@ void ib_redraw_list(struct ilog_browser *s) {
     }
 }
 
-/* info pane: just echo the current selection as dummy detail */
+// draw message info
 void ib_redraw_info(struct ilog_browser *s) {
     werase(s->info_w);
     box(s->info_w, 0, 0);
-    // FIXME: Print more info about the message.
     mvwprintw(s->info_w, 1, 2, "Selected: index %d", s->sel);
 }
 
-
+// initialize screen, handle events, restore screen
+// exits on 'q' or SIGWINCH
 int ib_event_loop(struct ilog_browser *s) {
 
     int rv = 0;
@@ -80,18 +80,18 @@ int ib_event_loop(struct ilog_browser *s) {
     initscr();
     cbreak();
     noecho();
-    curs_set(0);                 /* hide hardware cursor */
+    curs_set(0); // hide hardware cursor
 
-    /* Split the screen: list on top, info pane (3 rows) at bottom. */
+    // split screen: message window on top, info window on bottom
     s->list_h = LINES - s->info_h;
     s->list_w = newwin(s->list_h, COLS, 0, 0);
     s->info_w = newwin(s->info_h, COLS, s->list_h, 0);
 
-    keypad(s->list_w, TRUE);          /* enable KEY_UP / KEY_F(n) etc. */
-    scrollok(s->list_w, TRUE);        /* permit hardware scrolling */
+    keypad(s->list_w, TRUE);   // enable KEY_UP / KEY_F(n) etc.
+    scrollok(s->list_w, TRUE); // permit hardware scrolling
     idlok(s->list_w, TRUE);
 
-    s->rows  = s->list_h;          /* visible list rows */
+    s->rows  = s->list_h;      // visible list rows
 
     ib_redraw_list(s);
     ib_redraw_info(s);
@@ -105,7 +105,6 @@ int ib_event_loop(struct ilog_browser *s) {
         int last = ib_nb_items(s)-1;
 
         if (ch == ERR) {
-            // LOG("resized = %d\n", resized);
             if (resized) {
                 resized = 0;
                 rv = 1;
@@ -144,39 +143,38 @@ int ib_event_loop(struct ilog_browser *s) {
             s->sel = last;
         }
 
-        /* else if (ch == KEY_F(1)) switch_view(...); */
+        //  else if (ch == KEY_F(1)) { handle_f1(...); }
         else {
-            /* Other keys don't change the view so no update is
-               needed. */
+            // other keys don't update layout
             continue;
         }
 
-        /* Has the selection scrolled off the visible window? */
+        // Has the selection scrolled off the visible window? */
         if (s->sel < s->top) {
-            int delta = s->top - s->sel;            /* number of rows to scroll back */
+            int delta = s->top - s->sel;       // number of rows to scroll back
             s->top = s->sel;
-            if (delta == 1) {                 /* single step: hardware scroll */
+            if (delta == 1) {                  // single step: hardware scroll
                 wscrl(s->list_w, -1);
-                ib_draw_row(s, s->sel, 1);             /* paint the row that scrolled in */
-                ib_draw_row(s, old, 0);             /* un-highlight old (if visible) */
+                ib_draw_row(s, s->sel, 1);     // paint the row that scrolled in
+                ib_draw_row(s, old, 0);        // un-highlight old (if visible)
             } else {
-                ib_redraw_list(s);             /* page jump: just repaint */
+                ib_redraw_list(s);             // page jump: just redraw everything
             }
         }
         else if (s->sel >= s->top + s->rows) {
             int delta = s->sel - (s->top + s->rows - 1);
             if (delta == 1) {
-                ib_draw_row(s, old, 0);        /* un-highlight while top is still old value */
+                ib_draw_row(s, old, 0);        // un-highlight while top is still old value
                 s->top = s->sel - s->rows + 1;
                 wscrl(s->list_w, 1);
-                ib_draw_row(s, s->sel, 1);        /* new bottom row */
+                ib_draw_row(s, s->sel, 1);     // new bottom row
             } else {
                 s->top = s->sel - s->rows + 1;
                 ib_redraw_list(s);
             }
         }
         else {
-            /* still on screen: only the two changed rows need redrawing */
+            // still on screen: only the two changed rows need redrawing
             ib_draw_row(s, old, 0);
             ib_draw_row(s, s->sel, 1);
         }
@@ -184,7 +182,7 @@ int ib_event_loop(struct ilog_browser *s) {
         ib_redraw_info(s);
         wnoutrefresh(s->list_w);
         wnoutrefresh(s->info_w);
-        doupdate();                           /* one flush, no flicker */
+        doupdate();  // one flush, no flicker
     }
 
     delwin(s->list_w);
@@ -210,7 +208,6 @@ void ib_loop(const char *ilog_filename) {
             /* Normal exit. */
             exit(0);
         }
-        refresh();
     }
 }
 
