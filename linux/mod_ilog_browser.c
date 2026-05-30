@@ -5,18 +5,14 @@
    - plain ncurses
    - the emscripten browser canvas websocket thing
 
-   Initially I am just going to abstract the ncurses calls and types,
-   then implement them on the canvas.
-
-   The question is: does this need to be configurable in the same
-   application, or shall I just write two applications: one ncurses
-   and one that starts a server for the web console.  The latter
-   really seems best.  This avoids messing with function pointer glue
-   as well, just write it as a mod.
-
+   This uses the minimal mod_tui interface.  Note that we use it in a
+   blocking way.  On kernel.c and bare metal uc it will be necessary
+   to implement the controller as event-driven code.
 */
 
+#ifndef MOD_TUI
 #include "mod_tui_ncurses.c"
+#endif
 
 #include "ilog.h"
 
@@ -71,7 +67,7 @@ void ib_redraw_info(struct ilog_browser *s) {
 // exits on 'q' or SIGWINCH
 int ib_event_loop(struct ilog_browser *s) {
 
-    int rv = 0;
+    int restart = 0;
 
     tui_init_screen();
 
@@ -90,21 +86,21 @@ int ib_event_loop(struct ilog_browser *s) {
     tui_update_screen();
 
     for(;;) {
-        int ch = tui_get_key(s->list_w);
+        int ch = tui_get_event(s->list_w);
         int old = s->sel;
         int last = ib_nb_items(s)-1;
 
         /* Control. */
         if (ch == TUI_RESIZED) {
-            rv = 1;
+            restart = 1;
             break;
         }
         if (ch == TUI_ERR) {
-            rv = TUI_ERR;
+            restart = 0;
             break;
         }
         if (ch == 'q') {
-            rv = 0;
+            restart = 0;
             break;
         }
 
@@ -179,8 +175,9 @@ int ib_event_loop(struct ilog_browser *s) {
     tui_del_window(s->list_w);
     tui_del_window(s->info_w);
     tui_restore_screen();
-    return rv;
+    return restart;
 }
+
 
 void ib_loop(const char *ilog_filename) {
     tui_init();
@@ -191,14 +188,8 @@ void ib_loop(const char *ilog_filename) {
 
     s->info_h = 4;
 
-    for(;;) {
-        int rv = ib_event_loop(s);
-        // LOG("rv = %d, resized = %d\n", rv, resized);
-        if (rv == 0) {
-            /* Normal exit. */
-            exit(0);
-        }
-    }
+    /* It will return 1 when it needs a restart. */
+    while(ib_event_loop(s));
 }
 
 

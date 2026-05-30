@@ -1,13 +1,11 @@
 #ifndef MOD_TUI
 #define MOD_TUI
+
 /* This implements the mod_tui interface for ncurses.
-
-   Note that printf-style formatting is handled outside of this module.
-
-   The api uses the x,y convention instead of y,x in ncurses.
-
-   We use the idea that screen can resize, and that everything needs
-   to be torn down and rebuilt in that case.
+   API Notes:
+   - no printf-style formatting
+   - x,y convention instead of y,x from ncurses
+   - screens can resize (a tui_event) but this requires teardown, reinit
 */
 
 // Started from claude template.
@@ -109,7 +107,7 @@ void tui_scroll(tui_window_t *w, int lines) {
 
 
 /* Note that in most applications the w argument can probably be ignored. */
-int tui_get_key(tui_window_t *w) {
+int tui_get_event(tui_window_t *w) {
     int ch = wgetch(w);
     if (ch == ERR) {
         if (tui_resized) {

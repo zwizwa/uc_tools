@@ -5,8 +5,8 @@
 
 int main() {
 
-    //canvas_init(640,480);
-    canvas_init(1280,640);
+    canvas_init(640,480);
+    //canvas_init(1280,640);
     canvas_init_font(IBM_VGA_8x16, 8, 16);
     int fg = 7;
     int bg = 0;
@@ -17,7 +17,7 @@ int main() {
     }
 
     // emscripten_console_init();
-    LOG("rdm-bridge em\n");
+    LOG("uc_tools em\n");
 
     return 0;  // runtime stays alive for callbacks (default NO_EXIT_RUNTIME)
 }
