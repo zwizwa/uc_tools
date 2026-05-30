@@ -1,64 +1,57 @@
 #ifndef MOD_ILOG_BROWSER
 #define MOD_ILOG_BROWSER
 
-// Started from claude template.
-// https://claude.ai/chat/8839c53a-27fb-4565-84a0-1b856babd9af
-#include <ncurses.h>
-#include <string.h>
-#include <stdio.h>
-#include <signal.h>
-#include "macros.h"
+/* This should support two interfaces:
+   - plain ncurses
+   - the emscripten browser canvas websocket thing
+
+   Initially I am just going to abstract the ncurses calls and types,
+   then implement them on the canvas.
+
+   The question is: does this need to be configurable in the same
+   application, or shall I just write two applications: one ncurses
+   and one that starts a server for the web console.  The latter
+   really seems best.  This avoids messing with function pointer glue
+   as well, just write it as a mod.
+
+*/
+
+#include "mod_tui_ncurses.c"
+
 #include "ilog.h"
-
-static volatile sig_atomic_t resized = 0;
-static void ib_on_winch(int sig) {
-    (void)sig;
-    // will be read when wgetch() returns ERR
-    resized = 1;
-}
-
-void ib_install_signal_handler(void) {
-    struct sigaction sa = {0};
-    sa.sa_handler = ib_on_winch;
-    // no SA_RESTART so wgetch() will return ERR
-    sigaction(SIGWINCH, &sa, NULL);
-}
 
 struct ilog_browser {
     int info_h;        // hight of info window, including border
     int list_h;        // light of message list window
-    WINDOW *list_w;
-    WINDOW *info_w;
+    tui_window_t *list_w;
+    tui_window_t *info_w;
     int rows;          // number of visible list rows
     int sel;           // selected message index
     int top;           // top row message index
-
     struct ilog_read ilog;
 };
 
 // Defined outside this module.
 void ib_format_message(struct ilog_browser *s, int index, char *buf, int max_chars);
 
-
-
 int ib_nb_items(struct ilog_browser *s) {
     return s->ilog.ilog.nb_messages;
 }
 
-
 // render message on the correct row, highlighting on/off
 void ib_draw_row(struct ilog_browser *s, int index, int highlight) {
     int y = (index) - s->top;
-    if ((highlight)) wattron(s->list_w, A_REVERSE);
-    char buf[COLS];
+    char buf[tui_cols()];
     ib_format_message(s, index, buf, sizeof(buf));
-    mvwprintw(s->list_w, y, 0, "%-*s", COLS - 1, buf);
-    if ((highlight)) wattroff(s->list_w, A_REVERSE);
+    int x = 0;
+    tui_reverse_video(s->list_w, highlight);
+    tui_string_at(s->list_w, x, y, tui_cols()-1, buf);
+    tui_reverse_video(s->list_w, 0);
 }
 
 // redraw all messages in the message window
 void ib_redraw_list(struct ilog_browser *s) {
-    werase(s->list_w);
+    tui_clear(s->list_w);
     for (int i = s->top; i < s->top + s->rows && i < ib_nb_items(s); i++) {
         ib_draw_row(s, i, i == s->sel);
     }
@@ -66,10 +59,13 @@ void ib_redraw_list(struct ilog_browser *s) {
 
 // draw message info
 void ib_redraw_info(struct ilog_browser *s) {
-    werase(s->info_w);
-    box(s->info_w, 0, 0);
-    mvwprintw(s->info_w, 1, 2, "Selected: index %d", s->sel);
+    tui_clear(s->info_w);
+    tui_box(s->info_w);
+    char buf[100];
+    snprintf(buf, sizeof(buf), "Selected: index %d", s->sel);
+    tui_string_at(s->info_w, 2, 1, 0, buf);
 }
+
 
 // initialize screen, handle events, restore screen
 // exits on 'q' or SIGWINCH
@@ -77,73 +73,68 @@ int ib_event_loop(struct ilog_browser *s) {
 
     int rv = 0;
 
-    initscr();
-    cbreak();
-    noecho();
-    curs_set(0); // hide hardware cursor
+    tui_init_screen();
 
     // split screen: message window on top, info window on bottom
-    s->list_h = LINES - s->info_h;
-    s->list_w = newwin(s->list_h, COLS, 0, 0);
-    s->info_w = newwin(s->info_h, COLS, s->list_h, 0);
-
-    keypad(s->list_w, TRUE);   // enable KEY_UP / KEY_F(n) etc.
-    scrollok(s->list_w, TRUE); // permit hardware scrolling
-    idlok(s->list_w, TRUE);
+    s->list_h = tui_lines() - s->info_h;
+    s->list_w = tui_new_window(tui_cols(), s->list_h, 0, 0);
+    s->info_w = tui_new_window(tui_cols(), s->info_h, 0, s->list_h);
 
     s->rows  = s->list_h;      // visible list rows
 
     ib_redraw_list(s);
     ib_redraw_info(s);
-    wnoutrefresh(s->list_w);
-    wnoutrefresh(s->info_w);
-    doupdate();
+
+    tui_update_window(s->list_w);
+    tui_update_window(s->info_w);
+    tui_update_screen();
 
     for(;;) {
-        int ch = wgetch(s->list_w);
+        int ch = tui_get_key(s->list_w);
         int old = s->sel;
         int last = ib_nb_items(s)-1;
 
-        if (ch == ERR) {
-            if (resized) {
-                resized = 0;
-                rv = 1;
-            }
-            else {
-                rv = 2;
-            }
+        /* Control. */
+        if (ch == TUI_RESIZED) {
+            rv = 1;
             break;
         }
-        else if (ch == 'q') {
+        if (ch == TUI_ERR) {
+            rv = TUI_ERR;
+            break;
+        }
+        if (ch == 'q') {
             rv = 0;
             break;
         }
-        else if (ch == KEY_DOWN && s->sel < last) {
+
+        /* Regular keys. */
+        if (ch == TUI_KEY_DOWN && s->sel < last) {
             s->sel++;
         }
-        else if (ch == KEY_UP && s->sel > 0) {
+        else if (ch == TUI_KEY_UP && s->sel > 0) {
             s->sel--;
         }
-        else if (ch == KEY_NPAGE) {
+        else if (ch == TUI_KEY_NPAGE) {
             s->sel += s->rows;
             if (s->sel > last) {
                 s->sel = last;
             }
         }
-        else if (ch == KEY_PPAGE) {
+        else if (ch == TUI_KEY_PPAGE) {
             s->sel -= s->rows;
             if (s->sel < 0) {
                 s->sel = 0;
             }
         }
-        else if (ch == KEY_HOME) {
+        else if (ch == TUI_KEY_HOME) {
             s->sel = 0;
         }
-        else if (ch == KEY_END) {
+        else if (ch == TUI_KEY_END) {
             s->sel = last;
         }
 
-        //  else if (ch == KEY_F(1)) { handle_f1(...); }
+        //  else if (ch == TUI_KEY_F(1)) { handle_f1(...); }
         else {
             // other keys don't update layout
             continue;
@@ -154,7 +145,7 @@ int ib_event_loop(struct ilog_browser *s) {
             int delta = s->top - s->sel;       // number of rows to scroll back
             s->top = s->sel;
             if (delta == 1) {                  // single step: hardware scroll
-                wscrl(s->list_w, -1);
+                tui_scroll(s->list_w, -1);
                 ib_draw_row(s, s->sel, 1);     // paint the row that scrolled in
                 ib_draw_row(s, old, 0);        // un-highlight old (if visible)
             } else {
@@ -166,7 +157,7 @@ int ib_event_loop(struct ilog_browser *s) {
             if (delta == 1) {
                 ib_draw_row(s, old, 0);        // un-highlight while top is still old value
                 s->top = s->sel - s->rows + 1;
-                wscrl(s->list_w, 1);
+                tui_scroll(s->list_w, 1);
                 ib_draw_row(s, s->sel, 1);     // new bottom row
             } else {
                 s->top = s->sel - s->rows + 1;
@@ -180,20 +171,19 @@ int ib_event_loop(struct ilog_browser *s) {
         }
 
         ib_redraw_info(s);
-        wnoutrefresh(s->list_w);
-        wnoutrefresh(s->info_w);
-        doupdate();  // one flush, no flicker
+        tui_update_window(s->list_w);
+        tui_update_window(s->info_w);
+        tui_update_screen();  // one flush, no flicker
     }
 
-    delwin(s->list_w);
-    delwin(s->info_w);
-    endwin();
-
+    tui_del_window(s->list_w);
+    tui_del_window(s->info_w);
+    tui_restore_screen();
     return rv;
 }
 
 void ib_loop(const char *ilog_filename) {
-    ib_install_signal_handler();
+    tui_init();
 
     struct ilog_browser _logfile = { };
     struct ilog_browser *s = &_logfile;
