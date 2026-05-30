@@ -53,7 +53,10 @@
 
 
 EM_JS(void, canvas_init, (int w, int h), {
-    Module.ctx = document.getElementById("screen").getContext("2d");
+    var canvas = document.getElementById("screen");
+    canvas.width = w;
+    canvas.height = h;
+    Module.ctx = canvas.getContext("2d");
     Module.ctx.imageSmoothingEnabled = false;
 });
 

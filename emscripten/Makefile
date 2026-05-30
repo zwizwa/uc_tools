@@ -13,10 +13,6 @@ CFLAGS=-I/$(UC_TOOLS_EM) -I/$(UC_TOOLS)
 
 EMCC=EM_CACHE=$(EM_CACHE) emcc
 
-# index.wasm: main.c
-# 	ls -l $(UC_TOOLS_EM)/mod_emscripten_console.c
-# 	$(EMCC)  $(CFLAGS) -MD -MF $(patsubst %.wasm,%.d,$@) main.c -o index.html -lwebsocket.js
-# 	cat index.d
 
 
 %.o: %.c

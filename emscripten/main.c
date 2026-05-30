@@ -5,12 +5,15 @@
 
 int main() {
 
-    canvas_init(640,480);
+    //canvas_init(640,480);
+    canvas_init(1280,640);
     canvas_init_font(IBM_VGA_8x16, 8, 16);
+    int fg = 7;
+    int bg = 0;
     for (int i=0; i<256; i++) {
-        int x = i % 16;
-        int y = i / 16;
-        canvas_put(x, y, i, 7, 0);
+        int x = i % 32;
+        int y = i / 32;
+        canvas_put(x, y, i, fg, bg);
     }
 
     // emscripten_console_init();
