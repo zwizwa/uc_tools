@@ -22,5 +22,5 @@ int main(int argc, char **argv) {
         LOG("usage: %s <ilog>\n", argv[0]);
         exit(1);
     }
-    ib_loop(argv[1]);
+    ib_loop(argv[1], 4);
 }

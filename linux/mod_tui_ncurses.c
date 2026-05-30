@@ -73,10 +73,14 @@ int tui_lines(void) {
 
 tui_window_t *tui_new_window(int width, int height, int x, int y) {
     tui_window_t *w = newwin(height, width, y, x);
+    return w;
+}
+tui_window_t *g_main_window;
+void tui_main_window(tui_window_t *w) {
+    g_main_window = w;
     keypad(w, TRUE);   // enable KEY_UP / KEY_F(n) etc.
     scrollok(w, TRUE); // permit hardware scrolling
     idlok(w, TRUE);
-    return w;
 }
 void tui_del_window(tui_window_t *w) {
     delwin(w);
@@ -93,8 +97,10 @@ void tui_scroll(tui_window_t *w, int lines) {
     wscrl(w, lines);
 }
 
-#define TUI_RESIZED -2  /* ERR is -1 */
-#define TUI_ERR ERR
+#define TUI_RESIZED   -2  /* ERR is -1 */
+#define TUI_BEGIN     -3
+#define TUI_END       -4
+#define TUI_ERR       ERR
 
 #define TUI_KEY_DOWN  KEY_DOWN
 #define TUI_KEY_UP    KEY_UP
@@ -119,6 +125,15 @@ int tui_get_event(tui_window_t *w) {
         }
     }
     else return ch;
+}
+
+typedef int (*tui_handle_fn)(void *, int ch);
+
+void tui_event_loop(tui_handle_fn handle,
+                    void *ctx) {
+    handle(ctx, TUI_BEGIN);
+    while(handle(ctx, tui_get_event(g_main_window)));
+    handle(ctx, TUI_END);
 }
 
 #endif

@@ -22,8 +22,10 @@
 #include "tag_u32.h"
 #define DEF_MAP DEF_TAG_U32_CONST_MAP_HANDLE
 
+typedef int (*tui_handle_fn)(void *, int ch);
+
 /* Global variables. */
-pthread_t g_tui_thread;
+tui_handle_fn g_handle;
 int g_tui_cols = 80;
 int g_tui_lines = 25;
 int g_next_id = 0;
@@ -34,12 +36,14 @@ int g_next_id = 0;
 struct tag_u32 *g_req;
 
 int key(struct tag_u32 *req) {
+    g_req = req;
     TAG_U32_UNPACK(req, 0, m, key_id) {
         return 0;
     }
     return -1;
 }
 int init(struct tag_u32 *req) {
+    g_req = req;
     TAG_U32_UNPACK(req, 0, m, key_id) {
         return 0;
     }
@@ -76,22 +80,6 @@ int handle_tag_u32(struct tag_u32 *req) {
     return 0;
 }
 
-
-
-void *tui_thread_main(void *arg) {
-    uint16_t port = 3456;
-    LOG("starting server on port %d\n", port);
-    webserver_loop(port);
-    exit(1); // not reached
-}
-
-void tui_init(void) {
-    void *arg = NULL;
-    pthread_create(
-        &g_tui_thread,
-        NULL /* attr */,
-        tui_thread_main, arg);
-}
 struct tui_window {
     int id;
     int w, h, x, y;
@@ -187,6 +175,7 @@ void tui_del_window(tui_window_t *w) {
    drawing commands are written directly to the canvas. */
 void tui_update_window(tui_window_t *w) { }
 void tui_update_screen(void) { }
+void tui_main_window(tui_window_t *w) { }
 
 void tui_scroll(tui_window_t *w, int lines) {
     SEND_REPLY_TAG_U32(
@@ -196,8 +185,10 @@ void tui_scroll(tui_window_t *w, int lines) {
         lines);
 }
 
-#define TUI_RESIZED   -2  /* ERR is -1 */
 #define TUI_ERR       -1
+#define TUI_RESIZED   -2  /* ERR is -1 */
+#define TUI_BEGIN     -3
+#define TUI_END       -4
 
 #define TUI_KEY_DOWN   1
 #define TUI_KEY_UP     2
@@ -208,10 +199,17 @@ void tui_scroll(tui_window_t *w, int lines) {
 #define TUI_KEY_F(n)   (0x10 + ((n)&15))
 
 
-/* Note that in most applications the w argument can probably be ignored. */
-int tui_get_event(tui_window_t *w) {
-    sleep(1);
-    return TUI_ERR;
+
+void tui_init(void) {
+}
+
+void tui_event_loop(tui_handle_fn handle,
+                    void *ctx) {
+
+    g_handle = handle;
+    uint16_t port = 3456;
+    LOG("starting server on port %d\n", port);
+    webserver_loop(port);
 }
 
 #endif
