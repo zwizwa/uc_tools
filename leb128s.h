@@ -19,6 +19,10 @@
 #define LEB128S_ERROR_ALLOC 1
 #define LEB128S_ERROR_UNKNOWN_TAG 2
 
+// #define LEB128S_LOG(fmt,...) LOG("leb128s: " fmt, __VA_ARGS__)
+#define LEB128S_LOG(fmt,...)
+
+
 /* Byte stream representing LEB128-based tree encoding.  Use a short
    name for the struct and the function prefix, as it is used a
    lot. */
@@ -67,6 +71,8 @@ static inline struct tag_u32 *leb128s_read_tag_u32(
     struct leb128s *s, struct tag_u32 *msg, int32_t *tags, int32_t nb_tags) {
 
     msg->nb_from = LEB128S_I32(s, NULL);
+    LEB128S_LOG("nb_from=%d\n", msg->nb_from);
+
     if (msg->nb_from >= (uint32_t)nb_tags) goto alloc_error;
     msg->from = (uint32_t*)leb128s_i32_array(s, msg->nb_from, tags); OR_ABORT(s, NULL);
 
@@ -76,10 +82,14 @@ static inline struct tag_u32 *leb128s_read_tag_u32(
     nb_tags -= msg->nb_from;
 
     msg->nb_args = LEB128S_I32(s, NULL);
+    LEB128S_LOG("nb_args=%d\n", msg->nb_args);
+
     if (msg->nb_args >= (uint32_t)nb_tags) goto alloc_error;
     msg->args = (uint32_t*)leb128s_i32_array(s, msg->nb_args, tags); OR_ABORT(s, NULL);
 
     msg->nb_bytes = LEB128S_I32(s, NULL);
+    LEB128S_LOG("nb_bytes=%d\n", msg->nb_bytes);
+
     msg->bytes = s->buf + s->offset;
     s->offset += msg->nb_bytes;
 
@@ -129,6 +139,7 @@ static inline struct tag_u32 *leb128s_read_tag_u32(
 
 static inline leb128_id_t leb128s_element(struct leb128s *s) {
     int32_t tag = leb128s_i32(s); OR_ABORT(s, 0);
+    LEB128S_LOG("tag=%d\n", tag);
     ASSERT(s->env);
     switch(tag) {
     case T_INT: {

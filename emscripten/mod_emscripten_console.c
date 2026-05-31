@@ -145,32 +145,44 @@ EM_JS(void, canvas_scroll, (int top, int bottom, int n, int cw, int ch), {
     c.drawImage(cv, 0, y0+dy, cv.width, h, 0, y0, cv.width, h);
 });
 
+#include "uct_byteswap.h"
+
+typedef void (*ws_fn)(EMSCRIPTEN_WEBSOCKET_T s, void *ctx);
+ws_fn  g_ws_on_open;
+void  *g_ws_on_open_ctx;
+
 
 EM_BOOL on_open(int t, const EmscriptenWebSocketOpenEvent *e, void *u) {
-    printf("connection open\n");
+    printf("connection open, sending init\n");
+    g_ws_on_open(e->socket, g_ws_on_open_ctx);
+
     return EM_TRUE;
 }
 
 EM_BOOL on_message(int t, const EmscriptenWebSocketMessageEvent *e, void *u) {
     if (e->isText) {
-        // text payloads are null-terminated by Emscripten, so %s is safe
-        printf("received: %s\n", e->data);
-        if (strcmp((const char *)e->data, "ping") == 0) {
-            emscripten_websocket_send_utf8_text(e->socket, "pong");
-            printf("sent: pong\n");
+        LOG("WARNING: on_message: text not supported: %s\n", e->data);
+    }
+    else {
+        LOG("on_message: %d\n", e->numBytes);
+        for (int i=0; i<e->numBytes; i++) {
+            LOG(" %d", e->data[i]);
         }
+        LOG("\n");
     }
     return EM_TRUE;
 }
 
-int emscripten_console_init() {
+int emscripten_console_init(const char *ws_url, ws_fn ws_on_open, void *ctx) {
+    g_ws_on_open     = ws_on_open;
+    g_ws_on_open_ctx = ctx;
     if (!emscripten_websocket_is_supported()) {
         printf("websockets not supported\n");
         return 1;
     }
     EmscriptenWebSocketCreateAttributes attr;
     emscripten_websocket_init_create_attributes(&attr);
-    attr.url = "ws://localhost:8765";
+    attr.url = ws_url;
 
     EMSCRIPTEN_WEBSOCKET_T sock = emscripten_websocket_new(&attr);
     emscripten_websocket_set_onopen_callback(sock, NULL, on_open);

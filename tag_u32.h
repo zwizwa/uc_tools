@@ -99,8 +99,14 @@ static inline void send_reply_tag_u32_maybe(
             req->reply(req, rpl);
         }
         else {
-            LOG("tag_u32_reply not supported\n");
+            LOG("WARNING: tag_u32_reply not supported\n");
         }
+    }
+    else {
+        /* I don't remember exactly why this degenerate case is not
+           supported, but let's just keep it in and make it fatal for
+           now. */
+        LOG("WARNING: tag_u32_reply needs req->nb_from>0\n");
     }
 }
 
@@ -256,6 +262,19 @@ int handle_tag_u32_map_dynamic(struct tag_u32 *req,
     DEF_TAG_U32_MAP_HANDLE(fun_name, fun_name##_map)                    \
 
 
+static inline void log_req(const char *str, struct tag_u32 *req) {
+    LOG("%s nb_args=%d, nb_bytes=%d\n", str, (int)req->nb_args, (int)req->nb_bytes);
+    if (req->nb_args > 0) {
+        LOG(" - args: ");
+        for(int i=0; i<req->nb_args; i++)  LOG(" %d", (int)req->args[i]);
+        LOG("\n");
+    }
+    if (req->nb_bytes > 0) {
+        LOG(" - bytes:");
+        for(int i=0; i<req->nb_bytes; i++) LOG(" %d", (int)req->bytes[i]);
+        LOG("\n");
+    }
+}
 
 
 

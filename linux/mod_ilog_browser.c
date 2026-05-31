@@ -5,9 +5,7 @@
    - plain ncurses
    - the emscripten browser canvas websocket thing
 
-   This uses the minimal mod_tui interface.  Note that we use it in a
-   blocking way.  On kernel.c and bare metal uc it will be necessary
-   to implement the controller as event-driven code.
+   This uses the minimal mod_tui interface.
 */
 
 #ifndef MOD_TUI
@@ -180,6 +178,7 @@ void ib_end(struct ilog_browser *s) {
 
 int ib_handle_event(void *ctx, int ch) {
     struct ilog_browser *s = ctx;
+    LOG("ib_handle_event %d\n", ch);
 
     switch(ch) {
         /* TUI_BEGIN / TUI_END are handled as events because the begin

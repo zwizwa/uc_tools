@@ -22,6 +22,7 @@ struct msg_ctx {
 };
 
 void reply_tag_u32(const struct tag_u32 *req, const struct tag_u32 *rpl) {
+    LEB128S_LOG("reply nb_args%s", rpl->nb_args);
     struct blocking_io *io = req->reply_ctx;
     ASSERT(io);
 
