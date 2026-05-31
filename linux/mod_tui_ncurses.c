@@ -117,11 +117,13 @@ int tui_get_event(tui_window_t *w) {
     int ch = wgetch(w);
     if (ch == ERR) {
         if (tui_resized) {
+            //LOG("resized\n");
+            //sleep(1);
             tui_resized = 0;
             return TUI_RESIZED;
         }
         else {
-            return TUI_ERR;
+            return TUI_RESIZED;
         }
     }
     else return ch;

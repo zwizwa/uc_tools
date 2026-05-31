@@ -67,20 +67,9 @@ void ib_redraw_info(struct ilog_browser *s) {
 #define IB_HANDLE_ERROR    2
 #define IB_HANDLE_QUIT     3
 
-int ib_handle_event(struct ilog_browser *s, int ch) {
+void ib_handle_key_event(struct ilog_browser *s, int ch) {
     int old = s->sel;
     int last = ib_nb_items(s)-1;
-
-    /* Control. */
-    if (ch == TUI_RESIZED) {
-        return IB_HANDLE_RESIZED;
-    }
-    if (ch == TUI_ERR) {
-        return IB_HANDLE_ERROR;
-    }
-    if (ch == 'q') {
-        return IB_HANDLE_QUIT;
-    }
 
     /* Regular keys. */
     if (ch == TUI_KEY_DOWN && s->sel < last) {
@@ -111,7 +100,7 @@ int ib_handle_event(struct ilog_browser *s, int ch) {
     //  else if (ch == TUI_KEY_F(1)) { handle_f1(...); }
     else {
         // other keys don't update layout
-        return IB_HANDLE_CONTINUE;
+        return;
     }
 
     // Has the selection scrolled off the visible window? */
@@ -149,12 +138,9 @@ int ib_handle_event(struct ilog_browser *s, int ch) {
     tui_update_window(s->info_w);
     tui_update_screen();  // one flush, no flicker
 
-    return IB_HANDLE_CONTINUE;
 }
 
 
-// initialize screen, handle events, restore screen
-// exits on 'q' or SIGWINCH
 
 void ib_begin(struct ilog_browser *s) {
     tui_init_screen();
@@ -192,29 +178,28 @@ void ib_end(struct ilog_browser *s) {
 
 */
 
-int ib_handle_event_outer(void *ctx, int ch) {
+int ib_handle_event(void *ctx, int ch) {
     struct ilog_browser *s = ctx;
 
-    /* These are handled as events because the begin and end sequence
-       cannot be sent if there is no tui connection yet. */
     switch(ch) {
+        /* TUI_BEGIN / TUI_END are handled as events because the begin
+           and end sequence cannot be sent if there is no tui
+           connection yet. */
     case TUI_BEGIN: ib_begin(s); return 1;
     case TUI_END:   ib_end(s);   return 1;
-    default: break;
-    }
-
-    int next = ib_handle_event(s, ch);
-    switch (next) {
-    case IB_HANDLE_CONTINUE: return 1;
-    case IB_HANDLE_ERROR:    return 0;
-    case IB_HANDLE_QUIT:     return 0;
-    case IB_HANDLE_RESIZED:
+        /* RESIZE, ERR, and quite are special. */
+    case TUI_RESIZED:
         ib_end(s);
         ib_begin(s);
         return 1;
-    default :
-        ERROR("unknown ib_handle_event next = %d\n", next);
+    case TUI_ERR:
         return 0;
+    case 'q':
+        return 0;
+    default:
+        /* The rest are ordinary key commands that update the tui. */
+        ib_handle_key_event(s, ch);
+        return 1;
     }
 }
 
@@ -232,7 +217,7 @@ void ib_loop(const char *ilog_filename, int info_h) {
     struct ilog_browser _logfile = { };
     struct ilog_browser *s = &_logfile;
     ib_init(s, ilog_filename, info_h);
-    tui_event_loop(ib_handle_event_outer, s);
+    tui_event_loop(ib_handle_event, s);
 }
 
 
