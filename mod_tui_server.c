@@ -2,10 +2,6 @@
 #define MOD_TUI_SERVER
 
 
-void tui_string_at(tui_window_t *w,
-                   int x, int y,
-                   int width,
-                   const char *str);
 
 /* Serve the TAG_U32 TUI protocol. */
 /* Handle draw commands. */
@@ -17,36 +13,31 @@ struct tui_window *assert_window(uint32_t wid) {
 
 
 int draw(struct tag_u32 *req) {
-    /* HARDCODED */
+    /* Optional */
     TAG_U32_MATCH(req, TUI_CMD_INIT_SCREEN, m, cols, lines) {
         // LOG("init_screen: %d %d\n", m->cols, m->lines);
-        canvas_init(8 * m->cols, 16 * m->lines);
-        return 0;
-    }
-    TAG_U32_MATCH(req, TUI_CMD_NEW_WINDOW, m, wid, w, h, x, y) {
-        LOG("new_window: %d %d %d %d %d\n", m->w, m->h, m->x, m->y, m->wid);
-        struct tui_window win = {
-            .id = m->wid,
-            .w  = m->w,
-            .h  = m->h,
-            .x  = m->x,
-            .y  = m->y,
-        };
-        ASSERT(m->wid < TUI_MAX_NB_WINDOWS);
-        ASSERT(!window[m->wid]);
-        window[m->wid] = malloc(sizeof(win));
-        (*window[m->wid]) = win;
-        return 0;
-    }
-    TAG_U32_MATCH(req, TUI_CMD_DEL_WINDOW, m, wid) {
-        LOG("new_window: %d\n", m->wid);
-        ASSERT(m->wid < TUI_MAX_NB_WINDOWS);
-        ASSERT(window[m->wid]);
-        free(window[m->wid]);
-        window[m->wid] = NULL;
+        tui_init_screen(m->cols, m->lines);
         return 0;
     }
 
+    /* Client side is doing window ID allocation and we just follow.
+       The TUI_MAX_NB_WINDOWS is shared via tui_cmd.h */
+    TAG_U32_MATCH(req, TUI_CMD_NEW_WINDOW, m, wid, w, h, x, y) {
+        // LOG("new_window: %d %d %d %d %d\n", m->w, m->h, m->x, m->y, m->wid);
+        ASSERT(m->wid < TUI_MAX_NB_WINDOWS);
+        ASSERT(!window[m->wid]);
+        window[m->wid] = tui_new_window(m->w,m->h,m->x,m->y);
+        struct tui_window *w = assert_window(m->wid);
+        w->id = m->wid;
+        return 0;
+    }
+    TAG_U32_MATCH(req, TUI_CMD_DEL_WINDOW, m, wid) {
+        // LOG("del_window: %d\n", m->wid);
+        struct tui_window *w = assert_window(m->wid);
+        tui_del_window(w);
+        window[m->wid] = NULL;
+        return 0;
+    }
 
     /* GENERIC */
     TAG_U32_MATCH(req, TUI_CMD_STRING_AT, m, wid, x, y, width) {

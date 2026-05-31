@@ -16,10 +16,14 @@
 
 /* This is understood at the browser and server end. */
 struct tui_window {
-    int id;
-    int w, h, x, y;
-    int reverse_video:1;
+    uint32_t id;
+    uint32_t w, h, x, y;
+    uint32_t fg, bg;
+    uint32_t reverse_video:1;
 };
 typedef struct tui_window tui_window_t;
+
+#define TUI_DEFAULT_FG 7
+#define TUI_DEFAULT_BG 0
 
 #endif

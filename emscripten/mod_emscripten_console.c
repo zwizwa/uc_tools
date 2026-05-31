@@ -173,6 +173,11 @@ EM_BOOL on_open(int t, const EmscriptenWebSocketOpenEvent *e, void *u) {
 /* mod_tui_framebuffer defines tui api in terms of tui_put()
    which is just modeled after canvas_put here.  */
 #define tui_put canvas_put
+void tui_init_screen(int cols, int lines) {
+    canvas_init(8 * cols, 16 * lines);
+}
+
+
 #include "mod_tui_framebuffer.c"
 /* mod_tui_server defines a tag_u32 tui server in terms of local tui C api */
 #include "mod_tui_server.c"
