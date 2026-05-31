@@ -19,11 +19,16 @@
 #include "mod_websocket_leb128s.c"
 #include "sha1.c"
 
-/* Note that the code in mod_tui_canvas is just a bridge between TUI C
-   API and TAG_U32.  It is now hard-coded to websocket_leb128s.c but
-   any other TAG_U32 endpoint could be driven.  This is why the core
-   is separate. */
-#include "mod_tui_tag_u32.c"
+/* TAG_U32 transport is provided by the modules above.
+
+   The module below handles the C api to TAG_U32 protocol conversion,
+   i.e. a terminal client that issues drawing commands.
+
+   Note that client/server is reversed in the TCP sense: we have the
+   display server (web browser) conenct to a TCP deamon.
+*/
+
+#include "mod_tui_client.c"
 
 
 void tui_event_loop(tui_handle_fn handle,

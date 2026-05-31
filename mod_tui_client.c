@@ -1,12 +1,12 @@
-/* Bridge tui C api to tag_u32 protocol.
+/* Bridge tui C api to tag_u32 protocol, client side.
 
    provides: handle_tag_u32()     to handle tag_u32 messages
    uses:     req->repl(req, rpl)  to send tag_u32 replies
 
    See mod_tui_canvas.c */
 
-#ifndef MOD_TUI_TAG_U32
-#define MOD_TUI_TAG_U32
+#ifndef MOD_TUI_CLIENT
+#define MOD_TUI_CLIENT
 
 #include "tui_cmd.h"
 

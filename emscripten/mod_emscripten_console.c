@@ -170,87 +170,13 @@ EM_BOOL on_open(int t, const EmscriptenWebSocketOpenEvent *e, void *u) {
     return EM_TRUE;
 }
 
-/* Handle draw commands. */
-int draw(struct tag_u32 *req) {
-    TAG_U32_MATCH(req, TUI_CMD_STRING_AT, m, wid, x, y, width) {
-        ASSERT(m->wid < TUI_MAX_NB_WINDOWS);
-        ASSERT(window[m->wid]);
-        uint32_t dx = window[m->wid]->x;
-        uint32_t dy = window[m->wid]->y;
+/* mod_tui_framebuffer defines tui api in terms of tui_put()
+   which is just modeled after canvas_put here.  */
+#define tui_put canvas_put
+#include "mod_tui_framebuffer.c"
+/* mod_tui_server defines a tag_u32 tui server in terms of local tui C api */
+#include "mod_tui_server.c"
 
-        // LOG("string_at: %d %d %d %d\n", m->w, m->x, m->y, m->width);
-        for (uint32_t i=0; i<req->nb_bytes; i++) {
-            // FIXME: clip!
-            canvas_put(m->x + dx + i,
-                       m->y + dy,
-                       req->bytes[i],
-                       7, 0);
-        }
-        return 0;
-    }
-    TAG_U32_MATCH(req, TUI_CMD_REVERSE_VIDEO, m, wid, mode) {
-        LOG("reverse_video: %d %d\n", m->wid, m->mode);
-        return 0;
-    }
-    TAG_U32_MATCH(req, TUI_CMD_CLEAR, m, wid) {
-        // LOG("clear: %d\n", m->wid);
-        ASSERT(m->wid < TUI_MAX_NB_WINDOWS);
-        struct tui_window *w = window[m->wid];
-        ASSERT(w);
-        for (uint32_t c = 0; c < w->w; c++) {
-        for (uint32_t r = 0; r < w->h; r++) {
-            canvas_put(w->x + c,
-                       w->y + r,
-                       ' ', 7, 0);
-        }
-        }
-        return 0;
-    }
-    TAG_U32_MATCH(req, TUI_CMD_BOX, m, wid) {
-        LOG("box: %d\n", m->wid);
-        return 0;
-    }
-    TAG_U32_MATCH(req, TUI_CMD_INIT_SCREEN, m, cols, lines) {
-        // LOG("init_screen: %d %d\n", m->cols, m->lines);
-        canvas_init(8 * m->cols, 16 * m->lines);
-        return 0;
-    }
-    TAG_U32_MATCH(req, TUI_CMD_NEW_WINDOW, m, wid, w, h, x, y) {
-        LOG("new_window: %d %d %d %d %d\n", m->w, m->h, m->x, m->y, m->wid);
-        struct tui_window win = {
-            .id = m->wid,
-            .w  = m->w,
-            .h  = m->h,
-            .x  = m->x,
-            .y  = m->y,
-        };
-        ASSERT(m->wid < TUI_MAX_NB_WINDOWS);
-        ASSERT(!window[m->wid]);
-        window[m->wid] = malloc(sizeof(win));
-        (*window[m->wid]) = win;
-        return 0;
-    }
-    TAG_U32_MATCH(req, TUI_CMD_DEL_WINDOW, m, wid) {
-        LOG("new_window: %d\n", m->wid);
-        ASSERT(m->wid < TUI_MAX_NB_WINDOWS);
-        ASSERT(window[m->wid]);
-        free(window[m->wid]);
-        window[m->wid] = NULL;
-        return 0;
-    }
-    TAG_U32_MATCH(req, TUI_CMD_SCROLL_WINDOW, m, wid, lines) {
-        LOG("scroll_windows: %d %d\n", m->wid, m->lines);
-        return 0;
-    }
-    log_req("draw: ", req);
-    return 0;
-}
-#define DEF_MAP DEF_TAG_U32_CONST_MAP_HANDLE
-
-DEF_MAP(
-    map_root,
-    /* 0 */ {"draw", "cmd", draw},
-    )
 
 leb128_id_t push_tag_u32(struct leb128s *s, struct tag_u32 *msg) {
     if (0) {
