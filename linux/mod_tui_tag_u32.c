@@ -8,6 +8,8 @@
 #ifndef MOD_TUI_TAG_U32
 #define MOD_TUI_TAG_U32
 
+#include "tui_cmd.h"
+
 #include "tag_u32.c"
 #include "tag_u32.h"
 #define DEF_MAP DEF_TAG_U32_CONST_MAP_HANDLE
@@ -27,12 +29,31 @@
 
 typedef int (*tui_handle_fn)(void *, int ch);
 
+/* To avoid back&forth we do the window id allocation at this end. */
+/* Buffer allocation stack type. */
+typedef struct {
+    uint8_t top;
+    uint8_t stack[TUI_MAX_NB_WINDOWS];
+} win_free_stack_t;
+typedef uint8_t win_free_element_t;
+#define NS(s) win_free##s
+#include "ns_stack.h"
+#undef NS
+
+
 /* Global variables. */
-tui_handle_fn g_handle;
-void         *g_handle_ctx;
-int           g_tui_cols = 80;
-int           g_tui_lines = 25;
-int           g_next_id = 0;
+tui_handle_fn    g_handle;
+void            *g_handle_ctx;
+int              g_tui_cols = 80;
+int              g_tui_lines = 25;
+win_free_stack_t g_win_free;
+void win_free_provision(void) {
+    win_free_init(&g_win_free);
+    for (int i=TUI_MAX_NB_WINDOWS-1; i>=0; i--) {
+        win_free_push(&g_win_free, i);
+    }
+}
+
 
 /* Events are always initiated at the browser end, e.g. it sends a key
    event as a tag_u32 request.  All drawing code in this module runs
@@ -87,22 +108,6 @@ int handle_tag_u32(struct tag_u32 *req) {
     }
     return 0;
 }
-
-struct tui_window {
-    int id;
-    int w, h, x, y;
-    int reverse_video:1;
-};
-typedef struct tui_window tui_window_t;
-
-#define TUI_CMD_STRING_AT     1
-#define TUI_CMD_REVERSE_VIDEO 2
-#define TUI_CMD_CLEAR         3
-#define TUI_CMD_BOX           4
-#define TUI_CMD_INIT_SCREEN   5
-#define TUI_CMD_NEW_WINDOW    6
-#define TUI_CMD_DEL_WINDOW    7
-#define TUI_CMD_SCROLL_WINDOW 8
 
 void tui_reverse_video(tui_window_t *w, int mode) {
     SEND_REPLY_TAG_U32(
@@ -164,7 +169,7 @@ tui_window_t *tui_new_window(int width, int height, int x, int y) {
     w->w = width;
     w->x = x;
     w->y = y;
-    w->id = g_next_id++;
+    w->id = win_free_pop(&g_win_free);
     SEND_REPLY_TAG_U32(
         g_req,
         TUI_CMD_NEW_WINDOW,
@@ -177,6 +182,7 @@ void tui_del_window(tui_window_t *w) {
         g_req,
         TUI_CMD_DEL_WINDOW,
         w->id);
+    win_free_push(&g_win_free, w->id);
     free(w);
 }
 /* Update per window (internal) state and per screen are nop: all
@@ -193,6 +199,8 @@ void tui_scroll(tui_window_t *w, int lines) {
         lines);
 }
 
-
+void tui_init(void) {
+    win_free_provision();
+}
 
 #endif

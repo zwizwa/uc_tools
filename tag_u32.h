@@ -103,9 +103,9 @@ static inline void send_reply_tag_u32_maybe(
         }
     }
     else {
-        /* I don't remember exactly why this degenerate case is not
-           supported, but let's just keep it in and make it fatal for
-           now. */
+        /* The special case req->nb_from == 0 means that the requestor
+           doesn't want a reply back.  This is used for asynchronous
+           messages. */
         LOG("WARNING: tag_u32_reply needs req->nb_from>0\n");
     }
 }

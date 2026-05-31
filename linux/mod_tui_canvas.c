@@ -26,9 +26,6 @@
 #include "mod_tui_tag_u32.c"
 
 
-void tui_init(void) {
-}
-
 void tui_event_loop(tui_handle_fn handle,
                     void *ctx) {
 
