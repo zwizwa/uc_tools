@@ -61,7 +61,7 @@ void win_free_provision(void) {
 struct tag_u32 *g_req;
 
 int key(struct tag_u32 *req) {
-    log_req("key: ", req);
+    log_tag_u32("key: ", req);
     g_req = req;
     TAG_U32_UNPACK(req, 0, m, key_id) {
         return 0;
@@ -73,7 +73,7 @@ int key(struct tag_u32 *req) {
 int init(struct tag_u32 *req) {
     if ((req->nb_args > 0) || (req->nb_bytes > 0)) {
         /* Best to do verbose logging if there is anything out of the ordinary. */
-        log_req("WARNING: tui_canvas_init: ", req);
+        log_tag_u32("WARNING: tui_canvas_init: ", req);
     }
     ASSERT(g_handle);
     g_handle(g_handle_ctx, TUI_BEGIN);
@@ -90,11 +90,7 @@ DEF_MAP(
 int handle_tag_u32(struct tag_u32 *req) {
     g_req = req;
     if (0) {
-        LOG("handle_tag_u32: (%d)", req->nb_args);
-        for (uint32_t i=0; i<req->nb_args; i++) {
-            LOG(" %d", req->args[i]);
-        }
-        LOG("\n");
+        log_tag_u32("tui_client:", req);
     }
     int rv = map_root(req);
     if (rv) {

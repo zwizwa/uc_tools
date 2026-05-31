@@ -73,7 +73,7 @@ int draw(struct tag_u32 *req) {
         tui_scroll(w, m->lines);
         return 0;
     }
-    log_req("draw: ", req);
+    log_tag_u32("tui_server: draw:", req);
     return 0;
 }
 #define DEF_MAP DEF_TAG_U32_CONST_MAP_HANDLE

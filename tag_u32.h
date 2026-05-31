@@ -82,6 +82,26 @@ struct tag_u32 {
 #define TAG_U32_ERROR_SIZE -2  // Inconsistent size fields
 
 
+static inline void log_tag_u32(const char *str, const struct tag_u32 *req) {
+    LOG("%s nb_from=%d ,nb_args=%d, nb_bytes=%d\n",
+        str, (int)req->nb_from, (int)req->nb_args, (int)req->nb_bytes);
+    if (req->nb_from > 0) {
+        LOG(" - from: ");
+        for(int i=0; i<req->nb_from; i++)  LOG(" %d", (int)req->from[i]);
+        LOG("\n");
+    }
+    if (req->nb_args > 0) {
+        LOG(" - args: ");
+        for(int i=0; i<req->nb_args; i++)  LOG(" %d", (int)req->args[i]);
+        LOG("\n");
+    }
+    if (req->nb_bytes > 0) {
+        LOG(" - bytes:");
+        for(int i=0; i<req->nb_bytes; i++) LOG(" %d", (int)req->bytes[i]);
+        LOG("\n");
+    }
+}
+
 int tag_u32_dispatch(tag_u32_handle_fn handler,
                      tag_u32_reply_fn reply,
                      void *context,
@@ -99,14 +119,16 @@ static inline void send_reply_tag_u32_maybe(
             req->reply(req, rpl);
         }
         else {
-            LOG("WARNING: tag_u32_reply not supported\n");
+            LOG("WARNING: tag_u32_reply not supported (req = %p)\n", req);
         }
     }
     else {
         /* The special case req->nb_from == 0 means that the requestor
            doesn't want a reply back.  This is used for asynchronous
            messages. */
-        LOG("WARNING: tag_u32_reply needs req->nb_from>0\n");
+        LOG("\nWARNING: tag_u32_reply needs req->nb_from>0\n");
+        log_tag_u32("- req:", req);
+        log_tag_u32("- rpl:", rpl);
     }
 }
 
@@ -123,7 +145,26 @@ static inline void send_reply_tag_u32_maybe(
 
 
 /* This assumes reply_tag_u32 supports req==NULL to send a plain message. */
-#define SEND_TAG_U32(...) SEND_REPLY_TAG_U32(NULL, __VA_ARGS__)
+
+/* Note 2026-05-31 this has to be a bug because the expansion
+   dereferences that NULL pointer, so I'm concluding this isn't used
+   anywhere.  Commenting out the old one and rebuilding in terms of
+   send_tag_u32().  See comment in mod_emscripten_console.c */
+// #define SEND_TAG_U32(...) SEND_REPLY_TAG_U32(NULL, __VA_ARGS__)
+
+/* The struct allowed to be written in place.
+   This is to let the last step add or change the from address. */
+#define SEND_TAG_U32_BYTES(b, nb, ...) {                        \
+        uint32_t a[] = { __VA_ARGS__ };                         \
+        struct tag_u32 s = {                                    \
+            .args = a, .nb_args = sizeof(a)/sizeof(uint32_t),   \
+            .bytes = b, .nb_bytes = nb,                         \
+        };                                                      \
+        send_tag_u32(&s);                                       \
+}
+#define SEND_TAG_U32(...) \
+    SEND_TAG_U32_BYTES(NULL, 0, __VA_ARGS__)
+
 
 
 /* Some wrappers around send_reply_tag_u32_maybe() for often used
@@ -262,19 +303,6 @@ int handle_tag_u32_map_dynamic(struct tag_u32 *req,
     DEF_TAG_U32_MAP_HANDLE(fun_name, fun_name##_map)                    \
 
 
-static inline void log_req(const char *str, struct tag_u32 *req) {
-    LOG("%s nb_args=%d, nb_bytes=%d\n", str, (int)req->nb_args, (int)req->nb_bytes);
-    if (req->nb_args > 0) {
-        LOG(" - args: ");
-        for(int i=0; i<req->nb_args; i++)  LOG(" %d", (int)req->args[i]);
-        LOG("\n");
-    }
-    if (req->nb_bytes > 0) {
-        LOG(" - bytes:");
-        for(int i=0; i<req->nb_bytes; i++) LOG(" %d", (int)req->bytes[i]);
-        LOG("\n");
-    }
-}
 
 
 

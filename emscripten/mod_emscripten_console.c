@@ -141,12 +141,64 @@ EM_JS(void, canvas_scroll, (int top, int bottom, int n, int cw, int ch), {
     c.drawImage(cv, 0, y0+dy, cv.width, h, 0, y0, cv.width, h);
 });
 
+// reply/send_tag_u32 similar to mod_websocket_leb128s.c
+#define WEBSOCKET_MSG_BUF 1024 // FIXME
+void reply_tag_u32(const struct tag_u32 *req, const struct tag_u32 *rpl) {
+    uint8_t buf[WEBSOCKET_MSG_BUF];
+    struct leb128s s = {
+        .buf = buf,
+        .len = sizeof(buf)
+    };
+    leb128s_write_i32(&s, T_TAG);              if(s.error) goto error;
+    leb128s_write_tag_u32_reply(&s, req, rpl); if(s.error) goto error;
+    //log_hex("enc: ", s.offset, buf);
+    emscripten_websocket_send_binary(g_sock, s.buf, s.len);
+    return;
+  error:
+    LOG("leb128 write error %x\n", (unsigned int)s.error);
+    return;
+}
+void send_tag_u32_(const struct tag_u32 *msg) {
+    uint8_t buf[WEBSOCKET_MSG_BUF];
+    struct leb128s s = {
+        .buf = buf,
+        .len = sizeof(buf)
+    };
+    leb128s_write_i32(&s, T_TAG);   if(s.error) goto error;
+    leb128s_write_tag_u32(&s, msg); if(s.error) goto error;
+    //log_hex("enc: ", s.offset, buf);
+    emscripten_websocket_send_binary(g_sock, s.buf, s.len);
+    return;
+  error:
+    LOG("leb128 write error %x\n", (unsigned int)s.error);
+    return;
+}
+void send_tag_u32(const struct tag_u32 *msg) {
+    if (msg->nb_from == 0) {
+        /* Other side is not allowed to reply if from is empty.  I do
+           not want to change this constraint which probably is
+           load-baring in some old code.  The real solution is to fill
+           this in at place where the messages originates.  I just
+           want to get it to work.  FIXME remove this workaround. */
+        struct tag_u32 new_msg = *msg;
+        const uint32_t from[] = {0};
+        new_msg.from = from;
+        new_msg.nb_from = ARRAY_SIZE(from);
+        send_tag_u32_(&new_msg);
+    }
+    else {
+        send_tag_u32_(msg);
+    }
+}
+
+
 EMSCRIPTEN_KEEPALIVE
 void on_key(int keycode) {
     LOG("on_key %d\n", keycode);
 
     // FIXME: Don't send raw leb128.  Use a send macro.
 
+#if 0
     int8_t msg[] = {
         T_TAG,
         // Empty from, no reply expected.
@@ -157,6 +209,9 @@ void on_key(int keycode) {
         0,
     };
     emscripten_websocket_send_binary(g_sock, msg, sizeof(msg));
+#else
+    SEND_TAG_U32(1, keycode);
+#endif
 
 }
 EM_JS(void, register_events, (void), {

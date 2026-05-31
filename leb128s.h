@@ -212,6 +212,7 @@ static inline void leb128s_write_bytes(struct leb128s *s, uint32_t len, const ui
    elements, which are not tagged individually. */
 
 static inline void leb128s_write_tag_u32(struct leb128s *s, const struct tag_u32 *msg) {
+    //LOG("leb128s_write_tag_u32 %d %d\n", msg->nb_from, msg->nb_args);
 
     LEB128S_WRITE_I32(s, msg->nb_from);
     leb128s_write_i32_array(s, msg->nb_from, (const int32_t*)msg->from);
