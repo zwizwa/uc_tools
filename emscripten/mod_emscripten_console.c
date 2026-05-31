@@ -56,6 +56,8 @@
 #include "tag_u32.h"
 #include "tui_cmd.h"
 
+EMSCRIPTEN_WEBSOCKET_T g_sock;
+
 void abort_busyloop(void) {
     /* Where is this coming from? */
     LOG("FIXME: abort_busyloop()\n");
@@ -131,22 +133,6 @@ EM_JS(void, canvas_put, (int x, int y, int code, int fg, int bg), {
 
 
 
-#if 0
-// Draw one glyph cell. Here using fillRect bg + fillText fg for simplicity;
-// swap fillText for your atlas blit later.
-EM_JS(void, canvas_put, (int x, int y, int cw, int ch, int code, int fg, int bg), {
-    var c = Module.ctx;
-    var palette = ["#000","#00a","#0a0","#0aa","#a00","#a0a","#a50","#aaa",
-                   "#555","#55f","#5f5","#5ff","#f55","#f5f","#ff5","#fff"];
-    c.fillStyle = palette[bg];
-    c.fillRect(x*cw, y*ch, cw, ch);
-    c.fillStyle = palette[fg];
-    c.font = ch + "px monospace";
-    c.textBaseline = "top";
-    c.fillText(String.fromCharCode(code), x*cw, y*ch);
-});
-#endif
-
 
 // Self-blit scroll: copy region up by n rows, no per-cell redraw.
 EM_JS(void, canvas_scroll, (int top, int bottom, int n, int cw, int ch), {
@@ -154,6 +140,32 @@ EM_JS(void, canvas_scroll, (int top, int bottom, int n, int cw, int ch), {
     var y0 = top*ch, h = (bottom-top+1-n)*ch, dy = n*ch;
     c.drawImage(cv, 0, y0+dy, cv.width, h, 0, y0, cv.width, h);
 });
+
+EMSCRIPTEN_KEEPALIVE
+void on_key(int keycode) {
+    LOG("on_key %d\n", keycode);
+
+    // FIXME: Don't send raw leb128.  Use a send macro.
+
+    int8_t msg[] = {
+        T_TAG,
+        // Empty from, no reply expected.
+        0,
+        // To address.  We are talking to DEF_MAP(map_root, ...) in mod_tui_canvas.c
+        2, 1, keycode, /* event + keycode */
+        // Raw byte payload
+        0,
+    };
+    emscripten_websocket_send_binary(g_sock, msg, sizeof(msg));
+
+}
+EM_JS(void, register_events, (void), {
+    const onKey = Module.cwrap("on_key", null, ["number"]);
+    console.log(onKey);
+    window.addEventListener("keydown", (e) => { onKey(e.keyCode); });
+});
+
+
 
 #include "uct_byteswap.h"
 
@@ -245,9 +257,12 @@ int emscripten_console_init(const char *ws_url, ws_fn ws_on_open, void *ctx) {
     emscripten_websocket_init_create_attributes(&attr);
     attr.url = ws_url;
 
-    EMSCRIPTEN_WEBSOCKET_T sock = emscripten_websocket_new(&attr);
-    emscripten_websocket_set_onopen_callback(sock, NULL, on_open);
-    emscripten_websocket_set_onmessage_callback(sock, NULL, on_message);
+    g_sock = emscripten_websocket_new(&attr);
+    emscripten_websocket_set_onopen_callback(g_sock, NULL, on_open);
+    emscripten_websocket_set_onmessage_callback(g_sock, NULL, on_message);
+
+    register_events();
+
     return 0;  // runtime stays alive for callbacks (default NO_EXIT_RUNTIME)
 }
 

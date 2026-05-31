@@ -11,7 +11,7 @@ UC_TOOLS_EM=$(UC_TOOLS)/emscripten
 EM_CACHE=$(shell readlink -f ./emscripten_cache)
 CFLAGS=-I/$(UC_TOOLS_EM) -I/$(UC_TOOLS)
 
-EMCC=EM_CACHE=$(EM_CACHE) emcc
+EMCC=EM_CACHE=$(EM_CACHE) emcc -s EXPORTED_RUNTIME_METHODS='["cwrap","ccall"]'
 
 
 

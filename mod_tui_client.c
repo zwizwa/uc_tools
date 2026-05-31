@@ -61,6 +61,7 @@ void win_free_provision(void) {
 struct tag_u32 *g_req;
 
 int key(struct tag_u32 *req) {
+    log_req("key: ", req);
     g_req = req;
     TAG_U32_UNPACK(req, 0, m, key_id) {
         return 0;
@@ -81,14 +82,9 @@ int init(struct tag_u32 *req) {
 
 
 DEF_MAP(
-    event,
-    /* 1 0 */ {"key", "cmd", key, 0}
-    )
-
-DEF_MAP(
     map_root,
-    /* 0 */ {"init",  "cmd", init},
-    /* 1 */ {"event", "map", event},
+    /* 0 */ {"init", "cmd", init},
+    /* 1 */ {"key",  "cmd", key},
     )
 
 int handle_tag_u32(struct tag_u32 *req) {
@@ -122,7 +118,7 @@ void tui_string_at(tui_window_t *w,
                    int x, int y,
                    int width,
                    const char *str) {
-    LOG("tui_string_at %d %d %s\n", x, y, str);
+    //LOG("tui_string_at %d %d %s\n", x, y, str);
     SEND_REPLY_TAG_U32_BYTES(
         g_req,
         ((const uint8_t*)str), strlen(str),

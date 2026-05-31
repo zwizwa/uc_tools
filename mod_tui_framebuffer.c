@@ -37,8 +37,8 @@ void tui_string_at(tui_window_t *win,
                    uint32_t x, uint32_t y,
                    uint32_t width,
                    const char *str) {
-    LOG("string_at wid=%d (%d,%d) %d %s\n",win->id,x,y,width,str);
-    LOG("win at (%d,%d) size (%d,%d)\n",win->x,win->y,win->w,win->h);
+    //LOG("string_at wid=%d (%d,%d) %d %s\n",win->id,x,y,width,str);
+    //LOG("win at (%d,%d) size (%d,%d)\n",win->x,win->y,win->w,win->h);
 
     if (width == 0) width = strlen(str);
 
