@@ -86,8 +86,10 @@ void tui_box(tui_window_t *win) {
     }
 }
 
-void tui_scroll(tui_window_t *w, int lines) {
-    LOG("FIXME: tui_framebuffer: scroll %d\n", lines);
+void tui_scroll(tui_window_t *win, int lines) {
+    canvas_scroll(win->x, win->y,
+                  win->w, win->h,
+                  lines);
 }
 
 

@@ -70,6 +70,7 @@ EM_JS(void, canvas_init, (int w, int h), {
     canvas.height = h;
     Module.ctx = canvas.getContext("2d");
     Module.ctx.imageSmoothingEnabled = false;
+    Module.canvas = canvas;
 });
 
 
@@ -131,15 +132,41 @@ EM_JS(void, canvas_put, (int x, int y, int code, int fg, int bg), {
     c.drawImage(Module.atlas[fg & 15], sx, sy, GW, GH, x*GW, y*GH, GW, GH);
 });
 
+EM_JS(void, canvas_scroll, (int x, int y, int w, int h, int lines), {
+    // x,y top left of window, w,h window dims, scroll lines >0 down <0 up
+    var c  = Module.ctx;
+    var GW = Module.GW;
+    var GH = Module.GH;
+    // convert from character coordiantes to pixel coordinates
+    x *= GW;
+    y *= GH;
+    w *= GW;
+    h *= GH;
+    lines *= GH;
 
+    console.log(lines);
 
-
-// Self-blit scroll: copy region up by n rows, no per-cell redraw.
-EM_JS(void, canvas_scroll, (int top, int bottom, int n, int cw, int ch), {
-    var c = Module.ctx, cv = c.canvas;
-    var y0 = top*ch, h = (bottom-top+1-n)*ch, dy = n*ch;
-    c.drawImage(cv, 0, y0+dy, cv.width, h, 0, y0, cv.width, h);
+    // scroll up
+    if (lines > 0) {
+        var up = lines;
+        c.drawImage(Module.canvas,
+                    x, y+up, // source loc
+                    w, h-up, // source dims
+                    x, y,    // destination loc
+                    w, h-up  // destination dims
+            );
+    }
+    else {
+        var dn = -lines;
+        c.drawImage(Module.canvas,
+                    x, y,    // source loc
+                    w, h-dn, // source dims
+                    x, y+dn, // destination loc
+                    w, h-dn  // destination dims
+            );
+    }
 });
+
 
 // reply/send_tag_u32 similar to mod_websocket_leb128s.c
 #define WEBSOCKET_MSG_BUF 1024 // FIXME
@@ -191,28 +218,18 @@ void send_tag_u32(const struct tag_u32 *msg) {
     }
 }
 
+#define TUI_KEY_DOWN   1
+#define TUI_KEY_UP     2
+uint8_t keymap[256] = {
+    [38] = TUI_KEY_UP,
+    [40] = TUI_KEY_DOWN,
+};
 
 EMSCRIPTEN_KEEPALIVE
 void on_key(int keycode) {
-    LOG("on_key %d\n", keycode);
-
-    // FIXME: Don't send raw leb128.  Use a send macro.
-
-#if 0
-    int8_t msg[] = {
-        T_TAG,
-        // Empty from, no reply expected.
-        0,
-        // To address.  We are talking to DEF_MAP(map_root, ...) in mod_tui_canvas.c
-        2, 1, keycode, /* event + keycode */
-        // Raw byte payload
-        0,
-    };
-    emscripten_websocket_send_binary(g_sock, msg, sizeof(msg));
-#else
-    SEND_TAG_U32(1, keycode);
-#endif
-
+    int translated = keymap[keycode & 0xFF];
+    LOG("on_key %d\n", translated);
+    SEND_TAG_U32(1, translated);
 }
 EM_JS(void, register_events, (void), {
     const onKey = Module.cwrap("on_key", null, ["number"]);

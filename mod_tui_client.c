@@ -61,9 +61,13 @@ void win_free_provision(void) {
 struct tag_u32 *g_req;
 
 int key(struct tag_u32 *req) {
-    log_tag_u32("key: ", req);
+    // log_tag_u32("key: ", req);
     g_req = req;
     TAG_U32_UNPACK(req, 0, m, key_id) {
+        LOG("key: %u\n", m->key_id);
+        if (m->key_id) {
+            g_handle(g_handle_ctx, m->key_id);
+        }
         return 0;
     }
     return -1;
