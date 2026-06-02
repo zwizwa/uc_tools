@@ -182,7 +182,13 @@ void tui_del_window(tui_window_t *w) {
     free(w);
 }
 /* Update per window (internal) state and per screen are nop: all
-   drawing commands are written directly to the canvas. */
+   drawing commands are written directly to the canvas.
+
+   EDIT: It is probably best to queue up everything and then use
+   tui_update_screen() event to flush to display in an animation frame
+   callback.
+
+*/
 void tui_update_window(tui_window_t *w) { }
 void tui_update_screen(void) { }
 void tui_main_window(tui_window_t *w) { }

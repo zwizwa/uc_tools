@@ -1,6 +1,11 @@
 #ifndef MOD_EMSCRIPTEN_CONSOLE
 #define MOD_EMSCRIPTEN_CONSOLE
 
+/* TODO
+   queue up the drawing commands and flus them in a requestAnimationFrame callback
+   https://claude.ai/chat/e97f4560-47ab-414e-98d0-4717f90462da
+*/
+
 
 // https://claude.ai/chat/7c500d35-4f3d-477a-8ad6-53cb2ce07627
 // https://claude.ai/chat/4b1a5989-d60c-4a4f-b6cc-4cf858f1c138
@@ -143,8 +148,6 @@ EM_JS(void, canvas_scroll, (int x, int y, int w, int h, int lines), {
     w *= GW;
     h *= GH;
     lines *= GH;
-
-    console.log(lines);
 
     // scroll up
     if (lines > 0) {
