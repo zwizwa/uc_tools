@@ -69,9 +69,25 @@ void abort_busyloop(void) {
     exit(1);
 }
 
-EM_JS(void, canvas_init, (int w, int h), {
+
+EM_JS(void, canvas_init, (int g_w, int g_h, uint32_t *win), {
+
+    // Get the current vieport dimensions
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    // console.log(w,h);
+
+    // Convert to character dimensions and return.
+    HEAPU32[(win >> 2) + 0] = Math.floor(w / g_w);
+    HEAPU32[(win >> 2) + 1] = Math.floor(h / g_h);
+
+    // Excluding scrollbar
+    //const w = document.documentElement.clientWidth;
+    //const h = document.documentElement.clientHeight;
+
+    // Size the canvas to the available space.
     var canvas = document.getElementById("screen");
-    canvas.width = w;
+    canvas.width  = w;
     canvas.height = h;
     Module.ctx = canvas.getContext("2d");
     Module.ctx.imageSmoothingEnabled = false;
@@ -261,7 +277,11 @@ EM_BOOL on_open(int t, const EmscriptenWebSocketOpenEvent *e, void *u) {
    which is just modeled after canvas_put here.  */
 #define tui_put canvas_put
 void tui_init_screen(int cols, int lines) {
-    canvas_init(8 * cols, 16 * lines);
+    /* Note that we don't really want the application to choose the
+       window size, so for now this just ignores the dimensions and
+       lets canvas_init() decide. */
+    uint32_t dims[2];
+    canvas_init(8, 16, dims);
 }
 
 

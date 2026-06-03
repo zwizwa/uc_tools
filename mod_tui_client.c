@@ -44,7 +44,7 @@ typedef uint8_t win_free_element_t;
 /* Global variables. */
 tui_handle_fn    g_handle;
 void            *g_handle_ctx;
-int              g_tui_cols = 80;
+int              g_tui_cols  = 80;
 int              g_tui_lines = 25;
 win_free_stack_t g_win_free;
 void win_free_provision(void) {
@@ -75,10 +75,17 @@ int key(struct tag_u32 *req) {
 
 
 int init(struct tag_u32 *req) {
-    if ((req->nb_args > 0) || (req->nb_bytes > 0)) {
+    // log_tag_u32("init:", req);
+
+    if ((req->nb_args != 2) || (req->nb_bytes > 0)) {
         /* Best to do verbose logging if there is anything out of the ordinary. */
         log_tag_u32("WARNING: tui_canvas_init: ", req);
     }
+    /* Cache the dimensions provided so they are available when
+       drawing code runs. */
+    g_tui_cols  = req->args[0];
+    g_tui_lines = req->args[1];
+    LOG("init %d x %d\n", g_tui_cols, g_tui_lines);
     ASSERT(g_handle);
     g_handle(g_handle_ctx, TUI_BEGIN);
     return 0;
@@ -92,10 +99,8 @@ DEF_MAP(
     )
 
 int handle_tag_u32(struct tag_u32 *req) {
+    // log_tag_u32("tui_client:", req);
     g_req = req;
-    if (0) {
-        log_tag_u32("tui_client:", req);
-    }
     int rv = map_root(req);
     if (rv) {
         /* Always send a reply when there is a from address. */
