@@ -14,25 +14,54 @@ local function plambda(s,str)
    return match.compile(lambda(s,str))
 end
 
-local function do_smatch(expr, string_clauses, s)
-   assert(s)
-   local ctx_var = s.ctx_var or '_'
+-- On memo_eval args:
+-- 1: memoization state
+-- 2: function to apply to arg (this is the string->thing compiler)
+-- 3: the syntax string to compile
+--
+-- This happens 2 times: once for the pattern and once for the
+-- handler, using two different compilation functions, so they need
+-- separate memoization states.
+
+local function do_smatch(expr,
+                         string_clauses,
+                         memo_pattern,
+                         memo_handle)
+   --log_desc({string_clauses=string_clauses})
+   assert(memo_pattern)
+   assert(memo_handle)
    for _,clause in ipairs(string_clauses) do
-      local spat, shandle = unpack(clause)
-      local cpat = memo_eval(s, plambda, spat)
+      local str_pattern, str_handle = unpack(clause)
+      local cpat = memo_eval(memo_pattern, plambda, str_pattern)
+      -- log_desc({cpat=cpat})
       local m = match.apply(cpat, expr)
       if m then
-         local fhandle = memo_eval(s, lambda, shandle)
+         local fhandle = memo_eval(memo_handle, lambda, str_handle)
+         -- log_desc({fhandle=fhandle})
          return fhandle(m)
       end
    end
    return false
 end
 function smatch.smatcher(config)
-   local obj = { memo = {} }
-   for k,v in pairs(config) do obj[k] = v end
+   -- There are two memo_eval instances: one for pattern compilation
+   -- and one for handler compilation.
+   local memo_pattern = { memo = {} }
+   local memo_handle  = { memo = {} }
+   for k,v in pairs(config) do
+      -- This is for k = env, var
+      --
+      -- Both evaluators use the same constructor environment and the
+      -- same variable name for the argument of the wrapper function.
+      --
+      memo_pattern[k] = v
+      memo_handle[k] = v
+   end
    return function(expr, string_clauses)
-      return do_smatch(expr, string_clauses, obj)
+      return do_smatch(expr,
+                       string_clauses,
+                       memo_pattern,
+                       memo_handle)
    end
 end
 

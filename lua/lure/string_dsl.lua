@@ -36,6 +36,7 @@ function mod.lambda(s, fragment)
          "")
    trace("LCODE", lcode)
    local fun = mod.lua_eval(lcode, s.env)
+   trace("FUN", fun)
    return fun
 end
 
@@ -45,12 +46,15 @@ function mod.memo_eval(s, compile, str)
       -- Strings are interned.
       local val = memo[str]
       if val then
-         trace("MEMO",str)
+         trace("MEMO:get:str",str)
+         trace("MEMO:get:val",val)
          return val
       end
    end
    local val = compile(s, str)
    if memo then
+      trace("MEMO:set:str",str)
+      trace("MEMO:set:val",val)
       memo[str] = val
    end
    return val
