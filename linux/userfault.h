@@ -12,7 +12,22 @@
 #include "macros.h"
 #include "assert_mmap.h"
 #include "assert_read.h"
-// https://claude.ai/chat/b0f68376-2a64-419e-83e0-748adb88c3d1
+
+
+// Exploration notes in https://claude.ai/chat/b0f68376-2a64-419e-83e0-748adb88c3d1
+
+// There is a way to avoid the copy as well using
+// UFFDIO_REGISTER_MODE_MINOR: stop faulted thread until
+// UFFDIO_CONTINUE ioctl is handled, but then pages become either file
+// backed or swap backed.
+//
+// To get "just get rid of the page and refault when needed", the
+// other side needs to call madvise() MADV_DONTNEED on a region.
+//
+// https://claude.ai/chat/beae3a32-731b-49b0-8805-900c9161ae8b
+// Caveat: about 2^27 (128TiB) space is available, but keep in mind max_map_count limit.
+//
+// There is also a zeropage option
 
 
 struct userfault {
