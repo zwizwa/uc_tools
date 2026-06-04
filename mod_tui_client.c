@@ -74,28 +74,56 @@ int key(struct tag_u32 *req) {
 }
 
 
-int init(struct tag_u32 *req) {
+int begin(struct tag_u32 *req) {
     // log_tag_u32("init:", req);
 
     if ((req->nb_args != 2) || (req->nb_bytes > 0)) {
         /* Best to do verbose logging if there is anything out of the ordinary. */
-        log_tag_u32("WARNING: tui_canvas_init: ", req);
+        log_tag_u32("ERROR: tui_canvas_init: ", req);
+        return 0;
     }
+    uint32_t c = req->args[0];
+    uint32_t l = req->args[1];
+
     /* Cache the dimensions provided so they are available when
        drawing code runs. */
-    g_tui_cols  = req->args[0];
-    g_tui_lines = req->args[1];
-    LOG("init %d x %d\n", g_tui_cols, g_tui_lines);
+    g_tui_cols  = c;
+    g_tui_lines = l;
+    LOG("begin %d x %d\n", c, l);
     ASSERT(g_handle);
     g_handle(g_handle_ctx, TUI_BEGIN);
+    return 0;
+}
+
+int resized(struct tag_u32 *req) {
+    // log_tag_u32("resize:", req);
+
+    if ((req->nb_args != 2) || (req->nb_bytes > 0)) {
+        /* Best to do verbose logging if there is anything out of the ordinary. */
+        log_tag_u32("ERROR: tui_canvas_resize: ", req);
+        return 0;
+    }
+    uint32_t c = req->args[0];
+    uint32_t l = req->args[1];
+
+    if ((g_tui_cols == c) && (g_tui_lines == l)) {
+        /* There was no actual resize.  Ignore event. */
+        return 0;
+    }
+
+    g_tui_cols  = c;
+    g_tui_lines = l;
+    LOG("resized %d x %d\n", g_tui_cols, g_tui_lines);
+    g_handle(g_handle_ctx, TUI_RESIZED);
     return 0;
 }
 
 
 DEF_MAP(
     map_root,
-    /* 0 */ {"init", "cmd", init},
-    /* 1 */ {"key",  "cmd", key},
+    /* 0 */ {"begin",   "cmd", begin},
+    /* 1 */ {"key",     "cmd", key},
+    /* 2 */ {"resized", "cmd", resized},
     )
 
 int handle_tag_u32(struct tag_u32 *req) {

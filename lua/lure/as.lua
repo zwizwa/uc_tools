@@ -19,6 +19,7 @@ local m = {}
 
 -- Include specific from/to types.
 local function array_to_bin(arr)
+   assert(arr)
    local strs = {}
    for i=1,#arr do strs[i] = string.char(arr[i]) end
    local str = table.concat(strs)
@@ -26,6 +27,7 @@ local function array_to_bin(arr)
    return str
 end
 function bin_to_array(bin)
+   assert(bin)
    local arr = {}
    for i=1,#bin do arr[i] = string.byte(bin, i) end
    return arr

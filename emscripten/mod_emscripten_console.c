@@ -69,7 +69,6 @@ void abort_busyloop(void) {
     exit(1);
 }
 
-
 EM_JS(void, canvas_init, (int g_w, int g_h, uint32_t *win), {
 
     // Get the current vieport dimensions
@@ -77,18 +76,36 @@ EM_JS(void, canvas_init, (int g_w, int g_h, uint32_t *win), {
     const h = window.innerHeight;
     // console.log(w,h);
 
-    // Convert to character dimensions and return.
-    HEAPU32[(win >> 2) + 0] = Math.floor(w / g_w);
-    HEAPU32[(win >> 2) + 1] = Math.floor(h / g_h);
+    // Convert to character dimensions.
+    var c_w = Math.floor(w / g_w);
+    var c_h = Math.floor(h / g_h);
 
-    // Excluding scrollbar
-    //const w = document.documentElement.clientWidth;
-    //const h = document.documentElement.clientHeight;
+    // Don't allow the window to get too small.  Better that browser displays scroll bars.
+    const min_w = 20;
+    const min_h = 6;
+    if (c_w < min_w) c_w = min_w;
+    if (c_h < min_h) c_h = min_h;
+
+    // All return paths need to fill the current text window dimensions.
+    HEAPU32[(win >> 2) + 0] = c_w;
+    HEAPU32[(win >> 2) + 1] = c_h;
+
+    // Don't resize canvas if text size did not change.
+    if (Module.c_w) {
+        // This is a resize.
+        if ((c_w == Module.c_w) && (c_h == Module.c_h)) {
+            return;
+        }
+    }
+
+    // Save for next resize
+    Module.c_w = c_w;
+    Module.c_h = c_h;
 
     // Size the canvas to the available space.
     var canvas = document.getElementById("screen");
-    canvas.width  = w;
-    canvas.height = h;
+    canvas.width  = g_w * c_w;
+    canvas.height = g_h * c_h;
     Module.ctx = canvas.getContext("2d");
     Module.ctx.imageSmoothingEnabled = false;
     Module.canvas = canvas;
@@ -248,12 +265,21 @@ EMSCRIPTEN_KEEPALIVE
 void on_key(int keycode) {
     int translated = keymap[keycode & 0xFF];
     LOG("on_key %d\n", translated);
-    SEND_TAG_U32(1, translated);
+    SEND_TAG_U32(1 /*key*/, translated);
 }
+EMSCRIPTEN_KEEPALIVE
+void on_resize(int w, int h) {
+    LOG("on_resize %d %d\n", w, h);
+    uint32_t dims[2] = {};
+    canvas_init(8,16,dims);
+    SEND_TAG_U32(2 /*resized*/, dims[0], dims[1]);
+}
+
 EM_JS(void, register_events, (void), {
-    const onKey = Module.cwrap("on_key", null, ["number"]);
-    console.log(onKey);
+    const onKey    = Module.cwrap("on_key",    null, ["number"]);
+    const onResize = Module.cwrap("on_resize", null, ["number"], ["number"]);
     window.addEventListener("keydown", (e) => { onKey(e.keyCode); });
+    window.addEventListener("resize",  () =>  { onResize(window.innerWidth, window.innerHeight); });
 });
 
 

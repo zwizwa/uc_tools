@@ -178,7 +178,7 @@ void ib_end(struct ilog_browser *s) {
 
 int ib_handle_event(void *ctx, int ch) {
     struct ilog_browser *s = ctx;
-    LOG("ib_handle_event %d\n", ch);
+    // LOG("ib_handle_event %d\n", ch);
 
     switch(ch) {
         /* TUI_BEGIN / TUI_END are handled as events because the begin
