@@ -14,19 +14,6 @@
 #include "tag_u32.h"
 #define DEF_MAP DEF_TAG_U32_CONST_MAP_HANDLE
 
-#define TUI_ERR       -1
-#define TUI_RESIZED   -2  /* ERR is -1 */
-#define TUI_BEGIN     -3
-#define TUI_END       -4
-
-#define TUI_KEY_DOWN   1
-#define TUI_KEY_UP     2
-#define TUI_KEY_NPAGE  3
-#define TUI_KEY_PPAGE  4
-#define TUI_KEY_HOME   5
-#define TUI_KEY_END    6
-#define TUI_KEY_F(n)   (0x10 + ((n)&15))
-
 typedef int (*tui_handle_fn)(void *, int ch);
 
 /* To avoid back&forth we do the window id allocation at this end. */
@@ -64,7 +51,7 @@ int key(struct tag_u32 *req) {
     // log_tag_u32("key: ", req);
     g_req = req;
     TAG_U32_UNPACK(req, 0, m, key_id) {
-        LOG("key: %u\n", m->key_id);
+        // LOG("key: %u\n", m->key_id);
         if (m->key_id) {
             g_handle(g_handle_ctx, m->key_id);
         }
@@ -89,7 +76,7 @@ int begin(struct tag_u32 *req) {
        drawing code runs. */
     g_tui_cols  = c;
     g_tui_lines = l;
-    LOG("begin %d x %d\n", c, l);
+    // LOG("begin %d x %d\n", c, l);
     ASSERT(g_handle);
     g_handle(g_handle_ctx, TUI_BEGIN);
     return 0;
@@ -113,7 +100,7 @@ int resized(struct tag_u32 *req) {
 
     g_tui_cols  = c;
     g_tui_lines = l;
-    LOG("resized %d x %d\n", g_tui_cols, g_tui_lines);
+    // LOG("resized %d x %d\n", g_tui_cols, g_tui_lines);
     g_handle(g_handle_ctx, TUI_RESIZED);
     return 0;
 }
@@ -222,9 +209,15 @@ void tui_del_window(tui_window_t *w) {
    callback.
 
 */
-void tui_update_window(tui_window_t *w) { }
-void tui_update_screen(void) { }
-void tui_main_window(tui_window_t *w) { }
+void tui_update_window(tui_window_t *w) {
+}
+void tui_update_screen(void) {
+    SEND_REPLY_TAG_U32(
+        g_req,
+        TUI_CMD_UPDATE_SCREEN);
+}
+void tui_main_window(tui_window_t *w) {
+}
 
 void tui_scroll(tui_window_t *w, int lines) {
     SEND_REPLY_TAG_U32(

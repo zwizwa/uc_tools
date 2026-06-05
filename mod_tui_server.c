@@ -73,6 +73,10 @@ int draw(struct tag_u32 *req) {
         tui_scroll(w, m->lines);
         return 0;
     }
+    TAG_U32_MATCH_0(req, TUI_CMD_UPDATE_SCREEN) {
+        tui_update_screen();
+        return 0;
+    }
     log_tag_u32("tui_server: draw:", req);
     return 0;
 }

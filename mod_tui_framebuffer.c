@@ -68,20 +68,27 @@ void tui_box(tui_window_t *win) {
     /* We at least have cornes. */
     uint32_t w = win->w;
     uint32_t h = win->h;
-    tui_char_at(win, 0,   0,   '+');
-    tui_char_at(win, w-1, 0,   '+');
-    tui_char_at(win, 0,   h-1, '+');
-    tui_char_at(win, w-1, h-1, '+');
+
+    // tl tr br br hor ver
+    // ASCII
+    // const uint8_t box[6] = {'+','+','+','+','-','|'};
+    // VGA Code Page 437 box characters
+    const uint8_t box[6] = {0xDA,0xBF,0xC0,0xD9,0xC4,0xB3};
+
+    tui_char_at(win, 0,   0,   box[0]);
+    tui_char_at(win, w-1, 0,   box[1]);
+    tui_char_at(win, 0,   h-1, box[2]);
+    tui_char_at(win, w-1, h-1, box[3]);
     if (w > 2) {
         for(uint32_t x=1; x<w-1; x++) {
-            tui_char_at(win, x, 0,   '-');
-            tui_char_at(win, x, h-1, '-');
+            tui_char_at(win, x, 0,   box[4]);
+            tui_char_at(win, x, h-1, box[4]);
         }
     }
     if (w > 2) {
         for(uint32_t y=1; y<h-1; y++) {
-            tui_char_at(win, 0,   y, '|');
-            tui_char_at(win, w-1, y, '|');
+            tui_char_at(win, 0,   y, box[5]);
+            tui_char_at(win, w-1, y, box[5]);
         }
     }
 }
@@ -125,6 +132,8 @@ tui_window_t *tui_new_window(int width, int height, int x, int y) {
 void tui_del_window(struct tui_window *w) {
     memset(w,0,sizeof(*w));
     free(w);
+}
+void tui_update_screen(void) {
 }
 
 

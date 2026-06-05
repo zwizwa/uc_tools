@@ -135,6 +135,7 @@ end
 
 function actor.task:resume()
    local log_ = self.log or log
+   -- log_ = log
 
    local co = self.coroutine
    local ok, rv = coroutine.resume(co)

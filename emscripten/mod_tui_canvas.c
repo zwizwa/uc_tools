@@ -1,9 +1,26 @@
-#ifndef MOD_EMSCRIPTEN_CONSOLE
-#define MOD_EMSCRIPTEN_CONSOLE
+#ifndef MOD_TUI_CANVAS
+#define MOD_TUI_CANVAS
+
+#ifndef LOG
+/* This goes to the javascript debug console and is line-buffered. */
+#define LOG printf
+#endif
+
 
 /* TODO
-   queue up the drawing commands and flus them in a requestAnimationFrame callback
+   queue up the drawing commands and flush them in a requestAnimationFrame callback
    https://claude.ai/chat/e97f4560-47ab-414e-98d0-4717f90462da
+
+   EDIT: A better way to do this:
+
+   Avoid the wasm->javascript calls.  Currently it is doing a context
+   switch for each character draw.  It seems better to render to a
+   framebuffer in C, then blit the whole screen to the canvas on
+   tui_update_screen().  Javascript->wasm calls are cheap, so pushing
+   the websocket data into the wasm code should be cheap.  It can stay
+   in wasm to do the rendering into an off-screen buffer, then blit
+   onto the canvas in one go.
+
 */
 
 
@@ -61,7 +78,27 @@
 #include "tag_u32.h"
 #include "tui_cmd.h"
 
+#include "mod_vga_font_8x16.c"
+
+
+// This is made similar to i686/text_console.h so it can share code later.
+// I'm just copy-pasting some methods.  Don't edit these.  It needs a merge first.
+struct text_console {
+    uint8_t *video;
+    uint8_t nb_rows;
+    uint8_t nb_cols;
+};
+static inline uint32_t text_console_offset_rc(struct text_console *log,
+                                              uint32_t row,
+                                              uint32_t col) {
+    return 2 * (log->nb_cols * row + col);
+}
+
+int g_use_text_console = 0;
+
+struct text_console g_text_console;
 EMSCRIPTEN_WEBSOCKET_T g_sock;
+#define tui_put canvas_put
 
 void abort_busyloop(void) {
     /* Where is this coming from? */
@@ -69,7 +106,25 @@ void abort_busyloop(void) {
     exit(1);
 }
 
-EM_JS(void, canvas_init, (int g_w, int g_h, uint32_t *win), {
+EM_JS(void, key_set, (const char* name, int code), {
+    Module.key_ids = Module.key_ids || {};
+    Module.key_ids[UTF8ToString(name)] = code;
+});
+
+void init_keys(void) {
+    key_set("ArrowUp",    TUI_KEY_UP);
+    key_set("ArrowDown",  TUI_KEY_DOWN);
+    //key_set("ArrowLeft",  TUI_KEY_LEFT);
+    //key_set("ArrowRight", TUI_KEY_RIGHT);
+    key_set("PageUp",     TUI_KEY_PPAGE);
+    key_set("PageDown",   TUI_KEY_NPAGE);
+    key_set("Home",       TUI_KEY_HOME);
+    key_set("End",        TUI_KEY_END);
+    //key_set("Enter",      TUI_KEY_ENTER);
+    //key_set("Backspace",  TUI_KEY_BKSP);
+}
+
+EM_JS(void, canvas_init_js, (int glyph_w, int glyph_h, uint32_t *win), {
 
     // Get the current vieport dimensions
     const w = window.innerWidth;
@@ -77,8 +132,8 @@ EM_JS(void, canvas_init, (int g_w, int g_h, uint32_t *win), {
     // console.log(w,h);
 
     // Convert to character dimensions.
-    var c_w = Math.floor(w / g_w);
-    var c_h = Math.floor(h / g_h);
+    var c_w = Math.floor(w / glyph_w);
+    var c_h = Math.floor(h / glyph_h);
 
     // Don't allow the window to get too small.  Better that browser displays scroll bars.
     const min_w = 20;
@@ -104,12 +159,31 @@ EM_JS(void, canvas_init, (int g_w, int g_h, uint32_t *win), {
 
     // Size the canvas to the available space.
     var canvas = document.getElementById("screen");
-    canvas.width  = g_w * c_w;
-    canvas.height = g_h * c_h;
+    canvas.width  = glyph_w * c_w;
+    canvas.height = glyph_h * c_h;
     Module.ctx = canvas.getContext("2d");
     Module.ctx.imageSmoothingEnabled = false;
     Module.canvas = canvas;
+
 });
+
+
+void canvas_init(int glyph_w, int glyph_h, uint32_t *win) {
+    canvas_init_js(glyph_w, glyph_h, win);
+    if (g_text_console.video) free(g_text_console.video);
+    uint32_t w = win[0];
+    uint32_t h = win[1];
+    typeof (g_text_console) *c = &g_text_console;
+    c->video = malloc(w * h * 2);
+    c->nb_cols = w;
+    c->nb_rows = h;
+    for (uint32_t i=0; i<w*h; i++) {
+        uint32_t o = text_console_offset_rc(c,w,h);
+        c->video[o]   = ' ';
+        c->video[o+1] = 7;
+    }
+}
+
 
 
 EM_JS(void, canvas_init_font, (const uint8_t *font, int glyph_w, int glyph_h), {
@@ -158,7 +232,7 @@ EM_JS(void, canvas_init_font, (const uint8_t *font, int glyph_w, int glyph_h), {
     Module.ctx.imageSmoothingEnabled = false;
 });
 
-EM_JS(void, canvas_put, (int x, int y, int code, int fg, int bg), {
+EM_JS(void, canvas_put_js, (int x, int y, int code, int fg, int bg), {
     var c  = Module.ctx;
     var GW = Module.GW;
     var GH = Module.GH;
@@ -170,7 +244,26 @@ EM_JS(void, canvas_put, (int x, int y, int code, int fg, int bg), {
     c.drawImage(Module.atlas[fg & 15], sx, sy, GW, GH, x*GW, y*GH, GW, GH);
 });
 
-EM_JS(void, canvas_scroll, (int x, int y, int w, int h, int lines), {
+void canvas_put(int x, int y, int code, int fg, int bg) {
+    if (g_use_text_console) {
+        // Buffer the character into the text video buffer.
+        uint8_t attrib = (bg << 4) + fg;
+        typeof (g_text_console) *c = &g_text_console;
+        uint32_t o = text_console_offset_rc(c,x,y);
+        c->video[o] = code;
+        c->video[o+1] = attrib;
+    }
+    else {
+        // Write it directly into the canvas.
+        canvas_put_js(x, y, code, fg, bg);
+    }
+}
+
+
+
+
+
+EM_JS(void, canvas_scroll_js, (int x, int y, int w, int h, int lines), {
     // x,y top left of window, w,h window dims, scroll lines >0 down <0 up
     var c  = Module.ctx;
     var GW = Module.GW;
@@ -202,6 +295,15 @@ EM_JS(void, canvas_scroll, (int x, int y, int w, int h, int lines), {
             );
     }
 });
+void canvas_scroll(int x, int y, int w, int h, int lines) {
+    if (g_use_text_console) {
+        // FIXME: Share the scroll routines with the i686 console code.
+    }
+    else {
+        // direct
+        canvas_scroll_js(x, y, w, h, lines);
+    }
+}
 
 
 // reply/send_tag_u32 similar to mod_websocket_leb128s.c
@@ -254,22 +356,15 @@ void send_tag_u32(const struct tag_u32 *msg) {
     }
 }
 
-#define TUI_KEY_DOWN   1
-#define TUI_KEY_UP     2
-uint8_t keymap[256] = {
-    [38] = TUI_KEY_UP,
-    [40] = TUI_KEY_DOWN,
-};
 
 EMSCRIPTEN_KEEPALIVE
-void on_key(int keycode) {
-    int translated = keymap[keycode & 0xFF];
-    LOG("on_key %d\n", translated);
-    SEND_TAG_U32(1 /*key*/, translated);
+void on_key(int tui_key_code) {
+    // LOG("on_key %d\n", tui_key_code);
+    SEND_TAG_U32(1 /*key*/, tui_key_code);
 }
 EMSCRIPTEN_KEEPALIVE
 void on_resize(int w, int h) {
-    LOG("on_resize %d %d\n", w, h);
+    // LOG("on_resize %d %d\n", w, h);
     uint32_t dims[2] = {};
     canvas_init(8,16,dims);
     SEND_TAG_U32(2 /*resized*/, dims[0], dims[1]);
@@ -277,9 +372,17 @@ void on_resize(int w, int h) {
 
 EM_JS(void, register_events, (void), {
     const onKey    = Module.cwrap("on_key",    null, ["number"]);
-    const onResize = Module.cwrap("on_resize", null, ["number"], ["number"]);
-    window.addEventListener("keydown", (e) => { onKey(e.keyCode); });
-    window.addEventListener("resize",  () =>  { onResize(window.innerWidth, window.innerHeight); });
+    const onResize = Module.cwrap("on_resize", null, ["number", "number"]);
+    window.addEventListener("keydown", (e) => {
+            var tui_key_code = Module.key_ids[e.key];
+            // console.log(e.key, tui_key_code);
+            if (tui_key_code != undefined) {
+                onKey(tui_key_code);
+            }
+        });
+    window.addEventListener("resize",  () => {
+            onResize(window.innerWidth, window.innerHeight);
+        });
 });
 
 
@@ -299,8 +402,9 @@ EM_BOOL on_open(int t, const EmscriptenWebSocketOpenEvent *e, void *u) {
     return EM_TRUE;
 }
 
-/* mod_tui_framebuffer defines tui api in terms of tui_put()
-   which is just modeled after canvas_put here.  */
+
+
+
 #define tui_put canvas_put
 void tui_init_screen(int cols, int lines) {
     /* Note that we don't really want the application to choose the
@@ -367,7 +471,7 @@ EM_BOOL on_message(int t, const EmscriptenWebSocketMessageEvent *e, void *u) {
     return EM_TRUE;
 }
 
-int emscripten_console_init(const char *ws_url, ws_fn ws_on_open, void *ctx) {
+int tui_canvas_ws_init(const char *ws_url, ws_fn ws_on_open, void *ctx) {
     g_ws_on_open     = ws_on_open;
     g_ws_on_open_ctx = ctx;
     if (!emscripten_websocket_is_supported()) {
@@ -382,9 +486,43 @@ int emscripten_console_init(const char *ws_url, ws_fn ws_on_open, void *ctx) {
     emscripten_websocket_set_onopen_callback(g_sock, NULL, on_open);
     emscripten_websocket_set_onmessage_callback(g_sock, NULL, on_message);
 
-    register_events();
 
     return 0;  // runtime stays alive for callbacks (default NO_EXIT_RUNTIME)
 }
+
+
+uint32_t dims[2];
+void app_on_open(EMSCRIPTEN_WEBSOCKET_T s, void *arg) {
+
+    /* Once the websocket is open, we send an init message to
+       mod_tui_client.c */
+
+    LOG("send dims: %d x %d\n", dims[0], dims[1]);
+    SEND_TAG_U32(0 /*init*/, dims[0], dims[1]);
+}
+
+void canvas_dbg_charset(void) {
+    for (int i=0; i<256; i++) {
+        int x = i % 16;
+        int y = i / 16;
+        canvas_put(x, y, i, 7, 0);
+    }
+}
+
+
+void tui_canvas_init(void) {
+    canvas_init(8, 16, dims);
+    canvas_init_font(IBM_VGA_8x16, 8, 16);
+    // cancas_dbg_charset();
+    LOG("tui screen size: %d x %d\n", dims[0], dims[1]);
+    init_keys();
+    register_events();
+
+    // FIXME: Use same trick as ws.js to find the url
+    const char *ws = "ws://carpo:3456/ws";
+    tui_canvas_ws_init(ws, app_on_open, NULL);
+    // runtime stays alive for callbacks (default NO_EXIT_RUNTIME)
+}
+
 
 #endif
