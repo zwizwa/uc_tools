@@ -7,7 +7,7 @@
 # run it and this makes a FHS assumption.
 
 let
-  nixpkgs = import ../i686/nixpkgs.nix;
+  nixpkgs = import ../nix/nixpkgs.nix;
 in
 with import nixpkgs { };
 mkShell {

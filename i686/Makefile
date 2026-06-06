@@ -111,5 +111,15 @@ qemu_br1: kernel.nbp
 %.dd: %.dsk
 	sudo dd if=$< of=/dev/disk/by-id/usb-TEAC_TEAC_FD-05PUB
 
+# Embed an .ipxe boot file in a boot disk for the emulated rtl8139
+# Note that these need to have an ipxe source tree linked into ../ipxe/src
+ipxe-%.dsk: %.ipxe
+	../ipxe/build.sh rtl8139.dsk $<
+	mv ../ipxe/src/bin/rtl8139.dsk $@
+
+
+
+
+
 # gotek:
 # sudo /i/tom/floppies/gotek.sh kernel.dsk /dev/sdf 4
