@@ -92,7 +92,6 @@ int g_use_tui_vga = 1;
 
 struct tui_vga g_tui_vga;
 EMSCRIPTEN_WEBSOCKET_T g_sock;
-#define tui_put canvas_put
 
 void abort_busyloop(void) {
     /* Where is this coming from? */
@@ -117,6 +116,13 @@ void init_keys(void) {
     //key_set("Enter",      TUI_KEY_ENTER);
     //key_set("Backspace",  TUI_KEY_BKSP);
 }
+
+EM_JS(void, canvas_close, (void), {
+    var canvas = document.getElementById("screen");
+    canvas.width  = 0;
+    canvas.height = 0;
+});
+
 
 EM_JS(void, canvas_init_js, (int glyph_w, int glyph_h, uint32_t *win), {
 
@@ -161,8 +167,8 @@ EM_JS(void, canvas_init_js, (int glyph_w, int glyph_h, uint32_t *win), {
 
     // The blink bit is not implemented.
     Module.background =
-        [[  0, 0, 0],[  0,  0,170],[  0,170,  0],[  0,170,170],
-         [170, 0, 0],[170,  0,170],[170, 85,  0],[170,170,170]]
+        [[  0, 0, 0], [  0,  0,170], [  0,170,  0], [  0,170,170],
+         [170, 0, 0], [170,  0,170], [170, 85,  0], [170,170,170]]
 
 });
 
@@ -188,10 +194,11 @@ EM_JS(void, canvas_init_font, (const uint8_t *font, int glyph_w, int glyph_h), {
     var GW = glyph_w;
     var GH = glyph_h;
     var N = 256;
-    var palette = [[0,0,0],[0,0,170],[0,170,0],[0,170,170],
-                   [170,0,0],[170,0,170],[170,85,0],[170,170,170],
-                   [85,85,85],[85,85,255],[85,255,85],[85,255,255],
-                   [255,85,85],[255,85,255],[255,255,85],[255,255,255]];
+    var palette =
+        [[  0,  0,  0], [  0,  0,170], [  0,170,  0], [  0,170,170],
+         [170,  0,  0], [170,  0,170], [170, 85,  0], [170,170,170],
+         [ 85, 85, 85], [ 85, 85,255], [ 85,255, 85], [ 85,255,255],
+         [255, 85, 85], [255, 85,255], [255,255, 85], [255,255,255]];
 
     // Build one atlas per foreground color: 16 wide grid of glyphs:
     // white on transparent.  We don't do this for background (that is
@@ -253,8 +260,8 @@ EM_JS(void, request_canvas_update_js, (uint8_t *framebuffer), {
         for(var y=0; y<Module.c_h; y++) {
             for(var x=0; x<Module.c_w; x++) {
                 var offset = framebuffer + 2 * (Module.c_w * y + x);
-                var code   = HEAP8[offset];
-                var attrib = HEAP8[offset+1];
+                var code   = HEAPU8[offset];
+                var attrib = HEAPU8[offset+1];
                 // FIXME: use double buffering and only write the updates
                 var fg = attrib & 0xF;
                 var bg = attrib >> 4;
@@ -284,7 +291,7 @@ void tui_update_screen(void) {
 
 
 
-void canvas_put(int x, int y, int code, int fg, int bg) {
+void tui_put(uint32_t x, uint32_t y, uint32_t code, uint32_t fg, uint32_t bg) {
     if (g_use_tui_vga) {
         tui_vga_put(&g_tui_vga,
                     x, y,
@@ -437,14 +444,9 @@ struct tui_window *window[TUI_MAX_NB_WINDOWS] = {};
 EM_BOOL on_open(int t, const EmscriptenWebSocketOpenEvent *e, void *u) {
     printf("connection open, sending init\n");
     g_ws_on_open(e->socket, g_ws_on_open_ctx);
-
     return EM_TRUE;
 }
 
-
-
-
-#define tui_put canvas_put
 void tui_init_screen(int cols, int lines) {
     /* Note that we don't really want the application to choose the
        window size, so for now this just ignores the dimensions and
@@ -452,6 +454,13 @@ void tui_init_screen(int cols, int lines) {
     uint32_t dims[2];
     canvas_init(8, 16, dims);
 }
+
+EM_BOOL on_close(int t, const EmscriptenWebSocketCloseEvent *e, void *u) {
+    printf("connection closed\n");
+    canvas_close();
+    return EM_TRUE;
+}
+
 
 
 #include "mod_tui_framebuffer.c"
@@ -524,6 +533,7 @@ int tui_canvas_ws_init(const char *ws_url, ws_fn ws_on_open, void *ctx) {
     g_sock = emscripten_websocket_new(&attr);
     emscripten_websocket_set_onopen_callback(g_sock, NULL, on_open);
     emscripten_websocket_set_onmessage_callback(g_sock, NULL, on_message);
+    emscripten_websocket_set_onclose_callback(g_sock, NULL, on_close);
 
 
     return 0;  // runtime stays alive for callbacks (default NO_EXIT_RUNTIME)
@@ -544,7 +554,7 @@ void canvas_dbg_charset(void) {
     for (int i=0; i<256; i++) {
         int x = i % 16;
         int y = i / 16;
-        canvas_put(x, y, i, 7, 0);
+        tui_put(x, y, i, 7, 0);
     }
 }
 
