@@ -49,16 +49,13 @@ typedef struct tui_window tui_window_t;
 
 void tui_reverse_video(tui_window_t *w, int mode);
 void tui_string_at(tui_window_t *w,
-                   int x, int y,
-                   int width,
+                   uint32_t x, uint32_t y,
+                   uint32_t width,
                    const char *str);
 void tui_clear(tui_window_t *w);
 void tui_box(tui_window_t *w);
-void tui_init_screen(void);
-void tui_restore_screen(void);
 int tui_cols(void);
 int tui_lines(void);
-tui_window_t *tui_new_window(int width, int height, int x, int y);
 void tui_main_window(tui_window_t *w);
 void tui_del_window(tui_window_t *w);
 void tui_update_screen(void);
@@ -67,5 +64,9 @@ int tui_get_event(tui_window_t *w);
 typedef int (*tui_handle_fn)(void *, int ch);
 
 void tui_event_loop(tui_handle_fn handle, void *ctx);
+
+//void tui_init_screen(void);
+//void tui_restore_screen(void);
+//tui_window_t *tui_new_window(uint32_t width, uint32_t height, uint32_t x, uint32_t y);
 
 #endif

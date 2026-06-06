@@ -76,27 +76,21 @@
 #include "log_tools.h"
 #include "tag_u32.c"
 #include "tag_u32.h"
-#include "tui.h"
+#include "tui_vga.h"
 
 #include "mod_vga_font_8x16.c"
 
 
-// This is made similar to i686/text_console.h so it can share code later.
-// I'm just copy-pasting some methods.  Don't edit these.  It needs a merge first.
-struct text_console {
-    uint8_t *video;
-    uint8_t nb_rows;
-    uint8_t nb_cols;
-};
-static inline uint32_t text_console_offset_rc(struct text_console *log,
-                                              uint32_t row,
-                                              uint32_t col) {
+
+static inline uint32_t tui_vga_offset_rc(struct tui_vga *log,
+                                         uint32_t row,
+                                         uint32_t col) {
     return 2 * (log->nb_cols * row + col);
 }
 
-int g_use_text_console = 0;
+int g_use_tui_vga = 1;
 
-struct text_console g_text_console;
+struct tui_vga g_tui_vga;
 EMSCRIPTEN_WEBSOCKET_T g_sock;
 #define tui_put canvas_put
 
@@ -167,18 +161,17 @@ EM_JS(void, canvas_init_js, (int glyph_w, int glyph_h, uint32_t *win), {
 
 });
 
-
 void canvas_init(int glyph_w, int glyph_h, uint32_t *win) {
     canvas_init_js(glyph_w, glyph_h, win);
-    if (g_text_console.video) free(g_text_console.video);
+    if (g_tui_vga.video) free(g_tui_vga.video);
     uint32_t w = win[0];
     uint32_t h = win[1];
-    typeof (g_text_console) *c = &g_text_console;
+    typeof (g_tui_vga) *c = &g_tui_vga;
     c->video = malloc(w * h * 2);
     c->nb_cols = w;
     c->nb_rows = h;
     for (uint32_t i=0; i<w*h; i++) {
-        uint32_t o = text_console_offset_rc(c,w,h);
+        uint32_t o = tui_vga_offset_rc(c,w,h);
         c->video[o]   = ' ';
         c->video[o+1] = 7;
     }
@@ -240,18 +233,53 @@ EM_JS(void, canvas_put_js, (int x, int y, int code, int fg, int bg), {
                [170,0,0],[170,0,170],[170,85,0],[170,170,170]][bg & 7];
     c.fillStyle = 'rgb(' + bgp[0] + ',' + bgp[1] + ',' + bgp[2] + ')';
     c.fillRect(x*GW, y*GH, GW, GH);
-    var sx = (code & 15) * GW, sy = (code >> 4) * GH;
-    c.drawImage(Module.atlas[fg & 15], sx, sy, GW, GH, x*GW, y*GH, GW, GH);
+    var sx = (code & 0xF) * GW, sy = (code >> 4) * GH;
+    c.drawImage(Module.atlas[fg & 0xF], sx, sy, GW, GH, x*GW, y*GH, GW, GH);
 });
 
+// Blit text framebuffer to canvas.
+EM_JS(void, canvas_update_screen_js, (uint8_t *framebuffer), {
+    var c  = Module.ctx;
+    var GW = Module.GW;
+    var GH = Module.GH;
+    var background = [[0,0,0],[0,0,170],[0,170,0],[0,170,170],
+                      [170,0,0],[170,0,170],[170,85,0],[170,170,170]];
+    for(var y=0; y<Module.c_h; y++) {
+        for(var x=0; x<Module.c_w; x++) {
+            var offset = framebuffer + 2 * (Module.c_w * y + x);
+            var code   = HEAP8[offset];
+            var attrib = HEAP8[offset+1];
+            // FIXME: use double buffering and only write the updates
+            var fg = attrib & 0xF;
+            var bg = attrib >> 4;
+            var bgp = background[bg&7];
+            c.fillStyle = 'rgb(' + bgp[0] + ',' + bgp[1] + ',' + bgp[2] + ')';
+            c.fillRect(x*GW, y*GH, GW, GH);
+            var sx = (code & 0xF) * GW, sy = (code >> 4) * GH;
+            c.drawImage(Module.atlas[fg & 0xF], sx, sy, GW, GH, x*GW, y*GH, GW, GH);
+        }
+    }
+});
+
+//EM_JS(void, request_canvas_update_js, (uint8_t *framebuffer), {
+//    if (!Module.scheduled) {
+//    }
+//}
+
+
+void tui_update_screen(void) {
+    if (g_use_tui_vga) {
+        canvas_update_screen_js(g_tui_vga.video);
+    }
+}
+
+
+
 void canvas_put(int x, int y, int code, int fg, int bg) {
-    if (g_use_text_console) {
-        // Buffer the character into the text video buffer.
-        uint8_t attrib = (bg << 4) + fg;
-        typeof (g_text_console) *c = &g_text_console;
-        uint32_t o = text_console_offset_rc(c,x,y);
-        c->video[o] = code;
-        c->video[o+1] = attrib;
+    if (g_use_tui_vga) {
+        tui_vga_put(&g_tui_vga,
+                    x, y,
+                    code, fg, bg);
     }
     else {
         // Write it directly into the canvas.
@@ -295,15 +323,17 @@ EM_JS(void, canvas_scroll_js, (int x, int y, int w, int h, int lines), {
             );
     }
 });
-void canvas_scroll(int x, int y, int w, int h, int lines) {
-    if (g_use_text_console) {
-        // FIXME: Share the scroll routines with the i686 console code.
+void tui_scroll(tui_window_t *win, int lines) {
+    if (g_use_tui_vga) {
+        tui_vga_scroll(&g_tui_vga, win, lines);
     }
     else {
-        // direct
-        canvas_scroll_js(x, y, w, h, lines);
+        canvas_scroll_js(win->x, win->y,
+                         win->w, win->h,
+                         lines);
     }
 }
+
 
 
 // reply/send_tag_u32 similar to mod_websocket_leb128s.c

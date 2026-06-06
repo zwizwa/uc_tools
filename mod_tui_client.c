@@ -135,8 +135,8 @@ void tui_reverse_video(tui_window_t *w, int mode) {
 }
 
 void tui_string_at(tui_window_t *w,
-                   int x, int y,
-                   int width,
+                   uint32_t x, uint32_t y,
+                   uint32_t width,
                    const char *str) {
     //LOG("tui_string_at %d %d %s\n", x, y, str);
     SEND_REPLY_TAG_U32_BYTES(

@@ -40,7 +40,7 @@ static inline void text_console_clear_top(struct text_console *log) {
 
 static inline void text_console_split(struct text_console *log,
                                       uint32_t top_rows) {
-    /* Two regions are abstract as tui_window  */
+    /* Two regions are abstract as tui_window: main text log window ... */
     log->win.w  = log->vga.nb_cols;
     log->win.h  = log->vga.nb_rows - top_rows;
     log->win.x  = 0;
@@ -48,12 +48,13 @@ static inline void text_console_split(struct text_console *log,
     log->win.fg = 7;
     log->win.bg = 0;
 
+    /* ... and top row status bar. */
     log->status.w  = log->vga.nb_cols;
     log->status.h  = top_rows;
     log->status.x  = 0;
     log->status.y  = 0;
     log->status.fg = 7;
-    log->status.bg = 7;
+    log->status.bg = 1;
 
 }
 

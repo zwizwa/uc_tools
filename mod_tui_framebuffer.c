@@ -93,11 +93,6 @@ void tui_box(tui_window_t *win) {
     }
 }
 
-void tui_scroll(tui_window_t *win, int lines) {
-    canvas_scroll(win->x, win->y,
-                  win->w, win->h,
-                  lines);
-}
 
 
 void tui_clear(tui_window_t *win) {
@@ -133,8 +128,8 @@ void tui_del_window(struct tui_window *w) {
     memset(w,0,sizeof(*w));
     free(w);
 }
-void tui_update_screen(void) {
-}
+// This needs to be defined in the individual implementation.
+void tui_update_screen(void);
 
 
 #endif
