@@ -148,11 +148,15 @@ static inline uint32_t NS(_read)(NS(_queue_t) *b, NS(_element_t) *buf, uint32_t 
     b->read = NS(_index_)(b, read, len);
     return len;
 }
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
 static inline NS(_oob_element_t) NS(_get)(NS(_queue_t) *b) {
     NS(_element_t) element;
     if (1 == NS(_read)(b, &element, 1)) { return element; }
     else return NS(_oob_element_none)();
 }
+#pragma GCC diagnostic pop
+
 static inline void NS(_put)(NS(_queue_t) *b, NS(_element_t) element) {
     NS(_write)(b, &element, 1);
 }
