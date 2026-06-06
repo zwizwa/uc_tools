@@ -159,6 +159,11 @@ EM_JS(void, canvas_init_js, (int glyph_w, int glyph_h, uint32_t *win), {
     Module.ctx.imageSmoothingEnabled = false;
     Module.canvas = canvas;
 
+    // The blink bit is not implemented.
+    Module.background =
+        [[  0, 0, 0],[  0,  0,170],[  0,170,  0],[  0,170,170],
+         [170, 0, 0],[170,  0,170],[170, 85,  0],[170,170,170]]
+
 });
 
 void canvas_init(int glyph_w, int glyph_h, uint32_t *win) {
@@ -229,47 +234,51 @@ EM_JS(void, canvas_put_js, (int x, int y, int code, int fg, int bg), {
     var c  = Module.ctx;
     var GW = Module.GW;
     var GH = Module.GH;
-    var bgp = [[0,0,0],[0,0,170],[0,170,0],[0,170,170],
-               [170,0,0],[170,0,170],[170,85,0],[170,170,170]][bg & 7];
-    c.fillStyle = 'rgb(' + bgp[0] + ',' + bgp[1] + ',' + bgp[2] + ')';
+    var bgp = Module.background[bg & 7];
+    c.fillStyle = "rgb(" + bgp[0] + "," + bgp[1] + "," + bgp[2] + ")";
     c.fillRect(x*GW, y*GH, GW, GH);
     var sx = (code & 0xF) * GW, sy = (code >> 4) * GH;
     c.drawImage(Module.atlas[fg & 0xF], sx, sy, GW, GH, x*GW, y*GH, GW, GH);
 });
 
-// Blit text framebuffer to canvas.
-EM_JS(void, canvas_update_screen_js, (uint8_t *framebuffer), {
-    var c  = Module.ctx;
-    var GW = Module.GW;
-    var GH = Module.GH;
-    var background = [[0,0,0],[0,0,170],[0,170,0],[0,170,170],
-                      [170,0,0],[170,0,170],[170,85,0],[170,170,170]];
-    for(var y=0; y<Module.c_h; y++) {
-        for(var x=0; x<Module.c_w; x++) {
-            var offset = framebuffer + 2 * (Module.c_w * y + x);
-            var code   = HEAP8[offset];
-            var attrib = HEAP8[offset+1];
-            // FIXME: use double buffering and only write the updates
-            var fg = attrib & 0xF;
-            var bg = attrib >> 4;
-            var bgp = background[bg&7];
-            c.fillStyle = 'rgb(' + bgp[0] + ',' + bgp[1] + ',' + bgp[2] + ')';
-            c.fillRect(x*GW, y*GH, GW, GH);
-            var sx = (code & 0xF) * GW, sy = (code >> 4) * GH;
-            c.drawImage(Module.atlas[fg & 0xF], sx, sy, GW, GH, x*GW, y*GH, GW, GH);
+// Blit text framebuffer to canvas when animation frame is available.
+EM_JS(void, request_canvas_update_js, (uint8_t *framebuffer), {
+    function canvas_update() {
+        // console.log("canvas_update");
+        Module.redraw_scheduled = false;
+        var c  = Module.ctx;
+        var GW = Module.GW;
+        var GH = Module.GH;
+        var background = Module.background;
+        for(var y=0; y<Module.c_h; y++) {
+            for(var x=0; x<Module.c_w; x++) {
+                var offset = framebuffer + 2 * (Module.c_w * y + x);
+                var code   = HEAP8[offset];
+                var attrib = HEAP8[offset+1];
+                // FIXME: use double buffering and only write the updates
+                var fg = attrib & 0xF;
+                var bg = attrib >> 4;
+                var bgp = background[bg&7];
+                c.fillStyle = "rgb(" + bgp[0] + "," + bgp[1] + "," + bgp[2] + ")";
+                c.fillRect(x*GW, y*GH, GW, GH);
+                var sx = (code & 0xF) * GW, sy = (code >> 4) * GH;
+                c.drawImage(Module.atlas[fg & 0xF], sx, sy, GW, GH, x*GW, y*GH, GW, GH);
+           }
         }
     }
+    if (!Module.redraw_scheduled) {
+        Module.redraw_scheduled = true;
+        requestAnimationFrame(canvas_update);
+    }
 });
-
-//EM_JS(void, request_canvas_update_js, (uint8_t *framebuffer), {
-//    if (!Module.scheduled) {
-//    }
-//}
 
 
 void tui_update_screen(void) {
     if (g_use_tui_vga) {
-        canvas_update_screen_js(g_tui_vga.video);
+        request_canvas_update_js(g_tui_vga.video);
+    }
+    else {
+        // updates happen synchronously
     }
 }
 
