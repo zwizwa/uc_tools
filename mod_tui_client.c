@@ -8,7 +8,7 @@
 #ifndef MOD_TUI_CLIENT
 #define MOD_TUI_CLIENT
 
-#include "tui_cmd.h"
+#include "tui.h"
 
 #include "tag_u32.c"
 #include "tag_u32.h"

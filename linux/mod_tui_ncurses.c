@@ -16,6 +16,7 @@
 #include <signal.h>
 #include "macros.h"
 
+
 /* Global init.  For ncurses this installs a SIGWINCH handler. */
 static volatile sig_atomic_t tui_resized = 0;
 static void tui_on_winch(int sig) {

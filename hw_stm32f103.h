@@ -1094,7 +1094,7 @@ INLINE void hw_usart_set_databits(uint32_t usart, uint32_t bits) {
 		USART_CR1(usart) |= USART_CR1_M;  /* 9 data bits */
 	}
 }
-INLINE void hw_usart_set_stopbits(uint32_t usart, uint32_t stopbxits) {
+INLINE void hw_usart_set_stopbits(uint32_t usart, uint32_t stopbits) {
 	uint32_t reg32;
 	reg32 = USART_CR2(usart);
 	reg32 = (reg32 & ~USART_CR2_STOPBITS_MASK) | stopbits;

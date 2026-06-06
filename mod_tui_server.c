@@ -21,7 +21,7 @@ int draw(struct tag_u32 *req) {
     }
 
     /* Client side is doing window ID allocation and we just follow.
-       The TUI_MAX_NB_WINDOWS is shared via tui_cmd.h */
+       The TUI_MAX_NB_WINDOWS is shared via tui.h */
     TAG_U32_MATCH(req, TUI_CMD_NEW_WINDOW, m, wid, w, h, x, y) {
         // LOG("new_window: %d %d %d %d %d\n", m->w, m->h, m->x, m->y, m->wid);
         ASSERT(m->wid < TUI_MAX_NB_WINDOWS);

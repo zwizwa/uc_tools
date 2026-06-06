@@ -146,6 +146,15 @@ static inline void *mini_memcpy(void *dest, const void *src, uintptr_t n) {
     for (uintptr_t i=0; i<n; i++) { *d++ = *s++; };
     return dest;
 }
+#if 0
+static inline void *mini_memmove(void *dest, const void *src, uintptr_t n) {
+    ASSERT(dest < src); // FIXME: implement the other case!
+    return mini_memcpy(dest, src, n);
+}
+#endif
+
+
+
 static inline volatile void *mini_memcpy_volatile(volatile void *dest,
                                                   const volatile void *src, uintptr_t n) {
     volatile uint8_t *d = dest;

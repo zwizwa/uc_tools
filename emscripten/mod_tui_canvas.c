@@ -76,7 +76,7 @@
 #include "log_tools.h"
 #include "tag_u32.c"
 #include "tag_u32.h"
-#include "tui_cmd.h"
+#include "tui.h"
 
 #include "mod_vga_font_8x16.c"
 

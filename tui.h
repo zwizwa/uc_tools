@@ -1,5 +1,5 @@
-#ifndef TUI_CMD_H
-#define TUI_CMD_H
+#ifndef TUI_H
+#define TUI_H
 
 /* Window ID mapping is a fixed size array. */
 #define TUI_MAX_NB_WINDOWS 64
@@ -45,5 +45,27 @@ typedef struct tui_window tui_window_t;
 #define TUI_RESIZED   -2  /* ERR is -1 */
 #define TUI_BEGIN     -3
 #define TUI_END       -4
+
+
+void tui_reverse_video(tui_window_t *w, int mode);
+void tui_string_at(tui_window_t *w,
+                   int x, int y,
+                   int width,
+                   const char *str);
+void tui_clear(tui_window_t *w);
+void tui_box(tui_window_t *w);
+void tui_init_screen(void);
+void tui_restore_screen(void);
+int tui_cols(void);
+int tui_lines(void);
+tui_window_t *tui_new_window(int width, int height, int x, int y);
+void tui_main_window(tui_window_t *w);
+void tui_del_window(tui_window_t *w);
+void tui_update_screen(void);
+void tui_scroll(tui_window_t *w, int lines);
+int tui_get_event(tui_window_t *w);
+typedef int (*tui_handle_fn)(void *, int ch);
+
+void tui_event_loop(tui_handle_fn handle, void *ctx);
 
 #endif

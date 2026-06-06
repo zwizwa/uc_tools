@@ -90,8 +90,7 @@ qemu_dsk: kernel.dsk
 # Faster boot with ipxe boot floppy compiled with static ip and hard coded boot file.
 # See /i/tom/git/ipxe/qemu.sh
 # Using rtl8139 instead of virtio-net
-qemu_nbp: kernel.nbp
-	cp -a ipxe-qemu.dsk /tmp/$<.boot
+qemu_nbp: kernel.nbp ipxe-qemu.dsk
 	$(QEMU) -drive file=ipxe-qemu.dsk,$(FLOPPY) -boot a -netdev user,id=net0,tftp=. -device rtl8139,netdev=net0  || echo -n
 
 
@@ -102,7 +101,7 @@ push: $(NBP)
 	scp $(NBP) $(TFTPBOOT)
 
 # Then boot it in qemu
-qemu_br1: kernel.nbp
+qemu_br1: kernel.nbp ipxe-qemu-br1.dsk
 	scp $< $(TFTPBOOT)
 	sudo $(QEMU) -drive file=ipxe-qemu-br1.dsk,format=raw,if=floppy,file.locking=off -boot a -netdev bridge,id=net0,br=br1 -device rtl8139,netdev=net0
 

@@ -6,63 +6,78 @@
 #include "tools.h"
 #include <strings.h>
 
+#include "tui_vga.h"
+
+#define VIDEO ((volatile uint8_t *)0xB8000)
+
 struct text_console {
-    volatile uint8_t *video;
+    /* Memory-level operations are from mod_tui_vga.c */
+    struct tui_vga vga;
+    /* Current state */
     uint8_t col;
     uint8_t row;
-    uint8_t nb_rows;
-    uint8_t nb_cols;
-    uint8_t attrib;
-    uint8_t top_rows;
     uint8_t use_cli:1;
     uint8_t raw:1;
+    /* Main text window */
+    struct tui_window win;
+    struct tui_window status;
 };
 static inline void text_console_set_cursor(struct text_console *log) {
     uint16_t pos = log->row;
-    pos *= log->nb_cols;
+    pos *= log->vga.nb_cols;
     pos += log->col;
     set_cursor_pos(pos);
 }
 static inline void text_console_clear(struct text_console *log) {
-    log->row = 0;
-    log->col = 0;
-    for (int i = 0; i < log->nb_cols*log->nb_rows; i++) {
-        log->video[i*2] = ' ';
-        log->video[i*2+1] = log->attrib;
-    }
+    tui_vga_clear(&log->vga, &log->win);
+    log->col = log->win.x;
+    log->row = log->win.y;
     text_console_set_cursor(log);
 }
-
-#define VIDEO ((volatile uint8_t *)0xB8000)
-
 static inline void text_console_clear_top(struct text_console *log) {
-    volatile uint8_t *v = (void*)log->video;
-    for (int i=0; i<log->nb_cols*log->top_rows; i++) {
-        *v++ = ' ';
-        *v++ = 0x17;
-    }
+    tui_vga_clear(&log->vga, &log->status);
+}
+
+static inline void text_console_split(struct text_console *log,
+                                      uint32_t top_rows) {
+    /* Two regions are abstract as tui_window  */
+    log->win.w  = log->vga.nb_cols;
+    log->win.h  = log->vga.nb_rows - top_rows;
+    log->win.x  = 0;
+    log->win.y  = top_rows;
+    log->win.fg = 7;
+    log->win.bg = 0;
+
+    log->status.w  = log->vga.nb_cols;
+    log->status.h  = top_rows;
+    log->status.x  = 0;
+    log->status.y  = 0;
+    log->status.fg = 7;
+    log->status.bg = 7;
+
 }
 
 static inline void text_console_init(struct text_console *log) {
     memset(log, 0, sizeof(*log));
-    log->attrib = 0x07;
-    log->video = VIDEO;
-    log->nb_cols = 80;
-    log->nb_rows = 25;
-    log->top_rows = 1;
+    log->vga.video = (void*)VIDEO;
+    log->vga.nb_cols = 80;
+    log->vga.nb_rows = 25;
+
+    text_console_split(log, 1);
     text_console_clear_top(log);
+
     switch(2) {
     case 1:
         /* Start at the bottom to cause a scroll at first character writen. */
         log->col = 0;
-        log->row = log->nb_rows;
+        log->row = log->vga.nb_rows;
         break;
     case 2:
         /* Get cursor from display registers.  This is also where bios
            stopped writing to screen right after booting. */
         uint16_t pos = get_cursor_pos();
-        log->row = pos / log->nb_cols;
-        log->col = pos % log->nb_cols;
+        log->row = pos / log->vga.nb_cols;
+        log->col = pos % log->vga.nb_cols;
         break;
     case 3:
         text_console_clear(log);
@@ -70,27 +85,14 @@ static inline void text_console_init(struct text_console *log) {
     }
 }
 static inline void text_console_scroll(struct text_console *log) {
-
-    uint32_t row_size   = 2 * log->nb_cols;
-    uint32_t bytes_top  = log->top_rows * row_size;
-    uint32_t bytes_move = row_size * (log->nb_rows - 1 - log->top_rows);
-
-    // Note: mini_memcpy that allows backwards overlapping copy.
-    mini_memcpy_volatile(
-        /* dst */ log->video + bytes_top,
-        /* src */ log->video + bytes_top + row_size,
-        bytes_move);
-    volatile uint8_t *v = (void*)log->video + bytes_top + bytes_move;
-    for (int i=0; i<log->nb_cols; i++) {
-        *v++ = ' ';
-        *v++ = log->attrib;
-    }
+    tui_vga_scroll(&log->vga, &log->win, 1);
 }
 static inline uint32_t text_console_offset(struct text_console *log) {
-    return 2 * (log->nb_cols * log->row + log->col);
+    return 2 * (log->vga.nb_cols * log->row + log->col);
 }
 static inline void text_console_maybe_scroll(struct text_console *log) {
-    while (log->row >= log->nb_rows) {
+    // FIXME: This can now just do one scroll with multiple lines
+    while (log->row >= log->vga.nb_rows) {
         text_console_scroll(log);
         log->col = 0;
         log->row--;
@@ -120,20 +122,21 @@ static inline void text_console_putchar_nocli(struct text_console *log, uint8_t 
     }
     else if (c == 8) {
         if (log->col > 0) {
+            // FIXME: implement in tui_vga_
             // erase previous character if not on first col
             log->col--;
-            typeof (log->video) v = log->video + text_console_offset(log);
+            typeof (log->vga.video) v = log->vga.video + text_console_offset(log);
             *v++ = ' ';
-            *v++ = log->attrib;
+            *v++ = tui_vga_win_attrib(&log->win);
         }
     }
     else {
-        typeof (log->video) v = log->video + text_console_offset(log);
+        typeof (log->vga.video) v = log->vga.video + text_console_offset(log);
         *v++ = c;
-        *v++ = log->attrib;
+        *v++ = tui_vga_win_attrib(&log->win);
         log->col++;
     }
-    if (log->col == log->nb_cols) {
+    if (log->col == log->vga.nb_cols) {
         // wrap end-of-line
         log->col = 0;
         log->row++;
