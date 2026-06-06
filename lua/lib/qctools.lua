@@ -49,6 +49,7 @@ function gen.range(min_inc, max_inc)
    end
 end
 function gen.nat(seed, size)
+   assert(type(size) == 'number')
    local g = gen.range(0, size)
    return g(seed, size)
 end
@@ -81,6 +82,7 @@ end
 gen.bool = fmap(function(x) return x == 1 end, gen.range(0, 1))
 gen.nat1 = fmap(function(x) return x + 1 end, gen.nat)
 
+-- Lists parameterized by test size.
 function gen.list(gen_el)
    return function(seed, size)
       local lst = {}
@@ -92,6 +94,23 @@ function gen.list(gen_el)
       return lst, seed
    end
 end
+
+-- List parameterized by size generator.
+function gen.sized_list(gen_el, gen_size)
+   return function(seed, size)
+      local lst = {}
+      local lsize, new_seed = gen_size(seed, size)
+      seed = new_seed
+      for i=1,lsize do
+         local val, new_seed = gen_el(seed, size)
+         seed = new_seed
+         table.insert(lst, val)
+      end
+      return lst, seed
+   end
+end
+
+
 
 -- Infinite stream.  This splits the random number generator, which we
 -- implement by just duplicating the seed.  Typically this is used to
@@ -329,7 +348,17 @@ function m.run_shrink(shrinker, prop, args)
    end
 end
 
-
+-- Turn a type into a data structure exposing its constructors.
+function m.as_table(typ)
+   local function index(t, k)
+      return function(...)
+         return {k, ...}
+      end
+   end
+   local t = {}
+   setmetatable(t, { __index = index })
+   return typ(t)
+end
 
 
 return m

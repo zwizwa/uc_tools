@@ -137,7 +137,13 @@ function tc:run_fsm_test(spec, prop)
    local arg_gen= {}
    for _,cmd_name in ipairs(cmd_names) do
       local cmd = prop.cmd[cmd_name]
-      local cmd_arg_gen = gen.map(cmd.typ(gen))
+      local cmd_typ = cmd.typ(gen)
+      -- The top level constructor is always a table, so you can't do
+      -- typ = function(t) return t.const('A') end
+      assert(type(cmd_typ) == 'table')
+      -- That is a historical artefact that has been cemented in.
+      -- Add the outer gen.map here:
+      local cmd_arg_gen = gen.map(cmd_typ)
       arg_gen[cmd_name] = function() return self:random(cmd_arg_gen, p.size) end
    end
 
