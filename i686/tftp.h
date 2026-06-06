@@ -47,16 +47,26 @@ struct tftp {
 
 };
 
+struct ping {
+    struct mac mac;
+    struct ip ip;
+    struct icmp icmp;
+};
+
 /* This handles ping and ignores everything else.  */
 static inline void tftp_rx_icmp(struct tftp *s, const uint8_t *data, uint32_t len) {
-    const struct {
-        struct mac mac;
-        struct ip ip;
-        struct icmp icmp;
-    } *p = (const void*)data;
+    const struct ping *p = (const void*)data;
     if (memcmp(p->ip.d_ip, s->ip, 4)) return;
-    if (p->icmp.type == ICMP_PING) {
+    if (p->icmp.type == ICMP_ECHO_REQUEST) {
         LOG("ping from "); log_ipv4(p->ip.s_ip); LOG("\n");
+        struct ping q = *p; // FIXME: payload!
+        memcpy(q.mac.d_mac, p->mac.s_mac, 6);
+        memcpy(q.mac.s_mac, p->mac.d_mac, 6);
+        memcpy(q.ip.d_ip, p->ip.s_ip, 4);
+        memcpy(q.ip.s_ip, p->ip.d_ip, 4);
+        q.icmp.type = ICMP_ECHO_REPLY;
+        q.ip.header_checksum = ip_checksum(&q.ip, sizeof(q.ip));
+        s->send(s->ctx, (const uint8_t*)&q, sizeof(q));
     }
     else {
         LOG("icmp %02x %02x\n", p->icmp.type, p->icmp.code);
