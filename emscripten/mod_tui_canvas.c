@@ -6,67 +6,30 @@
 #define LOG printf
 #endif
 
-
 /* TODO
-   queue up the drawing commands and flush them in a requestAnimationFrame callback
-   https://claude.ai/chat/e97f4560-47ab-414e-98d0-4717f90462da
 
-   EDIT: A better way to do this:
-
-   Avoid the wasm->javascript calls.  Currently it is doing a context
-   switch for each character draw.  It seems better to render to a
-   framebuffer in C, then blit the whole screen to the canvas on
-   tui_update_screen().  Javascript->wasm calls are cheap, so pushing
-   the websocket data into the wasm code should be cheap.  It can stay
-   in wasm to do the rendering into an off-screen buffer, then blit
-   onto the canvas in one go.
-
+   - On resize, something gets out of sync.  I think there are still
+     drawing commands in flight for a bigger window when the canvas
+     size gets reduced.  Maybe canvas size should only reduce in
+     response to client request.  That way it has the coorect view.
 */
 
 
-// https://claude.ai/chat/7c500d35-4f3d-477a-8ad6-53cb2ce07627
-// https://claude.ai/chat/4b1a5989-d60c-4a4f-b6cc-4cf858f1c138
+/* This is a "canvas panel" in the browser that can talk to a
+   websocket server (= database / daq application).
 
-/* Towards a "canvas panel" in the browser that can talk to a
-   webscoket server (= database / daq application).
+   It is built on the "mod_tui" set of files.  A single
+   ncurses-inspired minimalistic tui API that can do:
 
-   This is an effort to make a single uc_tools text + optional
-   graphics library that can do:
    - ncurses
-   - vga text console
-   - vga framebuffer
-   - i2c lcd
    - browser canvas
-
-   The text part should do a minimal emulation of the ncurses
-   functionality:
-   - window scroll, clear
-   - render text at location
-
-   The html canvas part can use an off-screen canvas to contain the
-   font atlas.
-
-*/
-
-
-/*
-
-<!DOCTYPE html>
-<html>
-<body>
-  <canvas id="screen" width="720" height="400"></canvas>
-  <script src="app.js"></script>  <!-- your emscripten output -->
-</body>
-</html>
-
+   - vga text console
+   - vga framebuffer (TODO)
+   - i2c lcd (TODO)
 */
 
 
 
-
-// Using the emscripten websocket library, this exposes the creation
-// of the websocket connection and the callbacks to the C end, so no
-// JS glue is needed.
 #include <emscripten/emscripten.h>
 #include <emscripten/websocket.h>
 #include <string.h>
@@ -80,18 +43,10 @@
 
 #include "mod_vga_font_8x16.c"
 
-
-
-static inline uint32_t tui_vga_offset_rc(struct tui_vga *log,
-                                         uint32_t row,
-                                         uint32_t col) {
-    return 2 * (log->nb_cols * row + col);
-}
-
 int g_use_tui_vga = 1;
-
 struct tui_vga g_tui_vga;
 EMSCRIPTEN_WEBSOCKET_T g_sock;
+uint32_t g_max_video = 0;
 
 void abort_busyloop(void) {
     /* Where is this coming from? */
@@ -131,7 +86,7 @@ EM_JS(void, canvas_init_js, (int glyph_w, int glyph_h, uint32_t *win), {
     const h = window.innerHeight;
     // console.log(w,h);
 
-    // Convert to character dimensions.
+    // Round down to fit a character matrix.
     var c_w = Math.floor(w / glyph_w);
     var c_h = Math.floor(h / glyph_h);
 
@@ -172,19 +127,33 @@ EM_JS(void, canvas_init_js, (int glyph_w, int glyph_h, uint32_t *win), {
 
 });
 
+
 void canvas_init(int glyph_w, int glyph_h, uint32_t *win) {
     canvas_init_js(glyph_w, glyph_h, win);
-    if (g_tui_vga.video) free(g_tui_vga.video);
     uint32_t w = win[0];
     uint32_t h = win[1];
     typeof (g_tui_vga) *c = &g_tui_vga;
-    c->video = malloc(w * h * 2);
     c->nb_cols = w;
     c->nb_rows = h;
+    uint32_t video_size = w * h * 2;
+    if (!g_tui_vga.video) {
+        g_max_video = video_size;
+        c->video = malloc(g_max_video);
+    }
+    else if (video_size <= g_max_video) {
+        /* Don't shrink buffer.  This is a workaround for in-flight
+           drawing commands, to make sure they don't hit outside of
+           the array if the window is shrunk.  Fix this properly:
+           window should resize in sync with what client thinks.
+           Probably @update_screen. */
+    }
+    else {
+        g_max_video = video_size;
+        c->video = realloc(c->video, g_max_video);
+    }
     for (uint32_t i=0; i<w*h; i++) {
-        uint32_t o = tui_vga_offset_rc(c,w,h);
-        c->video[o]   = ' ';
-        c->video[o+1] = 7;
+        c->video[i*2]   = ' ';
+        c->video[i*2+1] = 7;
     }
 }
 
@@ -283,6 +252,8 @@ EM_JS(void, request_canvas_update_js, (uint8_t *framebuffer), {
 void tui_update_screen(void) {
     if (g_use_tui_vga) {
         request_canvas_update_js(g_tui_vga.video);
+        // This is also when we should send out pending resizes.
+        // E.g. always wait until rendering is done.
     }
     else {
         // updates happen synchronously
@@ -411,10 +382,19 @@ void on_key(int tui_key_code) {
 EMSCRIPTEN_KEEPALIVE
 void on_resize(int w, int h) {
     // LOG("on_resize %d %d\n", w, h);
+
+    // FIXME: When using the text frame buffer, the resize needs to
+    // happen in sync with the drawing commands.  Actually any drawing
+    // commands can be dropped.
+
+    // Alternatively: never make the memory buffer smaller.  That way
+    // there are no out-of-bounds accesses that can mess things up.
+
     uint32_t dims[2] = {};
     canvas_init(8,16,dims);
     SEND_TAG_U32(2 /*resized*/, dims[0], dims[1]);
 }
+
 
 EM_JS(void, register_events, (void), {
     const onKey    = Module.cwrap("on_key",    null, ["number"]);

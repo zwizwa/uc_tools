@@ -1,13 +1,15 @@
 #ifndef MOD_TUI
 #define MOD_TUI
 
-/* This implements the mod_tui interface for the canvas browser based gui
+/* This implements the application side (webserver/websocket side)
+   mod_tui interface for the tui-in-browser implementation.
+
    API Notes:
    - no printf-style formatting
    - x,y convention instead of y,x from ncurses
    - screens can resize (a tui_event) but this requires teardown, reinit
    Implementation notes:
-   - two threads running as coroutines (inversion of control is needed)
+   - other end is emscripten/mod_tui_canvas.c
    - this is more general than "browser canvas" and could support other panel apps
 */
 
