@@ -11,8 +11,8 @@
 
 struct tui_vga {
     uint8_t *video;
-    uint8_t nb_rows;
-    uint8_t nb_cols;
+    uint32_t nb_rows;
+    uint32_t nb_cols;
 };
 
 

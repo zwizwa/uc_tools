@@ -47,6 +47,8 @@ int g_use_tui_vga = 1;
 struct tui_vga g_tui_vga;
 EMSCRIPTEN_WEBSOCKET_T g_sock;
 uint32_t g_max_video = 0;
+const char *g_ws_url = "ws://carpo:3456/ws";
+
 
 void abort_busyloop(void) {
     /* Where is this coming from? */
@@ -54,28 +56,52 @@ void abort_busyloop(void) {
     exit(1);
 }
 
-EM_JS(void, key_set, (const char* name, int code), {
+EM_JS(void, key_set_js, (const char* name, int code), {
     Module.key_ids = Module.key_ids || {};
     Module.key_ids[UTF8ToString(name)] = code;
 });
 
 void init_keys(void) {
-    key_set("ArrowUp",    TUI_KEY_UP);
-    key_set("ArrowDown",  TUI_KEY_DOWN);
-    //key_set("ArrowLeft",  TUI_KEY_LEFT);
-    //key_set("ArrowRight", TUI_KEY_RIGHT);
-    key_set("PageUp",     TUI_KEY_PPAGE);
-    key_set("PageDown",   TUI_KEY_NPAGE);
-    key_set("Home",       TUI_KEY_HOME);
-    key_set("End",        TUI_KEY_END);
-    //key_set("Enter",      TUI_KEY_ENTER);
-    //key_set("Backspace",  TUI_KEY_BKSP);
+    key_set_js("ArrowUp",    TUI_KEY_UP);
+    key_set_js("ArrowDown",  TUI_KEY_DOWN);
+    //key_set_js("ArrowLeft",  TUI_KEY_LEFT);
+    //key_set_js("ArrowRight", TUI_KEY_RIGHT);
+    key_set_js("PageUp",     TUI_KEY_PPAGE);
+    key_set_js("PageDown",   TUI_KEY_NPAGE);
+    key_set_js("Home",       TUI_KEY_HOME);
+    key_set_js("End",        TUI_KEY_END);
+    //key_set_js("Enter",      TUI_KEY_ENTER);
+    //key_set_js("Backspace",  TUI_KEY_BKSP);
 }
 
-EM_JS(void, canvas_close, (void), {
+EM_JS(void, canvas_close_js, (void), {
+    const onResize = Module.cwrap("on_resize", null, ["number", "number"]);
+
+    /* Reduce size to 0x0 to effectively make it disappear. */
     var canvas = document.getElementById("screen");
     canvas.width  = 0;
     canvas.height = 0;
+
+    /* Reset text size as well to make sure canvas_init() actually
+       resizes on reconnect. */
+    Module.c_w    = 0;
+    Module.c_h    = 0;
+
+#if 0
+    /* Schedule a reconnect attempt once per second.
+
+       Note that it would probably be best to completely reload the
+       page when a reconnect succeeds, to also get the updated browser
+       code.  Though this is only needed during development.  It could
+       be done automatically by comparing version strings. */
+    setTimeout(
+        Module.cwrap("tui_canvas_ws_init", null, []),
+        1000);
+
+    /* FIXME: Auto-reconnect basically works, but I've disabled this
+       feature, because opening a second window will kill the first
+       one, and they will go in a mutual stealing regime. */
+#endif
 });
 
 
@@ -159,7 +185,7 @@ void canvas_init(int glyph_w, int glyph_h, uint32_t *win) {
 
 
 
-EM_JS(void, canvas_init_font, (const uint8_t *font, int glyph_w, int glyph_h), {
+EM_JS(void, canvas_init_font_js, (const uint8_t *font, int glyph_w, int glyph_h), {
     var GW = glyph_w;
     var GH = glyph_h;
     var N = 256;
@@ -392,11 +418,12 @@ void on_resize(int w, int h) {
 
     uint32_t dims[2] = {};
     canvas_init(8,16,dims);
+    LOG("resized: %d x %d\n", dims[0], dims[1]);
     SEND_TAG_U32(2 /*resized*/, dims[0], dims[1]);
 }
 
 
-EM_JS(void, register_events, (void), {
+EM_JS(void, register_events_js, (void), {
     const onKey    = Module.cwrap("on_key",    null, ["number"]);
     const onResize = Module.cwrap("on_resize", null, ["number", "number"]);
     window.addEventListener("keydown", (e) => {
@@ -415,17 +442,18 @@ EM_JS(void, register_events, (void), {
 
 #include "uct_byteswap.h"
 
-typedef void (*ws_fn)(EMSCRIPTEN_WEBSOCKET_T s, void *ctx);
-ws_fn  g_ws_on_open;
-void  *g_ws_on_open_ctx;
-
 struct tui_window *window[TUI_MAX_NB_WINDOWS] = {};
-
-EM_BOOL on_open(int t, const EmscriptenWebSocketOpenEvent *e, void *u) {
-    printf("connection open, sending init\n");
-    g_ws_on_open(e->socket, g_ws_on_open_ctx);
-    return EM_TRUE;
+void window_cleanup(void) {
+    /* Only call this when connection breaks. */
+    for(int i=0; i<TUI_MAX_NB_WINDOWS; i++) {
+        if (window[i]) {
+            LOG("cleaning up window %d\n", i);
+            free(window[i]);
+            window[i] = NULL;
+        }
+    }
 }
+
 
 void tui_init_screen(int cols, int lines) {
     /* Note that we don't really want the application to choose the
@@ -434,14 +462,6 @@ void tui_init_screen(int cols, int lines) {
     uint32_t dims[2];
     canvas_init(8, 16, dims);
 }
-
-EM_BOOL on_close(int t, const EmscriptenWebSocketCloseEvent *e, void *u) {
-    printf("connection closed\n");
-    canvas_close();
-    return EM_TRUE;
-}
-
-
 
 #include "mod_tui_framebuffer.c"
 /* mod_tui_server defines a tag_u32 tui server in terms of local tui C api */
@@ -499,16 +519,31 @@ EM_BOOL on_message(int t, const EmscriptenWebSocketMessageEvent *e, void *u) {
     return EM_TRUE;
 }
 
-int tui_canvas_ws_init(const char *ws_url, ws_fn ws_on_open, void *ctx) {
-    g_ws_on_open     = ws_on_open;
-    g_ws_on_open_ctx = ctx;
+uint32_t dims[2];
+
+EM_BOOL on_open(int t, const EmscriptenWebSocketOpenEvent *e, void *u) {
+    canvas_init(8, 16, dims);
+    printf("connection open, sending init\n");
+    LOG("send dims: %d x %d\n", dims[0], dims[1]);
+    SEND_TAG_U32(0 /*init*/, dims[0], dims[1]);
+    return EM_TRUE;
+}
+
+EM_BOOL on_close(int t, const EmscriptenWebSocketCloseEvent *e, void *u) {
+    printf("connection closed\n");
+    canvas_close_js();
+    window_cleanup();
+    return EM_TRUE;
+}
+EMSCRIPTEN_KEEPALIVE
+int tui_canvas_ws_init(void) {
     if (!emscripten_websocket_is_supported()) {
         printf("websockets not supported\n");
         return 1;
     }
     EmscriptenWebSocketCreateAttributes attr;
     emscripten_websocket_init_create_attributes(&attr);
-    attr.url = ws_url;
+    attr.url = g_ws_url;
 
     g_sock = emscripten_websocket_new(&attr);
     emscripten_websocket_set_onopen_callback(g_sock, NULL, on_open);
@@ -520,15 +555,6 @@ int tui_canvas_ws_init(const char *ws_url, ws_fn ws_on_open, void *ctx) {
 }
 
 
-uint32_t dims[2];
-void app_on_open(EMSCRIPTEN_WEBSOCKET_T s, void *arg) {
-
-    /* Once the websocket is open, we send an init message to
-       mod_tui_client.c */
-
-    LOG("send dims: %d x %d\n", dims[0], dims[1]);
-    SEND_TAG_U32(0 /*init*/, dims[0], dims[1]);
-}
 
 void canvas_dbg_charset(void) {
     for (int i=0; i<256; i++) {
@@ -540,16 +566,14 @@ void canvas_dbg_charset(void) {
 
 
 void tui_canvas_init(void) {
-    canvas_init(8, 16, dims);
-    canvas_init_font(IBM_VGA_8x16, 8, 16);
+    canvas_init_font_js(IBM_VGA_8x16, 8, 16);
     // cancas_dbg_charset();
     LOG("tui screen size: %d x %d\n", dims[0], dims[1]);
     init_keys();
-    register_events();
+    register_events_js();
 
     // FIXME: Use same trick as ws.js to find the url
-    const char *ws = "ws://carpo:3456/ws";
-    tui_canvas_ws_init(ws, app_on_open, NULL);
+    tui_canvas_ws_init();
     // runtime stays alive for callbacks (default NO_EXIT_RUNTIME)
 }
 
