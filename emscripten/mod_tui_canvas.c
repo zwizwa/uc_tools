@@ -42,6 +42,7 @@
 #include "tui_vga.h"
 
 #include "mod_vga_font_8x16.c"
+#include "mod_terminus_font_8x16.c"
 
 int g_use_tui_vga = 1;
 struct tui_vga g_tui_vga;
@@ -566,7 +567,12 @@ void canvas_dbg_charset(void) {
 
 
 void tui_canvas_init(void) {
-    canvas_init_font_js(IBM_VGA_8x16, 8, 16);
+
+    //canvas_init_font_js(IBM_VGA_8x16, 8, 16);
+    //canvas_init_font_js(terminus_bold_8x16, 8, 16);
+    canvas_init_font_js(terminus_vga_8x16, 8, 16);
+
+
     // cancas_dbg_charset();
     LOG("tui screen size: %d x %d\n", dims[0], dims[1]);
     init_keys();
