@@ -36,6 +36,7 @@ int ib_nb_items(struct ilog_browser *s) {
 void ib_draw_row(struct ilog_browser *s, int index, int highlight) {
     int y = (index) - s->top;
     char buf[tui_cols()];
+    buf[0] = 0;
     ib_format_message(s, index, buf, sizeof(buf));
     int x = 0;
     tui_reverse_video(s->list_w, highlight);
