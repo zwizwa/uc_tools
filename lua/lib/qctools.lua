@@ -5,7 +5,11 @@
 
 require('lib.tools.log')
 
+local list = require('lib.tools.list')
+
 local m = { gen = {}, shrink = {}, lib = {} }
+
+
 
 -- Generators
 local gen = m.gen
@@ -132,6 +136,29 @@ function gen.unfold(update, gen_state, gen_input, gen_size)
       end
       return lst, seed
    end
+end
+
+-- Flatten one layer of list-of-lists into list.
+local function flatten(chunks)
+   return fmap(
+      function(ls) return list.append(unpack(ls)) end,
+      chunks)
+end
+
+-- Regime switcher, useful for simulating user mode switches.  Expand
+-- one generator for a bit, then switch to antother one, etc...
+-- Collect everything in a single list.
+function gen.regimes(el_gens,          -- List of element generators to choose from
+                     chunk_size_gen,   -- Number of iterations for the next chunk
+                     nb_chunks_gen)    -- Number of chunks
+   local choices = {}
+   for i,el_gen in ipairs(el_gens) do
+      assert(el_gen)
+      table.insert(choices, gen.sized_list(el_gen, chunk_size_gen))
+   end
+   local chunks =
+      gen.sized_list(gen.choice(choices), nb_chunks_gen)
+   return flatten(chunks)
 end
 
 
