@@ -110,6 +110,20 @@ function gen.sized_list(gen_el, gen_size)
    end
 end
 
+-- Fixed size list
+function gen.vector(gen_el, vsize)
+   return function(seed, size)
+      local lst = {}
+      for i=1,vsize do
+         local val, new_seed = gen_el(seed, size)
+         seed = new_seed
+         table.insert(lst, val)
+      end
+      return lst, seed
+   end
+end
+
+
 
 
 -- Infinite stream.  This splits the random number generator, which we
