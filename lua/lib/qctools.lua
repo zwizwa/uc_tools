@@ -82,18 +82,8 @@ end
 gen.bool = fmap(function(x) return x == 1 end, gen.range(0, 1))
 gen.nat1 = fmap(function(x) return x + 1 end, gen.nat)
 
--- Lists parameterized by test size.
-function gen.list(gen_el)
-   return function(seed, size)
-      local lst = {}
-      for i=1,size do
-         local val, new_seed = gen_el(seed, size)
-         seed = new_seed
-         table.insert(lst, val)
-      end
-      return lst, seed
-   end
-end
+-- Uniform float 0 =< x  < 1.0
+gen.uniform = fmap(function(x) return x / 0x100000000 end, gen.random)
 
 -- List parameterized by size generator.
 function gen.sized_list(gen_el, gen_size)
@@ -110,14 +100,35 @@ function gen.sized_list(gen_el, gen_size)
    end
 end
 
--- Fixed size list
+-- Lists parameterized by test size.
+function gen.list(gen_el)
+   return gen.sized_list(gen_el, gen.size)
+end
+
+-- Fixed size list.
 function gen.vector(gen_el, vsize)
+   return gen.sized_list(gen_el, gen.const(vsize))
+end
+
+
+-- State machine unfold.  This is for autoregressive signals.  Find a
+-- way to generalize.  Currently this takes a random generator to
+-- generate input, a generator to generate initial state and a state
+-- update function (s,i)->(s,o).  The s is threaded through the list.
+function gen.unfold(update, gen_state, gen_input, gen_size)
    return function(seed, size)
+      local lsize, new_seed = gen_size(seed, size)
       local lst = {}
-      for i=1,vsize do
-         local val, new_seed = gen_el(seed, size)
+      seed = new_seed
+      local state, new_seed = gen_state(seed, size)
+      local lst = {}
+      seed = new_seed
+      for i=1,lsize do
+         local input, new_seed = gen_input(seed, size)
          seed = new_seed
-         table.insert(lst, val)
+         local new_state, output = update(state, input)
+         state = new_state
+         table.insert(lst, output)
       end
       return lst, seed
    end
