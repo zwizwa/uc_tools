@@ -25,7 +25,8 @@ int kernel_infof(const char *fmt, ...);
 #define for_device_phase2(m) \
     m(rtl8139) \
     m(dp83815) \
-    m(oxchip) \
+    m(oxpcie952) \
+    m(ox16pci952) \
     m(echo) \
     m(ice) \
     m(emu10k) \
@@ -48,7 +49,8 @@ int kernel_infof(const char *fmt, ...);
 #include "hw_i686_mcs9904.h"
 #include "hw_i686_dp83815.h"
 #include "hw_i686_sunix.h"
-#include "hw_i686_oxchip.h"
+#include "hw_i686_oxpcie952.h"
+#include "hw_i686_ox16pci952.h"
 #include "hw_i686_ice.h"
 #include "hw_i686_echo.h"
 #include "hw_i686_emu10k.h"
@@ -101,8 +103,11 @@ static inline void app_com_putchar(struct app *app, uint8_t c) {
     if (app->com1.irq) {
         uart_putchar(&app->com1, c);
     }
-    if (app->mcs9865.uart[0].uart.irq) {
-        uart_putchar(&app->mcs9865.uart[0].uart, c);
+    if (app->mcs9865.uart[MCS9865_MAIN_UART].uart.irq) {
+        uart_putchar(&app->mcs9865.uart[MCS9865_MAIN_UART].uart, c);
+    }
+    if (app->ox16pci952.uart.irq) {
+        uart_putchar(&app->ox16pci952.uart, c);
     }
     if (app->sunix.uart.irq) {
         uart_putchar(&app->sunix.uart, c);
@@ -266,7 +271,18 @@ static void mcs9865_isr(void) {
     isr_begin();
     static uint32_t count = 0;
     spinner(5, count++);
-    uart_isr(&g_app.mcs9865.uart[0].uart, (uart_sink_fn)app_com_input, &g_app);
+    uart_isr(&g_app.mcs9865.uart[MCS9865_MAIN_UART].uart, (uart_sink_fn)app_com_input, &g_app);
+    outb(0xA0, 0x20); // End Of Interrupt (EOI) to slave PIC
+    outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
+    isr_end();
+}
+__attribute__((naked))
+static void ox16pci952_isr(void) {
+    // This is only the first COM port
+    isr_begin();
+    static uint32_t count = 0;
+    spinner(5, count++);
+    uart_isr(&g_app.ox16pci952.uart, (uart_sink_fn)app_com_input, &g_app);
     outb(0xA0, 0x20); // End Of Interrupt (EOI) to slave PIC
     outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
     isr_end();
@@ -297,11 +313,13 @@ void pci_phase1(void *vapp, struct pci_function *f) {
 void pci_phase2(void *vapp, struct pci_function *f) {
     struct app *app = vapp;
     // Imitate linux lspci -n
+#if 1
     LOG("%02x:%02x.%d %02x%02x: %04x:%04x\n",
         f->bus, f->dev, f->func,
         f->class, f->subclass,
         f->vendor, f->device
         );
+#endif
     for_device_phase2(PCI_INIT)
 }
 
@@ -383,12 +401,13 @@ void app_init(struct app *app) {
     // initialize interrupt table
     // nonzero irq acts as enable for these
     struct idt_isr_entry isrs[] = {
-        { .isr = keyboard_isr, .irq = 1 },
-        { .isr = com1_isr,     .irq = app->com1.irq },
-        { .isr = rtl8139_isr,  .irq = app->rtl8139.irq },
-        { .isr = dp83815_isr,  .irq = app->dp83815.irq },
-        { .isr = mcs9865_isr,  .irq = app->mcs9865.uart[0].uart.irq },
-        { .isr = sunix_isr,    .irq = app->sunix.uart.irq },
+        { .isr = keyboard_isr,   .irq = 1 },
+        { .isr = com1_isr,       .irq = app->com1.irq },
+        { .isr = rtl8139_isr,    .irq = app->rtl8139.irq },
+        { .isr = dp83815_isr,    .irq = app->dp83815.irq },
+        { .isr = mcs9865_isr,    .irq = app->mcs9865.uart[MCS9865_MAIN_UART].uart.irq },
+        { .isr = ox16pci952_isr, .irq = app->ox16pci952.uart.irq },
+        { .isr = sunix_isr,      .irq = app->sunix.uart.irq },
         {} // END-OF-LIST
     };
 

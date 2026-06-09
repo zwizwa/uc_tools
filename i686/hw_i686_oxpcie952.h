@@ -1,5 +1,5 @@
-#ifndef HW_I686_OXCHIP_H
-#define HW_I686_OXCHIP_H
+#ifndef HW_I686_OXPCIE952_H
+#define HW_I686_OXPCIE952_H
 
 /* Still exploring.
    It seems to be in 950 mode, two memory bars */
@@ -7,8 +7,8 @@
 #include "hw_i686_com.h"
 #include "hw_i686_pci.h"
 
-#define oxchip_vendor 0x1415
-#define oxchip_device 0xc158
+#define oxpcie952_vendor 0x1415
+#define oxpcie952_device 0xc158
 
 /* OXPCIe952 data sheet: the Device ID contains encoding:
    1100 0001 0xxx x x xx
@@ -39,18 +39,18 @@
    0x2100..0x110F UART[1] DMA channels(2)
 */
 
-struct oxchip {
+struct oxpcie952 {
     uint32_t bar0, bar1;
     uint8_t irq;
 };
 
-static inline void oxchip_init(struct oxchip *s,
+static inline void oxpcie952_init(struct oxpcie952 *s,
                               const struct pci_function *f) {
     s->bar0 = pci_function_bar0_mem(f);
     s->bar1 = pci_function_bar1_mem(f);
     s->irq  = pci_function_irq(f);
 
-    LOG("oxchip mmio0=%08x mmio1=%08x irq=%d\n",
+    LOG("oxpcie952 mmio0=%08x mmio1=%08x irq=%d\n",
         s->bar0, s->bar1, s->irq);
 
     // I don't trust Claude much here.  Maybe first figure out what I

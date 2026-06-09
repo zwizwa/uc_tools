@@ -10,7 +10,9 @@
 
 #define MCS9865_BAR0 0x10
 
-
+// UART0 enumerates but is not populated on one board, so just pick
+// the second one as the main one.
+#define MCS9865_MAIN_UART 1
 
 struct mcs9865_uart {
     struct uart uart; // 16550 compatible registers, irq
@@ -20,6 +22,11 @@ struct mcs9865 {
     struct mcs9865_uart uart[2];
     struct par par;
 };
+
+/* I have two cards.  One has 2 UARTS + 1 PAR, one has 1 UART (1
+   footprint not populated) and 1 PAR, but the UART still shows up as
+   a function.  The datasheet calls it a "PCI to Dual Serial and Dual
+   Parallel Controller". */
 
 static inline void mcs9865_init_uart(struct mcs9865 *s,
                                      struct mcs9865_uart *u,
@@ -34,7 +41,6 @@ static inline void mcs9865_init_uart(struct mcs9865 *s,
         u->ioextra,
         u->uart.irq);
 
-    LOG("uart init io=%04x\n", u->uart.iobase);
     uart_init(&u->uart, 1);
 
     //uart_putstr(&s->uart, "mcs9865 ok\n");
@@ -62,6 +68,13 @@ static inline void mcs9865_init_par(struct mcs9865 *s,
 
 
 static inline void mcs9865_init(struct mcs9865 *s, const struct pci_function *f) {
+
+    if (f->func == 0) { // Only print this once
+        uint32_t sub_vendor = pci_function_read16(f, PCI_CFG_SUBSYSTEM_VENDOR_ID);
+        uint32_t sub_id     = pci_function_read16(f, PCI_CFG_SUBSYSTEM_ID);
+        LOG("mcs9865 subsystem id %04x:%04x\n", sub_vendor, sub_id);
+    }
+
 
     /* Only initialize funcion 0, the first uart. */
     switch (f->func) {
