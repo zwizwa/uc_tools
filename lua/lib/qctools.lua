@@ -145,21 +145,15 @@ local function flatten(chunks)
       chunks)
 end
 
--- Regime switcher, useful for simulating user mode switches.  Expand
--- one generator for a bit, then switch to antother one, etc...
--- Collect everything in a single list.
-function gen.regimes(el_gens,          -- List of element generators to choose from
-                     chunk_size_gen,   -- Number of iterations for the next chunk
+-- Switch between list generators a number of times.
+function gen.regimes(el_gens,          -- List of list generators to choose from
                      nb_chunks_gen)    -- Number of chunks
-   local choices = {}
-   for i,el_gen in ipairs(el_gens) do
-      assert(el_gen)
-      table.insert(choices, gen.sized_list(el_gen, chunk_size_gen))
-   end
-   local chunks =
-      gen.sized_list(gen.choice(choices), nb_chunks_gen)
-   return flatten(chunks)
+   return flatten(
+      gen.sized_list(
+         gen.choice(el_gens),
+         nb_chunks_gen))
 end
+
 
 
 
