@@ -419,7 +419,7 @@ void app_init(struct app *app) {
 
     // hook tftp state machine to network card if initialized
     if (app->rtl8139.irq) {
-        LOG("connecting tftp to rtl813\n");
+        LOG("connecting tftp to rtl8139\n");
         tftp_init(&app->tftp, app_send, app);
         memcpy(app->tftp.mac, app->rtl8139.mac, 6);
         app->rtl8139.ctx = app;

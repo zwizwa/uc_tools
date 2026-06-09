@@ -106,7 +106,7 @@ EM_JS(void, canvas_close_js, (void), {
 });
 
 
-EM_JS(void, canvas_init_js, (int glyph_w, int glyph_h, uint32_t *win), {
+EM_JS(void, canvas_init_js, (int glyph_w, int glyph_h, uint32_t *win, int apply), {
 
     // Get the current vieport dimensions
     const w = window.innerWidth;
@@ -126,6 +126,11 @@ EM_JS(void, canvas_init_js, (int glyph_w, int glyph_h, uint32_t *win), {
     // All return paths need to fill the current text window dimensions.
     HEAPU32[(win >> 2) + 0] = c_w;
     HEAPU32[(win >> 2) + 1] = c_h;
+
+    if (!apply) {
+        // Don't touch the canvas.
+        return;
+    }
 
     // Don't resize canvas if text size did not change.
     if (Module.c_w) {
@@ -155,10 +160,15 @@ EM_JS(void, canvas_init_js, (int glyph_w, int glyph_h, uint32_t *win), {
 });
 
 
-void canvas_init(int glyph_w, int glyph_h, uint32_t *win) {
-    canvas_init_js(glyph_w, glyph_h, win);
+void canvas_init(int glyph_w, int glyph_h, uint32_t *win, int apply) {
+    canvas_init_js(glyph_w, glyph_h, win, apply);
     uint32_t w = win[0];
     uint32_t h = win[1];
+    if (!apply) {
+        /* Don't apply the dimensions to the buffer yet because
+         * drawing might get out of sync. */
+        return;
+    }
     typeof (g_tui_vga) *c = &g_tui_vga;
     c->nb_cols = w;
     c->nb_rows = h;
@@ -418,9 +428,19 @@ void on_resize(int w, int h) {
     // there are no out-of-bounds accesses that can mess things up.
 
     uint32_t dims[2] = {};
-    canvas_init(8,16,dims);
+
+    // Note that we can't apply the new framebuffer dimensions yet
+    // 1. not necessary: client will re-initialize after resized event, and
+    // 2. wrong: there might be old drawing commands in flight that assume the old layout
+    canvas_init(8,16,dims, 0 /* don't apply */);
+
     LOG("resized: %d x %d\n", dims[0], dims[1]);
     SEND_TAG_U32(2 /*resized*/, dims[0], dims[1]);
+
+
+    // ACTUALLY it is better to just discard all drawing commands
+    // until the next tui_init_screen() that matches the current
+    // config, because there really is no way to prevent the resize.
 }
 
 
@@ -461,7 +481,13 @@ void tui_init_screen(int cols, int lines) {
        window size, so for now this just ignores the dimensions and
        lets canvas_init() decide. */
     uint32_t dims[2];
-    canvas_init(8, 16, dims);
+    canvas_init(8, 16, dims, 1 /* apply */);
+    /* Check that we are in sync. */
+    if ((cols  != dims[0]) ||
+        (lines != dims[1])) {
+        LOG("WARNING: client %d x %d and canvas %d x %d dimensions do not match\n",
+            cols, lines, dims[0], dims[1]);
+    }
 }
 
 #include "mod_tui_framebuffer.c"
@@ -523,7 +549,7 @@ EM_BOOL on_message(int t, const EmscriptenWebSocketMessageEvent *e, void *u) {
 uint32_t dims[2];
 
 EM_BOOL on_open(int t, const EmscriptenWebSocketOpenEvent *e, void *u) {
-    canvas_init(8, 16, dims);
+    canvas_init(8, 16, dims, 1);
     printf("connection open, sending init\n");
     LOG("send dims: %d x %d\n", dims[0], dims[1]);
     SEND_TAG_U32(0 /*init*/, dims[0], dims[1]);

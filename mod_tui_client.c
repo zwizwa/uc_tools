@@ -162,6 +162,7 @@ void tui_box(tui_window_t *w) {
 void tui_init_screen(void) {
     /* The w,h can be passed in on the command line and is used to
        initialize the canvas size. */
+    LOG("tui_init_screen %d x %d\n", g_tui_cols, g_tui_lines);
     SEND_REPLY_TAG_U32(
         g_req,
         TUI_CMD_INIT_SCREEN,

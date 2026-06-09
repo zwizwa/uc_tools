@@ -7,7 +7,7 @@ DEPS := $(shell find -name '*.d')
 
 
 UC_TOOLS=$(shell readlink -f ..)
-UC_TOOLS_EM=$(UC_TOOLS)/emscripten
+UC_TOOLS_EM=$(UC_TOOLS)/em
 EM_CACHE=$(shell readlink -f ./emscripten_cache)
 CFLAGS=-I/$(UC_TOOLS_EM) -I/$(UC_TOOLS)
 

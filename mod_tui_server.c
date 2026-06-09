@@ -15,7 +15,7 @@ struct tui_window *assert_window(uint32_t wid) {
 int draw(struct tag_u32 *req) {
     /* Optional */
     TAG_U32_MATCH(req, TUI_CMD_INIT_SCREEN, m, cols, lines) {
-        // LOG("init_screen: %d %d\n", m->cols, m->lines);
+        LOG("init_screen: %d %d\n", m->cols, m->lines);
         tui_init_screen(m->cols, m->lines);
         return 0;
     }
