@@ -3,6 +3,23 @@
 -- COPYRIGHT HOLDER = Tom Schouten
 -- YEAR = 2022
 
+-- A library of pseudo random data structure generators represented as
+-- pure functions, inspired by Haskell QuickCheck
+
+-- Note that due to lack of static types it is sometimes hard to
+-- distinguish the different forms.
+--
+-- There are two representations that are used:
+--
+-- 1. Primitive generators as found in qctools.lua
+-- 2. Table-parameterized generators as found in qcrun.lua typ field.
+--
+--
+-- Then this file contains:
+-- 1. Primitive generators:   gen = seed,size -> val,new_seed
+-- 2. Parameterized and higher order generators:  params -> gen
+
+
 require('lib.tools.log')
 
 local list  = require('lib.tools.list')
@@ -408,37 +425,27 @@ function m.as_table(typ)
 end
 
 
-
-
--- With generator dictionary abstracted.
---
--- Note that I find it typically clearer to just keep the function(t)
--- explicit instead of tucking it away.
---
-function m.impf(imp_gen)
-   return function(t) return m.imp(imp_gen, t) end
+-- Create a generator using an imperative interface to run other
+-- generators.  Note that rnd should not be used outside of the
+-- function body.
+function m.make_gen(body)
+   return function(seed, size)
+      -- Run a random generator, threading the seed.  This is the
+      -- simplest I can come up with to locally create an imperative
+      -- interface.  Adding it here as an example.
+      local function rnd(gen)
+         local val, new_seed = gen(seed, size)
+         seed = new_seed
+         return val
+      end
+      local val = body(rnd)
+      return val, seed
+   end
 end
 
--- Note that I am mixing two representations:
---
--- 1. Primitive generators found in qctools.lua
--- 2. Table-parameterized generators as found in prop runner typ field.
---
--- This is a bit unfortunate but is hard to change at this time.
--- Basically, the primitive generators "know who they are" and can be
--- hard-coded to the primitive table that qctools.lua exposes, while
--- the table-parameterized generators are a way to abstract that
--- collection.
---
--- This is exactly the kind of "inconsistent intuitive dynamic typing"
--- that static types would call out immediately.
---
--- In practice though, it is pretty clear when the
--- table-parameterization is necessary.
---
--- Actually there is another one: the m here contains both generators
--- and parameterized generators.  This is fine for practical use, but
--- makes automatic wrapping of a whole dictionary difficult.
+
+
+
 
 
 return m
