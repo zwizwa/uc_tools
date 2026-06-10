@@ -5,7 +5,8 @@
 
 require('lib.tools.log')
 
-local list = require('lib.tools.list')
+local list  = require('lib.tools.list')
+local mixin = require('lib.mixin')
 
 local m = { gen = {}, shrink = {}, lib = {} }
 
@@ -405,6 +406,39 @@ function m.as_table(typ)
    setmetatable(t, { __index = index })
    return typ(t)
 end
+
+
+
+
+-- With generator dictionary abstracted.
+--
+-- Note that I find it typically clearer to just keep the function(t)
+-- explicit instead of tucking it away.
+--
+function m.impf(imp_gen)
+   return function(t) return m.imp(imp_gen, t) end
+end
+
+-- Note that I am mixing two representations:
+--
+-- 1. Primitive generators found in qctools.lua
+-- 2. Table-parameterized generators as found in prop runner typ field.
+--
+-- This is a bit unfortunate but is hard to change at this time.
+-- Basically, the primitive generators "know who they are" and can be
+-- hard-coded to the primitive table that qctools.lua exposes, while
+-- the table-parameterized generators are a way to abstract that
+-- collection.
+--
+-- This is exactly the kind of "inconsistent intuitive dynamic typing"
+-- that static types would call out immediately.
+--
+-- In practice though, it is pretty clear when the
+-- table-parameterization is necessary.
+--
+-- Actually there is another one: the m here contains both generators
+-- and parameterized generators.  This is fine for practical use, but
+-- makes automatic wrapping of a whole dictionary difficult.
 
 
 return m
