@@ -26,6 +26,7 @@ struct ilog_read {
     const uint64_t *index;   off_t index_size;
     const uint8_t *message;  off_t message_size;
 };
+
 static inline int ilog_open_fd(const char *filename, int flags) {
     return open(filename, flags, 0664);
 }
@@ -96,12 +97,20 @@ static inline void ilog_open_read(struct ilog_read *vr, const char *basename) {
     //LOG("nb_messages = %d\n", vr->ilog.nb_messages);
 }
 static inline const uint8_t *ilog_get(struct ilog_read *vr, int i) {
+
     ASSERT(i >= 0);
     if (i >= vr->ilog.nb_messages) {
         ERROR("index=%d, nb_messages=%d\n", i, (int)vr->ilog.nb_messages);
     }
     uint64_t offset = vr->index[i];
     return vr->message + offset;
+}
+static inline const uint8_t *ilog_get_message(struct ilog_read *vr, int i, uint32_t *len) {
+    const uint8_t *msg = ilog_get(vr, i);
+    if (!msg) { len = 0; return NULL; }
+    // FIXME: Validate that len actually points inside the memory.
+    *len = read_be(msg, 4);
+    return msg+4;
 }
 
 
