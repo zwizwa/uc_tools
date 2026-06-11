@@ -27,6 +27,12 @@
 // most of the code here should probably be put in a "mod", with only
 // the column and index access specialized to each.
 //
+// Actually what claude suggests is to create a single virtual table
+// and make the layout decision at load time, i.e. in xConnect.  But
+// that won't work if I can't centralize the C code that knows the
+// packet types, so let's stick to the mod setup.
+//
+// https://claude.ai/chat/6c19049a-04d1-40d6-bdbd-fcd7bdb0287e
 
 #include "mod_sqlite3_ilog.c"
 
@@ -34,26 +40,23 @@ static void declare_vtab(sqlite3 *db) {
     int rv = sqlite3_declare_vtab(
         db,
         "CREATE TABLE x("
-        "tag  INTEGER,"
-        "bin  BLOB,"
-        "schema HIDDEN"
+        "  tag    INTEGER,"
+        "  bin    BLOB,"
+        "  schema HIDDEN"
         ")");
     ASSERT(rv == SQLITE_OK);
 }
 
-
 static int xColumn(sqlite3_vtab_cursor *pCur, sqlite3_context *c, int N) {
     // LOG("xColumn %d\n", N);
     struct ilog_cursor *cur = ilog_cursor(pCur);
-    struct ilog_table *tab = ilog_table(cur->base.pVtab);
+
+    // Perform consitency check and cache the pointer, len.
+    get_message(cur);
 
     switch(N) {
     case 0: {
-        // FIXME: the ilog_get_messdage() can be cached in the cursor.
-        uint32_t len = 0;
-        const uint8_t *msg = ilog_get_message(&tab->ilog, cur->rowid, &len);
-        uint16_t tag = read_be(msg, 2);
-        ASSERT(msg);
+        uint16_t tag = read_be(cur->msg, 2);
         sqlite3_result_int(c, tag);
         break;
     }
@@ -61,10 +64,7 @@ static int xColumn(sqlite3_vtab_cursor *pCur, sqlite3_context *c, int N) {
         // SQLITE_STATIC means the pointers are stable so sqlite will
         // not copy the data.  This works as long as the file is
         // mapped, which should be the case always.
-        uint32_t len = 0;
-        const uint8_t *msg = ilog_get_message(&tab->ilog, cur->rowid, &len);
-        ASSERT(msg);
-        sqlite3_result_blob(c, msg+4+2, len-2, SQLITE_STATIC);
+        sqlite3_result_blob(c, cur->msg+4+2, cur->len-2, SQLITE_STATIC);
         break;
     }
     default:

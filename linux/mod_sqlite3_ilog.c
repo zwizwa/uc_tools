@@ -7,6 +7,10 @@
 #ifndef MOD_SQLITE3_ILOG
 #define MOD_SQLITE3_ILOG
 
+#ifndef VTABLE_NAME
+#define VTABLE_NAME "ilog"
+#endif
+
 #define _GNU_SOURCE         /* See feature_test_macros(7) */
 #include <sys/mman.h>
 
@@ -29,12 +33,22 @@ struct ilog_cursor {
     off_t rowid;
     int idxNum;
     int eof; // e.g. idxNum == 1 uses this
+    const uint8_t *msg;
+    uint32_t len;
 };
 
 // These need to be provided by the specialized code.
 static int xColumn(sqlite3_vtab_cursor *pCur, sqlite3_context *c, int N);
 static void declare_vtab(sqlite3 *db);
 
+
+void get_message(struct ilog_cursor *cur) {
+    if (!cur->msg) {
+        cur->msg = ilog_get_message(cur->ilog, cur->rowid, &cur->len);
+        ASSERT(cur->msg);
+        ASSERT(cur->len >= 2);  // needs a tag
+    }
+}
 
 static struct ilog_cursor *ilog_cursor(sqlite3_vtab_cursor *p) {
     return (void*)p;
@@ -145,6 +159,7 @@ static int xFilter(sqlite3_vtab_cursor *pCur, int idxNum, const char *idxStr,
         /* Point loopup: WHERE rowid = ? -- argv[0] */
         ASSERT(argc == 1);
         cur->rowid = sqlite3_value_int64(argv[0]);
+        cur->msg = NULL;
     }
     cur->idxNum = idxNum;
     return SQLITE_OK;
@@ -157,6 +172,7 @@ static int xNext(sqlite3_vtab_cursor *pCur) {
         return SQLITE_OK;
     }
     cur->rowid++;
+    cur->msg = NULL;
     return SQLITE_OK;
 }
 
@@ -237,7 +253,7 @@ int sqlite3_ilog_init(sqlite3 *db, char **err, const sqlite3_api_routines *api) 
             ));
     ASSERT(
         SQLITE_OK ==
-        sqlite3_create_module(db, "ilog", &Module, 0));
+        sqlite3_create_module(db, VTABLE_NAME, &Module, 0));
     return SQLITE_OK;
 }
 
