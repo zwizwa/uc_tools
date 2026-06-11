@@ -58,4 +58,17 @@ end
 m.aon = m.array_of_numbers
 
 
+function m.sized_array(thing, size, pad)
+   assert(size)
+   assert(pad ~= nil)
+   local arr = m.array(thing)
+   local rv = {}
+   for i=1,size do
+      local el = arr[i]
+      if el == nil then el = pad end
+      rv[i] = el
+   end
+   return rv
+end
+
 return m
