@@ -75,3 +75,5 @@ static int xColumn(sqlite3_vtab_cursor *pCur, sqlite3_context *c, int N) {
 }
 
 
+void create_functions(sqlite3 *db) {
+}

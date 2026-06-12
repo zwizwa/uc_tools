@@ -7,6 +7,8 @@
 #ifndef MOD_SQLITE3_ILOG
 #define MOD_SQLITE3_ILOG
 
+//#define MMAP_FILE_LOG LOG
+
 #ifndef VTABLE_NAME
 #define VTABLE_NAME "ilog"
 #endif
@@ -17,13 +19,17 @@
 #include "ilog.h"
 #include <sqlite3ext.h>
 
+#include "mmap_file.h"
 
 SQLITE_EXTENSION_INIT1
 
 /* The 'base' member contains the base class.  Must be first */
 struct ilog_table {
     sqlite3_vtab base;
+    /* Indexed message log. */
     struct ilog_read ilog;
+    /* Optional flat image file, e.g. for logic trace data. */
+    struct mmap_file mmf;
 };
 
 /* Cursor into an ilog is just an integer. */
@@ -57,6 +63,19 @@ static struct ilog_table *ilog_table(sqlite3_vtab *p) {
     return (void*)p;
 }
 
+typedef void (*with_string_fn)(void *, const char *);
+static void with_string_arg(with_string_fn fun,
+                            void *ctx, const char *arg) {
+    // This contains syntax, e.g. for strings the quotes are included.
+    // We just assume quotes are there, and that filenames do not
+    // contain quotes. FIXME: Is there a reusable parser for this?
+    int n = strlen(arg)-2+1;
+    char filename[n];
+    memcpy(filename, arg+1, n-1);
+    filename[n-1] = 0;
+    LOG("opening %s\n", filename);
+    fun(ctx, filename);
+}
 
 
 // The xConnect method is very similar to xCreate. It has the same
@@ -83,17 +102,17 @@ static int xConnect(
     struct ilog_table *pNew = sqlite3_malloc(sizeof(*pNew));
     memset(pNew,0,sizeof(*pNew));
 
-    // This contains syntax, e.g. for strings the quotes are included.
-    // We just assume quotes are there, and that filenames do not
-    // contain quotes. FIXME: Is there a reusable parser for this?
     ASSERT(argc >= 4);
-    int n = strlen(argv[3])-2+1;
-    char filename[n];
-    memcpy(filename, argv[3]+1, n-1);
-    filename[n-1] = 0;
-    LOG("ilog %s\n", filename);
+    with_string_arg((with_string_fn)ilog_open_read, &pNew->ilog, argv[3]);
 
-    ilog_open_read(&pNew->ilog, filename);
+    if (argc >= 5) {
+        with_string_arg((with_string_fn)mmap_file_open_ro, &pNew->mmf, argv[4]);
+        // Note that this is a file with holes. It would be nice to
+        // have another tool that can turn this into a message
+        // sequence.
+        LOG("trace size: %llu\n", pNew->mmf.size);
+    }
+
 
     // The specialized module defines the table layout.
     declare_vtab(db);
@@ -233,27 +252,14 @@ static sqlite3_module Module = {
     NULL,               /* xRename */
 };
 
-void inc(sqlite3_context *c, int argc, sqlite3_value **argv) {
-    // LOG("inc\n");
-    ASSERT(argc == 1);
-    sqlite3_result_int(c, 1 + sqlite3_value_int(argv[0]));
-}
+void create_functions(sqlite3 *db);
 
 int sqlite3_ilog_init(sqlite3 *db, char **err, const sqlite3_api_routines *api) {
     SQLITE_EXTENSION_INIT2(api);
     ASSERT(
         SQLITE_OK ==
-        sqlite3_create_function(
-            db, "inc", 1,
-            SQLITE_UTF8 | SQLITE_DETERMINISTIC, 
-            NULL,  // sqlite3_user_data()
-            inc,   // xFunc,
-            NULL,  // xStep,
-            NULL   // xFinal
-            ));
-    ASSERT(
-        SQLITE_OK ==
         sqlite3_create_module(db, VTABLE_NAME, &Module, 0));
+    create_functions(db);
     return SQLITE_OK;
 }
 
