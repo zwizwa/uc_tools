@@ -101,6 +101,9 @@ local function fmap(fun, gen)
       return fun(val), new_seed
    end
 end
+gen.fmap = fmap
+
+
 gen.bool = fmap(function(x) return x == 1 end, gen.range(0, 1))
 gen.nat1 = fmap(function(x) return x + 1 end, gen.nat)
 
