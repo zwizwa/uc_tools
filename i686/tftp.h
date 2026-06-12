@@ -47,85 +47,22 @@ struct tftp {
 
 };
 
-struct ping {
-    struct mac mac;
-    struct ip ip;
-    struct icmp icmp;
-};
-
-/* This handles ping and ignores everything else.  */
-static inline void tftp_rx_icmp(struct tftp *s, const uint8_t *data, uint32_t len) {
-    const struct ping *p = (const void*)data;
-    if (memcmp(p->ip.d_ip, s->ip, 4)) return;
-    if (p->icmp.type == ICMP_ECHO_REQUEST) {
-        LOG("ping from "); log_ipv4(p->ip.s_ip); LOG("\n");
-        struct ping q = *p; // FIXME: payload!
-        memcpy(q.mac.d_mac, p->mac.s_mac, 6);
-        memcpy(q.mac.s_mac, p->mac.d_mac, 6);
-        memcpy(q.ip.d_ip, p->ip.s_ip, 4);
-        memcpy(q.ip.s_ip, p->ip.d_ip, 4);
-        q.icmp.type = ICMP_ECHO_REPLY;
-        q.ip.header_checksum = ip_checksum(&q.ip, sizeof(q.ip));
-        s->send(s->ctx, (const uint8_t*)&q, sizeof(q));
-    }
-    else {
-        LOG("icmp %02x %02x\n", p->icmp.type, p->icmp.code);
-    }
+// socat - UDP:10.1.3.222:1234
+static inline void tftp_rx_udp(struct tftp *s, const uint8_t *eth_pkt, uint32_t len) {
+    const struct {
+        struct mac mac;
+        struct ip ip;
+        struct udp udp;
+    } *p = (const void*)eth_pkt;
+    // FIXME: checksum
+    uint32_t data_len = HTONS(p->udp.length) - sizeof(struct udp);
+    if (sizeof(*p) + data_len > len) return;
+    LOG("udp data_len=%d\n", data_len);
+    const uint8_t *data = (const void*)&p[1];
+    log_hex(data, data_len);
 }
 
-/* Called from internet context.  This handles arp.  */
-static inline void tftp_rx_arp(struct tftp *s, const uint8_t *data, uint32_t len) {
-    const struct mac *mac = (const void*)data;
-    const struct arp *arp = (const void*)(data + sizeof(*mac));
-    if (len < sizeof(*arp)) return;
-
-    if (arp->htype != HTONS(ARP_HTYPE_ETH) ||
-        arp->ptype != HTONS(ARP_PTYPE_IPV4) ||
-        arp->hlen  != ETH_ALEN ||
-        arp->plen  != 4) {
-        LOG("bad arp\n");
-        return;
-    }
-    uint16_t op = HTONS(arp->oper);
-
-    switch (op) {
-    case ARP_OP_REQUEST: {
-        // who has arp->tpa tell arp->spa
-        LOG("who has "); log_ipv4(arp->tpa);
-        LOG(" tell ");   log_ipv4(arp->spa); LOG("\n");
-        if (!memcmp(arp->tpa, s->ip, 4)) {
-            struct {
-                struct mac mac;
-                struct arp arp;
-            } reply = {};
-            LOG("i have\n");
-            memcpy(reply.mac.d_mac, mac->s_mac, 6);
-            memcpy(reply.mac.s_mac, s->mac, 6);
-            reply.mac.ethertype = htons(ETHERTYPE_ARP);
-            reply.arp.htype = HTONS(ARP_HTYPE_ETH);
-            reply.arp.ptype = HTONS(ARP_PTYPE_IPV4);
-            reply.arp.hlen  = ETH_ALEN;
-            reply.arp.plen  = 4;
-            reply.arp.oper  = HTONS(ARP_OP_REPLY);
-            memcpy(reply.arp.sha, s->mac, 6);
-            memcpy(reply.arp.spa, s->ip, 4);
-            s->send(s->ctx, (const uint8_t*)&reply, sizeof(reply));
-            // I got a ping after this, so seems that linux accepts it.
-        }
-        break;
-    }
-    case ARP_OP_REPLY:
-        break;
-    default:
-        return;
-    }
-
-
-}
-static inline void tftp_rx_udp(struct tftp *s, const uint8_t *data, uint32_t len) {
-}
-
-/* Called from internet context. */
+/* Called from interrupt context. */
 static inline void tftp_rx(struct tftp *s, const uint8_t *data, uint32_t len) {
     const struct mac *e = (const void*)data;
     if (len < sizeof(*e)) return;
@@ -139,18 +76,36 @@ static inline void tftp_rx(struct tftp *s, const uint8_t *data, uint32_t len) {
         LOG("%04x", ethertype); LOG("\n");
     }
 
-    /* FIXME: Check destination. Only respond to broadcast and mac.
-       Currently assume that card will filter out other packets. */
-    if (ETHERTYPE_ARP == ethertype) {
-        tftp_rx_arp(s, data, len);
+    /* FIXME: validate checksums */
+    switch(ethertype) {
+    case ETHERTYPE_ARP:
+        arp_rx(s->send, s->ctx, data, len, s->ip, s->mac);
+        break;
+    case ETHERTYPE_IPV4: {
+        const struct {
+            struct mac mac;
+            struct ip  ip;
+        } *p = (void*)data;
+        if (p->ip.version_ihl != 0x45) {
+            // We assume no options in the header.
+            LOG("ipv4 unsupported version_ihl=0x%02x\n", p->ip.version_ihl);
+            break;
+        }
+        switch(p->ip.protocol) {
+        case PROTOCOL_ICMP:
+            icmp_rx(s->send, s->ctx, data, len, s->ip);
+            break;
+        case PROTOCOL_UDP:
+            tftp_rx_udp(s, data, len);
+            break;
+        default:
+            break;
+        }
+        //tftp_rx_udp(s, data, len);
+        break;
     }
-    else if (ETHERTYPE_ICMP == ethertype) {
-        tftp_rx_icmp(s, data, len);
-    }
-    else if (0) {
-        tftp_rx_udp(s, data, len);
-    }
-    else {
+    default:
+        break;
     }
 }
 

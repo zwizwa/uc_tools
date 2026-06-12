@@ -346,6 +346,7 @@ int app_mon_putchar(void *vapp, uint8_t byte) {
 
 void app_send(void *vapp, const uint8_t *data, uint32_t len) {
     LOG("app_send %d\n", len);
+    // log_hex(data, len);
     struct app *app = vapp;
     if (app->rtl8139.irq) {
         rtl8139_transmit(&app->rtl8139, data, len);
