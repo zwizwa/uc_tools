@@ -4,11 +4,13 @@
 
 // FIXME: actually make these platform independent
 
+#include "uct_byteswap.h"
+#if 0
 #define NTOHS(w) ((((w)&0xFF00) >> 8) | (((w)&0x00FF) << 8))
 #define HTONS(w) NTOHS(w)
-
 #define NTOHL(w) (NTOHS((w)>>16) | (NTOHS(w)<<16))
 #define HTONL(w) NTOHL(w)
+#endif
 
 static inline uint16_t ntohs(uint16_t w) { return NTOHS(w); }
 static inline uint16_t htons(uint16_t w) { return HTONS(w); }
@@ -54,9 +56,26 @@ static inline uint16_t ip_checksum(const void *vdata, size_t length) {
 #define PROTOCOL_UDP       17
 #define PROTOCOL_ICMP       1
 
+// Wrap the addresses in a struct so C assignment can be used.
+struct __attribute__((packed)) mac_addr {
+    uint8_t mac[6];
+};
+struct __attribute__((packed)) ip_addr {
+    uint8_t ip[4];
+};
+
+#define DEF_STRUCT_EQ(fun_name, struct_name)                    \
+    static inline int fun_name(const struct struct_name *a,     \
+                               const struct struct_name *b) {   \
+    return !memcmp(a,b,sizeof(*a)); }
+
+DEF_STRUCT_EQ(ip_eq, ip_addr);
+DEF_STRUCT_EQ(mac_eq, mac_addr);
+
+
 struct __attribute__((packed)) mac {
-    uint8_t d_mac[6];
-    uint8_t s_mac[6];
+    struct mac_addr dst_mac;
+    struct mac_addr src_mac;
     uint16_t ethertype;
     // uint32_t checksum follows payload
 } ;
@@ -73,10 +92,10 @@ struct __attribute__((packed)) arp {
     uint8_t  hlen;               /* hardware addr length */
     uint8_t  plen;               /* protocol addr length */
     uint16_t oper;               /* operation            */
-    uint8_t  sha[ETH_ALEN];      /* sender hardware addr */
-    uint8_t  spa[4];             /* sender protocol addr */
-    uint8_t  tha[ETH_ALEN];      /* target hardware addr */
-    uint8_t  tpa[4];             /* target protocol addr */
+    struct mac_addr sha;         /* sender hardware addr */
+    struct ip_addr  spa;         /* sender protocol addr */
+    struct mac_addr tha;         /* target hardware addr */
+    struct ip_addr  tpa;         /* target protocol addr */
 };
 struct __attribute__((packed)) ip {
     uint8_t version_ihl;
@@ -87,8 +106,8 @@ struct __attribute__((packed)) ip {
     uint8_t ttl;
     uint8_t protocol;
     uint16_t header_checksum;
-    uint8_t s_ip[4];
-    uint8_t d_ip[4];
+    struct ip_addr src_ip;
+    struct ip_addr dst_ip;
     // options if IHL>5
 };
 #define ICMP_ECHO_REQUEST 8
@@ -100,14 +119,23 @@ struct __attribute__((packed)) icmp {
 };
 
 struct __attribute__((packed)) udp {
-    uint16_t s_port;
-    uint16_t d_port;
+    uint16_t src_port;
+    uint16_t dst_port;
     uint16_t length;
     uint16_t checksum;
 };
 
+// Complete ethernet + ip + protocol headers */
+struct __attribute__((packed)) eth_udp {
+    struct mac mac;
+    struct ip  ip;
+    struct udp udp;
+};
+
+
 
 /* Some handlers for minimal implementation to get UDP going. */
+// Move into #include "ethernet_rx.h"
 
 typedef void (*packet_send_fn)(void *ctx,
                                const uint8_t *data,
@@ -116,8 +144,8 @@ typedef void (*packet_send_fn)(void *ctx,
 static inline void arp_rx(
     packet_send_fn send, void *ctx,
     const uint8_t *data, uint32_t len,
-    const uint8_t *my_ip,
-    const uint8_t *my_mac)
+    const struct ip_addr *my_ip,
+    const struct mac_addr *my_mac)
 {
     const struct mac *mac = (const void*)data;
     const struct arp *arp = (const void*)(data + sizeof(*mac));
@@ -137,22 +165,22 @@ static inline void arp_rx(
         // who has arp->tpa tell arp->spa
         // LOG("who has "); log_ipv4(arp->tpa);
         // LOG(" tell ");   log_ipv4(arp->spa); LOG("\n");
-        if (!memcmp(arp->tpa, my_ip, 4)) {
+        if (ip_eq(&arp->tpa, my_ip)) {
             struct {
                 struct mac mac;
                 struct arp arp;
             } reply = {};
-            // LOG("i have\n");
-            memcpy(reply.mac.d_mac, mac->s_mac, 6);
-            memcpy(reply.mac.s_mac, my_mac, 6);
+            // LOG("i have\n")
+            reply.mac.dst_mac = mac->src_mac;
+            reply.mac.src_mac = mac->dst_mac;
             reply.mac.ethertype = htons(ETHERTYPE_ARP);
             reply.arp.htype = HTONS(ARP_HTYPE_ETH);
             reply.arp.ptype = HTONS(ARP_PTYPE_IPV4);
             reply.arp.hlen  = ETH_ALEN;
             reply.arp.plen  = 4;
             reply.arp.oper  = HTONS(ARP_OP_REPLY);
-            memcpy(reply.arp.sha, my_mac, 6);
-            memcpy(reply.arp.spa, my_ip, 4);
+            reply.arp.sha = *my_mac;
+            reply.arp.spa = *my_ip;
             send(ctx, (const uint8_t*)&reply, sizeof(reply));
         }
         break;
@@ -169,7 +197,7 @@ static inline void arp_rx(
 static inline void icmp_rx(
     packet_send_fn send, void *ctx,
     const uint8_t *data, uint32_t len,
-    const uint8_t *my_ip)
+    const struct ip_addr *my_ip)
 {
     // FIXME: This should use the ip header length field, beause len
     // is ethernet length which is padded.  It happens to work on
@@ -188,13 +216,13 @@ static inline void icmp_rx(
 
     }
     // FIXME: Also support broadcast reply
-    if (memcmp(p->ip.d_ip, my_ip, 4)) return;
+    if (!ip_eq(&p->ip.dst_ip, my_ip)) return;
     // LOG("ping from "); log_ipv4(p->ip.s_ip); LOG("\n");
     memcpy(q, data, len);
-    memcpy(q->mac.d_mac, p->mac.s_mac, 6);
-    memcpy(q->mac.s_mac, p->mac.d_mac, 6);
-    memcpy(q->ip.d_ip, p->ip.s_ip, 4);
-    memcpy(q->ip.s_ip, p->ip.d_ip, 4);
+    q->mac.dst_mac = p->mac.src_mac;
+    q->mac.src_mac = p->mac.dst_mac;
+    q->ip.dst_ip = p->ip.src_ip;
+    q->ip.src_ip = p->ip.dst_ip;
     q->icmp.type = ICMP_ECHO_REPLY;
     q->ip.header_checksum = 0; // zero before computing the checksum
     q->ip.header_checksum = ip_checksum(&q->ip, sizeof(q->ip));

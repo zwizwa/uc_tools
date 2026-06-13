@@ -54,12 +54,21 @@
 #define PRIM_ENUM_INIT(word,N) word = (0x80 + N),
 enum PRIM { MONITOR_3IF_FOR_PRIM(PRIM_ENUM_INIT) };
 
+#ifdef MONITOR_3IF_OUT_BUF_T
+/* Allow for generalized output buffer. */
+// #define
+#else
+#define MONITOR_3IF_OUT_BUF_T     struct cbuf
+#define MONITOR_3IF_OUT_BUF_PUT   cbuf_put
+#define MONITOR_3IF_OUT_BUF_CLEAR cbuf_clear
+#endif
+
 struct monitor_3if;
 struct monitor_3if {
     /* State used by code() called with JSR. */
     /* 0 */ uint8_t *ds;
     /* 1 */ void (*poll)(struct monitor_3if *s);
-    /* 2 */ struct cbuf *out; // output buffer
+    /* 2 */ MONITOR_3IF_OUT_BUF_T *out; // output buffer
 
     /* State used by host */
     /* 3 */ uint8_t *ram;
@@ -148,7 +157,8 @@ void pop_stack (struct monitor_3if *s) { s->byte = *--(s->ds); }
     NEXT_LABEL(s,var,GENSYM(label_))
 
 static inline void monitor_3if_write_byte(struct monitor_3if *s, uint8_t byte) {
-    cbuf_put(s->out, byte);
+    if (!s->out) return; // allow output disconnected
+    MONITOR_3IF_OUT_BUF_PUT(s->out, byte);
 }
 
 #else
@@ -262,10 +272,10 @@ uintptr_t monitor_3if_loop(struct monitor_3if *s) {
 
 #ifndef MONITOR_3IF_BLOCKING
 void monitor_3if_init(struct monitor_3if *s,
-                      struct cbuf *out,
+                      MONITOR_3IF_OUT_BUF_T *out,
                       uint8_t *ds_buf) {
     memset(s,0,sizeof(*s));
-    cbuf_clear(out);
+    MONITOR_3IF_OUT_BUF_CLEAR(out);
     s->out = out;
     s->ds = ds_buf;
     /* Dummy write to end up in the first blocking read. */

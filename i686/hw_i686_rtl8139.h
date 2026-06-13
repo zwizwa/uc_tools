@@ -8,6 +8,7 @@
 #include "hw_i686_pci.h"
 #include "macros.h"
 #include <string.h>
+#include "ethernet.h"
 
 /* If logging is not defined in any of the headers that we include or
    in the compilation unit that includes us, we define it as a
@@ -97,7 +98,7 @@ struct rtl8139 {
     uint32_t tx_isr_count;
     uint32_t iobase;
     uint8_t  irq;
-    uint8_t  mac[6];
+    struct mac_addr addr;
     struct rtl8139_tx tx[4];
     uint8_t  tx_index:2;
 
@@ -266,7 +267,7 @@ static inline void rtl8139_init(struct rtl8139 *s,
     s->rx = rtl8139_rx_ignore;
 
     for (int i = 0; i < 6; i++) {
-        s->mac[i] = inb(s->iobase + RTL_IDR0 + i);
+        s->addr.mac[i] = inb(s->iobase + RTL_IDR0 + i);
     }
 
     // LOG("RTL8139_RX_BUF_LEN=%d\n", RTL8139_RX_BUF_LEN);
@@ -313,12 +314,12 @@ static inline void rtl8139_init(struct rtl8139 *s,
     LOG("rtl8139 io=%04x irq=%d mac=%02x:%02x:%02x:%02x:%02x:%02x\n",
         s->iobase,
         s->irq,
-        s->mac[0],
-        s->mac[1],
-        s->mac[2],
-        s->mac[3],
-        s->mac[4],
-        s->mac[5]);
+        s->addr.mac[0],
+        s->addr.mac[1],
+        s->addr.mac[2],
+        s->addr.mac[3],
+        s->addr.mac[4],
+        s->addr.mac[5]);
 
 }
 

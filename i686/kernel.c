@@ -62,11 +62,8 @@ int kernel_infof(const char *fmt, ...);
 #define TELNET_NO_INIT
 #include "telnet.h"
 
-/* Support for 3if monitor. */
-#include "mod_monitor_3if.c"
-
 /* Minimalistic UDP monitor to download kernel update. */
-#include "udp_mon.h"
+#include "mod_udp_mon.c"
 
 /* All application state is in a single struct which make debugging a
    bit easier in case we ever do core dumps or gdb stub. */
@@ -78,7 +75,6 @@ struct app {
     struct text_console log;
     struct telnet telnet;
     struct idt idt;
-    struct monitor_3if monitor_3if;
     void (*com_input)(struct app *, uint8_t);
     void (*com_output)(struct app *, uint8_t);
     uint32_t nb_zeros;
@@ -154,7 +150,7 @@ void app_monitor_input(struct app *app, uint8_t byte) {
         app->com_output = app_com_putchar;
         LOG("switch to commands\n");
     }
-    monitor_3if_push_key(&app->monitor_3if, byte);
+    monitor_3if_push_key(&app->udp_mon.monitor_3if, byte);
 }
 void app_keyboard_input(struct app *app, uint8_t byte) {
     if (byte == 0) {
@@ -169,6 +165,10 @@ void app_keyboard_input(struct app *app, uint8_t byte) {
         app->nb_zeros = 0;
     }
     telnet_write_input(&app->telnet, &byte, 1);
+}
+void void_app_keyboard_input(void *vapp, uint8_t byte) {
+    struct app *app = vapp;
+    app_keyboard_input(app, byte);
 }
 
 /* COM port input can be re-routed to monitor. */
@@ -338,13 +338,13 @@ int app_mon_putchar(void *vapp, uint8_t byte) {
     /* This means that logging should not go to the monitor port.  API
        probably needs to change to also witch back. */
     struct app *app = vapp;
-    monitor_3if_push_key(&app->monitor_3if, byte);
+    monitor_3if_push_key(&app->udp_mon.monitor_3if, byte);
     // FIXME: This is the protocol switch conditiion.
     return 0;
 }
 
 
-void app_send(void *vapp, const uint8_t *data, uint32_t len) {
+void void_app_send(void *vapp, const uint8_t *data, uint32_t len) {
     // LOG("app_send %d\n", len);
     // log_hex(data, len);
     struct app *app = vapp;
@@ -355,9 +355,7 @@ void app_send(void *vapp, const uint8_t *data, uint32_t len) {
 void app_rx(void *vapp, const uint8_t *data, uint32_t len) {
     //LOG("app_rx %p\n", vapp);
     struct app *app = vapp;
-    if(app->udp_mon.next) {
-        udp_mon_rx(&app->udp_mon, data, len);
-    }
+    udp_mon_rx(&app->udp_mon, data, len);
 }
 
 
@@ -421,12 +419,15 @@ void app_init(struct app *app) {
     // hook udp_mon state machine to network card if initialized
     if (app->rtl8139.irq) {
         LOG("connecting udp_mon to rtl8139\n");
-        udp_mon_init(&app->udp_mon, app_send, app);
-        memcpy(app->udp_mon.mac, app->rtl8139.mac, 6);
+        udp_mon_init(&app->udp_mon,
+                     void_app_send,
+                     void_app_keyboard_input,
+                     app);
+        app->udp_mon.mac = app->rtl8139.addr;
         app->rtl8139.ctx = app;
         app->rtl8139.rx  = app_rx; // last
-        uint8_t ip[4] = {10,1,3,222};
-        memcpy(app->udp_mon.ip, ip, 4);
+        const struct ip_addr ip = {{10,1,3,222}};
+        app->udp_mon.ip = ip;
     }
 
     app->log.use_cli = 0;
@@ -437,13 +438,16 @@ void app_init(struct app *app) {
 #include "ethernet.h"
 void test_send(void) {
 
+    const struct mac_addr mac_bc = {{0xFF,0xFF,0xFF,0xFF,0xFF,0xFF}};
+
 #if 1
     struct __attribute__((packed)) {
         struct mac mac;
         uint32_t data;
     } packet;
-    memset(packet.mac.d_mac, 0xFF, 6);
-    memcpy(packet.mac.s_mac, g_app.rtl8139.mac, 6);
+    packet.mac.dst_mac = mac_bc;
+    packet.mac.src_mac = g_app.rtl8139.addr;
+
     packet.mac.ethertype = HTONS(0x88A4);
     packet.data          = HTONL(0x12345678);
 #else
