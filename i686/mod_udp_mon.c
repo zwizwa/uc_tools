@@ -26,7 +26,7 @@
 */
 
 #define UDP_MON_CONSOLE_PORT 1001
-#define UDP_MON_COMMAND_PORT 0x31f // 799
+#define UDP_MON_COMMAND_PORT  799 // 0x31f
 
 
 static inline void log_mac(const struct mac_addr *addr) {
@@ -85,7 +85,13 @@ static inline void udp_mon_rx_udp(struct udp_mon *s, const uint8_t *eth_pkt, uin
             s->key(s->ctx, c);
         }
     }
-    else if (port == UDP_MON_CONSOLE_PORT) {
+    else if (port == UDP_MON_COMMAND_PORT) {
+        /* Need at least the tag byte. */
+        if (data_len < 1) {
+            LOG("3if missing tag\n");
+            return;
+        }
+
         /* Run the 3if commands in the packet, record the replies in a
            pbuf and send a reply with the same sequence number.  The
            sequence number is intentionally only 8 bit so a small
@@ -95,24 +101,48 @@ static inline void udp_mon_rx_udp(struct udp_mon *s, const uint8_t *eth_pkt, uin
             struct eth_udp eth_udp;
             uint8_t data[buf_size];
         } q;
+        /* Start it out with the same fields as the request. */
         q.eth_udp = *p;
-
-
 
         struct pbuf pbuf;
         pbuf_init(&pbuf, q.data, buf_size);
         /* echo the sequence number back to sender. */
+        LOG("3if tag 0x%02x\n", data[0]);
         pbuf_write(&pbuf, data, 1);
         /* all the rest is 3if output */
         s->monitor_3if.out = &pbuf;
         /* push all opcodes into the 3if state machine */
-        for (int32_t i=1; i<data_len-1; i++) {
-            monitor_3if_push_key(&s->monitor_3if, data[i]);
+        if (0) {
+            for (int32_t i=1; i<data_len; i++) {
+                monitor_3if_push_key(&s->monitor_3if, data[i]);
+            }
+        }
+        else {
+            LOG("skipping %d 3if commands\n", data_len-1);
         }
         /* disconnect. */
         s->monitor_3if.out = NULL;
 
-        // FIXME: Wrap up the packet and send it.
+        struct udp *udp = &q.eth_udp.udp;
+        udp->dst_port = p->udp.src_port;
+        udp->src_port = p->udp.dst_port;
+        uint16_t l = sizeof(struct udp) + pbuf.count;
+        udp->length = HTONS(l);
+        udp->checksum = 0; // Not needed on IPv4
+
+        struct ip *ip = &q.eth_udp.ip;
+        ip->dst_ip = p->ip.src_ip;
+        ip->src_ip = p->ip.dst_ip;
+        l += sizeof(struct ip);
+        ip->total_length = HTONS(l);
+        ip->header_checksum = 0;
+        ip->header_checksum = ip_checksum(ip, sizeof(*ip));
+
+        struct mac *mac = &q.eth_udp.mac;
+        mac->dst_mac = p->mac.src_mac;
+        mac->src_mac = p->mac.dst_mac;
+        l += sizeof(struct mac);
+        s->send(s->ctx, (uint8_t*)&q, l);
     }
 }
 

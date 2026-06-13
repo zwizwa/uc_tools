@@ -19,10 +19,12 @@
 
 #include "tcp_tools.h"
 
+#include <poll.h>
 
 struct tether_udp {
     struct sockaddr_in peer;
     int fd;
+    uint8_t sequence_number;
 };
 
 
@@ -55,17 +57,82 @@ void tether_udp_init(struct tether_udp *s, const char *host, uint16_t port) {
 
 }
 
+void usage_exit(int argc, char **argv) {
+    LOG("usage: %s with arguments:\n");
+    LOG("  console <host> <string>\n", argv[0]);
+    LOG("  send    <host> <file>\n",   argv[0]);
+    exit(1);
+}
+
+void cmd_console(int argc, char **argv) {
+    if (argc != 3) { usage_exit(argc, argv); }
+    const char *host    = argv[1];
+    const char *command = argv[2];
+    char command_n[strlen(command)+2];
+    sprintf(command_n, "%s\n", command);
+    struct tether_udp _s, *s = &_s;
+    tether_udp_init(s, host, 1001);
+    tether_udp_send_str(s, command_n);
+    exit(0);
+}
+
+struct mon_packet {
+    uint8_t  sequence_number;
+    uint8_t  data[1471];
+    uint16_t data_len;
+};
+
+void tether_udp_transact(struct tether_udp *s,
+                         struct mon_packet *c) {
+    c->sequence_number = s->sequence_number++;
+    tether_udp_send(s, (void*)c, c->data_len);
+
+    struct sockaddr_in from;
+    socklen_t fromlen = sizeof(from);
+    int flags = 0;
+
+    struct pollfd pfd[] = {
+        [0] = { .events = POLLIN, .fd = s->fd },
+    };
+    int rv;
+    ASSERT_ERRNO(rv = poll(&pfd[0], ARRAY_SIZE(pfd), -1));
+    ASSERT(rv >= 0);
+    if (rv == 0) {
+        LOG("timeout\n");
+        exit(1);
+    }
+    ASSERT(pfd[0].revents & POLLIN);
+    struct mon_packet r = {};
+
+    rv = recvfrom(s->fd, &r, 1+sizeof(r.data), flags,
+                  (struct sockaddr *)&from, &fromlen);
+    // Note that 0 length is legal UDP but not part of 3if
+    // protocol.  There will always be one sequence byte.
+    ASSERT(rv >= 1);
+    LOG("len %d seq=0x%02d\n", rv, r.sequence_number);
+
+}
+
+
+void cmd_send(int argc, char **argv) {
+    if (argc < 3) { usage_exit(argc, argv); }
+    const char *host    = argv[2];
+    const char *file    = argv[3];
+    struct tether_udp _s, *s = &_s;
+    tether_udp_init(s, host, 799);  // 0x31f
+    struct mon_packet mp = {};
+    mp.data_len = strlen(file); // FIXME
+    memcpy(mp.data, file, mp.data_len);
+    tether_udp_transact(s, &mp);
+    tether_udp_transact(s, &mp);
+    exit(0);
+}
+
 
 int main(int argc, char **argv) {
-    if (argc != 3) {
-        ERROR("usage: %s <host> <port>\n", argv[0]);
-    }
-    const char *host = argv[1];
-    uint16_t port = atoi(argv[2]);
-
-    struct tether_udp _s, *s = &_s;
-    tether_udp_init(s, host, port);
-    const char hello[] = "words\n";
-    tether_udp_send_str(s, hello);
-    return 0;
+    if (argc < 2)                         usage_exit(argc, argv);
+    else if (!strcmp(argv[1], "console")) cmd_console(argc, argv);
+    else if (!strcmp(argv[1], "send"))    cmd_send(argc, argv);
+    else                                  usage_exit(argc, argv);
 }
+
