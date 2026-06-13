@@ -1,10 +1,15 @@
-#ifndef TFTP_H
-#define TFTP_H
+#ifndef UDP_MON_H
+#define UDP_MON_H
 
 #include "ethernet.h"
 
 
-/* Minimalistic tftp setup for kernel reload without reboot.
+/* Minimalistic monitor setup over UDP.
+   Main point is to be able to reload the kernel without reboot.
+
+   Keep this end as simple as possible and handle complexity at the
+   host end using a dedicated tool.
+
    - static IP
    - ARP
    - ping for debugging
@@ -26,9 +31,9 @@ static inline void log_ipv4(const uint8_t *mac) {
 }
 
 
-typedef void (*tftp_send_fn)(void *ctx, const uint8_t *data, uint32_t len);
+typedef void (*udp_mon_send_fn)(void *ctx, const uint8_t *data, uint32_t len);
 
-struct tftp {
+struct udp_mon {
     void *next;
 
     /* System */
@@ -47,8 +52,16 @@ struct tftp {
 
 };
 
+#define CONSOLE_UDP_PORT 1234
+
+// FIXME: hardcoded
+struct app;
+extern struct app g_app;
+void app_keyboard_input(struct app *app, uint8_t byte);
+
 // socat - UDP:10.1.3.222:1234
-static inline void tftp_rx_udp(struct tftp *s, const uint8_t *eth_pkt, uint32_t len) {
+// socat - STDIO,raw,echo=0,escape=0x03 UDP:10.1.3.222:1234
+static inline void udp_mon_rx_udp(struct udp_mon *s, const uint8_t *eth_pkt, uint32_t len) {
     const struct {
         struct mac mac;
         struct ip ip;
@@ -57,20 +70,30 @@ static inline void tftp_rx_udp(struct tftp *s, const uint8_t *eth_pkt, uint32_t 
     // FIXME: checksum
     uint32_t data_len = HTONS(p->udp.length) - sizeof(struct udp);
     if (sizeof(*p) + data_len > len) return;
-    LOG("udp data_len=%d\n", data_len);
+    const uint16_t port = HTONS(p->udp.d_port);
     const uint8_t *data = (const void*)&p[1];
-    log_hex(data, data_len);
+    // LOG("udp port=%d data_len=%d\n", port, data_len);
+    // log_hex(data, data_len);
+    if (port == CONSOLE_UDP_PORT) {
+        for (uint32_t i=0; i<data_len; i++) {
+            uint8_t c = data[i];
+            if (c == 0xa) { c = 0xd; }
+            app_keyboard_input(&g_app, c);
+        }
+    }
+    //else if (port == s->udp_mon_port) {
+    //}
 }
 
 /* Called from interrupt context. */
-static inline void tftp_rx(struct tftp *s, const uint8_t *data, uint32_t len) {
+static inline void udp_mon_rx(struct udp_mon *s, const uint8_t *data, uint32_t len) {
     const struct mac *e = (const void*)data;
     if (len < sizeof(*e)) return;
     uint16_t ethertype = NTOHS(e->ethertype);
 
-    if (1) {
-        //LOG("tftp rx: %p %p %p\n", s, s->send, s->ctx);
-        LOG("tftp rx %d ", len);
+    if (0) {
+        //LOG("udp_mon rx: %p %p %p\n", s, s->send, s->ctx);
+        LOG("udp_mon rx %d ", len);
         log_mac(e->d_mac); LOG(" ");
         log_mac(e->s_mac); LOG(" ");
         LOG("%04x", ethertype); LOG("\n");
@@ -96,12 +119,12 @@ static inline void tftp_rx(struct tftp *s, const uint8_t *data, uint32_t len) {
             icmp_rx(s->send, s->ctx, data, len, s->ip);
             break;
         case PROTOCOL_UDP:
-            tftp_rx_udp(s, data, len);
+            udp_mon_rx_udp(s, data, len);
             break;
         default:
             break;
         }
-        //tftp_rx_udp(s, data, len);
+        //udp_mon_rx_udp(s, data, len);
         break;
     }
     default:
@@ -109,9 +132,9 @@ static inline void tftp_rx(struct tftp *s, const uint8_t *data, uint32_t len) {
     }
 }
 
-static inline void tftp_tick(struct tftp *s) {
+static inline void udp_mon_tick(struct udp_mon *s) {
     if (s->next) goto *s->next;
-    //LOG("tftp init\n");
+    //LOG("udp_mon init\n");
 
     // send arp request for 10.1.3.1
     // wait for reply
@@ -126,12 +149,12 @@ static inline void tftp_tick(struct tftp *s) {
 }
 
 
-static inline void tftp_init(struct tftp *s, tftp_send_fn send, void *ctx) {
-    LOG("tftp_init %p %p %p\n", s, send, ctx);
+static inline void udp_mon_init(struct udp_mon *s, udp_mon_send_fn send, void *ctx) {
+    LOG("udp_mon_init %p %p %p\n", s, send, ctx);
     memset(s, 0, sizeof(*s));
     s->send = send;
     s->ctx = ctx;
-    tftp_tick(s);
+    udp_mon_tick(s);
 }
 
 

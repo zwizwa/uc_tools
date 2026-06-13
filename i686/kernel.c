@@ -65,15 +65,15 @@ int kernel_infof(const char *fmt, ...);
 /* Support for 3if monitor. */
 #include "mod_monitor_3if.c"
 
-/* Minimalistic tftp to download kernel update. */
-#include "tftp.h"
+/* Minimalistic UDP monitor to download kernel update. */
+#include "udp_mon.h"
 
 /* All application state is in a single struct which make debugging a
    bit easier in case we ever do core dumps or gdb stub. */
 struct app;
 struct app {
     volatile uint32_t event;
-    struct tftp tftp;
+    struct udp_mon udp_mon;
     struct uart com1;
     struct text_console log;
     struct telnet telnet;
@@ -345,7 +345,7 @@ int app_mon_putchar(void *vapp, uint8_t byte) {
 
 
 void app_send(void *vapp, const uint8_t *data, uint32_t len) {
-    LOG("app_send %d\n", len);
+    // LOG("app_send %d\n", len);
     // log_hex(data, len);
     struct app *app = vapp;
     if (app->rtl8139.irq) {
@@ -355,8 +355,8 @@ void app_send(void *vapp, const uint8_t *data, uint32_t len) {
 void app_rx(void *vapp, const uint8_t *data, uint32_t len) {
     //LOG("app_rx %p\n", vapp);
     struct app *app = vapp;
-    if(app->tftp.next) {
-        tftp_rx(&app->tftp, data, len);
+    if(app->udp_mon.next) {
+        udp_mon_rx(&app->udp_mon, data, len);
     }
 }
 
@@ -418,15 +418,15 @@ void app_init(struct app *app) {
                 telnet_write_output,
                 telnet_event);
 
-    // hook tftp state machine to network card if initialized
+    // hook udp_mon state machine to network card if initialized
     if (app->rtl8139.irq) {
-        LOG("connecting tftp to rtl8139\n");
-        tftp_init(&app->tftp, app_send, app);
-        memcpy(app->tftp.mac, app->rtl8139.mac, 6);
+        LOG("connecting udp_mon to rtl8139\n");
+        udp_mon_init(&app->udp_mon, app_send, app);
+        memcpy(app->udp_mon.mac, app->rtl8139.mac, 6);
         app->rtl8139.ctx = app;
         app->rtl8139.rx  = app_rx; // last
         uint8_t ip[4] = {10,1,3,222};
-        memcpy(app->tftp.ip, ip, 4);
+        memcpy(app->udp_mon.ip, ip, 4);
     }
 
     app->log.use_cli = 0;

@@ -22,13 +22,13 @@ CFLAGS = \
 
 .PHONY: all clean run
 
-all: kernel.nbp kernel.dsk kernel.dasm
+all: kernel.nbp kernel.dsk kernel.dasm trampoline.blk
 
 DEPS := $(shell find -name '*.d')
 -include $(DEPS)
 
-kernel.nbp: boot.nbp kernel.bin
-	cat boot.nbp kernel.bin >$@
+kernel.nbp: boot.blk kernel.bin
+	cat boot.blk kernel.bin >$@
 
 #  512 sector size
 # 9216 track size (18 sectors)
@@ -38,17 +38,20 @@ kernel.dsk: boot.dsk kernel.bin
 	ls -l $@
 
 clean:
-	rm -f *.bin *.elf boot.dsk boot.nbp test.nbp kernel.dsk kernel.nbp *~ *.dasm *.o
+	rm -f *.bin *.elf boot.dsk boot.blk test.nbp kernel.dsk kernel.nbp *~ *.dasm *.o
 
 
 # 512 byte boot sectors for NBP and floppy, loaded at 0x7C00.  This
 # will do any necessary loading (for floppy) and switch to protected
 # mode before jumping into the C kernel.
-boot.nbp: boot.asm
+boot.blk: boot.asm
 	$(NASM) -f bin -o $@ $<
 
 test.nbp: boot.asm
 	$(NASM) -dTESTKERNEL -f bin -o $@ $<
+
+trampoline.blk: trampoline.asm
+	$(NASM) -f bin -o $@ $<
 
 boot.dsk: boot.asm
 	$(NASM) -dFLOPPY -f bin -o $@ $<
@@ -68,6 +71,12 @@ boot.dsk: boot.asm
 	rm -f $@
 	$(OBJDUMP) -d $< >$@.tmp
 	mv $@.tmp $@
+
+%.dasm: %.blk Makefile
+	rm -f $@
+	$(OBJDUMP) -D -b binary -m i386 $< >$@.tmp
+	mv $@.tmp $@
+	cat $@
 
 # QEMU floppy options.  Turn off locking to allow multiple instances
 # to use the same image.  Kernel and iPXE will not write to the
