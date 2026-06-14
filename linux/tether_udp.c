@@ -19,6 +19,14 @@
 
 #include "tcp_tools.h"
 
+/* Try to get everything integrated here. */
+#define TETHER_3IF_UDP // Not enabled by default
+#include "mod_tether_3if.c"
+
+void tether_handle_async(struct tether *s) {
+    ERROR("tether_udp: async not implemented\n");
+}
+
 #include <poll.h>
 
 struct tether_udp {
@@ -115,6 +123,7 @@ void tether_udp_transact(struct tether_udp *s,
 
 
 void cmd_send(int argc, char **argv) {
+#if 0
     if (argc < 3) { usage_exit(argc, argv); }
     const char *host    = argv[2];
     const char *file    = argv[3];
@@ -126,6 +135,19 @@ void cmd_send(int argc, char **argv) {
     tether_udp_transact(s, &mp);
     tether_udp_transact(s, &mp);
     exit(0);
+#else
+    if (argc < 3) { usage_exit(argc, argv); }
+    const char *host    = argv[2];
+    const char *file    = argv[3];
+    struct tether s;
+    tether_open_udp(&s, host, 799); // 0x31f
+    s.verbose  = 1;
+    s.progress = 1;
+    tether_dump_ram(&s, file,
+                    0x7C00,
+                    0x30000);
+    exit(0);
+#endif
 }
 
 

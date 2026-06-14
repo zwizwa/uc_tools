@@ -55,6 +55,9 @@ int kernel_infof(const char *fmt, ...);
 #include "hw_i686_echo.h"
 #include "hw_i686_emu10k.h"
 
+/* Firmware header */
+#include "boot_config.h"
+
 /* PC (VGA) text console. */
 #include "text_console.h"
 
@@ -426,8 +429,7 @@ void app_init(struct app *app) {
         app->udp_mon.mac = app->rtl8139.addr;
         app->rtl8139.ctx = app;
         app->rtl8139.rx  = app_rx; // last
-        const struct ip_addr ip = {{10,1,3,222}};
-        app->udp_mon.ip = ip;
+        app->udp_mon.ip = boot_config.ip;
     }
 
     app->log.use_cli = 0;
@@ -536,13 +538,16 @@ void *memset(void *s, int c, size_t n) {
 
 
 /* Before jumping here, the bootloader loads from media if needed,
-   enables A20, turns off interrupts, switches to protected mode.
-   This code is located 512 bytes into the disk or NBP image and is
-   loaded at 0x7E00, right after the boot sector at 0x7C00.  Stack is
-   set up (below 7C00).*/
-__attribute__ ((section (".kmain")))
-__attribute__ ((naked))
-void kmain(void) {
+   enables A20, turns off interrupts, switches to protected mode.  The
+   boot_config struct is located 512 bytes into the disk or NBP image
+   and is loaded at 0x7E00, right after the boot sector at 0x7C00.
+   Stack is set up below 7C00.*/
+
+
+extern uint8_t __bss_start;
+extern uint8_t __bss_end;
+
+void entry(void) {
 
     /* Before doing anything, write something to the top right corner
        of the screen to indicate that we got at least this far.  The
@@ -552,14 +557,17 @@ void kmain(void) {
     VIDEO[79*2] = '!';
 
     /* Initialize memory.  */
-    extern uint8_t __bss_start;
-    extern uint8_t __bss_end;
     mini_memset_volatile(&__bss_start, 0, &__bss_end - &__bss_start);
 
     /* Initialize hardware and app functionality. */
     app_init(&g_app);
 
     LOG("version %s\n", VERSION);
+    if (0) {
+        LOG("%p entry\n", boot_config.entry);
+        LOG("%p app\n", boot_config.app);
+        LOG("%p top\n", boot_config.top);
+    }
 
     /* Start the forth interpreter. */
     forth_start();
@@ -573,5 +581,14 @@ void kmain(void) {
     hlt();
     goto loop;
 }
+
+
+__attribute__ ((section (".config")))
+struct boot_config boot_config = {
+    .entry = entry,
+    .app   = &g_app,
+    .top   = &__bss_end,
+    .ip    = {{10,1,3,222}},
+};
 
 

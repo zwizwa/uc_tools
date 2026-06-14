@@ -119,7 +119,8 @@ static inline void cli_and_restart(void) {
     cli();
     __asm__ __volatile__ (
         "movl $0x7C00, %%esp"   "\n\t"
-        "ljmp $0x08, $0x7E00"   "\n\t"
+        "movl [0x7E00], %%edx"  "\n\t"
+        "jmp *%%edx"            "\n\t"
         : : : "memory"
         );
 }

@@ -4,12 +4,20 @@
    at startup.  Then handle whatever interpretation is necessary later
    on. */
 
+/* To integrate with a packet interface, use flush on read,
+   i.e. buffer commands until it is time to read a reply, then first
+   send out the buffer in a single packet. */
+
 #include "macros.h"
 #include "raw_serial.h"
 #include "assert_write.h"
 #include "assert_read.h"
 #include "tcp_tools.h"
 #include "uct_byteswap.h"
+#ifdef TETHER_3IF_UDP
+#include "pbuf.h"
+#include <poll.h>
+#endif
 
 // FIXME: Put this inside the struct.
 const char *tether_3if_tag = "";
@@ -35,6 +43,14 @@ struct tether {
 
     uint8_t verbose;
     uint8_t progress:1;
+
+#ifdef TETHER_3IF_UDP
+    /* For UDP */
+    struct sockaddr_in peer;
+    struct pbuf w; uint8_t w_buf[1472];
+    struct cbuf r; uint8_t r_buf[1500];
+#endif
+
 };
 
 // FIXME: move these to a header
@@ -609,3 +625,68 @@ void tether_open_tcp(struct tether *s, const char *host, uint16_t port) {
     s->write = tether_assert_write;
 }
 
+#ifdef TETHER_3IF_UDP
+void tether_assert_udp_write(struct tether *s, const uint8_t *buf, size_t len) {
+    /* UDP write is buffered.  We do not send out the packet until read. */
+    pbuf_write(&s->w, buf, len); // FIXME: error on overflow
+}
+void tether_udp_write_read(struct tether *s) {
+    /* Flush output buffer. */
+    int wlen;
+    ASSERT_ERRNO(
+        wlen = sendto(s->fd_out, s->w.buf, s->w.count, 0 /*flags*/,
+                      (struct sockaddr*)&s->peer,
+                      sizeof(s->peer)));
+    (void)wlen;
+    pbuf_clear(&s->w);
+
+    /* Wait for the next packet with timeout */
+    struct sockaddr_in from;
+    socklen_t fromlen = sizeof(from);
+    struct pollfd pfd[] = {
+        [0] = { .events = POLLIN, .fd = s->fd_in },
+    };
+    int rv;
+    int timeout_ms = 1000;
+    ASSERT_ERRNO(rv = poll(&pfd[0], ARRAY_SIZE(pfd), timeout_ms));
+    ASSERT(rv >= 0);
+    if (rv == 0) {
+        LOG("timeout\n");
+        exit(1);
+    }
+    ASSERT(pfd[0].revents & POLLIN);
+
+    uint8_t buf[1472];
+    rv = recvfrom(s->fd_in, buf, sizeof(buf), 0 /*flags*/,
+                  (struct sockaddr *)&from, &fromlen);
+    ASSERT(rv >= 0);
+    // LOG("udp rv=%d\n", rv);
+    cbuf_write(&s->r, buf, rv);
+}
+ssize_t tether_assert_udp_read(struct tether *s, void *vbuf, size_t nb) {
+    /* If there is data in the cbuf then read that first.  If we run
+       out, do a write, read sequence. */
+    uint8_t *buf = vbuf;
+    for (size_t i=0; i<nb; i++) {
+        if (0 == cbuf_elements(&s->r)) {
+            tether_udp_write_read(s);
+        }
+        ASSERT(0 != cbuf_elements(&s->r));
+        cbuf_read(&s->r, &buf[i], 1);
+    }
+    return nb;
+}
+void tether_open_udp(struct tether *s, const char *host, uint16_t port) {
+    memset(s, 0, sizeof(*s));
+    PBUF_INIT(s->w);
+    CBUF_INIT(s->r);
+
+    assert_gethostbyname(&s->peer, host);
+    s->peer.sin_port = htons(port);
+    s->peer.sin_family = AF_INET;
+    ASSERT_ERRNO(s->fd_in = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP));
+    s->fd_out = s->fd_in;
+    s->read  = tether_assert_udp_read;
+    s->write = tether_assert_udp_write;
+}
+#endif

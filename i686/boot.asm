@@ -9,6 +9,10 @@
 start:
     
     cli                         ; Disable interrupts during setup
+
+    ;; get dhcp reply from pxe:
+    ;; https://claude.ai/chat/453af4af-ccc0-4e54-a7e5-0b6d127193c7
+
     xor ax, ax
     mov ds, ax                  ; Data segment = 0
     mov es, ax                  ; Extra segment = 0
@@ -337,16 +341,18 @@ gdt_end:
 protected_mode: 
     mov ebx, 0xB8000 + (2 * 79)
     mov byte [ebx], '?'
-    jmp kernel
+    mov edx, [0x7E00]
+    jmp edx
 
     times 510 - ($ - $$) db 0  ; Pad to floppy bootsector size
     dw 0xaa55                  ; Bootable marker
 
 
-kernel:
 
 %ifdef  TESTKERNEL
-
+config:
+    dw kernel                  ; First word is entry address
+kernel: 
     mov ebx, 0xB8000
     mov ecx, 80*25
 .fill_screen:

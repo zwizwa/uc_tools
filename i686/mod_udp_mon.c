@@ -11,6 +11,7 @@
 
 #include "mod_monitor_3if.c"
 #include "ethernet.h"
+#include "ethernet_rx.h"
 
 /* Minimalistic monitor setup over UDP.
    Main point is to be able to reload the kernel without reboot.
@@ -86,12 +87,6 @@ static inline void udp_mon_rx_udp(struct udp_mon *s, const uint8_t *eth_pkt, uin
         }
     }
     else if (port == UDP_MON_COMMAND_PORT) {
-        /* Need at least the tag byte. */
-        if (data_len < 1) {
-            LOG("3if missing tag\n");
-            return;
-        }
-
         /* Run the 3if commands in the packet, record the replies in a
            pbuf and send a reply with the same sequence number.  The
            sequence number is intentionally only 8 bit so a small
@@ -104,24 +99,18 @@ static inline void udp_mon_rx_udp(struct udp_mon *s, const uint8_t *eth_pkt, uin
         /* Start it out with the same fields as the request. */
         q.eth_udp = *p;
 
+        /* Set up UDP packet body as reply buffer */
         struct pbuf pbuf;
         pbuf_init(&pbuf, q.data, buf_size);
-        /* echo the sequence number back to sender. */
-        LOG("3if tag 0x%02x\n", data[0]);
-        pbuf_write(&pbuf, data, 1);
-        /* all the rest is 3if output */
         s->monitor_3if.out = &pbuf;
-        /* push all opcodes into the 3if state machine */
-        if (0) {
-            for (int32_t i=1; i<data_len; i++) {
-                monitor_3if_push_key(&s->monitor_3if, data[i]);
-            }
+        /* Push all opcodes into the 3if state machine */
+        // log_hex(data, data_len);
+        for (int32_t i=0; i<data_len; i++) {
+            monitor_3if_push_key(&s->monitor_3if, data[i]);
         }
-        else {
-            LOG("skipping %d 3if commands\n", data_len-1);
-        }
-        /* disconnect. */
+        /* Disconnect out buffer */
         s->monitor_3if.out = NULL;
+        // log_hex(pbuf.buf, pbuf.count);
 
         struct udp *udp = &q.eth_udp.udp;
         udp->dst_port = p->udp.src_port;
@@ -203,6 +192,9 @@ static inline void udp_mon_init(struct udp_mon *s,
     s->send = send;
     s->key  = key;
     s->ctx  = ctx;
+    // Push it once with dummy input to boot the state machine.
+    monitor_3if_push_key(&s->monitor_3if, 0);
+
 }
 
 
