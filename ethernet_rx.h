@@ -80,6 +80,8 @@ static inline void icmp_rx(
         uint8_t data [data_len];
     } reply[1], *q = &reply[0], *p = ((void*)data);
     if (p->icmp.type != ICMP_ECHO_REQUEST) {
+        // 0x03   destination unreachable
+        //  0x03  port unreacahble
         LOG("icmp %02x %02x\n", p->icmp.type, p->icmp.code);
         return;
 

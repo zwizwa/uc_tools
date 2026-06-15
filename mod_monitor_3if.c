@@ -31,28 +31,8 @@
 #include "cbuf.h"
 #include <stdint.h>
 
+#include "monitor_3if.h"
 
-/* Same encoding as Staapl.
-   A = rAm pointer
-   F = Flash pointer
-   C = Code pointer
-*/
-
-/* Codes are mapped to 0x8x.  This moves it away from:
-   - 7-bit clean ASCII
-   - SLIP encoding
-   - low byte count {packet,N} messages
-
-   This ensures that protocol errors can be used to cause transparent
-   protocol switches for things based on. */
-
-#define MONITOR_3IF_FOR_PRIM(m)                              \
-    m(ACK,  0x0)  m(NPUSH, 0x1)  m(NPOP, 0x2)  m(JSR,  0x3)  \
-    m(LDA,  0x4)  m(LDF,   0x5)  m(LDC,  0x6)  m(INTR, 0x7)  \
-    m(NAL,  0x8)  m(NFL,   0x9)  m(NAS,  0xa)  m(NFS,  0xb)  \
-
-#define PRIM_ENUM_INIT(word,N) word = (0x80 + N),
-enum PRIM { MONITOR_3IF_FOR_PRIM(PRIM_ENUM_INIT) };
 
 #ifdef MONITOR_3IF_OUT_BUF_T
 /* Allow for generalized output buffer. */
@@ -203,6 +183,7 @@ static inline uintptr_t monitor_3if_push_key(struct monitor_3if *s, uint8_t key)
     switch(op) {
 
     case ACK: if (s->count != 0) goto err; else goto ack;
+    case BCK:                                   goto bck;
 
         /* LOAD */
 
@@ -252,6 +233,14 @@ static inline uintptr_t monitor_3if_push_key(struct monitor_3if *s, uint8_t key)
     monitor_3if_write_byte(s, 0);
     // if poll was set (e.g. by JSR) we can call it after ack
     if (s->poll) s->poll(s);
+    goto next;
+  bck:
+    // like ack, but echo back the data
+    monitor_3if_write_byte(s, s->count);
+    while(s->count--) {
+        NEXT(s, s->byte);
+        monitor_3if_write_byte(s, s->byte);
+    }
     goto next;
 }
 

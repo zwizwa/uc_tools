@@ -1,3 +1,6 @@
+#ifndef MOD_TETHER_3IF
+#define MOD_TETHER_3IF
+
 /* Connect to a 3if monitor. */
 
 /* For debugging, it seems simplest to just let the device dump flash
@@ -18,6 +21,7 @@
 #include "pbuf.h"
 #include <poll.h>
 #endif
+#include "uct_byteswap.h"
 
 // FIXME: Put this inside the struct.
 const char *tether_3if_tag = "";
@@ -53,14 +57,8 @@ struct tether {
 
 };
 
-// FIXME: move these to a header
-#define MONITOR_3IF_FOR_PRIM(m)                              \
-    m(ACK,  0x0)  m(NPUSH, 0x1)  m(NPOP, 0x2)  m(JSR,  0x3)  \
-    m(LDA,  0x4)  m(LDF,   0x5)  m(LDC,  0x6)  m(INTR, 0x7)  \
-    m(NAL,  0x8)  m(NFL,   0x9)  m(NAS,  0xa)  m(NFS,  0xb)  \
+#include "monitor_3if.h"
 
-#define PRIM_ENUM_INIT(word,N) word = (0x80 + N),
-enum PRIM { MONITOR_3IF_FOR_PRIM(PRIM_ENUM_INIT) };
 
 
 int fd = -1;
@@ -139,6 +137,11 @@ void tether_cmd_buf(struct tether *s, uint8_t opc, const uint8_t *buf, uintptr_t
 void tether_ack(struct tether *s) {
     tether_cmd(s, ACK);
 }
+
+void tether_bck_u8(struct tether *s, const uint8_t* buf, uintptr_t size) {
+    tether_cmd_buf(s, BCK, buf, size);
+}
+
 
 /* Flush any async messages. */
 void tether_flush(struct tether *s, void (*handle)(struct tether *)) {
@@ -630,14 +633,21 @@ void tether_assert_udp_write(struct tether *s, const uint8_t *buf, size_t len) {
     /* UDP write is buffered.  We do not send out the packet until read. */
     pbuf_write(&s->w, buf, len); // FIXME: error on overflow
 }
-void tether_udp_write_read(struct tether *s) {
-    /* Flush output buffer. */
+void tether_udp_send_packet(struct tether *s, const uint8_t *buf, uint32_t len) {
     int wlen;
     ASSERT_ERRNO(
-        wlen = sendto(s->fd_out, s->w.buf, s->w.count, 0 /*flags*/,
+        wlen = sendto(s->fd_out, buf, len, 0 /*flags*/,
                       (struct sockaddr*)&s->peer,
                       sizeof(s->peer)));
-    (void)wlen;
+    ASSERT(len == wlen);
+}
+void tether_udp_send_str(struct tether *s, const char *str) {
+    tether_udp_send_packet(s, (const uint8_t*)str, strlen(str));
+}
+
+void tether_udp_write_read(struct tether *s) {
+    /* Flush output buffer. */
+    tether_udp_send_packet(s, s->w.buf, s->w.count);
     pbuf_clear(&s->w);
 
     /* Wait for the next packet with timeout */
@@ -689,4 +699,157 @@ void tether_open_udp(struct tether *s, const char *host, uint16_t port) {
     s->read  = tether_assert_udp_read;
     s->write = tether_assert_udp_write;
 }
+
+
+/* The routines above will work for UDP but will be susceptible to
+   packet drops.  To make it work reliably, use idempotent
+   operations with acknowledgements and retries.
+
+   - Packets arrive as a whole, or are dropped as a whole, so
+     sequences of operations inside a packet can be thought of as an
+     operation that either succeeds or fails.
+
+   - Rround trip acknowledgement is needed to confirm that a remote
+     operation has completed.  Acknowledgements might not arrive.  If
+     acknowledgment is missed, we do not know if the remote operation
+     completed or not.
+
+   - These are not transactions in the sense that they can be rolled
+     back.  If each operation is idempotent, they can just be issued
+     repeatedly until an acknowledgement is eventually received.
+
+   - The BCK command (echo back) can be used to tag a packet with a
+     unique id to associate it to the reply packet.
+
+   To basically this guarantees delivery if acknowledgment eventually
+   succeeds.  If communication gets stuck, we do not know the remote
+   state.  In practice this is fine.
+
+   It would be nice if the existing code could be made completely
+   lazy, i.e. all reads scheduled for a later time for code that does
+   not have read->write dependency.
+*/
+
+#define MAX_UDP_DATA_SIZE 1472
+
+/* The basic operation is:
+   - here's a buffer (tail of a packet)
+   - fill it with commands that transfer 3if chunks
+   - return the packet size + data that has been transferred
+
+   Then combine that into a sequence of chunk transfers.
+*/
+
+
+
+
+/* Out should be correctly sized.  Not checked here. */
+static inline
+uint32_t write_3if_chunk(const uint8_t *in,
+                         uint32_t in_len,
+                         uint8_t *out) {
+    uint8_t *out_orig = out;
+    while(in_len > 0) {
+        uint32_t chunk = in_len > 254 ? 254 : in_len;
+        // LOG("%p %d -> %p\n", in, chunk, out);
+        *out++ = 1 + chunk;
+        *out++ = NAS;
+        memcpy(out, in, chunk);
+        out    += chunk;
+        in     += chunk;
+        in_len -= chunk;
+    }
+    return out-out_orig;
+}
+
+// iub_write = idempotent unreliable block write
+
+/* The way to organize is to abstract out the chunk write as random
+   access, because we are going to have to retry later based on chunk
+   index. */
+
+struct chunk_info {
+    struct tether *s;
+    uint32_t addr;
+    const uint8_t *in;
+    uint32_t in_len;
+    uint32_t chunk_size;
+    uint8_t buf[1472];
+};
+void tether_iub_write_chunk(struct chunk_info *c,
+                            uint32_t chunk_nb) {
+    uint32_t offset = c->chunk_size * chunk_nb;
+    uint32_t left   = c->in_len - offset;
+    uint32_t chunk  = left > c->chunk_size ? c->chunk_size : left;
+
+    const uint8_t hdr[] = {
+        3, BCK, U16_LE(chunk_nb),
+        5, LDA, U32_LE(c->addr + offset),
+    };
+    memcpy(c->buf, hdr, sizeof(hdr));
+    uint32_t buf_written = write_3if_chunk(
+        c->in, chunk, c->buf + sizeof(hdr));
+
+    buf_written += sizeof(hdr);
+    ASSERT(buf_written <= sizeof(c->buf));
+    tether_udp_send_packet(c->s, c->buf, buf_written);
+
+}
+
+
+void tether_iub_write(struct tether *s,
+                      uint32_t addr,
+                      const uint8_t *in,
+                      uint32_t in_len) {
+    struct chunk_info c = {
+        .s = s,
+        .addr = addr,
+        .in = in,
+        .in_len = in_len,
+    };
+    /* No formula here, just compute overhead manually.  Is checked by
+       assert. */
+    c.chunk_size = sizeof(c.buf) - 22;
+
+    uint32_t nb_chunks = 1 + (in_len-1) / c.chunk_size;
+    LOG("nb %d byte chunks: %d\n", c.chunk_size, nb_chunks);
+
+    uint8_t bookkeep[nb_chunks];
+
+    for (uint32_t chunk_nb=0; chunk_nb<nb_chunks; chunk_nb++) {
+        bookkeep[chunk_nb] = 0;
+        tether_iub_write_chunk(&c, chunk_nb);
+
+        /* Send packet, collect any replies that might have arrived.
+           When everything is sent wait for a bit longer, then
+           retransmit everything that didn't get any acks. */
+    }
+    (void)bookkeep;
+}
+
+
+void tether_windowed_read(struct tether *s,
+                          const char *filename,
+                          uint32_t address,
+                          uint32_t size) {
+
+    uint8_t buf[4] = {0,1,2,3};
+
+    for (uint8_t i=0; i<8; i++) {
+        buf[3] = i;
+#if 1
+        tether_bck_u8(s, buf, sizeof(buf));
+#endif
+#if 0
+        tether_cmd_buf(s, NPUSH, buf, sizeof(buf));
+        tether_cmd_u8(s, NPOP, sizeof(buf));
+#endif
+    }
+}
+
+
+#endif
+
+
+
 #endif
