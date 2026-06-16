@@ -1,20 +1,22 @@
 ; A 'kexec' loader.  An existing kernel will load an image into a
 ; buffer and jump to the start of it.  The code will then copy the
-; kernel to 0x7C00 and jump to it.
+; kernel to 0x7C00 and jump to it.  It seems simplest to make this
+; code self-locating so we can just jump into the image.
+
+
 [BITS 32]
 
 start:
-    cli
+    cli           ; fa
+    call get_eip  ; e8 00 00 00 00
+get_eip:
+    pop esi
+
     mov ebx, 0xB8000 + (2 * 79)
     mov byte [ebx], '?'
 
-busy:
-    jmp busy
-
-    mov esi, [esp+4]    ; start of the kernel (boot block)
-    mov ecx, [esp+8]    ; length
-    add esi, 512        ; skip the boot block
-    sub ecx, 512
+    add esi, 512-6      ; esi is now the first address of the kernel
+    mov ecx, 14734-512
     mov edi, 0x7E00
     cld
     rep movsb
