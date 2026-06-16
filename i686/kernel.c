@@ -463,8 +463,8 @@ void test_send(void) {
 }
 
 void f1(void) {
-    par_pulse(&g_app.mcs9865.par);
-    // test_send();
+    //par_pulse(&g_app.mcs9865.par);
+    test_send();
 }
 
 

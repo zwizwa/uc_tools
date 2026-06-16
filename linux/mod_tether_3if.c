@@ -774,6 +774,8 @@ struct chunk_info {
     const uint8_t *in;
     uint32_t in_len;
     uint32_t chunk_size;
+    uint32_t nb_chunks;
+    uint8_t *bookkeep;
     uint8_t buf[1472];
 };
 void tether_iub_write_chunk(struct chunk_info *c,
@@ -783,12 +785,12 @@ void tether_iub_write_chunk(struct chunk_info *c,
     uint32_t chunk  = left > c->chunk_size ? c->chunk_size : left;
 
     const uint8_t hdr[] = {
-        3, BCK, U16_LE(chunk_nb),
+        3, BCK, U16_BE(chunk_nb),
         5, LDA, U32_LE(c->addr + offset),
     };
     memcpy(c->buf, hdr, sizeof(hdr));
     uint32_t buf_written = write_3if_chunk(
-        c->in, chunk, c->buf + sizeof(hdr));
+        c->in + offset, chunk, c->buf + sizeof(hdr));
 
     buf_written += sizeof(hdr);
     ASSERT(buf_written <= sizeof(c->buf));
@@ -796,35 +798,86 @@ void tether_iub_write_chunk(struct chunk_info *c,
 
 }
 
+void tether_iub_write_start(struct chunk_info *c) {
+    const uint8_t hdr[] = {
+        5, LDC, U32_LE(c->addr),
+        1, JSR,
+    };
+    tether_udp_send_packet(c->s, hdr, sizeof(hdr));
+}
+
+
+
+void tether_iub_read_chunks(struct chunk_info *c) {
+    /* Collect what is there, i.e. poll with timeout zero. */
+    struct pollfd pfd[] = {
+        [0] = { .events = POLLIN, .fd = c->s->fd_in },
+    };
+    for(;;) {
+        int rv;
+        ASSERT_ERRNO(rv = poll(&pfd[0], ARRAY_SIZE(pfd), 0));
+        ASSERT(rv >= 0);
+        if (rv == 0) break;
+        uint8_t buf[MAX_UDP_DATA_SIZE];
+
+        struct sockaddr_in from;
+        socklen_t fromlen = sizeof(from);
+        rv = recvfrom(c->s->fd_in, buf, sizeof(buf), 0 /*flags*/,
+                      (struct sockaddr *)&from, &fromlen);
+        /* The first 3if message contains the chunk id. */
+        ASSERT(rv >= 3);
+        ASSERT(buf[0] == 2);
+        uint16_t chunk_id = read_be(buf+1, 2);
+        ASSERT(chunk_id < c->nb_chunks);
+        // LOG("rx chunk_id %d\n", chunk_id);
+        c->bookkeep[chunk_id] = 1;
+    }
+
+}
 
 void tether_iub_write(struct tether *s,
                       uint32_t addr,
                       const uint8_t *in,
                       uint32_t in_len) {
-    struct chunk_info c = {
-        .s = s,
-        .addr = addr,
-        .in = in,
-        .in_len = in_len,
-    };
-    /* No formula here, just compute overhead manually.  Is checked by
-       assert. */
+    struct chunk_info c = {};
+    c.s = s;
+    c.addr = addr;
+    c.in = in;
+    c.in_len = in_len;
+    /* Computed manually.  Assert checks for buffer overflow. */
     c.chunk_size = sizeof(c.buf) - 22;
+    c.nb_chunks  = 1 + (in_len-1) / c.chunk_size;
+    uint8_t bookkeep[c.nb_chunks];
+    c.bookkeep = bookkeep;
 
-    uint32_t nb_chunks = 1 + (in_len-1) / c.chunk_size;
-    LOG("nb %d byte chunks: %d\n", c.chunk_size, nb_chunks);
+    LOG("%d bytes, sending %d packets\n", c.in_len, c.nb_chunks);
 
-    uint8_t bookkeep[nb_chunks];
 
-    for (uint32_t chunk_nb=0; chunk_nb<nb_chunks; chunk_nb++) {
-        bookkeep[chunk_nb] = 0;
-        tether_iub_write_chunk(&c, chunk_nb);
-
+    for (uint32_t chunk_nb=0; chunk_nb<c.nb_chunks; chunk_nb++) {
         /* Send packet, collect any replies that might have arrived.
            When everything is sent wait for a bit longer, then
            retransmit everything that didn't get any acks. */
+        c.bookkeep[chunk_nb] = 0;
+        tether_iub_write_chunk(&c, chunk_nb);
+        tether_iub_read_chunks(&c);
     }
-    (void)bookkeep;
+    usleep(200 * 1000);
+    tether_iub_read_chunks(&c);
+
+    uint32_t nb_missing = 0;
+    for (uint32_t chunk_nb=0; chunk_nb<c.nb_chunks; chunk_nb++) {
+        if (!c.bookkeep[chunk_nb]) {
+            LOG("missing chunk_nb=%d\n", chunk_nb);
+            nb_missing++;
+        }
+    }
+    if (nb_missing) {
+        LOG("nb_missing = %d\n", nb_missing);
+    }
+    else {
+        LOG("transfer complete\n");
+        tether_iub_write_start(&c);
+    }
 }
 
 

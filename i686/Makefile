@@ -22,13 +22,18 @@ CFLAGS = \
 
 .PHONY: all clean run
 
-all: kernel.nbp kernel.dsk kernel.dasm trampoline.blk
+all: kernel.nbp kernel.dsk kernel.dasm trampoline.blk kernel.3if
 
 DEPS := $(shell find -name '*.d')
 -include $(DEPS)
 
 kernel.nbp: boot.blk kernel.bin
-	cat boot.blk kernel.bin >$@
+	cat boot.blk kernel.bin >$@q
+
+kernel.3if: trampoline.blk kernel.bin
+	cat trampoline.blk kernel.bin >$@
+
+
 
 #  512 sector size
 # 9216 track size (18 sectors)

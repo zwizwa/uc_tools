@@ -8,6 +8,9 @@ start:
     mov ebx, 0xB8000 + (2 * 79)
     mov byte [ebx], '?'
 
+busy:
+    jmp busy
+
     mov esi, [esp+4]    ; start of the kernel (boot block)
     mov ecx, [esp+8]    ; length
     add esi, 512        ; skip the boot block

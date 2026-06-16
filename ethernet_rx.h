@@ -4,7 +4,21 @@
 #include "ethernet.h"
 
 /* Some handlers for minimal implementation to get UDP going. */
-// Move into #include "ethernet_rx.h"
+
+static inline void log_mac(const struct mac_addr *addr) {
+    for(int i=0; i<6; i++) {
+        if (i>0) LOG(":");
+        LOG("%02x", addr->mac[i]);
+    }
+}
+static inline void log_ipv4(const struct ip_addr *addr) {
+    for(int i=0; i<4; i++) {
+        if (i>0) LOG(".");
+        LOG("%d", addr->ip[i]);
+    }
+}
+
+
 
 typedef void (*packet_send_fn)(void *ctx,
                                const uint8_t *data,
@@ -32,16 +46,16 @@ static inline void arp_rx(
     switch (op) {
     case ARP_OP_REQUEST: {
         // who has arp->tpa tell arp->spa
-        // LOG("who has "); log_ipv4(arp->tpa);
-        // LOG(" tell ");   log_ipv4(arp->spa); LOG("\n");
+        //LOG("who has "); log_ipv4(&arp->tpa);
+        //LOG(" tell ");   log_ipv4(&arp->spa); LOG("\n");
         if (ip_eq(&arp->tpa, my_ip)) {
             struct {
                 struct mac mac;
                 struct arp arp;
             } reply = {};
-            // LOG("i have\n")
+            //LOG("i have\n");
             reply.mac.dst_mac = mac->src_mac;
-            reply.mac.src_mac = mac->dst_mac;
+            reply.mac.src_mac = *my_mac;
             reply.mac.ethertype = htons(ETHERTYPE_ARP);
             reply.arp.htype = HTONS(ARP_HTYPE_ETH);
             reply.arp.ptype = HTONS(ARP_PTYPE_IPV4);
@@ -50,6 +64,7 @@ static inline void arp_rx(
             reply.arp.oper  = HTONS(ARP_OP_REPLY);
             reply.arp.sha = *my_mac;
             reply.arp.spa = *my_ip;
+            //log_hex((const uint8_t*)&reply, sizeof(reply));
             send(ctx, (const uint8_t*)&reply, sizeof(reply));
         }
         break;

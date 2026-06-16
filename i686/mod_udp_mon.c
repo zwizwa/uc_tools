@@ -30,20 +30,6 @@
 #define UDP_MON_COMMAND_PORT  799 // 0x31f
 
 
-static inline void log_mac(const struct mac_addr *addr) {
-    for(int i=0; i<6; i++) {
-        if (i>0) LOG(":");
-        LOG("%02x", addr->mac[i]);
-    }
-}
-static inline void log_ipv4(const struct ip_addr *addr) {
-    for(int i=0; i<4; i++) {
-        if (i>0) LOG(".");
-        LOG("%d", addr->ip[i]);
-    }
-}
-
-
 typedef void (*udp_mon_send_fn)(void *ctx, const uint8_t *data, uint32_t len);
 
 struct udp_mon {
