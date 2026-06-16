@@ -563,7 +563,9 @@ void entry(void) {
     app_init(&g_app);
 
     LOG("version %s\n", VERSION);
-    if (0) {
+    if (1) {
+        LOG("%d size\n",  boot_config.endx - boot_config.start);
+        LOG("%p start\n", boot_config.start);
         LOG("%p entry\n", boot_config.entry);
         LOG("%p app\n", boot_config.app);
         LOG("%p top\n", boot_config.top);
@@ -589,6 +591,8 @@ struct boot_config boot_config = {
     .app   = &g_app,
     .top   = &__bss_end,
     .ip    = {{10,1,3,222}},
+    .endx  = (void*)&__bss_start,
+    .start = (void*)&boot_config,
 };
 
 

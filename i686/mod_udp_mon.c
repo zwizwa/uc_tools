@@ -173,7 +173,7 @@ static inline void udp_mon_init(struct udp_mon *s,
                                 udp_mon_send_fn send,
                                 void (*key)(void *, uint8_t),
                                 void *ctx) {
-    LOG("udp_mon_init %p %p %p\n", s, send, ctx);
+    //LOG("udp_mon_init %p %p %p\n", s, send, ctx);
     memset(s, 0, sizeof(*s));
     s->send = send;
     s->key  = key;

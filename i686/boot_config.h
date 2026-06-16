@@ -9,7 +9,12 @@
    This is for use in the host-side loader application, which has 64
    bit pointers. */
 struct boot_config_u32 {
+    // These 2 are referenced in trampoline.asm
     uint32_t entry;
+    uint32_t endx;
+    // Start is always 0x7E00
+    uint32_t start;
+
     struct ip_addr ip;
     uint32_t app;
     uint32_t top;
@@ -19,6 +24,8 @@ struct boot_config_u32 {
 /* Don't define this on 64 bit arch to avoid the pitfall. */
 struct boot_config {
     void (*entry)(void);  // kernel entry point
+    void* endx;           // end of config + code + initialized data
+    void* start;          // start of kernel, i.e. boot_config, always 0x7E00
     struct ip_addr ip;    // default ip addr
     void *app;            // main application static data structure
     void *top;            // free memory starts here, usable by 3if monitor
