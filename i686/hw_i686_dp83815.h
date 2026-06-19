@@ -2,6 +2,7 @@
 #define HW_I686_DP83815
 
 #include "hw_i686_pci.h"
+#include "ethernet_rx.h"
 
 // https://claude.ai/chat/93209308-2baf-42e1-8a88-3594552a998e
 // https://www.ti.com/lit/ds/symlink/dp83815.pdf?ts=1778398931364
@@ -62,7 +63,7 @@ struct dp83815 {
     uint32_t rx_head;
     uint8_t *mmio;   /* set by your PCI code from BAR1 */
     uint8_t irq;
-    uint8_t mac[6];
+    struct mac_addr mac;
 };
 
 static inline void dp83815_wr(struct dp83815 *s, uint32_t off, uint32_t v) {
@@ -131,17 +132,17 @@ static inline void dp83815_rf_write(struct dp83815 *s, uint32_t addr, uint32_t v
     *(volatile uint32_t *)(s->mmio + DP83815_RFDR) = value;
 }
 static inline void dp83815_get_mac(struct dp83815 *s) {
-    *((uint16_t*)&s->mac[0]) = dp83815_rf_read(s, 0);
-    *((uint16_t*)&s->mac[2]) = dp83815_rf_read(s, 2);
-    *((uint16_t*)&s->mac[4]) = dp83815_rf_read(s, 4);
-    LOG("dp83815 mac %02x:%02x:%02x:%02x:%02x:%02x\n",
-        s->mac[0],s->mac[1],s->mac[2],
-        s->mac[3],s->mac[4],s->mac[5]);
+    *((uint16_t*)&s->mac.mac[0]) = dp83815_rf_read(s, 0);
+    *((uint16_t*)&s->mac.mac[2]) = dp83815_rf_read(s, 2);
+    *((uint16_t*)&s->mac.mac[4]) = dp83815_rf_read(s, 4);
+    LOG("dp83815 mac: ");
+    log_mac(&s->mac);
+    LOG("\n");
 }
 static inline void dp83815_set_mac(struct dp83815 *s) {
-    dp83815_rf_write(s, 0, *((uint16_t*)&s->mac[0]));
-    dp83815_rf_write(s, 2, *((uint16_t*)&s->mac[2]));
-    dp83815_rf_write(s, 4, *((uint16_t*)&s->mac[4]));
+    dp83815_rf_write(s, 0, *((uint16_t*)&s->mac.mac[0]));
+    dp83815_rf_write(s, 2, *((uint16_t*)&s->mac.mac[2]));
+    dp83815_rf_write(s, 4, *((uint16_t*)&s->mac.mac[4]));
 }
 
 static inline void dp83815_init(struct dp83815 *s,
@@ -164,7 +165,7 @@ static inline void dp83815_init(struct dp83815 *s,
     // But after reset it is set to zero.  So maybe just don't reset
     // the chip?  What else is deleted?
     dp83815_set_mac(s);
-    dp83815_get_mac(s);
+    //dp83815_get_mac(s);
 
     uint16_t cmd = pci_function_read16(f, 0x04);
     /* want bits: 0x02 (memory space) | 0x04 (bus master) set,

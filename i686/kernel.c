@@ -316,7 +316,7 @@ void pci_phase1(void *vapp, struct pci_function *f) {
 void pci_phase2(void *vapp, struct pci_function *f) {
     struct app *app = vapp;
     // Imitate linux lspci -n
-#if 1
+#if 0
     LOG("%02x:%02x.%d %02x%02x: %04x:%04x\n",
         f->bus, f->dev, f->func,
         f->class, f->subclass,
@@ -563,7 +563,7 @@ void entry(void) {
     app_init(&g_app);
 
     LOG("version %s\n", VERSION);
-    if (1) {
+    if (0) {
         LOG("%d size\n",  boot_config.endx - boot_config.start);
         LOG("%p start\n", boot_config.start);
         LOG("%p entry\n", boot_config.entry);

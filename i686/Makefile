@@ -28,7 +28,7 @@ DEPS := $(shell find -name '*.d')
 -include $(DEPS)
 
 kernel.nbp: boot.blk kernel.bin
-	cat boot.blk kernel.bin >$@q
+	cat boot.blk kernel.bin >$@
 
 kernel.3if: trampoline.blk kernel.bin
 	cat trampoline.blk kernel.bin >$@
