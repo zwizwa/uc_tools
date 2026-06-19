@@ -71,6 +71,19 @@ static inline void ilog_open_write(struct ilog *v, const char *basename) {
         ASSERT_ERRNO(v->index_fd);
     }
 }
+
+/* Just a convenience function to open additional indices. */
+static inline int ilog_open_write_index(const char *basename, const char *suffix) {
+    char name[strlen(basename) + strlen(suffix) + 1];
+    strcpy(name, basename);
+    strcat(name, suffix);
+    int flags = ILOG_OPEN_WRITE_FLAGS;
+    int fd;
+    ASSERT_ERRNO(fd = ilog_open_fd(name, flags));
+    return fd;
+}
+
+
 static inline void ilog_recreate_index_file(struct ilog_read *vr, const char *basename);
 static inline void ilog_open_read(struct ilog_read *vr, const char *basename) {
     int flags = ILOG_OPEN_READ_FLAGS;
@@ -121,13 +134,17 @@ static inline void ilog_close(struct ilog *v) {
     v->index_fd = -1;
 }
 
-
-static inline void ilog_write_index(struct ilog *v) {
-    if (v->index_fd != -1) {
-        assert_write(v->index_fd, (const void*)&v->nb_bytes, sizeof(v->nb_bytes));
+static inline void ilog_write_index_fd(struct ilog *v, int fd) {
+    if (fd != -1) {
+        assert_write(fd, (const void*)&v->nb_bytes, sizeof(v->nb_bytes));
     }
-
 }
+static inline void ilog_write_index(struct ilog *v) {
+    ilog_write_index_fd(v, v->index_fd);
+}
+
+
+
 static inline void ilog_sync(struct ilog *v) {
     fdatasync(v->log_fd);
     fdatasync(v->index_fd);
