@@ -147,7 +147,7 @@ function actor_uv.spawn_tcp_server(scheduler, serv_obj)
                   -- EOF
                   log("tcp_server: disconnect\n")
                else
-                  log("tcp_server: error %d %s\n", err:no(), err:msg())
+                  logf("tcp_server: error %d %s\n", err:no(), err:msg())
                end
                if task.halt then
                   task:halt()
