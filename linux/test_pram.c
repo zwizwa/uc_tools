@@ -24,6 +24,8 @@ int main(int argc, char **argv) {
     // Provide input data for each of the error checks to fail as a
     // coverage test.
 
+    memset(buf, 0x55, sizeof(buf));
+
     f->slot_size = 0x12345678;
     test(PRAM_BAD_SLOT_SIZE);
     LOG("on slot size %d\n", f->slot_size);
@@ -33,6 +35,9 @@ int main(int argc, char **argv) {
     test(PRAM_BAD_DATA_LEN);
 
     f->data_len = 10;
+    test(PRAM_BAD_ZERO_FILL);
+
+    memset(buf+f->data_len, 0, f->slot_size - f->data_len - sizeof(*f));
     f->crc = 0x12345678;
     test(PRAM_BAD_SLOT_CRC);
 

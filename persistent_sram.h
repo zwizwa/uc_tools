@@ -29,11 +29,12 @@
 
 #define PRAM_OK            0
 #define PRAM_BAD_SLOT_SIZE 1
-#define PRAM_BAD_SLOT_CRC  2
-#define PRAM_BAD_DATA_LEN  3
+#define PRAM_BAD_DATA_LEN  2
+#define PRAM_BAD_ZERO_FILL 3
+#define PRAM_BAD_SLOT_CRC  4
 
-#define PRAM_TYPE_PROVISION 0
-#define PRAM_TYPE_CODE      1
+#define PRAM_TYPE_PROVISION 1
+#define PRAM_TYPE_CODE      2
 
 /* This header file does not know _where_ the data is stored.
    Typically it would be stored somewhare above the end of the bss,
@@ -75,6 +76,24 @@ static inline int pram_check(struct pram_slot *s,     /* valid if return value i
         return PRAM_BAD_DATA_LEN;
     }
 
+    /* Check zero fill */
+    int32_t zero_fill = f->slot_size - f->data_len - sizeof(*f);
+    if (zero_fill > 0) {
+        PRAM_LOG("checking zerofill %d: ", zero_fill);
+        for (uint32_t i=0; i<zero_fill; i++) {
+            uint8_t b = s->data[f->data_len + i];
+            PRAM_LOG(" %02x", b);
+            if (b != 0) {
+                PRAM_LOG("\n");
+                return PRAM_BAD_ZERO_FILL;
+            }
+        }
+        PRAM_LOG("\n");
+    }
+    else {
+        PRAM_LOG("not checking zerofill\n");
+    }
+
     /* Check CRC */
     uint32_t crc_size = f->slot_size-4;
     PRAM_LOG("crc32 %p %d\n", s->data, crc_size);
@@ -94,7 +113,7 @@ static inline int pram_check(struct pram_slot *s,     /* valid if return value i
 
 
 static inline void pram_seal(uint32_t type,
-                             uint8_t *data,
+                             void *data,
                              uint32_t data_len,
                              uint32_t slot_size)
 {
