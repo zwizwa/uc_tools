@@ -103,9 +103,24 @@ int main(int argc, char **argv) {
 
     /* uc abort routine dumps 12 registers at the end of RAM
        containing r4 to pc */
-    uint32_t reg_dump_nb_bytes = 4 * 12;
+    uint32_t nb_regs = 12;
+    uint32_t reg_dump_nb_bytes = sizeof(uint32_t) * nb_regs;
+
+    uint32_t ram_size = sizeof(ram);
+    // uint32_t ram_size = 0x5000;
+    const uint32_t *reg_dump = (const uint32_t*)(ram + ram_size - reg_dump_nb_bytes);
+
+    if (1) {
+        /* Print the saved registers.  This is a sanity check.
+           Registers typically contain SRAM, Flash pointers or small
+           numbers.  Junk is easily detected visually. */
+        for (uint32_t i=0; i<nb_regs; i++) {
+            LOG(" %2d: %08x\n", i, reg_dump[i]);
+        }
+    }
+
     memcpy(&gdbstub.regs.r4,
-           ram + sizeof(ram) - reg_dump_nb_bytes,
+           reg_dump,
            reg_dump_nb_bytes);
 
     /* The GDB server doesn't produce any events by itself, so we can
