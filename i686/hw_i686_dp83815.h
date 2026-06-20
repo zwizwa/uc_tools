@@ -22,6 +22,10 @@
 #define DP83815_RFCR    0x48    /* Rx Filter Control */
 #define DP83815_RFDR    0x4C
 
+/* --- Internal PHY registers (memory-mapped, MII layout) --- */
+#define DP83815_BMCR    0x80    /* Basic Mode Control (MII reg 0) */
+#define DP83815_BMSR    0x84    /* Basic Mode Status  (MII reg 1) */
+
 /* CR bits */
 #define DP83815_CR_RXE  (1 << 2)
 #define DP83815_CR_RST  (1 << 8)
@@ -49,6 +53,14 @@
 
 #define DP83815_NRX     8
 #define DP83815_RXBUF   2048    /* > 1518, 4-byte aligned */
+
+/* BMCR */
+#define DP83815_BMCR_ANRESTART  0x0200      /* Restart Autoneg (self-clearing) */
+#define DP83815_BMCR_ANEN       0x1000      /* Autoneg Enable */
+#define DP83815_BMCR_ANEG_KICK  (DP83815_BMCR_ANEN | DP83815_BMCR_ANRESTART)  /* write 0x1200 */
+
+
+
 
 struct dp83815_desc {
     uint32_t link;      /* phys addr of next descriptor */
@@ -204,6 +216,11 @@ static inline void dp83815_init(struct dp83815 *s,
 
     /* Go. */
     dp83815_wr(s, DP83815_CR, DP83815_CR_RXE);
+
+    // Kick autoneg
+    // dp83815_wr(s, DP83815_BMCR, DP83815_BMCR_ANEG_KICK); 
+
+
 }
 
 #endif

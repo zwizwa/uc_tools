@@ -4,7 +4,7 @@ NASM = nasm
 
 # QEMU = qemu-system-i386 -nographic -no-reboot -m 16
 # QEMU = qemu-system-i386 -m 16 -display gtk,zoom-to-fit=on -serial stdio
-QEMU = qemu-system-i386 -m 16 -display sdl,gl=on -serial stdio -device isa-debug-exit,iobase=0xf4,iosize=0x04
+QEMU = qemu-system-i386 -m 64 -display sdl,gl=on -serial stdio -device isa-debug-exit,iobase=0xf4,iosize=0x04
 # QEMU = qemu-kvm -m 16
 GCC = i686-elf-gcc -ffreestanding -nostdlib -m32 -march=i486
 LD = i686-elf-ld
@@ -118,6 +118,11 @@ push: $(NBP)
 qemu_br1: kernel.nbp ipxe-qemu-br1.dsk
 	scp $< $(TFTPBOOT)
 	sudo $(QEMU) -drive file=ipxe-qemu-br1.dsk,format=raw,if=floppy,file.locking=off -boot a -netdev bridge,id=net0,br=br1 -device rtl8139,netdev=net0
+
+# Similar, but load tftp://10.1.3.1/menu.ipxe for testing other boot files
+qemu_br1_menu: kernel.nbp ipxe-qemu-br1-menu.dsk
+	scp $< $(TFTPBOOT)
+	sudo $(QEMU) -drive file=ipxe-qemu-br1-menu.dsk,format=raw,if=floppy,file.locking=off -boot a -netdev bridge,id=net0,br=br1 -device rtl8139,netdev=net0
 
 
 # USB floppy drive
