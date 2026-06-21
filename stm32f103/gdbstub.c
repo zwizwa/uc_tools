@@ -244,14 +244,23 @@ static int32_t cmd_continue(struct gdbstub *stub, const uint8_t *cmd, uint32_t n
     return cmd_signal(stub, cmd, n);
 }
 
+#ifndef GDBSTUB_VERBOSE_GET_REGISTERS
+#define GDBSTUB_VERBOSE_GET_REGISTERS 0
+#endif
 
 static int32_t cmd_get_registers(struct gdbstub *stub, const uint8_t *cmd, uint32_t n) {
     rsp_begin(stub->rpl);
     uint32_t nb_u32 = sizeof(stub->regs) / sizeof(uint32_t);
     uint32_t *u32 = &stub->regs.r0;
     for (uint32_t i = 0; i < nb_u32; i++) {
+        if (GDBSTUB_VERBOSE_GET_REGISTERS) {
+            LOG(" %2d:%08x", i, u32[i]);
+        }
         int32_t rv = packet_save_u32_hex_cs(stub->rpl, u32[i]);
         if (rv) return rv;
+    }
+    if (GDBSTUB_VERBOSE_GET_REGISTERS) {
+        LOG("\n");
     }
     return rsp_end(stub->rpl);
 }
