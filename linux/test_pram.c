@@ -9,7 +9,7 @@
 struct pram_slot s = {};
 // uint8_t buf[1024] = {};
 uint8_t buf[32] = {};
-struct pram_footer *f = (void*)&buf[sizeof(buf)-sizeof(*f)];
+struct pram_meta *m = (void*)&buf[sizeof(buf)-sizeof(*m)];
 
 void test(int expected_rv) {
     int rv =
@@ -24,25 +24,28 @@ int main(int argc, char **argv) {
     // Provide input data for each of the error checks to fail as a
     // coverage test.
 
+    memset(buf, 0x00, sizeof(buf));
+    test(PRAM_BAD_SLOT_SIZE);
+
     memset(buf, 0x55, sizeof(buf));
 
-    f->slot_size = 0x12345678;
+    m->slot_size = 0x12345678;
     test(PRAM_BAD_SLOT_SIZE);
-    LOG("on slot size %d\n", f->slot_size);
+    LOG("on slot size %d\n", m->slot_size);
 
-    f->slot_size = sizeof(buf);
-    f->data_len = 0x12345678;
+    m->slot_size = sizeof(buf);
+    m->data_len = 0x12345678;
     test(PRAM_BAD_DATA_LEN);
 
-    f->data_len = 10;
+    m->data_len = 10;
     test(PRAM_BAD_ZERO_FILL);
 
-    memset(buf+f->data_len, 0, f->slot_size - f->data_len - sizeof(*f));
-    f->crc = 0x12345678;
+    memset(buf+m->data_len, 0, m->slot_size - m->data_len - sizeof(*m));
+    m->crc = 0x12345678;
     test(PRAM_BAD_SLOT_CRC);
 
-    f->crc = crc32b(buf, sizeof(buf)-4);
-    LOG("compute crc %08x from %p,%d\n", f->crc, buf, sizeof(buf)-4);
+    m->crc = crc32b(buf, sizeof(buf)-4);
+    LOG("compute crc %08x from %p,%d\n", m->crc, buf, sizeof(buf)-4);
     test(PRAM_OK);
 
     memset(buf, 0x55, sizeof(buf));

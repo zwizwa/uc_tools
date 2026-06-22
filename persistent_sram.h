@@ -41,7 +41,7 @@
    e.g. at the very top of SRAM, such that the crc in param_footer is
    tha last u32 in the sram. */
 
-struct pram_footer {
+struct pram_meta {
     uint32_t slot_size;
     uint32_t data_len;
     uint32_t type;
@@ -51,7 +51,7 @@ struct pram_footer {
 /* Handle */
 struct pram_slot {
     uint8_t *data; // start of slot has the payload data
-    struct pram_footer *meta;
+    struct pram_meta *meta;
 };
 
 #ifndef PRAM_LOG
@@ -62,26 +62,28 @@ static inline int pram_check(struct pram_slot *s,     /* valid if return value i
                              uint8_t *slot_min_start, /* e.g. derived from bss end */
                              uint8_t *slot_endx)      /* e.g. top of sram */
 {
-    const struct pram_footer *f = (void*)slot_endx - sizeof(struct pram_footer);
+    s->meta = (void*)slot_endx - sizeof(struct pram_meta);
+    const struct pram_meta *m = s->meta;
 
     /* Check slot size */
     uint32_t max_slot_size = slot_endx - slot_min_start;
-    if (f->slot_size > max_slot_size) {
+    if ((m->slot_size < sizeof(*m)) ||
+        (m->slot_size > max_slot_size)) {
         return PRAM_BAD_SLOT_SIZE;
     }
-    s->data = (void*)(slot_endx - f->slot_size);
+    s->data = (void*)(slot_endx - m->slot_size);
 
     /* Check data size */
-    if (f->data_len > (max_slot_size - sizeof(struct pram_footer))) {
+    if (m->data_len > (max_slot_size - sizeof(struct pram_meta))) {
         return PRAM_BAD_DATA_LEN;
     }
 
     /* Check zero fill */
-    int32_t zero_fill = f->slot_size - f->data_len - sizeof(*f);
+    int32_t zero_fill = m->slot_size - m->data_len - sizeof(*m);
     if (zero_fill > 0) {
         PRAM_LOG("checking zerofill %d: ", zero_fill);
         for (uint32_t i=0; i<zero_fill; i++) {
-            uint8_t b = s->data[f->data_len + i];
+            uint8_t b = s->data[m->data_len + i];
             PRAM_LOG(" %02x", b);
             if (b != 0) {
                 PRAM_LOG("\n");
@@ -95,13 +97,13 @@ static inline int pram_check(struct pram_slot *s,     /* valid if return value i
     }
 
     /* Check CRC */
-    uint32_t crc_size = f->slot_size-4;
+    uint32_t crc_size = m->slot_size-4;
     PRAM_LOG("crc32 %p %d\n", s->data, crc_size);
     uint32_t crc = crc32b(s->data, crc_size);
-    PRAM_LOG("crc %08x, expected %08x\n", crc, f->crc);
+    PRAM_LOG("crc %08x, expected %08x\n", crc, m->crc);
     // log_hex(s->data, crc_size);
 
-    if (f->crc != crc) {
+    if (m->crc != crc) {
         return PRAM_BAD_SLOT_CRC;
     }
 
@@ -120,17 +122,17 @@ static inline void pram_seal(uint32_t type,
     /* Caller needs to put data in the correct place such that
        data_slot size == SRAM endx.  And data_len needs to fit.  We
        don't check any of these here. */
-    struct pram_footer *f = (void*)(data + slot_size - sizeof(*f));
-    f->data_len = data_len;
-    f->slot_size = slot_size;
-    f->type = type;
-    int32_t zero_fill = slot_size - data_len - sizeof(*f);
+    struct pram_meta *m = (void*)(data + slot_size - sizeof(*m));
+    m->data_len = data_len;
+    m->slot_size = slot_size;
+    m->type = type;
+    int32_t zero_fill = slot_size - data_len - sizeof(*m);
     if (zero_fill > 0) {
         PRAM_LOG("zero fill %d bytes at %p\n",
                  zero_fill, data + data_len);
         memset(data + data_len, 0, zero_fill);
     }
-    f->crc = crc32b(data, slot_size-4);
+    m->crc = crc32b(data, slot_size-4);
 
 }
 
