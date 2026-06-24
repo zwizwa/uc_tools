@@ -29,16 +29,20 @@
 #include <dirent.h>
 #include "string.h"
 
+#include "stdint.h"
+
 SQLITE_EXTENSION_INIT1
 
 /* It is set up as an array to facilitate later extension to recursive
    tranversal. */
-#define MAX_DEPTH 1
+#define MAX_DEPTH 3
 
 /* The 'base' member contains the base class.  Must be first */
 struct fs_table {
     sqlite3_vtab base;
     char *dirname;
+    char *column[MAX_DEPTH];
+    uintptr_t depth;
 };
 
 /* Cursor into an fs is a nested set of dir + current entry for each depth. */
@@ -55,16 +59,14 @@ struct fs_cursor {
 
 };
 
-// These need to be provided by the specialized code.
-static int xColumn(sqlite3_vtab_cursor *pCur, sqlite3_context *c, int N);
-static void declare_vtab(sqlite3 *db);
-
 static struct fs_cursor *fs_cursor(sqlite3_vtab_cursor *p) {
     return (void*)p;
 }
 static struct fs_table *fs_table(sqlite3_vtab *p) {
     return (void*)p;
 }
+
+
 
 
 // The xConnect method is very similar to xCreate. It has the same
@@ -93,22 +95,39 @@ static int xConnect(
         LOG("arg%d %s\n", i, argv[i]);
     }
 
-    struct fs_table *pNew = sqlite3_malloc(sizeof(*pNew));
-    memset(pNew,0,sizeof(*pNew));
+    struct fs_table *tab = sqlite3_malloc(sizeof(*tab));
+    memset(tab,0,sizeof(*tab));
 
     ASSERT(argc >= 4);
-    pNew->dirname = strdup(argv[3]);
-    LOG("dir: %s\n", pNew->dirname);
-    ASSERT(pNew->dirname);
-    if (argc >= 5) {
-        int depth = atoi(argv[4]);
-        LOG("depth: %d\n", depth);
+    tab->dirname = strdup(argv[3]);
+    LOG("dir: %s\n", tab->dirname);
+    ASSERT(tab->dirname);
+
+    // The rest are column names
+    tab->depth = argc - 4;
+    ASSERT(tab->depth >= 1);
+    ASSERT(tab->depth <= MAX_DEPTH);
+    for (int i=0; i<tab->depth; i++) {
+        tab->column[i] = strdup(argv[4+i]);
+        LOG("%d: %s\n", i, tab->column[i]);
     }
 
-    // The specialized module defines the table layout.
-    declare_vtab(db);
+    // Create the SQL that declars the table
+    char sql[1024];
+    int N = sizeof(sql);
+    int n = 0;
+    n += snprintf(sql+n, N-n, "CREATE TABLE x(");
+    for (int i=0; i<tab->depth; i++) {
+        n += snprintf(sql+n, N-n, "%s TEXT, ", tab->column[i], i);
+    }
+    n += snprintf(sql+n, N-n, "schema HIDDEN)");
+    LOG("sql: %s\n", sql);
 
-    *ppVtab = &pNew->base;
+    // Interpret it
+    int rv = sqlite3_declare_vtab(db, sql);
+    ASSERT(rv == SQLITE_OK);
+
+    *ppVtab = &tab->base;
     return SQLITE_OK;
 }
 
@@ -166,27 +185,29 @@ static int xFilter(sqlite3_vtab_cursor *pCur, int idxNum, const char *idxStr,
     return SQLITE_OK;
 }
 
-static void fs_cursor_init(struct fs_cursor *cur,
-                             struct fs_table *tab) {
-    /* All integer values are initialized to 0. */
-    memset(cur,0,sizeof(*cur));
-
-    /* SQLite will set this when xOpen finishes. */
-    cur->base.pVtab = &tab->base;
-
-    /* Multiple cursors can share the same table.  */
-    cur->path[0].dir = opendir(tab->dirname);
-    ASSERT(cur->path[0].dir);
-
+static int xColumn(sqlite3_vtab_cursor *pCur, sqlite3_context *c, int N) {
+    FS_LOG("xColumn %d\n", N);
+    struct fs_cursor *cur = fs_cursor(pCur);
+    switch(N) {
+    case 0: {
+        ASSERT(cur->path[0].entry);
+        sqlite3_result_text(c, cur->path[0].entry->d_name, -1, SQLITE_TRANSIENT);
+        break;
+    }
+    default:
+        // Not reached
+        SQLITE_ERROR;
+    }
+    return SQLITE_OK;
 }
 
 static int xOpen(sqlite3_vtab *pVTab, sqlite3_vtab_cursor **ppCursor) {
     FS_LOG("xOpen\n");
     struct fs_table *tab = fs_table(pVTab);
     struct fs_cursor *cur = sqlite3_malloc(sizeof(*cur));
-
-    fs_cursor_init(cur,tab);
-
+    memset(cur,0,sizeof(*cur));
+    cur->path[0].dir = opendir(tab->dirname);
+    ASSERT(cur->path[0].dir);
     *ppCursor = &cur->base;
     return SQLITE_OK;
 }
@@ -222,6 +243,8 @@ static sqlite3_module Module = {
 };
 
 
+
+
 int sqlite3_fs_init(sqlite3 *db, char **err, const sqlite3_api_routines *api) {
     SQLITE_EXTENSION_INIT2(api);
     ASSERT(
@@ -229,33 +252,3 @@ int sqlite3_fs_init(sqlite3 *db, char **err, const sqlite3_api_routines *api) {
         sqlite3_create_module(db, VTABLE_NAME, &Module, 0));
     return SQLITE_OK;
 }
-
-
-
-static void declare_vtab(sqlite3 *db) {
-    int rv = sqlite3_declare_vtab(
-        db,
-        "CREATE TABLE x("
-        "  name   TEXT,"
-        "  schema HIDDEN"
-        ")");
-    ASSERT(rv == SQLITE_OK);
-}
-
-static int xColumn(sqlite3_vtab_cursor *pCur, sqlite3_context *c, int N) {
-    FS_LOG("xColumn %d\n", N);
-    struct fs_cursor *cur = fs_cursor(pCur);
-    switch(N) {
-    case 0: {
-        ASSERT(cur->path[0].entry);
-        sqlite3_result_text(c, cur->path[0].entry->d_name, -1, SQLITE_TRANSIENT);
-        break;
-    }
-    default:
-        // Not reached
-        SQLITE_ERROR;
-    }
-    return SQLITE_OK;
-}
-
-

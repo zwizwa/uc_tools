@@ -5,8 +5,7 @@
 
 .load ./fs
 
-CREATE VIRTUAL TABLE dir USING fs(.,2);
+CREATE VIRTUAL TABLE dir USING fs(.,test,setup);
 
-select rowid,name from dir;
-select rowid,name from dir;
+select rowid,test,setup from dir;
 
