@@ -1,3 +1,6 @@
+# This creates the browser side code.  To run this you need a server
+# application as well.  See rdm-bridge/tools/test_em_tui.sh
+
 .PHONY: all clean
 all: index.html
 

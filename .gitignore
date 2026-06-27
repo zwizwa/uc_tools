@@ -47,4 +47,5 @@ gambit
 result
 *.dsk
 *.nbp
-
+mod_*.frag.c
+mod_*.vert.c
