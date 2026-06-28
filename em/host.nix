@@ -9,7 +9,6 @@ let abc = "def";
 in mkShell {
   buildInputs = [
     emscripten
-    xxd # for xxd -i : generate header file from data
   ];
 
   # Emscripten's default cache lives in the read-only nix store. Point it at a

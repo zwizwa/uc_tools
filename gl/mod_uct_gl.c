@@ -68,8 +68,8 @@ void uct_gl_open(struct uct_gl_app *s) {
 
     /* Compile and load the shaders. */
     GLuint prog = glCreateProgram();
-    glAttachShader(prog, uct_gl_shader(GL_VERTEX_SHADER,   graph_vert));
-    glAttachShader(prog, uct_gl_shader(GL_FRAGMENT_SHADER, graph_frag));
+    glAttachShader(prog, uct_gl_shader(GL_VERTEX_SHADER,   (const char *)graph_vert));
+    glAttachShader(prog, uct_gl_shader(GL_FRAGMENT_SHADER, (const char *)graph_frag));
     glLinkProgram(prog);
     glUseProgram(prog);
 
