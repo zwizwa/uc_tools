@@ -1,10 +1,13 @@
 /*
 
+
 Copied from mod_tui_canvas.c
 Chisel this into drop-in replacement based on webgl shader.
 - Different canvas init
 - In parallel, develop the native SDL version as well
 - Use the same test app
+
+tui.c has an ifdef to switch between webgl and canvas
 
 */
 
@@ -58,7 +61,6 @@ Chisel this into drop-in replacement based on webgl shader.
 #include "mod_vga_font_8x16.c"
 #include "mod_terminus_font_8x16.c"
 
-int g_use_tui_vga = 1;
 struct tui_vga g_tui_vga;
 EMSCRIPTEN_WEBSOCKET_T g_sock;
 uint32_t g_max_video = 0;
@@ -257,16 +259,6 @@ EM_JS(void, canvas_init_font_js, (const uint8_t *font, int glyph_w, int glyph_h)
     Module.ctx.imageSmoothingEnabled = false;
 });
 
-EM_JS(void, canvas_put_js, (int x, int y, int code, int fg, int bg), {
-    var c  = Module.ctx;
-    var GW = Module.GW;
-    var GH = Module.GH;
-    var bgp = Module.background[bg & 7];
-    c.fillStyle = "rgb(" + bgp[0] + "," + bgp[1] + "," + bgp[2] + ")";
-    c.fillRect(x*GW, y*GH, GW, GH);
-    var sx = (code & 0xF) * GW, sy = (code >> 4) * GH;
-    c.drawImage(Module.atlas[fg & 0xF], sx, sy, GW, GH, x*GW, y*GH, GW, GH);
-});
 
 // Blit text framebuffer to canvas when animation frame is available.
 EM_JS(void, request_canvas_update_js, (uint8_t *framebuffer), {
@@ -301,75 +293,25 @@ EM_JS(void, request_canvas_update_js, (uint8_t *framebuffer), {
 
 
 void tui_update_screen(void) {
-    if (g_use_tui_vga) {
-        request_canvas_update_js(g_tui_vga.video);
-        // This is also when we should send out pending resizes.
-        // E.g. always wait until rendering is done.
-    }
-    else {
-        // updates happen synchronously
-    }
+    request_canvas_update_js(g_tui_vga.video);
+    // This is also when we should send out pending resizes.
+    // E.g. always wait until rendering is done.
 }
 
 
 
 void tui_put(uint32_t x, uint32_t y, uint32_t code, uint32_t fg, uint32_t bg) {
-    if (g_use_tui_vga) {
-        tui_vga_put(&g_tui_vga,
-                    x, y,
-                    code, fg, bg);
-    }
-    else {
-        // Write it directly into the canvas.
-        canvas_put_js(x, y, code, fg, bg);
-    }
+    tui_vga_put(&g_tui_vga,
+                x, y,
+                code, fg, bg);
 }
 
 
 
 
 
-EM_JS(void, canvas_scroll_js, (int x, int y, int w, int h, int lines), {
-    // x,y top left of window, w,h window dims, scroll lines >0 down <0 up
-    var c  = Module.ctx;
-    var GW = Module.GW;
-    var GH = Module.GH;
-    // convert from character coordiantes to pixel coordinates
-    x *= GW;
-    y *= GH;
-    w *= GW;
-    h *= GH;
-    lines *= GH;
-
-    // scroll up
-    if (lines > 0) {
-        var up = lines;
-        c.drawImage(Module.canvas,
-                    x, y+up, // source loc
-                    w, h-up, // source dims
-                    x, y,    // destination loc
-                    w, h-up  // destination dims
-            );
-    }
-    else {
-        var dn = -lines;
-        c.drawImage(Module.canvas,
-                    x, y,    // source loc
-                    w, h-dn, // source dims
-                    x, y+dn, // destination loc
-                    w, h-dn  // destination dims
-            );
-    }
-});
 void tui_scroll(tui_window_t *win, int lines) {
-    if (g_use_tui_vga) {
-        tui_vga_scroll(&g_tui_vga, win, lines);
-    }
-    else {
-        canvas_scroll_js(win->x, win->y,
-                         win->w, win->h,
-                         lines);
-    }
+    tui_vga_scroll(&g_tui_vga, win, lines);
 }
 
 

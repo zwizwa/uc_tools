@@ -26,13 +26,33 @@
 #include "mod_tui_ncurses.c"
 #endif
 
+
 /* Note that mod_sqlite.c uses a single global db pointer and a global
    cache of prepared statements. */
 #include "mod_sqlite3.c"
 
+
+/* The query result representation is essentially:
+   - get number of records
+   - get string representation of indexed record
+
+   From the pov of the TUI we just switch tables in response to
+   keyboard input.
+
+   User code can represent however it wants.
+*/
+
+
+
+
 struct query_result {
     const char *display;
     void *handle;
+};
+struct query_array {
+    struct query_result *buf;
+    uintptr_t count;
+    uintptr_t room;
 };
 
 struct query_browser {
@@ -44,78 +64,23 @@ struct query_browser {
     int sel;           // selected message index
     int top;           // top row message index
 
-    /* The query results are rendered to string + handler. */
-    struct query_result *qr;
-    uintptr_t qr_count;
-    uintptr_t qr_room;
+    /* The query results are rendered into abstract table objects,
+       which contain the query result reified to a C datastructure and
+       a formatter. */
+    struct table *table;
 };
 
-// Why use a struct if you can use a macro.
-static inline void array_grow(void **array,
-                              uintptr_t el_size,
-                              uintptr_t *count,
-                              uintptr_t *room) {
-    if (!(*array)) {
-        *array = realloc(*array, el_size * (*room));
-        *count = 1;
-    }
-    else if (*count >= *room) {
-        *room *= 2;
-        *array = realloc(*array, el_size * (*room));
-        (*count)++;
-    }
-}
-// FIXME: Add this to ns_pbuf interface
-#define ARRAY_GROW(array) \
-    array_grow((void **)&(array), sizeof((array)[0]), &(array##_count), &(array##_room))
-
-void qb_add_qr(struct query_browser *s) {
-}
-
-void qb_need_qr(struct query_browser *s) {
-    if (s->qr) return;
-
-    /* Set a reasonable initial size. */
-    s->qr_room = 1000;
-
-    /* The mod_sqlite3 stmt() function can cache prepared statements.
-       Follow this static variable pattern. */
-    static sqlite3_stmt *q;
-    stmt(&q, "SELECT * from test_report");
-    for(;;) {
-        int rv = sqlite3_step(q);
-        if (rv == SQLITE_ROW) {
-            //ASSERT(1 == sqlite3_column_count(q));
-            //int fd = sqlite3_column_int(q, 0);
-            ARRAY_GROW(s->qr);
-            ASSERT(s->qr);
-            struct query_result *qr = &s->qr[s->qr_count-1];
-            // FIXME
-            qr->display = "display string";
-            qr->handle = NULL;
-        }
-        else {
-            sqlite_assert_eq(rv, SQLITE_DONE);
-            break;
-        }
-    }
-}
-
-
-int qb_nb_items(struct query_browser *s) {
-    qb_need_qr(s);
-    return s->qr_count;
-}
-
+/* This needs to be called in every function that uses s->table
+   We call it in the render function. */
+void qb_need_table(struct query_browser *s);
 
 
 // render message on the correct row, highlighting on/off
 void qb_draw_row(struct query_browser *s, int index, int highlight) {
-    qb_need_qr(s);
     int y = (index) - s->top;
     char buf[tui_cols()];
     buf[0] = 0;
-    snprintf(buf, sizeof(buf), "%s", s->qr[index]);
+    s->table->format(s->table, index, buf, sizeof(buf));
     int x = 0;
     tui_reverse_video(s->list_w, highlight);
     tui_string_at(s->list_w, x, y, tui_cols()-1, buf);
@@ -125,7 +90,10 @@ void qb_draw_row(struct query_browser *s, int index, int highlight) {
 // redraw all messages in the message window
 void qb_redraw_list(struct query_browser *s) {
     tui_clear(s->list_w);
-    for (int i = s->top; i < s->top + s->rows && i < qb_nb_items(s); i++) {
+    ASSERT(s->table);
+    ASSERT(s->table->size);
+    int n = s->table->size(s->table);
+    for (int i = s->top; i < s->top + s->rows && i < n; i++) {
         qb_draw_row(s, i, i == s->sel);
     }
 }
@@ -135,7 +103,8 @@ void qb_redraw_info(struct query_browser *s) {
     tui_clear(s->info_w);
     tui_box(s->info_w);
     char buf[100];
-    snprintf(buf, sizeof(buf), "Selected: index %d (size = %d)", s->sel, s->qr_count);
+    int n = s->table->size(s->table);
+    snprintf(buf, sizeof(buf), "Selected: index %d (size = %d)", s->sel, n);
     tui_string_at(s->info_w, 2, 1, 0, buf);
 }
 
@@ -145,8 +114,11 @@ void qb_redraw_info(struct query_browser *s) {
 #define QB_HANDLE_QUIT     3
 
 void qb_handle_key_event(struct query_browser *s, int ch) {
+
+    qb_need_table(s);
+
     int old = s->sel;
-    int last = qb_nb_items(s)-1;
+    int last = s->table->size(s->table) - 1;
 
     /* Regular keys. */
     if (ch == TUI_KEY_DOWN && s->sel < last) {
@@ -231,6 +203,8 @@ void qb_begin(struct query_browser *s) {
 
     s->rows  = s->list_h;      // visible list rows
 
+    qb_need_table(s);
+
     qb_redraw_list(s);
     qb_redraw_info(s);
 
@@ -282,19 +256,19 @@ int qb_handle_event(void *ctx, int ch) {
 }
 
 void qb_init(struct query_browser *s,
-             const char *db_filename, int info_h) {
+             const char *db_filename) {
     /* This is C application side init.  Doesn't require a tui
        connection if the tui is connection based.  The display init
        qb_begin() is only executed once events start flowing. */
     tui_init();
     db_open(db_filename);
-    s->info_h = info_h;
+    s->info_h = 4;
 }
 
-void qb_loop(const char *db_filename, int info_h) {
+void qb_loop(const char *db_filename) {
     struct query_browser _logfile = { };
     struct query_browser *s = &_logfile;
-    qb_init(s, db_filename, info_h);
+    qb_init(s, db_filename);
     tui_event_loop(qb_handle_event, s);
 }
 
