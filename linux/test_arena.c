@@ -55,30 +55,20 @@ void test1(void) {
 
 }
 
-#include "mod_sqlite3_arena.c"
+#include "mod_sqlite3_data.c"
 #define TEST_REPORT(m)    \
-    m(0, s, start_time) \
-    m(1, s, hw_config)  \
-    m(2, s, prop_name)  \
-    m(3, i, prop_index) \
-    m(4, i, prop_size)  \
-    m(5, i, prop_seed)  \
-    m(6, s, status)     \
-    m(7, s, log)        \
+    m(0, text,    start_time) \
+    m(1, text,    hw_config)  \
+    m(2, text,    prop_name)  \
+    m(3, integer, prop_index) \
+    m(4, integer, prop_size)  \
+    m(5, integer, prop_seed)  \
+    m(6, text,    status)     \
+    m(7, text,    log)        \
 
-struct test_report {
-    TEST_REPORT(DEF_RECORD_STRUCT)
-};
-static inline struct test_report *test_report_copy(struct arena *arena, struct test_report *src) {
-    struct test_report *dst = NULL;
-    TEST_REPORT(DO_RECORD_COPY);
-    return dst;
-}
-static inline struct test_report *test_report_init(struct arena *arena, sqlite3_stmt *query) {
-    struct test_report *dst = NULL;
-    TEST_REPORT(DO_RECORD_INIT);
-    return dst;
-}
+
+DEF_TABLE(test_report, TEST_REPORT)
+
 
 void test2(void) {
 }

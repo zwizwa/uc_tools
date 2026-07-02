@@ -31,6 +31,8 @@
    cache of prepared statements. */
 #include "mod_sqlite3.c"
 
+/* Arena allocator. */
+#include "mmap_bump.h"
 
 /* The query result representation is essentially:
    - get number of records
@@ -64,15 +66,22 @@ struct query_browser {
     int sel;           // selected message index
     int top;           // top row message index
 
-    /* The query results are rendered into abstract table objects,
-       which contain the query result reified to a C datastructure and
-       a formatter. */
-    struct table *table;
+    /* Provide arena allocator to the renderer. */
+    struct arena arena;
+
+    /* State of the UI state machine, e.g. contains O(1)
+       representation of the current list. */
+    void *state;
 };
 
 /* This needs to be called in every function that uses s->table
    We call it in the render function. */
-void qb_need_table(struct query_browser *s);
+uintptr_t qb_nb_rows(struct query_browser *s);
+void qb_enter(struct query_browser *s, int sel);
+void qb_format(struct query_browser *s,
+               uintptr_t index,
+               char *buf,
+               uintptr_t buf_size);
 
 
 // render message on the correct row, highlighting on/off
@@ -80,7 +89,7 @@ void qb_draw_row(struct query_browser *s, int index, int highlight) {
     int y = (index) - s->top;
     char buf[tui_cols()];
     buf[0] = 0;
-    s->table->format(s->table, index, buf, sizeof(buf));
+    qb_format(s, index, buf, sizeof(buf));
     int x = 0;
     tui_reverse_video(s->list_w, highlight);
     tui_string_at(s->list_w, x, y, tui_cols()-1, buf);
@@ -90,9 +99,7 @@ void qb_draw_row(struct query_browser *s, int index, int highlight) {
 // redraw all messages in the message window
 void qb_redraw_list(struct query_browser *s) {
     tui_clear(s->list_w);
-    ASSERT(s->table);
-    ASSERT(s->table->size);
-    int n = s->table->size(s->table);
+    int n = qb_nb_rows(s);
     for (int i = s->top; i < s->top + s->rows && i < n; i++) {
         qb_draw_row(s, i, i == s->sel);
     }
@@ -103,7 +110,7 @@ void qb_redraw_info(struct query_browser *s) {
     tui_clear(s->info_w);
     tui_box(s->info_w);
     char buf[100];
-    int n = s->table->size(s->table);
+    int n = qb_nb_rows(s);
     snprintf(buf, sizeof(buf), "Selected: index %d (size = %d)", s->sel, n);
     tui_string_at(s->info_w, 2, 1, 0, buf);
 }
@@ -115,10 +122,8 @@ void qb_redraw_info(struct query_browser *s) {
 
 void qb_handle_key_event(struct query_browser *s, int ch) {
 
-    qb_need_table(s);
-
     int old = s->sel;
-    int last = s->table->size(s->table) - 1;
+    int last = qb_nb_rows(s) - 1;
 
     /* Regular keys. */
     if (ch == TUI_KEY_DOWN && s->sel < last) {
@@ -131,10 +136,8 @@ void qb_handle_key_event(struct query_browser *s, int ch) {
         /* Are these invariants?  Code above doesn't seem to think so.  FIXME. */
         ASSERT(s->sel >= 0);
         ASSERT(s->sel <= last);
-        if (s->table->enter) {
-            s->table->enter(s->table, s->sel);
-            qb_redraw_list(s);
-        }
+        qb_enter(s, s->sel);
+        qb_redraw_list(s);
     }
     else if (ch == TUI_KEY_NPAGE) {
         s->sel += s->rows;
@@ -212,8 +215,6 @@ void qb_begin(struct query_browser *s) {
 
     s->rows  = s->list_h;      // visible list rows
 
-    qb_need_table(s);
-
     qb_redraw_list(s);
     qb_redraw_info(s);
 
@@ -272,6 +273,7 @@ void qb_init(struct query_browser *s,
     tui_init();
     db_open(db_filename);
     s->info_h = 4;
+    arena_init(&s->arena);
 }
 
 void qb_loop(const char *db_filename) {
