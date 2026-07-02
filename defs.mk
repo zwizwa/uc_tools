@@ -30,3 +30,4 @@ UC_TOOLS_HOST_ELF := \
 	$(UC_TOOLS)/linux/tether_udp.dynamic.host.elf \
 	$(UC_TOOLS)/linux/test_glob.dynamic.host.elf \
 	$(UC_TOOLS)/linux/leftshift.dynamic.host.elf \
+	$(UC_TOOLS)/linux/test_arena.dynamic.host.elf \

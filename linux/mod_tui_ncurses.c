@@ -109,6 +109,9 @@ void tui_scroll(tui_window_t *w, int lines) {
 #define TUI_KEY_PPAGE KEY_PPAGE
 #define TUI_KEY_HOME  KEY_HOME
 #define TUI_KEY_END   KEY_END
+#define TUI_KEY_LEFT  KEY_LEFT
+#define TUI_KEY_RIGHT KEY_RIGHT
+
 #define TUI_KEY_F(n)  KEY_F(n)
 
 

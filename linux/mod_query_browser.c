@@ -127,6 +127,15 @@ void qb_handle_key_event(struct query_browser *s, int ch) {
     else if (ch == TUI_KEY_UP && s->sel > 0) {
         s->sel--;
     }
+    else if (ch == TUI_KEY_RIGHT) {
+        /* Are these invariants?  Code above doesn't seem to think so.  FIXME. */
+        ASSERT(s->sel >= 0);
+        ASSERT(s->sel <= last);
+        if (s->table->enter) {
+            s->table->enter(s->table, s->sel);
+            qb_redraw_list(s);
+        }
+    }
     else if (ch == TUI_KEY_NPAGE) {
         s->sel += s->rows;
         if (s->sel > last) {
