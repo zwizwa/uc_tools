@@ -50,17 +50,21 @@
 /* The data structures should be such that the inner loop can be
    easily inlined and optimized.  The rest doesn't matter a whole lot. */
 
-/* All protocol analysis will probably happen on 64 bit host, so data
-   structures should be designed to be native.  Let's stick to time as
-   uintptr_t,.  On 32-bit this is 71 minutes @ 1MHz on 32-bit which is
-   still plenty of time. */
-typedef uintptr_t la_time_t;
+/* This used to be uintptr_t to allow it to be "word optimized" but it
+   is best to keep this explictly at 64 bit.  I've run into a 32 bit
+   limitation at 16MHz (due to truncation) which is only 268 seconds.
+   The value has been changed to 64 bit as well.  Pracically, the
+   analysis will always run on a 64 bit CPU and in the rare case where
+   it does run on a 32 bit CPU we likely want the same behavior, not
+   "do what is fastest". */
+typedef uint64_t la_time_t;
 
-/* An event is a data sample in time.  To simplify, we currently keep
-   this untyped, and use a machine word to contain a sample. */
+/* An event is a data sample in time.  The time is set to 64 bit so we
+   just set the data to 64 bit as well to fill the struct
+   alignment. */
 struct la_event {
     la_time_t time;
-    uintptr_t value;
+    uint64_t value;
 };
 
 /* Events are passed in push-style to another processor.  Abstractly,
