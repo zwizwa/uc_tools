@@ -77,7 +77,7 @@ struct query_browser {
 /* This needs to be called in every function that uses s->table
    We call it in the render function. */
 uintptr_t qb_nb_rows(struct query_browser *s);
-void qb_enter(struct query_browser *s, int sel);
+void qb_enter(struct query_browser *s, uintptr_t index);
 void qb_format(struct query_browser *s,
                uintptr_t index,
                char *buf,
@@ -136,6 +136,8 @@ void qb_handle_key_event(struct query_browser *s, int ch) {
         /* Are these invariants?  Code above doesn't seem to think so.  FIXME. */
         ASSERT(s->sel >= 0);
         ASSERT(s->sel <= last);
+        if (s->sel < 0)    s->sel = 0;
+        if (s->sel > last) s->sel = last;
         qb_enter(s, s->sel);
         qb_redraw_list(s);
     }

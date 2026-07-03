@@ -28,12 +28,12 @@
    distinguish them simply by checking if they are inside the arena or
    not.
 
-   EDIT: Orignal plan was to put this in the arena allocator, but I am
-   going to split it up.  The arena allocator will need to not put any
+   EDIT: Orignal plan was to put this into the arena allocator, but I
+   am going to split it up.  The arena allocator cannot put any
    constraints on the C data structures.  If copying is needed,
    explicit C copy constructors will need to be used.  The treedata
-   representation makes more sense when building a scripting language
-   on top of of the arenas allocator to then build a copying GC.
+   representation makes more sense when building a copying GC on top
+   of the arena allocator.
 
 */
 

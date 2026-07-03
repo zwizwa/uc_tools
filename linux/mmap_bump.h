@@ -100,6 +100,12 @@ static inline void arena_clear(struct arena *a) {
 static inline void *arena_alloc(struct arena *a, uintptr_t size) {
     return mmap_bump_alloc(&a->current, size);
 }
+static inline void *arena_alloc0(struct arena *a, uintptr_t size) {
+    /* I think this is guarnteeed to be zeroed by the kernel.  Check that. */
+    void *mem = arena_alloc(a, size);
+    if (mem) memset(mem,0,size);
+    return mem;
+}
 static inline void arena_init(struct arena *a) {
     mmap_bump_init(&a->current);
     mmap_bump_init(&a->next);
