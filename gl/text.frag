@@ -12,7 +12,7 @@ precision highp float;
 
 uniform sampler2D uCells;   // 80x25, character + attr per texel
 uniform sampler2D uFont;    // glyph atlas
-uniform vec2 uGridSize;     // (80, 25)
+uniform vec2 uDims;         // e.g. (80, 25) for VGA
 uniform vec2 uAtlasGlyphs;  // glyphs per row/col in atlas, e.g. (16, 16)
 
 
@@ -20,12 +20,12 @@ void main() {
   vec2 screenUV = gl_FragCoord.xy / vec2(80.0*8.0, 25.0*16.0);
 
   // which cell are we in, and where inside that cell (0..1)
-  vec2 cellF   = screenUV * uGridSize;
+  vec2 cellF   = screenUV * uDims;
   vec2 cell    = floor(cellF);
   vec2 inCell  = fract(cellF);          // position within the 8x16 glyph
 
   // look up the character code for this cell
-  vec4 c       = texture2D(uCells, (cell + 0.5) / uGridSize);
+  vec4 c       = texture2D(uCells, (cell + 0.5) / uDims);
   float code   = floor(c.r * 255.0 + 0.5);
   
   // map code -> position in the atlas
@@ -35,3 +35,4 @@ void main() {
   vec4 texel   = texture2D(uFont, atlasUV);
   gl_FragColor = texel;   // + attribute->fg/bg coloring here
 }
+
