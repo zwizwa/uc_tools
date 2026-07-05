@@ -12,6 +12,7 @@ in mkShell {
   buildInputs = [
     xxd
     SDL2
+    glslang 
   ];
 }
 

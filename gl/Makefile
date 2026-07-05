@@ -3,6 +3,7 @@
 MAKEFLAGS += --no-builtin-rules
 .SUFFIXES:
 
+.SHELLFLAGS := -o pipefail -c
 
 .PHONY: all clean
 all: sdl.elf # index.html
@@ -25,9 +26,13 @@ CFLAGS=\
 LDFLAGS=$(shell pkg-config --libs sdl2)
 
 # Convert file to C array.
+
+# The validator prints string number not filename.  String number
+# seems to be always 0 so we sed that to the filename.
 mod_%_vert.c: %.vert
 	xxd -i $< $@
 mod_%_frag.c: %.frag
+	glslangValidator -S frag $< 2>&1 | sed -e "s/ERROR: 0/$</g"
 	xxd -i $< $@
 
 

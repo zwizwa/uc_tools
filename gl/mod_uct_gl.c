@@ -19,6 +19,8 @@
 #include "mod_graph_frag.c"
 #include "mod_text_vert.c"
 #include "mod_text_frag.c"
+#define SHADER_SRC(x) (const char *)x, sizeof(x)
+
 
 /* Text mode font */
 #include "mod_terminus_font_8x16.c"
@@ -28,9 +30,9 @@
 #include "tui_vga.h"
 
 
-static GLuint uct_gl_shader(GLenum type, const char *src) {
+static GLuint uct_gl_shader(GLenum type, const char *src, const GLint len) {
     GLuint s = glCreateShader(type);
-    glShaderSource(s, 1, &src, NULL);
+    glShaderSource(s, 1, &src, &len);
     glCompileShader(s);
     GLint ok; glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
     if (!ok) {
@@ -65,6 +67,9 @@ struct uct_gl_app {
     struct {
         GLuint program;
         GLint  dims_u;
+        GLint  font_size_u;
+        GLint  font_map_u;
+        GLint  buffer_u;
         GLint  point_a;
         GLuint quad_b;
         GLuint font_t;
@@ -82,79 +87,229 @@ struct uct_gl_app {
 
 };
 
-void uct_gl_update_text(struct uct_gl_app *s) {
-    glUseProgram(s->text.program);
-    glUniform2f(s->text.dims_u,
-                s->text.tui_vga.nb_cols,
-                s->text.tui_vga.nb_rows);
+#define GL_ERRORS(m) \
+    m(GL_NO_ERROR) \
+    m(GL_INVALID_ENUM) \
+    m(GL_INVALID_VALUE) \
+    m(GL_INVALID_OPERATION) \
+    m(GL_INVALID_FRAMEBUFFER_OPERATION) \
+    m(GL_OUT_OF_MEMORY) \
 
-    glBindTexture(GL_TEXTURE_2D, s->text.char_t);
-    GLsizei w = s->text.tui_vga.nb_cols * 2; // includes attribute byte
-    GLsizei h = s->text.tui_vga.nb_rows;
-    glTexImage2D( /* upload the texture image data */
-        GL_TEXTURE_2D, 0, /* target, level */
-        GL_LUMINANCE, w, h, 0, /* internalformat, width, height, border */
-        GL_LUMINANCE, GL_UNSIGNED_BYTE, /* format, type */
-        s->text.tui_vga.video);
+#define CASE_GL_ERROR(e) case e: return #e;
+const char* gl_error_string(GLenum err) {
+    switch (err) { GL_ERRORS(CASE_GL_ERROR); default: return "unknown"; }
 }
+
+
+
+/* Texture units are a limited resource so it seems best to
+   re-allocate them per program switch. */
+struct texture_data {
+    int w, h;
+    uint8_t *data;
+};
+struct prog_texture {
+    GLint  uniform;
+    GLuint texture;
+    void *data; // in case data changes
+};
+
+/* Abstract the state change that is needed after program change,
+   i.e. allocating texture units. */
+void uct_gl_prog_with_textures(GLuint program,
+                               struct prog_texture *pt,
+                               int nb_pt) {
+    glUseProgram(program);
+    int tu = 0;
+    for (int i=0; i<nb_pt; i++) {
+        /* Select the current texture unit. */
+        glActiveTexture(GL_TEXTURE0 + tu);
+        /* Bind a texture to it. */
+        glBindTexture(GL_TEXTURE_2D, pt[i].texture);
+        /* Optionally update texture data. */
+        struct texture_data *td = pt[i].data;
+        if (td) {
+            /* Format is currently hardcoded to just GL_LUMINANCE */
+            glTexImage2D( /* upload the texture image data */
+                GL_TEXTURE_2D, 0, /* target, level */
+                GL_LUMINANCE, td->w, td->h, 0, /* internalformat, width, height, border */
+                GL_LUMINANCE, GL_UNSIGNED_BYTE, /* format, type */
+                td->data);
+        }
+        /* Set the uniform variable to point to the texture unit. */
+        glUniform1i(pt[i].uniform, tu);
+        /* Next texture unit. The limit is behind the
+           GL_MAX_TEXTURE_IMAGE_UNITS enum. */
+        tu++;
+    }
+}
+
+
+
+void uct_gl_render_text(struct uct_gl_app *s) {
+
+    /* Program switch, optional new texture data upload and binding to
+       uniform variables is abstracted */
+
+    struct tui_vga *fb = &s->text.tui_vga;
+    int w = fb->nb_cols * 2;
+    int h = fb->nb_rows;
+
+    if (!fb->video) {
+        /* If not initialized, use a test pattern. */
+        fb->video = malloc(w*h);
+        memset(fb->video, 'A', w*h);
+    }
+    struct texture_data td = {
+        .w = w,
+        .h = h,
+        .data = fb->video,
+    };
+    struct prog_texture pt[] = {
+        // uniform            // texture       // texture_data
+        {s->text.font_map_u,  s->text.font_t,  NULL},
+        {s->text.buffer_u,    s->text.char_t,  &td},
+    };
+    uct_gl_prog_with_textures(
+        s->text.program,
+        pt, ARRAY_SIZE(pt));
+
+
+    /* Additional uniform variable initialization before drawing. */
+    glUniform2f(s->text.dims_u,      w, h);
+    glUniform2f(s->text.font_size_u, 8, 16);
+
+    /* FIXME: Do the same abastraction for array attribures? */
+
+    /* The quad vertices live in an array buffer. */
+    glBindBuffer(GL_ARRAY_BUFFER, s->text.quad_b);
+
+    /* The shader program refers to the elements of the buffer by
+       attribute variable. */
+    glVertexAttribPointer(s->text.point_a, 2, GL_FLOAT, GL_FALSE, 0, 0);
+
+    /* Run the vertex shader for each element in the array, and
+       the fragment shader for each pixel in each line. */
+    glDrawArrays(GL_TRIANGLE_FAN, 0, 4 /* count */ );
+
+
+}
+
+GLint uct_gl_uniform(GLuint prog, const char *name) {
+    GLint loc = glGetUniformLocation(prog, name);
+    if (loc == -1) {
+        GLenum err = glGetError();
+        if (err == 0) {
+            ERROR("uct_gl_uniform: '%s' not found\n", name);
+        }
+        else {
+            ERROR("uct_gl_uniform: '%s': loc=%d, prog=%d, err=%d (%s)\n",
+                  name, loc, prog, err, gl_error_string(err));
+        }
+    }
+    return loc;
+}
+
+
 
 void uct_gl_init_text(struct uct_gl_app *s) {
     LOG("init_text\n");
-    /* allocate a new texture object */
-    glGenTextures(1, &s->text.font_t);
-    /* set texture as current 2D texture target for subsequent calls */
-    glBindTexture(GL_TEXTURE_2D, s->text.font_t);
-    /* subsequent glTexImage2D uses byte-aligned pixel data */
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D( /* upload the texture image data */
-        GL_TEXTURE_2D, 0, /* target, level */
-        GL_LUMINANCE, 8, 8, 0, /* internalformat, width, height, border */
-        GL_LUMINANCE, GL_UNSIGNED_BYTE, /* format, type */
-        terminus_bold_8x16);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glActiveTexture(GL_TEXTURE0); /* set current texture unit (sampler) */
+
+    /* Do all texture init on the first texture unit.  This doesn't
+       really matter.  Only during rendering it is important that
+       different textures are bound to different texture units which
+       then can be set to uniform sampler2D variables. */
+    glActiveTexture(GL_TEXTURE0);
+
+    { /* Font texture */
+
+        /* Allocate a new texture object. */
+        glGenTextures(1, &s->text.font_t);
+        /* Set texture as current 2D texture target for subsequent calls. */
+        glBindTexture(GL_TEXTURE_2D, s->text.font_t);
+        /* Subsequent glTexImage2D uses byte-aligned pixel data. */
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+        /* Convert the bit pattern to individual 0/1 texels. */
+        uint8_t font_tex[8*16*256] = {};
+        for (int row=0; row<16*256; row++) {
+            uint8_t *out_r = &font_tex[row * 8];
+            uint8_t  in_r  =  terminus_bold_8x16[row];
+            for (int col=0; col<8; col++) {
+                out_r[col] = 255 * (1 & (in_r >> (7-col)));
+                // LOG(" %02x", out_r[col]);
+            }
+        }
+        /* Upload the texture image data. */
+        glTexImage2D(
+            GL_TEXTURE_2D, 0, /* target, level */
+            GL_LUMINANCE, 8, 16*256, 0, /* internalformat, width, height, border */
+            GL_LUMINANCE, GL_UNSIGNED_BYTE, /* format, type */
+            font_tex);
+        /* Interpolation settings are part of the texture object (not the
+           texture unit). */
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    }
+
+    { /* Text character + attribute buffer texture */
+
+      /* Allocate texture object for the text frame buffer.
+         This will be updated frequently using glTexImage2D */
+        glGenTextures(1, &s->text.char_t);
+        /* Set texture as current 2D texture target for subsequent calls. */
+        glBindTexture(GL_TEXTURE_2D, s->text.char_t);
+        /* Subsequent glTexImage2D uses byte-aligned pixel data. */
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+        /* Interpolation settings are part of the texture object (not the
+           texture unit). */
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+        /* Texture image data is uploaded at every frame. */
+
+    }
+
 
     GLuint prog = s->text.program = glCreateProgram();
-    glAttachShader(prog, uct_gl_shader(GL_VERTEX_SHADER,   (const char *)text_vert));
-    glAttachShader(prog, uct_gl_shader(GL_FRAGMENT_SHADER, (const char *)text_frag));
+    glAttachShader(prog, uct_gl_shader(GL_VERTEX_SHADER,   SHADER_SRC(text_vert)));
+    glAttachShader(prog, uct_gl_shader(GL_FRAGMENT_SHADER, SHADER_SRC(text_frag)));
     glLinkProgram(prog);
 
-    /* Point the shader uniform to the texture unit, while the texture
-       unit is linked to the texture. */
-    GLint font_sampler_loc = glGetUniformLocation(prog, "font_sampler");
-    glUniform1i(font_sampler_loc, 0);  // where 0 refers to the GL_TEXTURE0 texture unit / sampler
+    /* Fragment shader needs to know the text frame buffer dimensions
+       and font size.  Those are set every time they change due to
+       e.g. window size change. */
+    s->text.dims_u      = uct_gl_uniform(prog, "text_dims");
+    s->text.font_size_u = uct_gl_uniform(prog, "font_size");
 
+    s->text.font_map_u = uct_gl_uniform(prog, "font_map");
+    s->text.buffer_u   = uct_gl_uniform(prog, "text_buffer");
 
-    /* Fragment shader needs to know the text frame buffer dimensions. */
-    s->text.dims_u = glGetUniformLocation(prog, "uDims");
-
-    /* allocate texture object for the text frame buffer.
-       This will be updated frequently using glTexImage2D */
-    glGenTextures(1, &s->text.char_t);
 
     /* Allocate vertex array for the text screen's quad. */
+    float c = 1.0f;
     GLfloat quad[] = {
-        -0.5f, -0.5f,
-         0.5f, -0.5f,
-        -0.5f,  0.5f,
-         0.5f,  0.5f,
+        -c,  c,
+         c,  c,
+         c, -c,
+        -c, -c,
     };
     GLuint buf; glGenBuffers(1, &buf);
     s->text.quad_b = buf;
     glBindBuffer(GL_ARRAY_BUFFER, buf);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
+
 
     /* Note that only vertex shaders have attribute variables that can
        range over arrays.  In contrast, fragment shaders only have
        uniform and varying variables. */
-    GLint point_a = s->graph.point_a = glGetAttribLocation(prog, "point");
-    glEnableVertexAttribArray(point_a);
+    GLint point_a = s->text.point_a = glGetAttribLocation(prog, "point");
 
     /* Permanently set this attriubte as an array attribute and not a
        constant shared by all vertices like uDims above. */
     glEnableVertexAttribArray(point_a);
 
-    uct_gl_update_text(s);
 }
 void uct_gl_load_graph(struct uct_gl_app *s) {
     glBindBuffer(GL_ARRAY_BUFFER, s->graph.points_b);
@@ -166,8 +321,8 @@ void uct_gl_init_graph(struct uct_gl_app *s) {
     LOG("init_graph\n");
 
     GLuint prog = s->graph.program = glCreateProgram();
-    glAttachShader(prog, uct_gl_shader(GL_VERTEX_SHADER,   (const char *)graph_vert));
-    glAttachShader(prog, uct_gl_shader(GL_FRAGMENT_SHADER, (const char *)graph_frag));
+    glAttachShader(prog, uct_gl_shader(GL_VERTEX_SHADER,   SHADER_SRC(graph_vert)));
+    glAttachShader(prog, uct_gl_shader(GL_FRAGMENT_SHADER, SHADER_SRC(graph_frag)));
     glLinkProgram(prog);
 
     /* Create a buffer to hold the data. Note that in GLES2 there is
@@ -189,6 +344,13 @@ void uct_gl_init_graph(struct uct_gl_app *s) {
 }
 
 
+void log_gl_enum(GLenum e, const char *name) {
+    GLint val;
+    glGetIntegerv(e, &val);
+    LOG("%s = %d\n", name, val);
+}
+#define LOG_GL_ENUM(sym) log_gl_enum(sym, #sym)
+
 void uct_gl_open(struct uct_gl_app *s) {
 
     memset(s, 0, sizeof(*s));
@@ -209,6 +371,7 @@ void uct_gl_open(struct uct_gl_app *s) {
         SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
     s->ctx = SDL_GL_CreateContext(s->win);
 
+    LOG_GL_ENUM(GL_MAX_TEXTURE_IMAGE_UNITS);
 
     uct_gl_init_text(s);
     uct_gl_init_graph(s);
@@ -236,33 +399,7 @@ void uct_gl_tick(struct uct_gl_app *s) {
     glClear(GL_COLOR_BUFFER_BIT);
 
     if (1) {
-        uct_gl_update_text(s);
-
-        /* Vertex and fragment shader we use to process the quad (nop)
-           and fill in the pixels (will perform text frame buffer and
-           font map lookup in the fragment shader code).  The textures
-           are bound to texture units at init and left there. */
-        glUseProgram(s->text.program);
-
-        /* The quad vertices live in an array buffer. */
-        glBindBuffer(GL_ARRAY_BUFFER, s->text.quad_b);
-
-        /* Bind the current buffer to
-
-        /* According to Claude explanation, in GLES2 there is no way
-           to permanently bind a shader input attribute to an array
-           buffer (no VOAs), so we have to do this again when
-           switching in the buffer so it can be used by glDrawArrays()
-           below. */
-
-        /* We tell the GPU how to read a vertex attribute out of that
-           array buffer.  See other invocation for more information*/
-        glVertexAttribPointer(s->text.point_a, 2, GL_FLOAT, GL_FALSE, 0, 0);
-
-
-        /* Run the vertex shader for each element in the array, and
-           the fragment shader for each pixel in each line. */
-        glDrawArrays(GL_LINE_STRIP, 0, ARRAY_SIZE(s->graph.data) /* count */ );
+        uct_gl_render_text(s);
 
     }
 
@@ -292,7 +429,7 @@ void uct_gl_tick(struct uct_gl_app *s) {
     }
 
     SDL_GL_SwapWindow(s->win);
-    LOG("%d\r", s->tick++);
+    LOG("\r%d", s->tick++);
 }
 
 void uct_gl_close(struct uct_gl_app *s) {
