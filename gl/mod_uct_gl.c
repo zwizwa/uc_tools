@@ -69,7 +69,7 @@ struct uct_gl_app {
         GLint  dims_u;
         GLint  font_size_u;
         GLint  font_map_u;
-        GLint  buffer_u;
+        GLint  char_u;
         GLint  point_a;
         GLuint quad_b;
         GLuint font_t;
@@ -158,7 +158,10 @@ void uct_gl_render_text(struct uct_gl_app *s) {
     if (!fb->video) {
         /* If not initialized, use a test pattern. */
         fb->video = malloc(w*h);
-        memset(fb->video, 'A', w*h);
+        for(int i=0; i<w*h/2; i++) {
+            fb->video[2*i + 0] = i;
+            fb->video[2*i + 1] = 0x07;
+        }
     }
     struct texture_data td = {
         .w = w,
@@ -168,7 +171,7 @@ void uct_gl_render_text(struct uct_gl_app *s) {
     struct prog_texture pt[] = {
         // uniform            // texture       // texture_data
         {s->text.font_map_u,  s->text.font_t,  NULL},
-        {s->text.buffer_u,    s->text.char_t,  &td},
+        {s->text.char_u,      s->text.char_t,  &td},
     };
     uct_gl_prog_with_textures(
         s->text.program,
@@ -284,7 +287,7 @@ void uct_gl_init_text(struct uct_gl_app *s) {
     s->text.font_size_u = uct_gl_uniform(prog, "font_size");
 
     s->text.font_map_u = uct_gl_uniform(prog, "font_map");
-    s->text.buffer_u   = uct_gl_uniform(prog, "text_buffer");
+    s->text.char_u     = uct_gl_uniform(prog, "char_buffer");
 
 
     /* Allocate vertex array for the text screen's quad. */
