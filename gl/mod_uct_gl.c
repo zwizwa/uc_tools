@@ -154,15 +154,6 @@ void uct_gl_render_text(struct uct_gl_app *s) {
     struct tui_vga *fb = &s->text.tui_vga;
     int w = fb->nb_cols * 2;
     int h = fb->nb_rows;
-
-    if (!fb->video) {
-        /* If not initialized, use a test pattern. */
-        fb->video = malloc(w*h);
-        for(int i=0; i<w*h/2; i++) {
-            fb->video[2*i + 0] = i;
-            fb->video[2*i + 1] = 0x07;
-        }
-    }
     struct texture_data td = {
         .w = w,
         .h = h,
@@ -375,6 +366,18 @@ void uct_gl_open(struct uct_gl_app *s) {
     s->ctx = SDL_GL_CreateContext(s->win);
 
     LOG_GL_ENUM(GL_MAX_TEXTURE_IMAGE_UNITS);
+
+    /* Initialize TUI text framebuffer */
+    struct tui_vga *fb = &s->text.tui_vga;
+    fb->nb_cols = 80;
+    fb->nb_rows = 25;
+    int w = fb->nb_cols * 2;
+    int h = fb->nb_rows;
+    fb->video = malloc(w*h);
+    for(int i=0; i<w*h/2; i++) {
+        fb->video[2*i + 0] = i;
+        fb->video[2*i + 1] = 0x07;
+    }
 
     uct_gl_init_text(s);
     uct_gl_init_graph(s);

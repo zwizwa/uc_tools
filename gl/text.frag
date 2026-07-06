@@ -16,32 +16,37 @@ uniform sampler2D font_map;
 // Texture sampler for character buffer
 uniform sampler2D char_buffer;
 
-// As I understand, all shader code is "scalarized" and then mapped to
-// SIMD slots and multiple processing units in parallel, so there is
-// no reason to operate on vectors.  Use scalars for clarity where
-// appropriate.
-
-
 void main() {
-  // gl_FragCoord.xy is the coordinate of the pixel.
-  vec2 pixel_gc = gl_FragCoord.xy;
+
+  // Textures are not arrays. They are interpolated samplers. We have
+  // to take a bit of care to get discrete array lookup behavior using
+  // float indices.
+
+  // The _gc variables are "grid coordinates", i.e. integers that
+  // point at discrete pixels, 0 being the first one, 1 the next etc.
+  // We convert these to and from center-of-fragment or
+  // center-of-texel normalized floating point coordinates used in
+  // OpenGL.
+
+  // gl_FragCoord.xy is the coordinate of the pixel using
+  // "center-of-fragment" coordinates.  Convert it to integer grid
+  // coordinates.
+  vec2 pixel_gc = floor(gl_FragCoord.xy);
 
   // Uncomment to zoom in, for glyp debugging.
-  pixel_gc /= 16.0;
+  //pixel_gc = floor(pixel_gc / 2.0);
 
   // GLES2 does not have integer modulo so we implement it with
   // floor(), subtracting that from original to get fractional, and
   // then multiplying again to get integer glyph coordinates.
 
-  // The _gc are "grid coordinates", e.g. like C array indices.
-  // Annotated with ranges for 80x25 text grid and 8x16 font.
-  vec2 fchar_gc = pixel_gc / font_size;
+  vec2 fchar_gc = pixel_gc / font_size;             // for 80x25 and 8x16 grids:
   vec2 char_gc  = floor(fchar_gc);                  // (0,0) - (79,24)
   vec2 glyph_gc = font_size * (fchar_gc - char_gc); // (0,0) - (7,15)
 
   // The texture sampling uses (0,1) range. We need to aim at the
-  // center of the texels to get proper "array lookup", which means
-  // ( (x+0.5)/n_x , (y+0.5)/ny )
+  // center of the texels to get proper discrete "array element
+  // lookup", which means ( (x+0.5)/n_x , (y+0.5)/ny )
   //
   // Together with nearest neighbor sampling this is correct if floats
   // have enough precision.
@@ -58,10 +63,12 @@ void main() {
 
   // The exact font atlas grid coordinates are
   vec2 font_gc = vec2(glyph_gc.x,
-                      font_size.y - 1.0 - glyph_gc.y + (255.0 - char_code) * font_size.y);
+                      font_size.y - 1.0 - glyph_gc.y
+                      + char_code * font_size.y);
   vec2 map_dims = vec2(font_size.x,
                        256.0 * font_size.y);
 
+  // Converted to texel centers for lookup.
   vec2 font_uv = (font_gc + 0.5) / map_dims;
   float p = texture2D(font_map, font_uv).x;
  
