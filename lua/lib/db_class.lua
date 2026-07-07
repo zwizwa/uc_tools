@@ -18,6 +18,34 @@ function m:query(q)
    return C.db_query(self.db, q)
 end
 
+-- These don't need to be exposed separately.  Just use the iterator.
+-- function m:dup(q)
+--    -- The C object is a db,cursor pair.  The cursor inside the object
+--    -- is used for queries that render to table.  For incremental
+--    -- traversal a duplicate handle is needed with its own cursor
+--    -- object to keep track of iteration state.
+--    local obj = { }
+--    setmetatable(obj, {__index = m})
+--    obj.db = C.db_dup(self.db)
+--    return obj
+-- end
+-- function m:first(q)
+--    return C.db_first(self.db, q)
+-- end
+-- function m:next()
+--    return C.db_next(self.db)
+-- end
+
+-- Return an iterator over query results, one column at a time.
+function m:cursor(q)
+   local db_c = C.db_dup(self.db)
+   C.db_start(db_c, q)
+   return function()
+      return C.db_next(db_c)
+   end
+end
+
+
 -- Perform query, return array of tables with named fields.
 function m:tab_select(fields, clause, ...)
    local q = 'select ' .. table.concat(fields, ',') .. ' ' .. clause
@@ -47,6 +75,23 @@ function m.one(rows, default)
    assert(#rows == 1)
    return rows[1]
 end
+
+-- Same as m:tab_select() but represent the tables using iterators instead.
+function m:tab_select_iter(fields, clause, ...)
+   local q = 'select ' .. table.concat(fields, ',') .. ' ' .. clause
+   local row_iterators = self:query({q, ...})
+   -- log_desc({tab_seqlect_rows=rows, q=q})
+   for r, row in ipairs(rows) do
+      local named = {}
+      for c, field in ipairs(fields) do
+         named[field] = row[c]
+      end
+      rows[r] = named -- Just replace it...
+   end
+   return rows
+end
+
+
 
 
 return m

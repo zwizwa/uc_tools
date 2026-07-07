@@ -21,6 +21,8 @@ static struct NS(_ud) *NS(_push)(lua_State *L) {
 /* Lua command wrapper for the above. */
 static int NS(_new_cmd)(lua_State *L) {
     struct NS(_ud) *ud = NS(_push)(L);
+    // memset(&ud->base, 0, sizeof(ud->base));
+    // LOG("_new_cmd(%p)\n", ud);
     (void)ud;
     return 1;
 }
@@ -38,11 +40,16 @@ static struct NS(_ud) *NS(_L)(lua_State *L, int index) {
     }
     return ud;
 }
-/* Dummy garbage collect function. */
+/* Generic garbage collect function. */
 static int NS(_gc)(lua_State *L) {
     struct NS(_ud) *ud = NS(_L)(L, -1);
     ASSERT(ud->L == L);
-    (void)ud;
+#ifdef NS_LUA_STRUCT_FREE
+    /* Most structs don't need this so it is not a general
+       requirement.  Unfortunately this does need a separate
+       define. */
+    NS_LUA_STRUCT_FREE(&ud->base);
+#endif
     return 0;
 }
 /* Access lua context. */
