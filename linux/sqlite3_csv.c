@@ -1,4 +1,5 @@
 // Started from https://github.com/sqlite/sqlite/blob/version-3.26.0/ext/misc/csv.c
+// Claude found and fixed a bug (same as what is fixed upstream: https://claude.ai/chat/3d7ddffb-4b20-401a-abff-9dcbc97838d0)
 
 /*
 ** 2016-05-28
@@ -623,7 +624,8 @@ static int csvtabConnect(
   }else if( pNew->zData ){
     pNew->iStart = (int)sRdr.iIn;
   }else{
-    pNew->iStart = ftell(sRdr.in);
+    // pNew->iStart = ftell(sRdr.in);
+    pNew->iStart = (int)(ftell(sRdr.in) - sRdr.nIn + sRdr.iIn);
   }
   csv_reader_reset(&sRdr);
   rc = sqlite3_declare_vtab(db, CSV_SCHEMA);

@@ -236,8 +236,8 @@ int db_start_cmd(lua_State *L) {
 
 
 int db_open_cmd(lua_State *L) {
-    struct db *db = &db_L(L, -2)->base;
-    const char *db_file = string_L(L, -1, NULL);
+    struct db *db = &db_L(L, 1)->base;
+    const char *db_file = string_L(L, 2, NULL);
 
     /* If multiple opens are needed then create multiple objects
        instead. */

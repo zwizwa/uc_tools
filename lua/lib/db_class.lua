@@ -1,5 +1,5 @@
 -- require('lib.tools.log')
-local C = require('sqlite3_lua51') 
+local C = require('sqlite3_lua51')
 
 local m = { }
 
@@ -18,23 +18,14 @@ function m:query(q)
    return C.db_query(self.db, q)
 end
 
--- These don't need to be exposed separately.  Just use the iterator.
--- function m:dup(q)
---    -- The C object is a db,cursor pair.  The cursor inside the object
---    -- is used for queries that render to table.  For incremental
---    -- traversal a duplicate handle is needed with its own cursor
---    -- object to keep track of iteration state.
---    local obj = { }
---    setmetatable(obj, {__index = m})
---    obj.db = C.db_dup(self.db)
---    return obj
--- end
--- function m:first(q)
---    return C.db_first(self.db, q)
--- end
--- function m:next()
---    return C.db_next(self.db)
--- end
+function m:load_extension(path)
+   local ok, msg = self:query({"select load_extension(?)", path})
+   if not ok then
+      error(
+         string.format(
+            "\ndb_class:load_extension('%s'):\n%s\n", path, msg))
+   end
+end
 
 -- Return an iterator over query results, one column at a time.
 function m:cursor(q)

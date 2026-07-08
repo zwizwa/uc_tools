@@ -20,6 +20,8 @@ struct ilog {
     int index_fd;
     uint64_t nb_bytes;
     uint64_t nb_messages;
+    /* Config */
+    uint8_t disable_datasync:1;
 };
 struct ilog_read {
     struct ilog ilog;
@@ -146,8 +148,10 @@ static inline void ilog_write_index(struct ilog *v) {
 
 
 static inline void ilog_sync(struct ilog *v) {
-    fdatasync(v->log_fd);
-    fdatasync(v->index_fd);
+    if (!v->disable_datasync) {
+        fdatasync(v->log_fd);
+        fdatasync(v->index_fd);
+    }
 }
 
 

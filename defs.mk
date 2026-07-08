@@ -14,7 +14,6 @@ UC_TOOLS_HOST_ELF := \
 	$(UC_TOOLS)/linux/rle_enc.dynamic.host.elf \
 	$(UC_TOOLS)/linux/rle_dec.dynamic.host.elf \
 	$(UC_TOOLS)/linux/log_parse_lua51.dynamic.host.so \
-	$(UC_TOOLS)/linux/sqlite3_lua51.dynamic.host.so \
 	$(UC_TOOLS)/linux/sha1sum.dynamic.host.elf \
 	$(UC_TOOLS)/linux/test_sg_rle.dynamic.host.elf \
 	$(UC_TOOLS)/linux/http_panel.dynamic.host.elf \
@@ -23,9 +22,11 @@ UC_TOOLS_HOST_ELF := \
 	$(UC_TOOLS)/linux/ilog_browser.dynamic.host.elf \
 	$(UC_TOOLS)/linux/test_userfaultfd.dynamic.host.elf \
 	$(UC_TOOLS)/linux/xor_tee.dynamic.host.elf \
+	$(UC_TOOLS)/linux/sqlite3_lua51.dynamic.host.so \
 	$(UC_TOOLS)/linux/sqlite3_logparse.dynamic.host.so \
 	$(UC_TOOLS)/linux/sqlite3_ilog.dynamic.host.so \
 	$(UC_TOOLS)/linux/sqlite3_fs.dynamic.host.so \
+	$(UC_TOOLS)/linux/sqlite3_csv.dynamic.host.so \
 	$(UC_TOOLS)/linux/seek_hole.dynamic.host.elf \
 	$(UC_TOOLS)/linux/tether_udp.dynamic.host.elf \
 	$(UC_TOOLS)/linux/test_glob.dynamic.host.elf \
