@@ -23,13 +23,17 @@
 
 SQLITE_EXTENSION_INIT1
 
+#ifndef MOD_SQLITE3_ILOG_NB_MMF
+#define MOD_SQLITE3_ILOG_NB_MMF 1
+#endif
+
 /* The 'base' member contains the base class.  Must be first */
 struct ilog_table {
     sqlite3_vtab base;
     /* Indexed message log. */
     struct ilog_read ilog;
     /* Optional flat image file, e.g. for logic trace data. */
-    struct mmap_file mmf;
+    struct mmap_file mmf[MOD_SQLITE3_ILOG_NB_MMF];
 };
 
 /* Cursor into an ilog is just an integer. */
@@ -63,21 +67,6 @@ static struct ilog_table *ilog_table(sqlite3_vtab *p) {
     return (void*)p;
 }
 
-typedef void (*with_string_fn)(void *, const char *);
-static void with_string_arg(with_string_fn fun,
-                            void *ctx, const char *arg) {
-    // This contains syntax, e.g. for strings the quotes are included.
-    // We just assume quotes are there, and that filenames do not
-    // contain quotes. FIXME: Is there a reusable parser for this?
-    int n = strlen(arg)-2+1;
-    char filename[n];
-    memcpy(filename, arg+1, n-1);
-    filename[n-1] = 0;
-    LOG("opening %s\n", filename);
-    fun(ctx, filename);
-}
-
-
 // The xConnect method is very similar to xCreate. It has the same
 // parameters and constructs a new sqlite3_vtab structure just like
 // xCreate. And it must also call sqlite3_declare_vtab() like
@@ -103,16 +92,17 @@ static int xConnect(
     memset(pNew,0,sizeof(*pNew));
 
     ASSERT(argc >= 4);
-    with_string_arg((with_string_fn)ilog_open_read, &pNew->ilog, argv[3]);
+    ilog_open_read(&pNew->ilog, argv[3]);
 
-    if (argc >= 5) {
-        with_string_arg((with_string_fn)mmap_file_open_ro, &pNew->mmf, argv[4]);
-        // Note that this is a file with holes. It would be nice to
-        // have another tool that can turn this into a message
-        // sequence.
-        LOG("trace size: %llu\n", pNew->mmf.size);
+    /* The rest are memory mapped index files that the specialize code
+       knows how to use. */
+    for (int i=0; i<argc-4; i++) {
+        ASSERT(i < MOD_SQLITE3_ILOG_NB_MMF);
+        struct mmap_file *mmf = &pNew->mmf[i];
+        const char *filename = argv[i+4];
+        mmap_file_open_ro(mmf, filename);
+        // LOG("mmf[%d]: %llu bytes %s\n", i, mmf->size, filename);
     }
-
 
     // The specialized module defines the table layout.
     declare_vtab(db);
