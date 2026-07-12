@@ -15,6 +15,7 @@ function m:open(db_file)
    C.db_open(self.db, db_file)
 end
 function m:query(q)
+   -- log_desc({db_class_query = q})
    return C.db_query(self.db, q)
 end
 

@@ -268,20 +268,22 @@ int qb_handle_event(void *ctx, int ch) {
 }
 
 void qb_init(struct query_browser *s,
-             const char *db_filename) {
+             const char *db_filename,
+             const char *const *extensions) {
     /* This is C application side init.  Doesn't require a tui
        connection if the tui is connection based.  The display init
        qb_begin() is only executed once events start flowing. */
     tui_init();
     db_open(db_filename);
+    db_load_extensions(extensions);
     s->info_h = 4;
     arena_init(&s->arena);
 }
 
-void qb_loop(const char *db_filename) {
+void qb_loop(const char *db_filename, const char *const *exts) {
     struct query_browser _logfile = { };
     struct query_browser *s = &_logfile;
-    qb_init(s, db_filename);
+    qb_init(s, db_filename, exts);
     tui_event_loop(qb_handle_event, s);
 }
 

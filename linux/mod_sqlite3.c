@@ -32,6 +32,22 @@ void db_open(const char *db_file) {
 
     // https://www.sqlite.org/wal.html
 }
+void db_load_extensions(const char *const *module) {
+    sqlite3_enable_load_extension(db, 1);
+    if (!module) return;
+    for (int i=0; module[i]; i++) {
+        char *errmsg = NULL;
+        int rc = sqlite3_load_extension(db, module[i], NULL, &errmsg);
+        if (rc != SQLITE_OK) {
+            ERROR("load_extension failed: %s\n", errmsg);
+            sqlite3_free(errmsg);
+        }
+        else {
+            LOG("loaded %s\n", module[i]);
+        }
+    }
+}
+
 /* DB STATEMENTS */
 
 struct stmt_list;

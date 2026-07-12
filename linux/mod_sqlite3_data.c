@@ -26,7 +26,9 @@ static inline integer copy_integer(struct arena *a, integer x) {
 static inline text from_query_text(
     struct arena *a, struct sqlite3_stmt *q, int index)
 {
-    return arena_strdup(a, (text)sqlite3_column_text(q, index));
+    text field = (text)sqlite3_column_text(q, index);
+    if (field) { field = arena_strdup(a, field); }
+    return field;
 }
 static inline integer from_query_integer(
     struct arena *a, struct sqlite3_stmt *q, int index)
