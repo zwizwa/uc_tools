@@ -22,11 +22,13 @@ void main() {
   // to take a bit of care to get discrete array lookup behavior using
   // float indices.
 
-  // The _gc variables are "grid coordinates", i.e. integers that
-  // point at discrete pixels, 0 being the first one, 1 the next etc.
-  // We convert these to and from center-of-fragment or
-  // center-of-texel normalized floating point coordinates used in
-  // OpenGL.
+  // The _gc variables are "grid coordinates", i.e. float-encoded
+  // integers that point at discrete pixels, 0 being the first one, 1
+  // the next etc.  The _fgc are like _gc but represent fractional
+  // grid coordinates.  We convert these to and from
+  // center-of-fragment or center-of-texel normalized floating point
+  // coordinates used in OpenGL.  Those are contained in _cp
+  // coordinates.  The relation is _cp = _gc + 0.5
 
   // gl_FragCoord.xy is the coordinate of the pixel using
   // "center-of-fragment" coordinates.  Convert it to integer grid
@@ -40,9 +42,12 @@ void main() {
   // floor(), subtracting that from original to get fractional, and
   // then multiplying again to get integer glyph coordinates.
 
-  vec2 fchar_gc = pixel_gc / font_size;             // for 80x25 and 8x16 grids:
-  vec2 char_gc  = floor(fchar_gc);                  // (0,0) - (79,24)
-  vec2 glyph_gc = font_size * (fchar_gc - char_gc); // (0,0) - (7,15)
+  vec2 char_fgc = pixel_gc / font_size;             // for 80x25 and 8x16 grids:
+  vec2 char_gc  = floor(char_fgc);                  // (0,0) - (79,24)
+  vec2 glyph_gc = font_size * (char_fgc - char_gc); // (0,0) - (7,15)
+
+  // Stride = 2 to skip attribute byte.
+  char_gc *= 2.0;
 
   // The texture sampling uses (0,1) range. We need to aim at the
   // center of the texels to get proper discrete "array element
@@ -54,10 +59,11 @@ void main() {
   // Also note that y axis points differently in opengl (up) so we
   // compensate for that as well where needed.
 
-  // The _uv are texture coordinates in 0.0 - 1.0 inclusive float range.
-  vec2 char_uv = (char_gc + 0.5) / text_dims;
+  // The _cp are center-of-texel texture coordinates in 0.0 - 1.0
+  // inclusive float range.
+  vec2 char_cp = (char_gc + 0.5) / text_dims;
   // The texture lookup returns normalized 0.0 - 1.0 range data.
-  float fchar_code = texture2D(char_buffer, char_uv).x;
+  float fchar_code = texture2D(char_buffer, char_cp).x;
   // Recover the integer value.
   float char_code = floor(0.5 + 255.0 * fchar_code);
 
@@ -69,8 +75,8 @@ void main() {
                        256.0 * font_size.y);
 
   // Converted to texel centers for lookup.
-  vec2 font_uv = (font_gc + 0.5) / map_dims;
-  float p = texture2D(font_map, font_uv).x;
+  vec2 font_cp = (font_gc + 0.5) / map_dims;
+  float p = texture2D(font_map, font_cp).x;
  
   gl_FragColor = vec4(p,p,p,1.0);
 
