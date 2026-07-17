@@ -4,6 +4,16 @@
 // formats, where column and index can be implemented based on more
 // knowledge of the internal format.
 
+// Refresher:
+// xBestIndex  (for query planner)
+// xFilter     (start a new query using specific index method)
+// xEof
+// xColumn     get columns from first row
+// xNext       wind to next row
+// xEof
+// xColumn     get columns from second row
+
+
 #ifndef MOD_SQLITE3_ILOG
 #define MOD_SQLITE3_ILOG
 
@@ -21,6 +31,8 @@
 
 #include "mmap_file.h"
 
+#include "dir_traverse.h"
+
 SQLITE_EXTENSION_INIT1
 
 #ifndef MOD_SQLITE3_ILOG_NB_MMF
@@ -33,12 +45,16 @@ struct ilog_table {
 
     /* If we are in single file mode this is passed in as an
        argument to the table creation. */
-    const char *ilog_default_filename;
+    const char *ilog_top;
+    int ilog_depth;
 };
 
 /* Cursor into an ilog is just an integer. */
 struct ilog_cursor {
     sqlite3_vtab_cursor base;
+
+    /* Directory traversal. */
+    struct dir_traverse dt;
 
     /* Indexed message log and path. */
     struct ilog_read ilog;
@@ -48,7 +64,7 @@ struct ilog_cursor {
        bulk logic trace data referenced by other files. */
     struct mmap_file mmf[MOD_SQLITE3_ILOG_NB_MMF];
 
-    off_t rowid;
+    off_t msg_nb;
     int idxNum;
     int eof; // e.g. idxNum == 1 uses this
     const uint8_t *msg;
@@ -60,10 +76,13 @@ static int xColumn(sqlite3_vtab_cursor *pCur, sqlite3_context *c, int N);
 static void declare_vtab(sqlite3 *db);
 void open_index(struct ilog_table *t, struct ilog_cursor *c,
                 const char *ilog_filename);
+void open_current_ilog_and_index(struct ilog_table *t,
+                                 struct ilog_cursor *c);
+
 
 void get_message(struct ilog_cursor *cur) {
     if (!cur->msg) {
-        cur->msg = ilog_get_message(&cur->ilog, cur->rowid, &cur->len);
+        cur->msg = ilog_get_message(&cur->ilog, cur->msg_nb, &cur->len);
         ASSERT(cur->msg);
         ASSERT(cur->len >= 2);  // needs a tag
     }
@@ -79,11 +98,40 @@ static struct ilog_table *ilog_table(sqlite3_vtab *p) {
 void open_ilog_and_index(struct ilog_table *t,
                          struct ilog_cursor *c,
                          const char *ilog_filename) {
-    // FIXME: Close old one
     c->ilog_filename = strdup(ilog_filename);
     ilog_open_read(&c->ilog, ilog_filename);
     open_index(t, c, ilog_filename);
 }
+void close_ilog_and_index(struct ilog_cursor *cur) {
+    for (int i=0; i<ARRAY_SIZE(cur->mmf); i++) {
+        mmap_file_close(&cur->mmf[i]); // Idempotent close
+    }
+    ilog_read_close(&cur->ilog);
+    free((void*)cur->ilog_filename);
+    cur->ilog_filename = NULL;
+}
+
+const char *path_name(struct ilog_cursor *cur, unsigned int i) {
+    ASSERT(i < cur->dt.end_depth);
+    return cur->dt.path[i].entry->d_name;
+}
+void open_next_ilog_and_index(struct ilog_cursor *cur) {
+  again:
+    close_ilog_and_index(cur);
+    cur->msg_nb = 0;
+    dir_traverse_next(&cur->dt);
+    if (dir_traverse_end(&cur->dt)) {
+        /* Leave the empty sentinel. */
+        // LOG("no next ilog %d\n", cur->ilog.message_size);
+        return;
+    }
+    struct ilog_table *tab = ilog_table(cur->base.pVtab);
+    open_current_ilog_and_index(tab, cur);
+
+    /* Skip zero size files. */
+    if (cur->ilog.message_size == 0) goto again;
+}
+
 
 
 // The xConnect method is very similar to xCreate. It has the same
@@ -110,13 +158,19 @@ static int xConnect(
     struct ilog_table *pNew = sqlite3_malloc(sizeof(*pNew));
     memset(pNew,0,sizeof(*pNew));
 
-    if (argc == 3) {
-        /* If no log file is specified we behave as a table-valued
-           function. */
+    ASSERT(argc >= 4);
+
+    /* Single file or top directory. */
+    pNew->ilog_top = strdup(argv[3]);
+    if (argc >= 5) {
+        /* Directory tree. */
+        pNew->ilog_depth = atoi(argv[4]);
+        ASSERT(pNew->ilog_depth > 0);
+        ASSERT(pNew->ilog_depth <= DIR_TRAVERSE_MAX_DEPTH);
     }
-    else if (argc >= 4) {
-        /* Otherwise we always open the same file. */
-        pNew->ilog_default_filename = strdup(argv[3]);
+    else {
+        /* Single file. */
+        pNew->ilog_depth = 0;
     }
 
     // The specialized module defines the table layout.
@@ -140,67 +194,98 @@ static int xDisconnect(sqlite3_vtab *pVtab) {
 }
 
 // https://claude.ai/chat/6c19049a-04d1-40d6-bdbd-fcd7bdb0287e
-static int xBestIndex(sqlite3_vtab *tab, sqlite3_index_info *p) {
-#if 1
-    for (int i = 0; i < p->nConstraint; i++) {
-        const struct sqlite3_index_constraint *c = &p->aConstraint[i];
-        if (c->usable && c->iColumn == -1 && c->op == SQLITE_INDEX_CONSTRAINT_EQ) {
-            p->aConstraintUsage[i].argvIndex = 1;
-            p->aConstraintUsage[i].omit = 1;
-            p->idxNum = 1;                  /* "rowid point lookup" strategy */
-            p->estimatedCost = 1.0;
-            p->estimatedRows = 1;           /* requires SQLite >= 3.8.2 */
-            return SQLITE_OK;
-        }
-    }
-    p->idxNum = 0;                      /* full scan */
-    p->estimatedCost = 1e6;             /* scale to your row count */
+static int xBestIndex(sqlite3_vtab *pVTab, sqlite3_index_info *p) {
     //LOG("xBestIndex\n");
+#if 1
+    struct ilog_table *tab = ilog_table(pVTab);
+    if (tab->ilog_depth == 0) {
+        for (int i = 0; i < p->nConstraint; i++) {
+            const struct sqlite3_index_constraint *c = &p->aConstraint[i];
+            if (c->usable && c->iColumn == -1 && c->op == SQLITE_INDEX_CONSTRAINT_EQ) {
+                p->aConstraintUsage[i].argvIndex = 1;
+                p->aConstraintUsage[i].omit = 1;
+                p->idxNum = 1;                  /* "rowid point lookup" strategy */
+                p->estimatedCost = 1.0;
+                p->estimatedRows = 1;           /* requires SQLite >= 3.8.2 */
+                return SQLITE_OK;
+            }
+        }
+        p->idxNum = 0;                      /* full scan */
+        p->estimatedCost = 1e6;             /* scale to your row count */
+    }
 #endif
     return SQLITE_OK;
 }
 
 static int xClose(sqlite3_vtab_cursor *pCur) {
     struct ilog_cursor *cur = ilog_cursor(pCur);
-    for (int i=0; i<ARRAY_SIZE(cur->mmf); i++) {
-        mmap_file_close(&cur->mmf[i]); // Idempotent close
-    }
-    ilog_read_close(&cur->ilog);
+    close_ilog_and_index(cur);
+    dir_traverse_close(&cur->dt);
     sqlite3_free(pCur);
     return SQLITE_OK;
 }
+
+/* Normalize the current cursor so it points to a valid record in the
+   current file, or into an empty ilog.
+
+   - If we are at the end of the ilog, load the next one
+   - If the next one is empty, load a dummy empty log as sentinel.
+*/
+
+void normalize_cursor(struct ilog_cursor *cur) {
+    if (cur->dt.end_depth == 0) {
+        /* No directory traversal. */
+        return;
+    }
+    if (cur->msg_nb >= cur->ilog.ilog.nb_messages) {
+        open_next_ilog_and_index(cur);
+    }
+}
+
+
 // sqlite calls xEof immediately after xNext
 static int xEof(sqlite3_vtab_cursor *pCur) {
     struct ilog_cursor *cur = ilog_cursor(pCur);
     if (cur->idxNum == 1) {
         return cur->eof;
     }
-    int eof = cur->rowid >= cur->ilog.ilog.nb_messages;
-    //LOG("xEof %d\n", eof);
+    int eof = cur->msg_nb >= cur->ilog.ilog.nb_messages;
+    // LOG("xEof %d %d %d\n", eof, cur->msg_nb, cur->ilog.ilog.nb_messages);
     return eof;
 }
 static int xFilter(sqlite3_vtab_cursor *pCur, int idxNum, const char *idxStr,
                    int argc, sqlite3_value **argv) {
     //LOG("xFilter\n");
     struct ilog_cursor *cur = ilog_cursor(pCur);
+
+
     if (idxNum == 1) {
         /* Point loopup: WHERE rowid = ? -- argv[0] */
         ASSERT(argc == 1);
-        cur->rowid = sqlite3_value_int64(argv[0]);
+        cur->msg_nb = sqlite3_value_int64(argv[0]);
         cur->msg = NULL;
+    }
+    else {
+        normalize_cursor(cur);
     }
     cur->idxNum = idxNum;
     return SQLITE_OK;
 }
 static int xNext(sqlite3_vtab_cursor *pCur) {
-    //LOG("xNext\n");
     struct ilog_cursor *cur = ilog_cursor(pCur);
+
     if (cur->idxNum == 1) {
+        /* Point lookup */
         cur->eof = 1;
         return SQLITE_OK;
     }
-    cur->rowid++;
+    cur->msg_nb++;
     cur->msg = NULL;
+    normalize_cursor(cur);
+
+    // LOG("xNext %d %s\n", cur->msg_nb, cur->ilog_filename);
+
+
     return SQLITE_OK;
 }
 
@@ -213,12 +298,21 @@ static void ilog_cursor_init(struct ilog_cursor *cur,
        during sync scan so initialize it here. */
     cur->base.pVtab = &tab->base;
 
-    /* In single-file mode we can open everything already.  In
-       multi-file mode the filename will need to come from the
-       xBestIndex data. */
-    const char *f = tab->ilog_default_filename;
-    if (f) {
-        open_ilog_and_index(tab, cur, f);
+    if (tab->ilog_depth == 0) {
+        /* In single-file mode we can open everything already.  In
+           multi-file mode the filename will need to come from the
+           xBestIndex data. */
+        // LOG("open file %d\n", tab->ilog_top);
+        open_ilog_and_index(tab, cur, tab->ilog_top);
+    }
+    else {
+        /* In multi-file mode we initialize the directory
+           traversal. */
+        // LOG("open tree %d\n", tab->ilog_top);
+        dir_traverse_init(&cur->dt, tab->ilog_top, tab->ilog_depth);
+        cur->dt.ext = ".ilog";
+        /* Open the first file or load an empty sentinel. */
+        open_next_ilog_and_index(cur);
     }
 
 }
@@ -234,9 +328,10 @@ static int xOpen(sqlite3_vtab *pVTab, sqlite3_vtab_cursor **ppCursor) {
     return SQLITE_OK;
 }
 
+// FIXME: This only works for single file.  Add a composite primary key.
 static int xRowid(sqlite3_vtab_cursor *pCur, sqlite_int64 *pRowid) {
     // LOG("xRowid\n");
-    *pRowid = ilog_cursor(pCur)->rowid;
+    *pRowid = ilog_cursor(pCur)->msg_nb;
     return SQLITE_OK;
 }
 

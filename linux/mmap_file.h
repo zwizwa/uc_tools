@@ -21,6 +21,7 @@ struct mmap_file {
 
 #ifndef MMAP_FILE_LOG
 #define MMAP_FILE_LOG(...)
+//#define MMAP_FILE_LOG LOG
 #endif
 
 static inline void mmap_file_close(struct mmap_file *ref) {

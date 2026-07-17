@@ -1,6 +1,7 @@
 /* Index log files based on the uc_tools message format + memory
    mapped reader. */
 
+
 // TODO: Rebuild index if it is not present.
 
 #ifndef ILOG_H
@@ -88,13 +89,29 @@ static inline int ilog_open_write_index(const char *basename, const char *suffix
 
 static inline void ilog_recreate_index_file(struct ilog_read *vr, const char *basename);
 static inline void ilog_open_read(struct ilog_read *vr, const char *basename) {
+    if (!basename) {
+        /* Special case to create an empty ilog structure.
+           vr->message == NULL can be used to test.
+           We just set the file descriptors to -1 here because 0 is stdin. */
+        memset(vr,0,sizeof(*vr));
+        vr->ilog.log_fd   = -1;
+        vr->ilog.index_fd = -1;
+        return;
+    }
     int flags = ILOG_OPEN_READ_FLAGS;
     ilog_open_with_flags(&vr->ilog, basename, flags);
 
     /* Map the messages. */
     ASSERT_ERRNO(vr->message_size = lseek(vr->ilog.log_fd, 0, SEEK_END));
-    vr->message = mmap(NULL, vr->message_size, PROT_READ, MAP_SHARED, vr->ilog.log_fd, 0);
-    ASSERT(MAP_FAILED != vr->message);
+
+    if (vr->message_size > 0) {
+        vr->message = mmap(
+            NULL, vr->message_size, PROT_READ, MAP_SHARED, vr->ilog.log_fd, 0);
+        ASSERT(MAP_FAILED != vr->message);
+    }
+    else {
+        vr->message = NULL;
+    }
     vr->ilog.nb_bytes = vr->message_size;
 
     /* If the index file does not exist it needs to be recreated. */
@@ -106,8 +123,14 @@ static inline void ilog_open_read(struct ilog_read *vr, const char *basename) {
     /* Map the index. */
     ASSERT_ERRNO(vr->index_size = lseek(vr->ilog.index_fd, 0, SEEK_END));
     //LOG("index_size = %d\n", vr->index_size);
-    vr->index = mmap(NULL, vr->index_size, PROT_READ, MAP_SHARED, vr->ilog.index_fd, 0);
-    ASSERT(MAP_FAILED != vr->index);
+    if (vr->index_size > 0) {
+        vr->index = mmap(
+            NULL, vr->index_size, PROT_READ, MAP_SHARED, vr->ilog.index_fd, 0);
+        ASSERT(MAP_FAILED != vr->index);
+    }
+    else {
+        vr->index = NULL;
+    }
     vr->ilog.nb_messages = vr->index_size / sizeof(uint64_t); /* nb index messages */
     //LOG("nb_messages = %d\n", vr->ilog.nb_messages);
 }
@@ -130,12 +153,24 @@ static inline const uint8_t *ilog_get_message(struct ilog_read *vr, int i, uint3
 
 
 static inline void ilog_close(struct ilog *v) {
-    close(v->log_fd); // FIXME: Close stdout also?
+    if (v->log_fd   != -1) close(v->log_fd);
     if (v->index_fd != -1) close(v->index_fd);
-    v->log_fd = -1;
+    memset(v, 0, sizeof(*v));
+    v->log_fd   = -1;
     v->index_fd = -1;
 }
 static inline void ilog_read_close(struct ilog_read *v) {
+    if (!v->message) return; // idempotent close
+    if (v->index)   {
+        munmap((void*)v->index, v->index_size);
+        v->index = NULL;
+        v->index_size = 0;
+    }
+    if (v->message) {
+        munmap((void*)v->message, v->message_size);
+        v->message = NULL;
+        v->message_size = 0;
+    }
     ilog_close(&v->ilog);
 }
 

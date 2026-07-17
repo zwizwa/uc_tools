@@ -29,6 +29,6 @@ UC_TOOLS_HOST_ELF := \
 	$(UC_TOOLS)/linux/sqlite3_csv.dynamic.host.so \
 	$(UC_TOOLS)/linux/seek_hole.dynamic.host.elf \
 	$(UC_TOOLS)/linux/tether_udp.dynamic.host.elf \
-	$(UC_TOOLS)/linux/test_glob.dynamic.host.elf \
+	$(UC_TOOLS)/linux/test_dir_traverse.dynamic.host.elf \
 	$(UC_TOOLS)/linux/leftshift.dynamic.host.elf \
 	$(UC_TOOLS)/linux/test_arena.dynamic.host.elf \

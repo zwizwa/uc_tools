@@ -1,9 +1,24 @@
+// NOTE: This is old code.  See the ilog virtual table which has the
+// dir_traverse.h cursor built in.
+
 // File system structure virtual table.  This is ad-hoc, originally
 // built map a directory structure of log files to tables,
 // representing overarching structure for ilog, logparse virtual
 // tables.  The purpose here is very simple: rescan the directory
 // structure on every query.  Maybe the ilog needs to change as well
 // to create a join across multiple files.
+
+
+/* It is set up as an array to facilitate later extension to recursive
+   tranversal. */
+#ifndef DIR_TRAVERSE_MAX_DEPTH
+#define DIR_TRAVERSE_MAX_DEPTH 3
+#endif
+
+#include "macros.h"
+#include <stdint.h>
+
+
 
 // #define FS_LOG LOG
 #ifndef FS_LOG
@@ -23,24 +38,19 @@
 #include <sys/mman.h>
 #include <sqlite3ext.h>
 
-#include "macros.h"
 #include <stdio.h>
 #include <dirent.h>
 #include "string.h"
 
-#include "stdint.h"
 
 SQLITE_EXTENSION_INIT1
 
-/* It is set up as an array to facilitate later extension to recursive
-   tranversal. */
-#define MAX_DEPTH 3
 
 /* The 'base' member contains the base class.  Must be first */
 struct fs_table {
     sqlite3_vtab base;
     char *dirname;
-    char *column[MAX_DEPTH];
+    char *column[DIR_TRAVERSE_MAX_DEPTH];
     uintptr_t depth;
 };
 
@@ -53,7 +63,7 @@ struct dir_cursor {
 struct fs_cursor {
     sqlite3_vtab_cursor base;
     off_t rowid;
-    struct dir_cursor path[MAX_DEPTH];
+    struct dir_cursor path[DIR_TRAVERSE_MAX_DEPTH];
     int depth;
 
 };
@@ -105,7 +115,7 @@ static int xConnect(
     // The rest are column names
     tab->depth = argc - 4;
     ASSERT(tab->depth >= 1);
-    ASSERT(tab->depth <= MAX_DEPTH);
+    ASSERT(tab->depth <= DIR_TRAVERSE_MAX_DEPTH);
     for (int i=0; i<tab->depth; i++) {
         tab->column[i] = strdup(argv[4+i]);
         LOG("%d: %s\n", i, tab->column[i]);
