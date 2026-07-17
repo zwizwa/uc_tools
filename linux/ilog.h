@@ -135,6 +135,9 @@ static inline void ilog_close(struct ilog *v) {
     v->log_fd = -1;
     v->index_fd = -1;
 }
+static inline void ilog_read_close(struct ilog_read *v) {
+    ilog_close(&v->ilog);
+}
 
 static inline void ilog_write_index_fd(struct ilog *v, int fd) {
     if (fd != -1) {

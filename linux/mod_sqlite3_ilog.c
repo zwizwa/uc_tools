@@ -30,16 +30,24 @@ SQLITE_EXTENSION_INIT1
 /* The 'base' member contains the base class.  Must be first */
 struct ilog_table {
     sqlite3_vtab base;
-    /* Indexed message log. */
-    struct ilog_read ilog;
-    /* Optional flat image file, e.g. for logic trace data. */
-    struct mmap_file mmf[MOD_SQLITE3_ILOG_NB_MMF];
+
+    /* If we are in single file mode this is passed in as an
+       argument to the table creation. */
+    const char *ilog_default_filename;
 };
 
 /* Cursor into an ilog is just an integer. */
 struct ilog_cursor {
     sqlite3_vtab_cursor base;
-    struct ilog_read *ilog;
+
+    /* Indexed message log and path. */
+    struct ilog_read ilog;
+    const char *ilog_filename;
+
+    /* Optional flat image file, e.g. for additional index data, or
+       bulk logic trace data referenced by other files. */
+    struct mmap_file mmf[MOD_SQLITE3_ILOG_NB_MMF];
+
     off_t rowid;
     int idxNum;
     int eof; // e.g. idxNum == 1 uses this
@@ -50,11 +58,12 @@ struct ilog_cursor {
 // These need to be provided by the specialized code.
 static int xColumn(sqlite3_vtab_cursor *pCur, sqlite3_context *c, int N);
 static void declare_vtab(sqlite3 *db);
-
+void open_index(struct ilog_table *t, struct ilog_cursor *c,
+                const char *ilog_filename);
 
 void get_message(struct ilog_cursor *cur) {
     if (!cur->msg) {
-        cur->msg = ilog_get_message(cur->ilog, cur->rowid, &cur->len);
+        cur->msg = ilog_get_message(&cur->ilog, cur->rowid, &cur->len);
         ASSERT(cur->msg);
         ASSERT(cur->len >= 2);  // needs a tag
     }
@@ -66,6 +75,16 @@ static struct ilog_cursor *ilog_cursor(sqlite3_vtab_cursor *p) {
 static struct ilog_table *ilog_table(sqlite3_vtab *p) {
     return (void*)p;
 }
+
+void open_ilog_and_index(struct ilog_table *t,
+                         struct ilog_cursor *c,
+                         const char *ilog_filename) {
+    // FIXME: Close old one
+    c->ilog_filename = strdup(ilog_filename);
+    ilog_open_read(&c->ilog, ilog_filename);
+    open_index(t, c, ilog_filename);
+}
+
 
 // The xConnect method is very similar to xCreate. It has the same
 // parameters and constructs a new sqlite3_vtab structure just like
@@ -91,17 +110,13 @@ static int xConnect(
     struct ilog_table *pNew = sqlite3_malloc(sizeof(*pNew));
     memset(pNew,0,sizeof(*pNew));
 
-    ASSERT(argc >= 4);
-    ilog_open_read(&pNew->ilog, argv[3]);
-
-    /* The rest are memory mapped index files that the specialize code
-       knows how to use. */
-    for (int i=0; i<argc-4; i++) {
-        ASSERT(i < MOD_SQLITE3_ILOG_NB_MMF);
-        struct mmap_file *mmf = &pNew->mmf[i];
-        const char *filename = argv[i+4];
-        mmap_file_open_ro(mmf, filename);
-        // LOG("mmf[%d]: %llu bytes %s\n", i, mmf->size, filename);
+    if (argc == 3) {
+        /* If no log file is specified we behave as a table-valued
+           function. */
+    }
+    else if (argc >= 4) {
+        /* Otherwise we always open the same file. */
+        pNew->ilog_default_filename = strdup(argv[3]);
     }
 
     // The specialized module defines the table layout.
@@ -146,7 +161,11 @@ static int xBestIndex(sqlite3_vtab *tab, sqlite3_index_info *p) {
 }
 
 static int xClose(sqlite3_vtab_cursor *pCur) {
-    //LOG("xClose\n");
+    struct ilog_cursor *cur = ilog_cursor(pCur);
+    for (int i=0; i<ARRAY_SIZE(cur->mmf); i++) {
+        mmap_file_close(&cur->mmf[i]); // Idempotent close
+    }
+    ilog_read_close(&cur->ilog);
     sqlite3_free(pCur);
     return SQLITE_OK;
 }
@@ -156,7 +175,7 @@ static int xEof(sqlite3_vtab_cursor *pCur) {
     if (cur->idxNum == 1) {
         return cur->eof;
     }
-    int eof = cur->rowid >= cur->ilog->ilog.nb_messages;
+    int eof = cur->rowid >= cur->ilog.ilog.nb_messages;
     //LOG("xEof %d\n", eof);
     return eof;
 }
@@ -194,10 +213,13 @@ static void ilog_cursor_init(struct ilog_cursor *cur,
        during sync scan so initialize it here. */
     cur->base.pVtab = &tab->base;
 
-    /* Multiple cursors can share the same table.  The ilog_read
-       structure only describes the files and the memory mappings and
-       has no other state, so we can just link it here. */
-    cur->ilog = &tab->ilog;
+    /* In single-file mode we can open everything already.  In
+       multi-file mode the filename will need to come from the
+       xBestIndex data. */
+    const char *f = tab->ilog_default_filename;
+    if (f) {
+        open_ilog_and_index(tab, cur, f);
+    }
 
 }
 

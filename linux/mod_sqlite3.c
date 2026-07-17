@@ -87,18 +87,29 @@ void stmts_finalize(void) {
     }
 }
 
-void db_attach_tmp(const char *db_file) {
-    sqlite3_stmt *s = stmt(NULL /* Not stored */, "ATTACH DATABASE ? AS tmp");
+void db_attach(const char *db_file, const char *table) {
+    char *sql = NULL;
+    asprintf(&sql, "ATTACH DATABASE ? as %s", table);
+    sqlite3_stmt *s = stmt(NULL /* Not stored, finalize needed */, sql);
     ASSERT_SQLITE(sqlite3_bind_text(s, 1, db_file, strlen(db_file), NULL));
     int rv = sqlite3_step(s);
     sqlite_assert_eq(rv, SQLITE_DONE);
     sqlite3_finalize(s);  /* Delete because not stored. */
 }
+void db_attach_tmp(const char *db_file) {
+    db_attach(db_file, "tmp");
+}
+
 
 // ephemeral statements, not cached
 void db_sql0(const char *sql) {
-    sqlite3_exec(db, sql, NULL, NULL, NULL);
+    char *err = NULL;
+    sqlite3_exec(db, sql, NULL, NULL, &err);
+    if (err) {
+        ERROR("db_sql0: %s\n", err);
+    }
 }
+
 
 //int nb_transactions = 0;
 void db_begin_transaction(void) {
@@ -116,6 +127,8 @@ void db_end_transaction(void) {
     int rv = sqlite3_step(s);
     sqlite_assert_eq(rv, SQLITE_DONE);
 }
+
+
 
 
 #endif

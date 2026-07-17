@@ -5,7 +5,6 @@
 // structure on every query.  Maybe the ilog needs to change as well
 // to create a join across multiple files.
 
-
 // #define FS_LOG LOG
 #ifndef FS_LOG
 #define FS_LOG(...)

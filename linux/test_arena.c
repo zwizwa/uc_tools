@@ -5,7 +5,7 @@
 
 */
 
-
+#define _GNU_SOURCE
 
 #include "mmap_bump.h"
 void test1(void) {
