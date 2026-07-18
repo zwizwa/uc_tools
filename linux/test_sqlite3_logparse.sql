@@ -1,5 +1,19 @@
 .load ./logparse
 
+-- tom@carpo:/i/tom/rdm-bridge/uc_tools/linux$ /i/tom/rdm-bridge/tools/sqlite3.sh < test_sqlite3_logparse.sql
+
+CREATE VIRTUAL TABLE lp0 USING logparse(/ssd/enc/c8-logs/new/20260717-060731/t2/usb.002.bin);
+
+select ts,line from lp0;
+
+.quit
+
+
+
+
+
+-- OLD BITROTTED -- TO PORT
+
 CREATE VIRTUAL TABLE temp.lp USING logparse('test_logparse.trace');
 
 -- CREATE VIRTUAL TABLE temp.lp USING logparse('/i/tom/rdm-bridge/uc_trace/all.20230531-151752.dev1.uc.trace');

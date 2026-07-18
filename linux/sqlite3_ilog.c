@@ -49,14 +49,15 @@ static void declare_vtab(sqlite3 *db) {
 
 static int xColumn(sqlite3_vtab_cursor *pCur, sqlite3_context *c, int N) {
     // LOG("xColumn %d\n", N);
-    struct ilog_cursor *cur = ilog_cursor(pCur);
+    struct log_cursor *cur = log_cursor(pCur);
 
-    // Perform consitency check and cache the pointer, len.
-    get_message(cur);
+    const uint8_t *msg = cur->log.cur_msg;
+    uint32_t len       = cur->log.cur_len;
+    ASSERT(len >= 2);
 
     switch(N) {
     case 0: {
-        uint16_t tag = read_be(cur->msg, 2);
+        uint16_t tag = read_be(msg, 2);
         sqlite3_result_int(c, tag);
         break;
     }
@@ -64,7 +65,7 @@ static int xColumn(sqlite3_vtab_cursor *pCur, sqlite3_context *c, int N) {
         // SQLITE_STATIC means the pointers are stable so sqlite will
         // not copy the data.  This works as long as the file is
         // mapped, which should be the case always.
-        sqlite3_result_blob(c, cur->msg+4+2, cur->len-2, SQLITE_STATIC);
+        sqlite3_result_blob(c, msg+4+2, len-2, SQLITE_STATIC);
         break;
     }
     default:

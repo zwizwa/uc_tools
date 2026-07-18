@@ -24,8 +24,12 @@ struct ilog {
 };
 struct ilog_read {
     struct ilog ilog;
+    /* Index and message arrays. */
     const uint64_t *index;   off_t index_size;
     const uint8_t *message;  off_t message_size;
+    /* Current message. */
+    const uint8_t *cur_msg;
+    uint32_t       cur_len;
 };
 
 static inline int ilog_open_fd(const char *filename, int flags) {
@@ -142,11 +146,18 @@ static inline const uint8_t *ilog_get(struct ilog_read *vr, int i) {
     return vr->message + offset;
 }
 static inline const uint8_t *ilog_get_message(struct ilog_read *vr, int i, uint32_t *len) {
+    if (i >= vr->ilog.nb_messages) {
+        *len = 0;
+        return NULL;
+    }
     const uint8_t *msg = ilog_get(vr, i);
-    if (!msg) { len = 0; return NULL; }
     // FIXME: Validate that len actually points inside the memory.
     *len = read_be(msg, 4);
     return msg+4;
+}
+static inline void ilog_wind_message(struct ilog_read *vr, int i) {
+    /* Similar, but store the pointer in the struct.  Convenient for sqlite vt wrapper. */
+    vr->cur_msg = ilog_get_message(vr, i, &vr->cur_len);
 }
 
 

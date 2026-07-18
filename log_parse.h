@@ -71,7 +71,7 @@ struct log_parse {
     const uint8_t *in_start;  /* s->in sampled at read_line entry, e.g. to allow restarting from index */
     uintptr_t in_len;
     struct log_parse_cbs *cb;
-    uintptr_t nb;
+    uintptr_t nb_chars;  /* Number of characters read. */
 };
 
 /* Implemented as a coroutine using computed goto. */
@@ -84,7 +84,7 @@ struct log_parse {
     { __label__ resume; s->next = &&resume; return status; resume:; }
 
 static inline log_parse_status_t log_parse_tick(struct log_parse *s, uint8_t c) {
-    s->nb++;
+    s->nb_chars++;
     log_parse_status_t status = LOG_PARSE_STATUS_CONTINUE;
     if (s->next) goto *s->next;
 

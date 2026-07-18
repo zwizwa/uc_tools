@@ -24,6 +24,7 @@ struct log_parse_mm {
     int fd;                  // optional file descriptor
 
     /* Current log message. */
+    uintptr_t msg_nb;        // offset of start of message in mmf
     uintptr_t msg_offset;    // offset of start of message in mmf
     uintptr_t line_offset;   // offset of line data in mmf buffer
     const uint8_t *line;     // buffered line data inside lp
@@ -80,7 +81,15 @@ static log_parse_status_t log_parse_mmf_ts_bin_cb(
 
 static inline void log_parse_mmf_next(struct log_parse_mm *lpm) {
     log_parse_status_t s = log_parse_continue(&lpm->lp);
+    lpm->msg_nb++;
     lpm->eof = (s != LOG_PARSE_STATUS_YIELD);
+}
+static inline void log_parse_mmf_first(struct log_parse_mm *lpm) {
+    /* Make sure first element or eof condition is loaded. */
+    log_parse_mmf_next(lpm);
+    /* Correct the offset for the first message.  In the _next()
+       routine we can only pre-increment. */
+    lpm->msg_nb = 0;
 }
 
 static inline void log_parse_mmf_open_write_index(
@@ -92,6 +101,7 @@ static inline void log_parse_mmf_open_write_index(
     int flags = (O_WRONLY | O_TRUNC | O_CREAT);
     ASSERT_ERRNO(lpm->fd = open(index_name, flags));
 }
+
 
 static inline void log_parse_mmf_open(struct log_parse_mm *lpm, const char *filename) {
     memset(lpm, 0, sizeof(*lpm));
@@ -106,17 +116,18 @@ static inline void log_parse_mmf_open(struct log_parse_mm *lpm, const char *file
     lp->cb = &lpm->cb;
     lp->cb->line    = log_parse_mmf_line_cb;
     lp->cb->ts_line = log_parse_mmf_ts_line_cb;
-    lp->cb->ts_bin  = log_parse_mmf_ts_bin_cb;
+    lp->cb->ts_bin  = log_parse_mmf_ts_bin_cb; 
 
     /* Initialize cursor on the first log entry. */
-    log_parse_mmf_next(lpm);
+    log_parse_mmf_first(lpm);
+
 }
 static inline void log_parse_mmf_wind(struct log_parse_mm *lpm, uintptr_t offset) {
     struct log_parse *lp = &lpm->lp;
     ASSERT(offset < lpm->mmf.size);
     log_parse_reset(lp, lpm->mmf.buf + offset, lpm->mmf.size - offset);
     /* Initialize cursor on the first log entry. */
-    log_parse_mmf_next(lpm);
+    log_parse_mmf_first(lpm);
 }
 static inline void log_parse_mmf_close(struct log_parse_mm *lpm) {
     if (lpm->fd != -1) close(lpm->fd);
@@ -126,16 +137,20 @@ static inline int log_parse_mmf_eof(struct log_parse_mm *lpm) {
     return lpm->eof;
 }
 
+static inline uint64_t log_parse_mmf_timestamp(struct log_parse_mm *lpm) {
+    uint64_t ts    = lpm->ts;
+    uint64_t hi_ts = lpm->hi_ts;
+    return ts + (hi_ts << 32);
+}
+
 static inline void log_parse_create_index(const char *filename) {
     struct log_parse_mm _lpm = {}, *lpm = &_lpm;
     log_parse_mmf_open(lpm, filename);
     log_parse_mmf_open_write_index(lpm, filename);
     /* Traverse */
     while(!log_parse_mmf_eof(lpm)) {
-        uint64_t ts    = lpm->ts;
-        uint64_t hi_ts = lpm->hi_ts;
         struct log_parse_index idx = {
-            .timestamp  = ts + (hi_ts << 32),
+            .timestamp  = log_parse_mmf_timestamp(lpm),
             .offset     = lpm->msg_offset,
         };
         assert_write(lpm->fd, (void*)&idx, sizeof(idx));
