@@ -67,8 +67,8 @@ struct log_parse {
     uintptr_t line_len;
     uintptr_t bin_len;
     const uint8_t *in;
-    const uint8_t *in_mark;  /* points to start of current line data, used in log_parse_lua51.c */
-    const uint8_t *in_read_line; /* s->in sampled at read_line entry */
+    const uint8_t *in_mark;   /* points to start of current line data, used in log_parse_lua51.c */
+    const uint8_t *in_start;  /* s->in sampled at read_line entry, e.g. to allow restarting from index */
     uintptr_t in_len;
     struct log_parse_cbs *cb;
     uintptr_t nb;
@@ -92,7 +92,7 @@ static inline log_parse_status_t log_parse_tick(struct log_parse *s, uint8_t c) 
   read_line:
     // LOG("rl '%c' %d %p\n", c, s->nb, s->in);
     LOG_PARSE_GETC(s);
-    s->in_read_line = s->in;
+    s->in_start = s->in;
     s->in_mark = s->in;
     s->line_len = 0;
     for(;;) {
@@ -215,19 +215,37 @@ static inline void log_parse_write_cstring(struct log_parse *s, const char *str)
 
 static inline void log_parse_init_with(struct log_parse *s,
                                        const uint8_t *buf,
-                                       uintptr_t      len) {
+                                       uintptr_t len) {
     memset(s, 0, sizeof(*s));
+
+    /* Leave everything intact and just change the buffer. */
     if (buf) {
+        /* Note: to start parsing at offset, just pass buf+o, len-o */
         s->in     = buf;
         s->in_len = len;
     }
-    // run up to the first read.
+    /* We need to run the state machine up to the first GETC.  The
+       next call to _tick will pass in the first character. */
+    s->next = NULL;
     log_parse_tick(s, 0);
 }
 static inline void log_parse_init(struct log_parse *s) {
     log_parse_init_with(s, NULL, 0);
 }
+static inline void log_parse_reset(struct log_parse *s,
+                                   const uint8_t *buf,
+                                   uintptr_t len) {
+    struct log_parse_cbs *cb = s->cb;
+    log_parse_init_with(s, buf, len);
+    s->cb = cb;
+}
 
+
+/* An index is a flat array of these. */
+struct log_parse_index {
+    uint64_t timestamp;  /* Unrolled 32 bit timestamp */
+    uint64_t offset;     /* Offset of start of message in the log file */
+};
 
 
 
