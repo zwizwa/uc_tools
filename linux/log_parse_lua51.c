@@ -241,7 +241,7 @@ static struct log_parse_ud *push_log_parse(lua_State *L) {
     struct log_parse_ud *ud = lua_newuserdata(L, sizeof(*ud));
     ASSERT(ud);
     memset(ud,0,sizeof(*ud));
-    log_parse_init(&ud->s, NULL);
+    log_parse_init(&ud->s);
     luaL_getmetatable(L, T_LOG_PARSE);
     lua_setmetatable(L, -2);
     return ud;
@@ -334,7 +334,7 @@ void bind_parse(struct log_parse_ud *ud_parse, struct log_file_ud *ud_file) {
        that the file is still the same.  If not, reset parser. */
     if (!ud_parse->ud_file ||
         ud_parse->ud_file != ud_file) {
-        log_parse_init(&ud_parse->s, ud_file->file.buf);
+        log_parse_init_with(&ud_parse->s, ud_file->file.buf, ud_file->file.size);
         ud_parse->ud_file = ud_file;
         ud_parse->offset = 0;
     }

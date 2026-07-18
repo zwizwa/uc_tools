@@ -67,7 +67,8 @@ struct log_parse {
     uintptr_t line_len;
     uintptr_t bin_len;
     const uint8_t *in;
-    const uint8_t *in_mark;  /* only valid for stable *in */
+    const uint8_t *in_mark;  /* points to start of current line data, used in log_parse_lua51.c */
+    const uint8_t *in_read_line; /* s->in sampled at read_line entry */
     uintptr_t in_len;
     struct log_parse_cbs *cb;
     uintptr_t nb;
@@ -89,11 +90,12 @@ static inline log_parse_status_t log_parse_tick(struct log_parse *s, uint8_t c) 
 
     /* Default protocol is lines of ASCII text (all chars < 128) */
   read_line:
-    // LOG("rl %d %p\n", s->nb, s->in);
+    // LOG("rl '%c' %d %p\n", c, s->nb, s->in);
+    LOG_PARSE_GETC(s);
+    s->in_read_line = s->in;
     s->in_mark = s->in;
     s->line_len = 0;
     for(;;) {
-        LOG_PARSE_GETC(s);
         if (c >= 0x80) {
             goto read_bin;
         }
@@ -132,7 +134,8 @@ static inline log_parse_status_t log_parse_tick(struct log_parse *s, uint8_t c) 
           done:
             goto read_line;
         }
-
+        /* Get next character and dispatch. */
+        LOG_PARSE_GETC(s);
     }
     /* Binary messages consist of tag byte containing size, 4 bytes of
        32 bit big endian rolling time stamp + max 126 payload
@@ -210,17 +213,22 @@ static inline void log_parse_write_cstring(struct log_parse *s, const char *str)
     log_parse_write(s, (const uint8_t *)str, len);
 }
 
-static inline void log_parse_init(struct log_parse *s, const uint8_t *stable_in) {
+static inline void log_parse_init_with(struct log_parse *s,
+                                       const uint8_t *buf,
+                                       uintptr_t      len) {
     memset(s, 0, sizeof(*s));
+    if (buf) {
+        s->in     = buf;
+        s->in_len = len;
+    }
     // run up to the first read.
     log_parse_tick(s, 0);
-
-    // associate parser to stable input.  in this mode the ->in_mark
-    // can be used, but we need to patch it here because starting the
-    // machine will have set it to zero.
-    if (stable_in) {
-        s->in_mark = stable_in;
-    }
 }
+static inline void log_parse_init(struct log_parse *s) {
+    log_parse_init_with(s, NULL, 0);
+}
+
+
+
 
 #endif

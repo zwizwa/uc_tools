@@ -2,8 +2,6 @@
    mapped reader. */
 
 
-// TODO: Rebuild index if it is not present.
-
 #ifndef ILOG_H
 #define ILOG_H
 

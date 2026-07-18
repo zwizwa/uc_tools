@@ -15,6 +15,12 @@
 
 // CREATE VIRTUAL TABLE lp USING logparse("dev1.bin");
 
+// Rework is after 1ad5c01b4cdab8f5f653fffdc148da6347f42230
+// TODO:
+// - removed sync mechanism
+// - add dir_traverse
+// - add unrolled timer index
+
 #define _GNU_SOURCE         /* See feature_test_macros(7) */
 #include <sys/mman.h>
 
@@ -253,16 +259,8 @@ static void logparse_cursor_init(struct logparse_cursor *cur,
 
     struct log_parse *lp = &cur->lp;
 
-    /* Connect log_parse to the memory-mapped file.
-
-       The log_parse_init() takes a non-NULL pointer in case the
-       memory layout is stable. In that case, lp->in_mark can be used. */
-    log_parse_init(lp, tab->file.buf);
-
-    /* We can leave the input connected permanently.  I.e. we don't
-       log_parse_write() */
-    lp->in     = tab->file.buf;
-    lp->in_len = tab->file.size;
+    /* Connect log_parse to the memory-mapped file. */
+    log_parse_init_with(lp, tab->file.buf, tab->file.size);
 
     /* Callbacks invoked on parsed log messages. */
     cur->lp_cbs.line    = ts_line_cb;

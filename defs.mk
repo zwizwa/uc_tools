@@ -14,6 +14,7 @@ UC_TOOLS_HOST_ELF := \
 	$(UC_TOOLS)/linux/rle_enc.dynamic.host.elf \
 	$(UC_TOOLS)/linux/rle_dec.dynamic.host.elf \
 	$(UC_TOOLS)/linux/log_parse_lua51.dynamic.host.so \
+	$(UC_TOOLS)/linux/test_log_parse_index.dynamic.host.elf \
 	$(UC_TOOLS)/linux/sha1sum.dynamic.host.elf \
 	$(UC_TOOLS)/linux/test_sg_rle.dynamic.host.elf \
 	$(UC_TOOLS)/linux/http_panel.dynamic.host.elf \
