@@ -24,13 +24,22 @@ struct mmap_file {
 //#define MMAP_FILE_LOG LOG
 #endif
 
+static inline void mmap_file_init(struct mmap_file *ref) {
+    memset(ref,0,sizeof(*ref));
+    ref->fd = -1;
+}
+
 static inline void mmap_file_close(struct mmap_file *ref) {
     /* Idempotent. */
-    if (!ref->buf) return;
-    ASSERT_ERRNO(munmap(ref->buf, ref->size));
-    ref->buf = NULL;
-    ASSERT_ERRNO(close(ref->fd));
-    ref->fd = -1;
+    if (ref->buf) {
+        ASSERT_ERRNO(munmap(ref->buf, ref->size));
+        ref->buf = NULL;
+    }
+    if (ref->fd != -1) {
+        MMAP_FILE_LOG("mmap_file close fd=%d\n", ref->fd);
+        ASSERT_ERRNO(close(ref->fd));
+        ref->fd = -1;
+    }
 }
 
 static inline void mmap_file_sync(struct mmap_file *ref) {
@@ -100,6 +109,7 @@ static inline const void *mmap_file_open_ro(struct mmap_file *ref,
     MMAP_FILE_LOG("opening %s (ro)\n", file);
     ASSERT_ERRNO(ref->fd = open(file, O_RDONLY, 0664));
     ASSERT_ERRNO(ref->size = lseek(ref->fd, 0, SEEK_END));
+    MMAP_FILE_LOG("mmap_file open fd=%d\n", ref->fd);
 
     if (ref->size == 0) {
         /* mmap() doesn't allow empty files */

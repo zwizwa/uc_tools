@@ -99,17 +99,23 @@ void open_next_log_and_index(struct log_cursor *cur) {
   again:
     close_log_and_index(cur);
     cur->msg_nb = 0;
+
     dir_traverse_next(&cur->dt);
+
     if (dir_traverse_end(&cur->dt)) {
+        ASSERT(current_log_eof(cur));
         /* Leave the empty sentinel. */
-        // LOG("no next log %d\n", cur->log.message_size);
+        // LOG("no next log\n");
         return;
     }
     struct log_table *tab = log_table(cur->base.pVtab);
     open_current_log_and_index(tab, cur);
 
     /* Skip zero size files. */
-    if (current_log_eof(cur)) goto again;
+    if (current_log_eof(cur)) {
+        // LOG("empty file\n");
+        goto again;
+    }
 }
 
 
@@ -194,9 +200,9 @@ static int xClose(sqlite3_vtab_cursor *pCur) {
 */
 
 void normalize_cursor(struct log_cursor *cur) {
-    // LOG("normalize_cursor %d\n", cur->msg_nb);
+    //LOG("normalize_cursor %d\n", cur->msg_nb);
     wind_message(cur);
-    // LOG("normalize_cursor wind message ok\n");
+    //LOG("normalize_cursor wind message ok\n");
     if (cur->dt.end_depth > 0) {
         /* There is directory traversal.  If we are at the end of the
            current file. */
@@ -216,7 +222,9 @@ void normalize_cursor(struct log_cursor *cur) {
 static int xEof(sqlite3_vtab_cursor *pCur) {
     struct log_cursor *cur = log_cursor(pCur);
     int eof = current_log_eof(cur);
-    //LOG("xEof %d %d\n", eof, cur->msg_nb);
+    if (eof) {
+        LOG("xEof %d\n", eof);
+    }
     return eof;
 }
 static int xFilter(sqlite3_vtab_cursor *pCur, int idxNum, const char *idxStr,
@@ -239,6 +247,14 @@ static void log_cursor_init(struct log_cursor *cur,
                              struct log_table *tab) {
     /* All integer values are initialized to 0. */
     memset(cur,0,sizeof(*cur));
+
+    /* Idempotent close is used so these need to be initialized as
+       closed. */
+    for (int i=0; i<ARRAY_SIZE(cur->mmf); i++) {
+        mmap_file_init(&cur->mmf[i]);
+    }
+
+    
 
     /* SQLite will set this when xOpen finishes, but we rely on it
        during sync scan so initialize it here. */
