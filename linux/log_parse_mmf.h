@@ -244,43 +244,17 @@ static inline void log_parse_create_index(const char *filename) {
     log_parse_mmf_close(lpm);
 }
 
-static inline void log_parse_mmf_test(const char *filename) {
-    struct log_parse_mmf _lpm = {}, *lpm = &_lpm;
-    log_parse_mmf_open(lpm, filename);
+/* Bisection search for group id. */
+static inline void log_parse_mmf_find_group(struct log_parse_mmf *lpm,
+                                            uint32_t group) {
+    const struct log_parse_index *idx = log_parse_mmf_index(lpm);
+    ASSERT(idx);
+    intptr_t nb_msg = log_parse_mmf_index_size(lpm);
+    /* Perform bisection search to find the first element of the group:
+       msg[n]   .group == group and
+       msg[n-1] .group < group  (if n>0)
+    */
 
-    // log_parse_mmf_wind(lpm, 864);
-
-    /* Traverse */
-    while(!log_parse_mmf_eof(lpm)) {
-        if (lpm->lpi.bin) {
-            LOG("%08x %4d <bin>\n",
-                lpm->ts,
-                (int)lpm->lpi.offset);
-        }
-        else {
-            /* Note that lpm->line is not zero terminated and in case
-               of binary it includes the newline if there is one. */
-            uintptr_t len = lpm->lpi.data_len;
-            uint8_t line[len+1];
-            uintptr_t data_offset = lpm->lpi.offset + lpm->lpi.data_offset;
-            memcpy(line, lpm->log_mmf.buf + data_offset, len);
-            line[len] = 0;
-            if (line[len-1] == '\n') {
-                line[len-1] = 0;
-            }
-            LOG("%08x %4d '%s'\n",
-                lpm->ts,
-                (int)lpm->lpi.offset,
-                line);
-
-        }
-        log_parse_mmf_next(lpm);
-    }
-
-    /* Cleanup */
-    log_parse_mmf_close(lpm);
+    (void)nb_msg;
 }
-
-
-
 #endif
