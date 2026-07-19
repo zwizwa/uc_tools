@@ -243,9 +243,13 @@ static inline void log_parse_reset(struct log_parse *s,
 
 /* An index is a flat array of these. */
 struct log_parse_index {
-    uint64_t timestamp;  /* Unrolled 32 bit timestamp */
-    uint64_t offset;     /* Offset of start of message in the log file */
+    uint64_t timestamp;      /* Unrolled 32 bit timestamp */
+    uint64_t offset;         /* Start of log file to start of packet. */
+    uint32_t data_len;       /* Start of data to endx of data. */
+    uint32_t data_offset:8;  /* Start of packet to start of data. */
+    uint32_t bin:1;          /* Is this a binary message? */
 };
+CT_ASSERT(log_parse_index_size,sizeof(struct log_parse_index)==24);
 
 
 

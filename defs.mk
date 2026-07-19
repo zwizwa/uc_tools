@@ -33,3 +33,4 @@ UC_TOOLS_HOST_ELF := \
 	$(UC_TOOLS)/linux/test_dir_traverse.dynamic.host.elf \
 	$(UC_TOOLS)/linux/leftshift.dynamic.host.elf \
 	$(UC_TOOLS)/linux/test_arena.dynamic.host.elf \
+	$(UC_TOOLS)/linux/test_dlist.dynamic.host.elf \
