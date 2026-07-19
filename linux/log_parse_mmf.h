@@ -24,15 +24,13 @@ struct log_parse_mmf {
     uint32_t hi_ts;             // hi timestamp, rollover counter
     int index_fd;
 
-    /* Current log message. */
-    uintptr_t msg_nb;        // offset of start of message in mmf
-    uintptr_t msg_offset;    // offset of start of message in mmf
-    uintptr_t line_offset;   // offset of line data in mmf buffer
-    const uint8_t *line;     // buffered line data inside lp
-    uintptr_t len;           // length of line data
-    uint32_t ts;             // timestamp
-    uint32_t group;          // last log marker / message group id
-    uint8_t bin:1;           // this is a binary message
+    /* Current log message (cursor).
+       Where possible, use the same struct as the index. */
+    struct log_parse_index lpi;
+
+    /* Additional cursor state */
+    uintptr_t msg_nb;        // message counter, first=0
+    uint32_t ts;             // timestamp, 32-bit truncated
     uint8_t eof:1;           // no current message, stream at eof condition
     uint8_t open:1;          // for idempotent close
 
@@ -51,6 +49,12 @@ static inline intptr_t log_parse_mmf_index_size(struct log_parse_mmf *lpm) {
     return lpm->index_mmf.size / sizeof(*idx);
 }
 
+static inline uint64_t log_parse_mmf_timestamp(struct log_parse_mmf *lpm) {
+    uint64_t ts    = lpm->ts;
+    uint64_t hi_ts = lpm->hi_ts;
+    return ts + (hi_ts << 32);
+}
+
 
 static log_parse_status_t log_parse_mmf_ts_cb(
     struct log_parse *s, uint32_t ts,
@@ -67,19 +71,24 @@ static log_parse_status_t log_parse_mmf_ts_cb(
         lpm->hi_ts++;
     }
 
-    /* Current log entry. */
-    lpm->ts   = ts;
-    lpm->line = line;
-    lpm->len  = len;
-    lpm->bin  = bin;
+    /* Keep track of the u32 timestamp separately. */
+    lpm->ts = ts;
+
+    /* This allows saving the u64 timestamp. */
+    lpm->lpi.timestamp = log_parse_mmf_timestamp(lpm);
+
+    /* Save the rest of the indexing data. */
+    lpm->lpi.data_len = len;
+    lpm->lpi.bin      = bin;
+    lpm->lpi.sync     = bin && (len == 5) && (line[0] == 0);
 
     /* Track the framing. */
-    lpm->msg_offset = s->in_start - buf;
-    lpm->line_offset = s->in_mark - buf;
+    lpm->lpi.offset      = s->in_start - buf;
+    lpm->lpi.data_offset = s->in_mark - s->in_start;
 
     /* Track logmark messages */
     if (bin && (len == 5) && (line[0] == 0)) {
-        lpm->group = read_le(line+1, 4);
+        lpm->lpi.group = read_le(line+1, 4);
         //LOG("logmark = %d\n", (int32_t)lpm->group);
         //for (int i=0; i<len; i++) { LOG(" %02x", line[i]); } LOG("\n");
     }
@@ -183,11 +192,6 @@ static inline int log_parse_mmf_eof(struct log_parse_mmf *lpm) {
     return (!lpm->open) || lpm->eof;
 }
 
-static inline uint64_t log_parse_mmf_timestamp(struct log_parse_mmf *lpm) {
-    uint64_t ts    = lpm->ts;
-    uint64_t hi_ts = lpm->hi_ts;
-    return ts + (hi_ts << 32);
-}
 
 /* Create index file in open state. */
 static inline void log_parse_mmf_create_or_open_index(
@@ -218,17 +222,8 @@ static inline void log_parse_mmf_create_or_open_index(
 
     /* Traverse */
     while(!log_parse_mmf_eof(lpm)) {
-        struct log_parse_index idx = {
-            .timestamp   = log_parse_mmf_timestamp(lpm),
-            .offset      = lpm->msg_offset,
-            .group       = lpm->group,
-            .data_len    = lpm->len,
-            .data_offset = (lpm->line_offset - lpm->msg_offset),
-            .bin         = lpm->bin,
-            .sync        = lpm->bin && (lpm->len == 5) && (lpm->line[0] == 0),
-        };
         /* FIXME: This will benefit from buffering. */
-        assert_write(lpm->index_fd, (void*)&idx, sizeof(idx));
+        assert_write(lpm->index_fd, (void*)&lpm->lpi, sizeof(lpm->lpi));
         log_parse_mmf_next(lpm);
     }
 
@@ -257,31 +252,25 @@ static inline void log_parse_mmf_test(const char *filename) {
 
     /* Traverse */
     while(!log_parse_mmf_eof(lpm)) {
-        if (lpm->bin) {
+        if (lpm->lpi.bin) {
             LOG("%08x %4d <bin>\n",
                 lpm->ts,
-                (int)lpm->msg_offset);
+                (int)lpm->lpi.offset);
         }
         else {
             /* Note that lpm->line is not zero terminated and in case
                of binary it includes the newline if there is one. */
-            uint8_t line[lpm->len+1];
-
-            if (0) {
-                memcpy(line, lpm->line, lpm->len);
-            }
-            else {
-                memcpy(line, lpm->log_mmf.buf + lpm->line_offset, lpm->len);
-            }
-
-
-            line[lpm->len] = 0;
-            if (line[lpm->len-1] == '\n') {
-                line[lpm->len-1] = 0;
+            uintptr_t len = lpm->lpi.data_len;
+            uint8_t line[len+1];
+            uintptr_t data_offset = lpm->lpi.offset + lpm->lpi.data_offset;
+            memcpy(line, lpm->log_mmf.buf + data_offset, len);
+            line[len] = 0;
+            if (line[len-1] == '\n') {
+                line[len-1] = 0;
             }
             LOG("%08x %4d '%s'\n",
                 lpm->ts,
-                (int)lpm->msg_offset,
+                (int)lpm->lpi.offset,
                 line);
 
         }
