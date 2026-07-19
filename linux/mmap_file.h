@@ -25,6 +25,7 @@ struct mmap_file {
 #endif
 
 static inline void mmap_file_init(struct mmap_file *ref) {
+    /* Initialize in closed state. */
     memset(ref,0,sizeof(*ref));
     ref->fd = -1;
 }
@@ -33,13 +34,11 @@ static inline void mmap_file_close(struct mmap_file *ref) {
     /* Idempotent. */
     if (ref->buf) {
         ASSERT_ERRNO(munmap(ref->buf, ref->size));
-        ref->buf = NULL;
     }
     if (ref->fd != -1) {
-        MMAP_FILE_LOG("mmap_file close fd=%d\n", ref->fd);
         ASSERT_ERRNO(close(ref->fd));
-        ref->fd = -1;
     }
+    mmap_file_init(ref);
 }
 
 static inline void mmap_file_sync(struct mmap_file *ref) {
@@ -121,6 +120,11 @@ static inline const void *mmap_file_open_ro(struct mmap_file *ref,
             ref->size = 0;
             ERROR("MAP_FAILED on %s\n", file);
         }
+    }
+    /* The file can just be closed. */
+    if (ref->fd != -1) {
+        ASSERT_ERRNO(close(ref->fd));
+        ref->fd = -1;
     }
     return ref->buf;
 }
