@@ -5,20 +5,19 @@
 
 
 /* Initialize the sentinel. */
-static inline void NS(_init)(NS(_t) *l) {
-    memset(l,0,sizeof(*l));
+static inline void NS(_dlist_init)(NS(_dlist_t) *l) {
     l->next = l->prev = l;
 }
 
 /* Push an element to the head and tail of the list. */
-static inline void NS(_push_head)(NS(_t) *l, NS(_t) *e) {
+static inline void NS(_dlist_push_head)(NS(_dlist_t) *l, NS(_dlist_t) *e) {
     ASSERT(!e->next); // PRE: element is not in any list
     e->next = l->next;
     e->prev = l;
     l->next->prev = e;
     l->next = e;
 }
-static inline void NS(_push_tail)(NS(_t) *l, NS(_t) *e) {
+static inline void NS(_dlist_push_tail)(NS(_dlist_t) *l, NS(_dlist_t) *e) {
     ASSERT(!e->next); // PRE: element is not in any list
     e->next = l;
     e->prev = l->prev;
@@ -26,7 +25,7 @@ static inline void NS(_push_tail)(NS(_t) *l, NS(_t) *e) {
     l->prev = e;
 }
 
-static inline void NS(_remove)(NS(_t) *e) {
+static inline void NS(_dlist_remove)(NS(_dlist_t) *e) {
     ASSERT(e->next); // PRE: element is in a list
     e->next->prev = e->prev;
     e->prev->next = e->next;
@@ -34,17 +33,17 @@ static inline void NS(_remove)(NS(_t) *e) {
     e->prev = 0;
 }
 
-static inline NS(_t) *NS(_pop_head)(NS(_t) *l) {
-    NS(_t) *e = l->next;
+static inline NS(_dlist_t) *NS(_dlist_pop_head)(NS(_dlist_t) *l) {
+    NS(_dlist_t) *e = l->next;
     if (e == l) return 0;
-    NS(_remove)(e);
+    NS(_dlist_remove)(e);
     return e;
 }
 
-static inline NS(_t) *NS(_pop_tail)(NS(_t) *l) {
-    NS(_t) *e = l->prev;
+static inline NS(_dlist_t) *NS(_dlist_pop_tail)(NS(_dlist_t) *l) {
+    NS(_dlist_t) *e = l->prev;
     if (e == l) return 0;
-    NS(_remove)(e);
+    NS(_dlist_remove)(e);
     return e;
 }
 
