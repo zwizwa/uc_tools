@@ -245,9 +245,11 @@ static inline void log_parse_reset(struct log_parse *s,
 struct log_parse_index {
     uint64_t timestamp;      /* Unrolled 32 bit timestamp */
     uint64_t offset;         /* Start of log file to start of packet. */
-    uint32_t data_len;       /* Start of data to endx of data. */
-    uint32_t data_offset:8;  /* Start of packet to start of data. */
-    uint32_t bin:1;          /* Is this a binary message? */
+    uint32_t group;          /* Group id, e.g. c8 logmask.  Non-decreasing. */
+    uint16_t data_len;       /* Start of data to endx of data. */
+    uint8_t  data_offset;    /* Start of packet to start of data. */
+    uint8_t  bin:1;          /* Is this a binary message? */
+    uint8_t  sync:1;         /* Is this a sync (ID) message? */
 };
 CT_ASSERT(log_parse_index_size,sizeof(struct log_parse_index)==24);
 

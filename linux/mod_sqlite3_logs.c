@@ -222,9 +222,7 @@ void normalize_cursor(struct log_cursor *cur) {
 static int xEof(sqlite3_vtab_cursor *pCur) {
     struct log_cursor *cur = log_cursor(pCur);
     int eof = current_log_eof(cur);
-    if (eof) {
-        LOG("xEof %d\n", eof);
-    }
+    // LOG("xEof %d\n", eof);
     return eof;
 }
 static int xFilter(sqlite3_vtab_cursor *pCur, int idxNum, const char *idxStr,
@@ -248,13 +246,8 @@ static void log_cursor_init(struct log_cursor *cur,
     /* All integer values are initialized to 0. */
     memset(cur,0,sizeof(*cur));
 
-    /* Idempotent close is used so these need to be initialized as
-       closed. */
-    for (int i=0; i<ARRAY_SIZE(cur->mmf); i++) {
-        mmap_file_init(&cur->mmf[i]);
-    }
-
-    
+    /* Note that the mmf structs support idempotent close when
+       initialized as zero. */
 
     /* SQLite will set this when xOpen finishes, but we rely on it
        during sync scan so initialize it here. */

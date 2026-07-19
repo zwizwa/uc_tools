@@ -20,6 +20,15 @@ static inline uint64_t read_be(const uint8_t *buf, uint32_t nb) {
     }
     return accu;
 }
+static inline uint64_t read_le(const uint8_t *buf, uint32_t nb) {
+    uint64_t accu = 0;
+    buf += nb;
+    while(nb) {
+        accu = (accu << 8) | (*(--buf));
+        nb--;
+    }
+    return accu;
+}
 static inline void write_be(uint8_t *buf, uint64_t word, uint32_t nb) {
     buf += nb;
     while(nb) {
