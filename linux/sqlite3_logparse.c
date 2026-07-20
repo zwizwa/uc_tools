@@ -122,10 +122,11 @@ static void declare_vtab(sqlite3 *db) {
         "  run_cfg  TEXT,"        // 1 -- test run configuration name, e.g. ci_2 (automatic) or t2 (manual)
         "  dev_log  TEXT,"        // 2 -- filename of device log, e.g. usb.002.bin
         "  msg_nb   INTEGER,"     // 3 -- message number inside file 0=first
-        "  ts       INTEGER,"     // 4 -- unrolled 64 bit timestamp
-        "  bin      INTEGER,"     // 5 -- true: binary message, false: text message
-        "  line     TEXT,"        // 6 -- log data: text or binary
-        "  file     TEXT HIDDEN," // 7 -- path of log file, also available as the 3 components: dir/dir/file
+        "  group_nb INTEGER,"     // 4 -- group number (e.g. test id)
+        "  ts       INTEGER,"     // 5 -- unrolled 64 bit timestamp
+        "  bin      INTEGER,"     // 6 -- true: binary message, false: text message
+        "  line     TEXT,"        // 7 -- log data: text or binary
+        "  file     TEXT HIDDEN," // 8 -- path of log file, also available as the 3 components: dir/dir/file
         // TODO: split out the usb/dmx and device number
 
         "  PRIMARY KEY(file, msg_nb)"
@@ -168,14 +169,18 @@ static int xColumn(sqlite3_vtab_cursor *pCur, sqlite3_context *c, int N) {
         break;
     }
     case 4: {
-        sqlite3_result_int64(c, idx->timestamp);
+        sqlite3_result_int(c, idx->group);
         break;
     }
     case 5: {
-        sqlite3_result_int(c, idx->bin);
+        sqlite3_result_int64(c, idx->timestamp);
         break;
     }
     case 6: {
+        sqlite3_result_int(c, idx->bin);
+        break;
+    }
+    case 7: {
         const char *line = log + idx->offset + idx->data_offset;
         intptr_t len = idx->data_len;
         if (idx->bin) {
@@ -188,7 +193,7 @@ static int xColumn(sqlite3_vtab_cursor *pCur, sqlite3_context *c, int N) {
         }
         break;
     }
-    case 7: {
+    case 8: {
         sqlite3_result_text(c, cur->log_filename, -1, SQLITE_TRANSIENT);
         break;
     }

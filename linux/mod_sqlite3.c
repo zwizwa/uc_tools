@@ -1,29 +1,26 @@
 #ifndef MOD_SQLITE3
 #define MOD_SQLITE3
 
-/* Convenience routines for the sqlite-as-daemon-state pattern used in
-   etc-net-daemon and unbrickable server, router. */
+/* The stateless part of the code is being migrated to db_sqlite3.h */
+#include "db_sqlite3.h"
 
-#ifndef SQL_LOG
-#define SQL_LOG(...)
-#endif
+/* Convenience routines for the sqlite-as-daemon-state pattern used in
+   etc-net-daemon and unbrickable server, router.  These assume there
+   is only one database connection in the application binary which
+   allows global variables to be used for database and statement list. */
+
+sqlite3 *db = NULL;
+struct stmt_list *stmt_list = NULL;
 
 /* DATABASE */
-#include "macros.h"
-#include <sqlite3.h>
-sqlite3 *db = NULL;
+
 void sqlite_assert_eq(int rv, int rv_expected) {
-    if (rv != rv_expected) {
-        const char *msg = sqlite3_errmsg(db);
-        LOG("sql_error %d %s\n", rv, msg);
-        exit(1);
-    }
+    db_assert_eq(db, rv, rv_expected);
 }
 void sqlite_assert(int rv) {
     sqlite_assert_eq(rv, SQLITE_OK);
 }
 
-#define ASSERT_SQLITE(cmd) sqlite_assert(cmd)
 void db_open(const char *db_file) {
     ASSERT_SQLITE(sqlite3_open(db_file, &db));
     /* For emu it is not necessary to attach a tmp database to reduce
@@ -48,43 +45,15 @@ void db_load_extensions(const char *const *module) {
     }
 }
 
+
 /* DB STATEMENTS */
 
-struct stmt_list;
-struct stmt_list {
-    sqlite3_stmt *s;
-    struct stmt_list *next;
-};
-struct stmt_list *stmt_list = NULL;
-
 sqlite3_stmt *stmt(sqlite3_stmt **ps, const char *q) {
-    struct sqlite3_stmt *tmp_ps = NULL;
-    if (ps == NULL) {
-        ps = &tmp_ps;
-    }
-    if (*ps == NULL) {
-        SQL_LOG("prepare: %p %s\n", ps, q);
-        ASSERT_SQLITE(sqlite3_prepare_v2(db, q, strlen(q), ps, NULL));
-        /* Keep track of list to be able to properly shut down. */
-        struct stmt_list *l = malloc(sizeof(*l));
-        ASSERT(l);
-        l->next = stmt_list;
-        l->s = *ps;
-        stmt_list = l;
-    }
-    struct sqlite3_stmt *s = *ps;
-    ASSERT_SQLITE(sqlite3_reset(s));
-    ASSERT_SQLITE(sqlite3_clear_bindings(s));
-    return s;
+    return db_stmt(db, &stmt_list, ps, q);
 }
 void stmts_finalize(void) {
-    struct stmt_list *l = stmt_list;
-    while(l) {
-        struct stmt_list *l0 = l;
-        l = l->next;
-        sqlite3_finalize(l0->s);
-        free(l0);
-    }
+    db_stmts_finalize(stmt_list);
+    stmt_list = NULL;
 }
 
 void db_attach(const char *db_file, const char *table) {

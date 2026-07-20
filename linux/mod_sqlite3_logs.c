@@ -29,6 +29,8 @@
 
 #include "dir_traverse.h"
 
+#include "sqlite3_vt.h"
+
 SQLITE_EXTENSION_INIT1
 
 #ifndef MOD_SQLITE3_LOG_NB_MMF
@@ -181,7 +183,10 @@ static int xDisconnect(sqlite3_vtab *pVtab) {
 
 // https://claude.ai/chat/6c19049a-04d1-40d6-bdbd-fcd7bdb0287e
 static int xBestIndex(sqlite3_vtab *pVTab, sqlite3_index_info *p) {
-    //LOG("xBestIndex\n");
+#if 1
+    LOG("xBestIndex\n");
+    db_log_index_info(p);
+#endif
     return SQLITE_OK;
 }
 
