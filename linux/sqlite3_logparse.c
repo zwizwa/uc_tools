@@ -14,6 +14,16 @@
    different so modules.  I.e. it is not necessary to use the ns_*h
    name-mangling functor approach. */
 
+/* Optimizations:
+
+   - add xBestIndex / xFilter behavior that can skip traversal of
+     entire paths at the dir_traverse level.
+
+   - create an LRU cache (or just permanent store) of memory mapped
+     files in the table struct to avoid open/close map/unmap overhead
+
+*/
+
 typedef struct log_parse_mmf sqlite3_log_t;
 
 #define VTABLE_NAME "logparse"
@@ -91,15 +101,33 @@ void wind_message(struct log_cursor *cur) {
     }
 }
 
+/* This is Nano test system log directory structure.
+
+   It is probably generic enough to use for other configurations.
+   If not, move this into Nano code and only leave generic code here.
+
+   The "hardcoded" part is the dir/dir/file structure for the binary
+   logs.  Top directory is test run identifier which is the time at
+   which the whole test suite was started.  Second directory is one of
+   many hardware test setups that each have a self-contained test
+   controller and run in parallel.  Then for each test controller, all
+   log files go into a single directory.
+*/
+
 static void declare_vtab(sqlite3 *db) {
     int rv = sqlite3_declare_vtab(
         db,
         "CREATE TABLE x("
-        "  ts     INTEGER,"  // 0
-        "  bin    INTEGER,"  // 1
-        "  line   TEXT,"     // 2
-        "  msg_nb INTEGER,"  // 3 -- message number inside file 0=first
-        "  file   TEXT,"     // 4 -- path of log file
+        "  run_ts   TEXT,"        // 0 -- test run timestamp (see nano_up.sh), e.g. 20260708-104519
+        "  run_cfg  TEXT,"        // 1 -- test run configuration name, e.g. ci_2 (automatic) or t2 (manual)
+        "  dev_log  TEXT,"        // 2 -- filename of device log, e.g. usb.002.bin
+        "  msg_nb   INTEGER,"     // 3 -- message number inside file 0=first
+        "  ts       INTEGER,"     // 4 -- unrolled 64 bit timestamp
+        "  bin      INTEGER,"     // 5 -- true: binary message, false: text message
+        "  line     TEXT,"        // 6 -- log data: text or binary
+        "  file     TEXT HIDDEN," // 7 -- path of log file, also available as the 3 components: dir/dir/file
+        // TODO: split out the usb/dmx and device number
+
         "  PRIMARY KEY(file, msg_nb)"
         ") WITHOUT ROWID");
     if (rv != SQLITE_OK) {
@@ -129,15 +157,25 @@ static int xColumn(sqlite3_vtab_cursor *pCur, sqlite3_context *c, int N) {
     }
 
     switch(N) {
-    case 0: {
+    case 0:
+    case 1:
+    case 2: {
+        sqlite3_result_text(c, path_name(cur, N-0), -1, SQLITE_TRANSIENT);
+        break;
+    }
+    case 3: {
+        sqlite3_result_int(c, cur->msg_nb);
+        break;
+    }
+    case 4: {
         sqlite3_result_int64(c, idx->timestamp);
         break;
     }
-    case 1: {
+    case 5: {
         sqlite3_result_int(c, idx->bin);
         break;
     }
-    case 2: {
+    case 6: {
         const char *line = log + idx->offset + idx->data_offset;
         intptr_t len = idx->data_len;
         if (idx->bin) {
@@ -150,11 +188,7 @@ static int xColumn(sqlite3_vtab_cursor *pCur, sqlite3_context *c, int N) {
         }
         break;
     }
-    case 3: {
-        sqlite3_result_int(c, cur->msg_nb);
-        break;
-    }
-    case 4: {
+    case 7: {
         sqlite3_result_text(c, cur->log_filename, -1, SQLITE_TRANSIENT);
         break;
     }
