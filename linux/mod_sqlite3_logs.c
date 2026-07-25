@@ -23,7 +23,6 @@
 
 #define _GNU_SOURCE         /* See feature_test_macros(7) */
 #include <sys/mman.h>
-#include <sqlite3ext.h>
 
 #include "mmap_file.h"
 
@@ -31,7 +30,6 @@
 
 #include "sqlite3_vt.h"
 
-SQLITE_EXTENSION_INIT1
 
 #ifndef MOD_SQLITE3_LOG_NB_MMF
 #define MOD_SQLITE3_LOG_NB_MMF 1
@@ -181,11 +179,54 @@ static int xDisconnect(sqlite3_vtab *pVtab) {
     return SQLITE_OK;
 }
 
+// This will be encoded in idxStr, so needs to be flat and cannot
+// contain any pointers.  If the encoding is raw, it cannot contain 0
+// characters.
+#define DIR_CONSTRAINT_NONE 0xff
+struct dir_constraint_index {
+    /* If a directory constraing is active, this will point to the
+       argv index, while DIR_CONSTRAINT_NONE means constraint is not
+       active. */
+    int8_t argv_index[MOD_SQLITE3_LOG_NB_MMF];
+};
+
+
 // https://claude.ai/chat/6c19049a-04d1-40d6-bdbd-fcd7bdb0287e
 static int xBestIndex(sqlite3_vtab *pVTab, sqlite3_index_info *p) {
-#if 1
+#if 0
     LOG("xBestIndex\n");
     db_log_index_info(p);
+
+    /* Constraints on the contents of the log files are a bit too
+       advanced atm and maybe not all that useful, but constraints on
+       the files will have a large effect, so implement them first.
+       Focus on what we can easily do: equality constraints on the
+       directory and files, e.g. typically for the logparse is to
+       restrict to files in <test_id>/<test_setup>/
+
+    */
+
+    /* So I am going to need to encode the "constraint program" into a
+       string.  What do I actually need to know at scan time?  I think
+       it is just "do I skip this file or not". */
+
+
+    for(i=0; i<p->nConstraint; i++){
+        /* aConstraint is what we are told by sqlite, and
+           aConstraintUsage is what we tell sqlite */
+        struct sqlite3_index_constraint *c = &p->aConstraint[i];
+        if( c->op==SQLITE_INDEX_CONSTRAINT_EQ && c->usable ){
+            /* Note that 0 means "not set". 1 is argv[0], 2 is argv[1]
+               etc.. */
+
+            p->aConstraintUsage[i].argvIndex = 1;
+            /* Tells sqlite to omit check, i.e. we guarantee that it
+               is satisfied fully. */
+            p->aConstraintUsage[i].omit = 1;
+        }
+    }
+
+
 #endif
     return SQLITE_OK;
 }

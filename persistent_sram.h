@@ -33,7 +33,7 @@
 #define PRAM_BAD_ZERO_FILL 3
 #define PRAM_BAD_SLOT_CRC  4
 
-#define PRAM_TYPE_PROVISION 1
+#define PRAM_TYPE_CUSTOMIZE 1
 #define PRAM_TYPE_CODE      2
 
 /* This header file does not know _where_ the data is stored.

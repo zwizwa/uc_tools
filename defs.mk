@@ -36,3 +36,4 @@ UC_TOOLS_HOST_ELF := \
 	$(UC_TOOLS)/linux/test_dlist.dynamic.host.elf \
 	$(UC_TOOLS)/linux/test_lru.dynamic.host.elf \
 	$(UC_TOOLS)/linux/test_bisect.dynamic.host.elf \
+	$(UC_TOOLS)/linux/test_base64.dynamic.host.elf \
