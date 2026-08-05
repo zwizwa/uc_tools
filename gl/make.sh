@@ -1,4 +1,4 @@
 #!/bin/sh
 cd $(dirname "$0")
-exec cached-nix-shell host.nix --exec make -j$(nproc) -C . "$@"
-
+[ -z "$MAKEFLAGS" ] && export MAKEFLAGS="-j$(nproc)"
+exec cached-nix-shell host.nix --exec make -C . "$@"

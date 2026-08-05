@@ -58,10 +58,12 @@ void stmts_finalize(void) {
 
 void db_attach(const char *db_file, const char *table) {
     char *sql = NULL;
-    asprintf(&sql, "ATTACH DATABASE ? as %s", table);
+    int rv;
+    rv = asprintf(&sql, "ATTACH DATABASE ? as %s", table);
+    (void)rv;
     sqlite3_stmt *s = stmt(NULL /* Not stored, finalize needed */, sql);
     ASSERT_SQLITE(sqlite3_bind_text(s, 1, db_file, strlen(db_file), NULL));
-    int rv = sqlite3_step(s);
+    rv = sqlite3_step(s);
     sqlite_assert_eq(rv, SQLITE_DONE);
     sqlite3_finalize(s);  /* Delete because not stored. */
 }
