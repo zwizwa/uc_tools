@@ -14,6 +14,6 @@ void printit(void *ctx, const char *model, int temp) {
 }
 
 int main(int argc, char **argv) {
-    sys_for_hwmon_temp(NULL, printit);
+    sys_for_hwmon_temp(printit, NULL);
 }
 
