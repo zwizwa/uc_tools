@@ -3,7 +3,6 @@
 
 #include <stdint.h>
 #include <stddef.h>  // for size_t which is GCC, not libc
-
 #include "macros.h"  // for unlikely()
 
 uint8_t hex_int2char(uint32_t i);
