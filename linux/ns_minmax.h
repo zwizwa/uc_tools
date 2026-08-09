@@ -94,7 +94,7 @@ static inline intptr_t NS(_open_levels)(struct NS(_map) *s,
 
     char tmp[1024];
     snprintf(tmp, sizeof(tmp), "mkdir -p '%s.d'\n", file);
-    system(tmp);
+    ASSERT(0 == system(tmp));
 
     for (int level=s->level_start; level<MINMAX_LEVEL_ENDX; level++) {
 

@@ -11,6 +11,8 @@
 #include "mod_tag_u32_stream.c"
 #include "mod_send_tag_u32.c"
 
+#include "tag_u32.c"
+
 /* The name of the map refers to the handler function. */
 #define DEF_MAP DEF_TAG_U32_CONST_MAP_HANDLE
 
