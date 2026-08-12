@@ -31,7 +31,7 @@ static const char *string_L(lua_State *L, int index, size_t *len) {
 }
 
 static inline void dbg_free(const char *tag, void *ptr) {
-    LOG("%s %p\n", tag, ptr);
+    // LOG("%s %p\n", tag, ptr);
     // FIXME: Something isn't right in how these pointers are tracked.
     // For now it works just letting it leak.
     // free(ptr);
