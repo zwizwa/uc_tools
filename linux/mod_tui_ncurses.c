@@ -111,6 +111,7 @@ void tui_scroll(tui_window_t *w, int lines) {
 #define TUI_KEY_END   KEY_END
 #define TUI_KEY_LEFT  KEY_LEFT
 #define TUI_KEY_RIGHT KEY_RIGHT
+#define TUI_KEY_ENTER KEY_ENTER
 
 #define TUI_KEY_F(n)  KEY_F(n)
 
