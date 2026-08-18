@@ -1,7 +1,15 @@
 /* Attempt at some generic query browser.
 
    The idea is to point this at a DB file with some metadata exposing
-   structure and this program will present a TUI browser. */
+   structure and this program will present a TUI browser.
+
+   - I wanted to use this for a single (file) list but that is a bit
+     overkill.  Use dialog for that.
+
+   - For multi-level, the levels can be keys: top key, second key
+     etc...  I need an actual example to use this.
+
+*/
 
 #define _GNU_SOURCE
 #include <stdio.h>
@@ -59,7 +67,7 @@ static void format_top(
 {
     ASSERT(index < s->nb_rows);
     struct top *t = s->table.top[index];
-    snprintf(buf, buf_size, "%s %s", t->entry, t->action);
+    snprintf(buf, buf_size, "%s", t->entry);
 }
 // This is "press enter while inside top_table list"
 static struct ui_state *enter_top(
@@ -150,9 +158,13 @@ int main(int argc, char **argv) {
     const char *db = NULL;
     db = argv[1];
     const char *ext[] = {
-        "./csv.so",
+        // "./csv.so",
         NULL,
     };
     struct ui_state *s = qb_loop(db,ext);
     LOG("action: %s\n", s->action);
+    // Note that stdout cannot be used becuase it is used by ncurses.
+    // It is possible to use stderr:
+    // https://claude.ai/chat/1e93f000-4956-473f-95e3-c7d0b1a4769a
+
 }

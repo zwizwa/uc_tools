@@ -56,6 +56,15 @@ void tui_clear(tui_window_t *w) {
 void tui_box(tui_window_t *w) {
     box(w,0,0);
 }
+// FIXME: use stderr
+// https://claude.ai/chat/1e93f000-4956-473f-95e3-c7d0b1a4769a
+//
+//   SCREEN *scr = newterm(NULL, stderr, stdin);
+//   set_term(scr);
+//   /* ... curses stuff ... */
+//   endwin();
+//   delscreen(scr);
+
 void tui_init_screen(void) {
     initscr();
     cbreak();
