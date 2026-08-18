@@ -377,7 +377,7 @@ end
 
 -- Perform shrink using the visitor-style shrinkers.
 function m.run_shrink(shrinker, prop, args)
-   -- log_desc({shrinking = args})
+   log_desc({run_shrink = {shrinker=shrinker, prop=prop, args=args}})
    local function done()
       -- log_desc({shrunk_to = args})
       return args
