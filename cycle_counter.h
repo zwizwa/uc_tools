@@ -65,6 +65,17 @@ static inline uint32_t cycle_counter_future_time(uint32_t udiff) {
     return cycle_counter_future(cycle_counter(), udiff);
 }
 
+/* Busy loop with timeout. */
+#define CC_BUSYWAIT(check_condition, timeout_cycles, timeout_command) ({ \
+    uint32_t rv = 0; \
+    uint32_t timeout_abs = cycle_counter_future_time(timeout_cycles); \
+    for(;;) { \
+        if (!(check_condition)) { rv = 1; break; } \
+        if (cycle_counter_expired(timeout_abs)) { timeout_command; } break; \
+    } \
+    rv; })
+
+
 #define CYCLE_COUNTER_EXPIRED(state) \
     ({uint32_t _cc_cur = cycle_counter() ; (_cc_cur - (state)) > (time);   \
         (state) = _cc_cur)
