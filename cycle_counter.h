@@ -66,14 +66,31 @@ static inline uint32_t cycle_counter_future_time(uint32_t udiff) {
 }
 
 /* Busy loop with timeout. */
-#define CC_BUSYWAIT(check_condition, timeout_cycles, timeout_command) ({ \
+#define CC_BUSYWAIT(check_condition, timeout_cycles, on_timeout) ({ \
     uint32_t rv = 0; \
     uint32_t timeout_abs = cycle_counter_future_time(timeout_cycles); \
     for(;;) { \
         if (!(check_condition)) { rv = 1; break; } \
-        if (cycle_counter_expired(timeout_abs)) { timeout_command; } break; \
+        if (cycle_counter_expired(timeout_abs)) { on_timeout; break; } \
     } \
     rv; })
+
+/* Same, but using a callback.  Probably better if there are a lot of
+   calls to avoid code explosion. */
+static inline int cycle_counter_busywait(
+    int (*check_condition)(void),
+    uint32_t timeout_cycles,
+    void (*on_timeout)(void))
+{
+    int rv = 0;
+    uint32_t timeout_abs = cycle_counter_future_time(timeout_cycles);
+    for(;;) {
+        if (!(check_condition())) { rv = 1; break; }
+        if (cycle_counter_expired(timeout_abs)) { on_timeout(); break; }
+    }
+    return rv;
+}
+
 
 
 #define CYCLE_COUNTER_EXPIRED(state) \
