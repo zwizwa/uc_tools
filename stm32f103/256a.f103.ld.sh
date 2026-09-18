@@ -21,8 +21,8 @@ case $(basename $0) in
     256b.f103.ld.sh)
         CONFIG=0x08022000
         ORIGIN=0x08022800
-        # LENGTH=0x1D000 # From ORIGIN to end of Flash
-        LENGTH=0x1C000 # Leave room for 2k log dump
+        LENGTH=0x1D800 # From ORIGIN to end of 256k (note that 512k Geehy uses top 256k for core dump)
+        # LENGTH=0x1C000 # Leave room for 2k log dump: this is now included in core dump for the 512k Geehy
         ;;
     *)
         CONFIG=0x08004000
