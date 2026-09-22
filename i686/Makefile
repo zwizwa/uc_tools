@@ -135,7 +135,11 @@ ipxe-%.dsk: %.ipxe
 	../ipxe/build.sh rtl8139.dsk $<
 	mv ../ipxe/src/bin/rtl8139.dsk $@
 
-
+# The host.nix now has env and shell targets. The former is a link
+# that contains a bin directory that can be added to path before
+# invoking make.  See make.sh
+env: host.nix
+	nix-build host.nix -A env -o env
 
 
 

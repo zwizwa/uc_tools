@@ -22,5 +22,17 @@ if [ -z "$MAKEFLAGS" ]; then
     export MAKEFLAGS="-j$(nproc)"
     # echo "setting MAKEFLAGS=$MAKEFLAGS"
 fi
-exec cached-nix-shell host.nix --exec make -C . "$@"
 
+using_shell() {
+    exec cached-nix-shell host.nix -A shell --exec make -C . "$@"
+}
+
+using_env() {
+    # -L uses the link's timestamp instead of the target
+    make -L env 
+    # export PATH=$(readlink -f env)/bin:$PATH
+    export PATH=$(readlink -f env)/bin
+    exec make "$@"
+}
+
+using_env "$@"
