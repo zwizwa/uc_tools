@@ -31,11 +31,12 @@ UC_TOOLS_HOST_ELF := \
 	$(UC_TOOLS)/linux/seek_hole.dynamic.host.elf \
 	$(UC_TOOLS)/linux/tether_udp.dynamic.host.elf \
 	$(UC_TOOLS)/linux/test_dir_traverse.dynamic.host.elf \
-	$(UC_TOOLS)/linux/leftshift.dynamic.host.elf \
+	$(UC_TOOLS)/linux/keyboard.dynamic.host.elf \
 	$(UC_TOOLS)/linux/test_arena.dynamic.host.elf \
 	$(UC_TOOLS)/linux/test_dlist.dynamic.host.elf \
 	$(UC_TOOLS)/linux/test_lru.dynamic.host.elf \
 	$(UC_TOOLS)/linux/test_bisect.dynamic.host.elf \
 	$(UC_TOOLS)/linux/test_base64.dynamic.host.elf \
 	$(UC_TOOLS)/linux/test_hwmon.dynamic.host.elf  \
+	$(UC_TOOLS)/linux/beep.dynamic.host.elf  \
 
