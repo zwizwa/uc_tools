@@ -58,6 +58,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdint.h>
 
 #include <fcntl.h>
+#include <sys/file.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
@@ -346,6 +347,15 @@ static void fd_open_tty(int *pfd, const char *dev) {
     // FIXME: Explain why this should be non-blocking?
     ASSERT_ERRNO(fd = open(dev, O_RDWR | O_NONBLOCK));
     // ASSERT_ERRNO(fd = open(dev, O_RDWR));
+
+    if (flock(fd, LOCK_EX | LOCK_NB) < 0) {
+        if (errno == EWOULDBLOCK) {
+            ERROR("%s busy\n", dev);
+        }
+        else {
+            ERROR("%s flock error %d\n", dev, errno);
+        }
+    }
 
     raw_serial_config(fd);
 
