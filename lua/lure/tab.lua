@@ -26,7 +26,16 @@ function tab.map(fun, inp)
    return outp
 end
 
--- Similar to set.union, but mutates the first tab
+-- Key-wise uinion where the 2nd argument takes precedence.
+-- Same implementation as set.union)
+function tab.merge(a,b) -- a v b
+   local s = {}
+   for k,v in pairs(a) do s[k]=v end
+   for k,v in pairs(b) do s[k]=v end
+   return s
+end
+
+-- Similar to tab.merge, but mutates the first tab
 function tab:add_defaults(defaults)
    if not self then self = {} end
    for k,v in pairs(defaults) do
