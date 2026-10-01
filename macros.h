@@ -71,6 +71,11 @@ __attribute__ ((noreturn));
     (sizeof(x)/sizeof(x[0]))
 #endif
 
+#ifndef ARRAY_ARG
+#define ARRAY_ARG(a) a,ARRAY_SIZE(a)
+#endif
+
+
 /* Two array iterators.  Note that these are very different, so are
    named completely differently. */
 

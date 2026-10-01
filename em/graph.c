@@ -1,3 +1,6 @@
+// FIXME: wokraround: emscripten doesn't define __linux__
+#define __linux__
+
 #include "mod_uct_gl.c"
 #include <emscripten.h>
 

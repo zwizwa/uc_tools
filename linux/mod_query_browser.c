@@ -72,12 +72,13 @@ struct query_browser {
     /* State of the UI state machine, e.g. contains O(1)
        representation of the current list. */
     void *state;
+
 };
 
 /* This needs to be called in every function that uses s->table
    We call it in the render function. */
 uintptr_t qb_nb_rows(struct query_browser *s);
-void qb_enter(struct query_browser *s, uintptr_t index);
+int qb_enter(struct query_browser *s, uintptr_t index);
 void qb_format(struct query_browser *s,
                uintptr_t index,
                char *buf,
@@ -120,10 +121,11 @@ void qb_redraw_info(struct query_browser *s) {
 #define QB_HANDLE_ERROR    2
 #define QB_HANDLE_QUIT     3
 
-void qb_handle_key_event(struct query_browser *s, int ch) {
+int qb_handle_key_event(struct query_browser *s, int ch) {
 
     int old = s->sel;
     int last = qb_nb_rows(s) - 1;
+    int rv = 1; // keep going
 
     /* Regular keys. */
     if (ch == TUI_KEY_DOWN && s->sel < last) {
@@ -132,13 +134,16 @@ void qb_handle_key_event(struct query_browser *s, int ch) {
     else if (ch == TUI_KEY_UP && s->sel > 0) {
         s->sel--;
     }
-    else if (ch == TUI_KEY_RIGHT) {
+    else if ((ch == TUI_KEY_RIGHT) ||
+             (ch == TUI_KEY_ENTER) ||
+             (ch == '\r') ||
+             (ch == '\n')) {
         /* Are these invariants?  Code above doesn't seem to think so.  FIXME. */
         ASSERT(s->sel >= 0);
         ASSERT(s->sel <= last);
         if (s->sel < 0)    s->sel = 0;
         if (s->sel > last) s->sel = last;
-        qb_enter(s, s->sel);
+        rv = qb_enter(s, s->sel);
         qb_redraw_list(s);
     }
     else if (ch == TUI_KEY_NPAGE) {
@@ -163,7 +168,8 @@ void qb_handle_key_event(struct query_browser *s, int ch) {
     //  else if (ch == TUI_KEY_F(1)) { handle_f1(...); }
     else {
         // other keys don't update layout
-        return;
+        // 1 = keep going
+        return 1;
     }
 
     // Has the selection scrolled off the visible window? */
@@ -200,6 +206,8 @@ void qb_handle_key_event(struct query_browser *s, int ch) {
     tui_update_window(s->list_w);
     tui_update_window(s->info_w);
     tui_update_screen();  // one flush, no flicker
+
+    return rv; 
 
 }
 
@@ -262,8 +270,7 @@ int qb_handle_event(void *ctx, int ch) {
         return 0;
     default:
         /* The rest are ordinary key commands that update the tui. */
-        qb_handle_key_event(s, ch);
-        return 1;
+        return qb_handle_key_event(s, ch);
     }
 }
 
@@ -280,11 +287,14 @@ void qb_init(struct query_browser *s,
     arena_init(&s->arena);
 }
 
-void qb_loop(const char *db_filename, const char *const *exts) {
-    struct query_browser _logfile = { };
-    struct query_browser *s = &_logfile;
+void *qb_loop(const char *db_filename, const char *const *exts) {
+    struct query_browser _s = { };
+    struct query_browser *s = &_s;
     qb_init(s, db_filename, exts);
     tui_event_loop(qb_handle_event, s);
+    // The query_browser is destroyed, but the state object is passed
+    // back to caller.
+    return s->state;
 }
 
 
