@@ -7,6 +7,9 @@
 #include <sys/ioctl.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #include "macros.h"
 
@@ -34,6 +37,37 @@ int keydown(int fd, int code) {
 int leftshift(int fd) {
     int code = KEY_LEFTSHIFT;  // 42
     return keydown(fd, code);
+}
+
+/* Edit these. */
+#define NOTIFY_IP   "127.0.0.1"
+#define NOTIFY_PORT 12345
+#define NOTIFY_SEC  30
+static const unsigned char notify_msg[] = {
+    'l','u','n','a'
+};
+
+int notify(int fd) {
+    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock < 0) { perror("socket"); return 2; }
+    struct sockaddr_in addr = {
+        .sin_family = AF_INET,
+        .sin_port   = htons(NOTIFY_PORT),
+        .sin_addr.s_addr = inet_addr(NOTIFY_IP),
+    };
+    long last = 0;
+    struct input_event ev;
+    while (read(fd, &ev, sizeof(ev)) == (ssize_t)sizeof(ev)) {
+        if (ev.type != EV_KEY) continue;
+        if (ev.value != 1) continue;  /* key down only */
+        if (ev.time.tv_sec - last < NOTIFY_SEC) continue;
+        last = ev.time.tv_sec;
+        if (sendto(sock, notify_msg, sizeof(notify_msg), 0,
+                   (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+            perror("sendto");
+        }
+    }
+    return 0;
 }
 
 int main(int argc, char **argv) {
@@ -72,10 +106,15 @@ int main(int argc, char **argv) {
         return 0;
     }
 
+    if (!strcmp(cmd, "notify")) {
+        return notify(fd);
+    }
+
   usage:
     LOG("usage: %s\n", argv[0]);
     LOG("         leftshift\n");
     LOG("         set_scroll_led <state>\n");
+    LOG("         notify\n");
     exit(0);
 }
 
