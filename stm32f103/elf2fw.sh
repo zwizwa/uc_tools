@@ -67,7 +67,14 @@ rm -f "$FW"
 
 # To keep it clean, this should be configured explicitly.  However we
 # only ever do this for arm-none-eabi, so use a default for now.
+#
+# Opus comment, is this relevant? : Bare arm-none-eabi-objcopy instead
+# of honoring $OBJCOPY/$GCC_ARM_NONE_EABI_PREFIX, so .fw.elf targets
+# need the toolchain on PATH even when the prefix var is set.
 [ -z "$OBJCOPY" ] && OBJCOPY=arm-none-eabi-objcopy
+
+
+
 
 # Assume it is ok to write intermediates next to the original.
 BIN="$ELF.bin.tmp"

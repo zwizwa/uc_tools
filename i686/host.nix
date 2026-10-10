@@ -1,23 +1,9 @@
-# let
-#   nixpkgs = import ../nix/nixpkgs.nix;
-# in
-# with import nixpkgs { };
-
-# let i686 = pkgsCross.i686-embedded.buildPackages;
-
-# in mkShell {
-#   buildInputs = [
-#     nasm
-#     i686.gcc        # i686-elf-gcc
-#     i686.binutils   # i686-elf-ld
-#   ];
-# }
+# Dual function (see make.sh)
+# - for (cached-)nix-shell
+# - explicit env tool chain tree
 
 # https://claude.ai/chat/02adce80-7401-4874-bf0e-0b11437d3407
 
-# I want to move towards using ~/.result links that are built
-# automatically, and a build that doesn't use cached-nix-shell anymore
-# but the paths from the result instead.
 
 let
   pkgs = import (import ../nix/nixpkgs.nix) { };

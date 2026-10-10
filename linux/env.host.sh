@@ -30,6 +30,7 @@ CFLAGS="$CFLAGS \
 -fdata-sections \
 -MD \
 -Wall \
+-Wundef \
 -Wno-format-security \
 -Wno-format \
 -Wno-attributes \
