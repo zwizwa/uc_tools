@@ -2,7 +2,7 @@
 // test_telnet.sh starts with socat
 
 // #define TELNET_WORD_MODE
-#include "mod_telnet.c"
+#include "telnet.h"
 #include "macros.h"
 void telnet_write_output(struct telnet *, const uint8_t *bytes, uintptr_t len) {
     fwrite(bytes, 1, len, stdout);

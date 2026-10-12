@@ -66,3 +66,4 @@ stm32f103/20ram.f103.ld
 stm32f103/core.f103.ld
 stm32f103/mod_i2c_bitbang_macros.c.draft
 
+i686/env
