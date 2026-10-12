@@ -20,6 +20,13 @@ in {
   shell = pkgs.mkShell { packages = tools; };
 
   # deployable: result/bin with all tools
+  #
+  # PATH is the whole interface, which is what makes this usable
+  # without nix: see with-env.sh.  Note this is deliberately *not* the
+  # 'shell' above serialized to a file.  mkShell treats 'packages' as
+  # nativeBuildInputs, so bash and gnumake contribute -isystem entries
+  # for their dev outputs ahead of the compiler's own include path,
+  # which has no business in a -ffreestanding -nostdlib cross build.
   env = pkgs.buildEnv {
     name = "i686-toolchain";
     paths = tools;
