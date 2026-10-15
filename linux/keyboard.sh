@@ -6,4 +6,7 @@
 # Pick the first one if it's not in the environment.
 [ -z "$DEV" ] && DEV=$(ls /dev/input/by-id/*-kbd | head -n1)
 
+# echo "DEV=$DEV" >&2
+set -x
+
 exec $(dirname "$0")/keyboard.dynamic.host.elf "$DEV" "$@"
