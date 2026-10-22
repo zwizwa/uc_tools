@@ -99,7 +99,7 @@ case "$TYPE" in
             $CFLAGS_EXTRA \
             -I$UC_TOOLS_GDB_DIR \
             -I$UC_TOOLS_GDB_DIR/.. \
-            -MD -MF $D \
+            -MD -MP -MF $D \
             -DFIRMWARE=\"$FIRMWARE\" \
             $DEFINE_BUILD_VERSION \
             -o $O \
