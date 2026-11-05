@@ -108,6 +108,11 @@ qemu_nbp: kernel.nbp ipxe-qemu.dsk
 	$(QEMU) -drive file=ipxe-qemu.dsk,$(FLOPPY) -boot a -netdev user,id=net0,tftp=. -device rtl8139,netdev=net0  || echo -n
 
 
+# Linux process on vfio-pci, see hw_vfio.h
+# Needs a gcc with 32 bit glibc on PATH: nix-build '<nixpkgs>' -A gcc_multi
+vfio_%.elf: vfio_%.c hw_vfio.h
+	gcc -m32 -Wall -Os -o $@ $<
+
 # Push it to the boot server.
 NBP = kernel.nbp test.nbp
 TFTPBOOT = root@rackhub:/etc/net/tftpboot/
