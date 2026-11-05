@@ -14,6 +14,7 @@ let
     nasm
     i686.gcc        # i686-elf-gcc
     i686.binutils   # i686-elf-ld
+    gcc_multi       # gcc -m32 for vfio_*.elf
   ];
 in {
   # development

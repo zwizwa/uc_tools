@@ -55,6 +55,20 @@ int kernel_infof(const char *fmt, ...);
 #include "hw_i686_echo.h"
 #include "hw_i686_emu10k.h"
 
+/* Network card used by udp_mon */
+// #define NET_DP83815
+#ifdef NET_DP83815
+#define NET          dp83815
+#define NET_NAME     "dp83815"
+#define NET_MAC      mac
+#define NET_TRANSMIT dp83815_transmit
+#else
+#define NET          rtl8139
+#define NET_NAME     "rtl8139"
+#define NET_MAC      addr
+#define NET_TRANSMIT rtl8139_transmit
+#endif
+
 /* Firmware header */
 #include "boot_config.h"
 
@@ -351,8 +365,8 @@ void void_app_send(void *vapp, const uint8_t *data, uint32_t len) {
     // LOG("app_send %d\n", len);
     // log_hex(data, len);
     struct app *app = vapp;
-    if (app->rtl8139.irq) {
-        rtl8139_transmit(&app->rtl8139, data, len);
+    if (app->NET.irq) {
+        NET_TRANSMIT(&app->NET, data, len);
     }
 }
 void app_rx(void *vapp, const uint8_t *data, uint32_t len) {
@@ -420,15 +434,15 @@ void app_init(struct app *app) {
                 telnet_event);
 
     // hook udp_mon state machine to network card if initialized
-    if (app->rtl8139.irq) {
-        LOG("connecting udp_mon to rtl8139\n");
+    if (app->NET.irq) {
+        LOG("connecting udp_mon to " NET_NAME "\n");
         udp_mon_init(&app->udp_mon,
                      void_app_send,
                      void_app_keyboard_input,
                      app);
-        app->udp_mon.mac = app->rtl8139.addr;
-        app->rtl8139.ctx = app;
-        app->rtl8139.rx  = app_rx; // last
+        app->udp_mon.mac = app->NET.NET_MAC;
+        app->NET.ctx = app;
+        app->NET.rx  = app_rx; // last
         app->udp_mon.ip = boot_config.ip;
     }
 
@@ -448,7 +462,7 @@ void test_send(void) {
         uint32_t data;
     } packet;
     packet.mac.dst_mac = mac_bc;
-    packet.mac.src_mac = g_app.rtl8139.addr;
+    packet.mac.src_mac = g_app.NET.NET_MAC;
 
     packet.mac.ethertype = HTONS(0x88A4);
     packet.data          = HTONL(0x12345678);
@@ -459,7 +473,7 @@ void test_send(void) {
         0x88,0xA4,
     };
 #endif
-    rtl8139_transmit(&g_app.rtl8139, &packet, sizeof(packet));
+    NET_TRANSMIT(&g_app.NET, &packet, sizeof(packet));
 }
 
 void f1(void) {

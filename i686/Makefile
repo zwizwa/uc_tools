@@ -109,9 +109,8 @@ qemu_nbp: kernel.nbp ipxe-qemu.dsk
 
 
 # Linux process on vfio-pci, see hw_vfio.h
-# Needs a gcc with 32 bit glibc on PATH: nix-build '<nixpkgs>' -A gcc_multi
 vfio_%.elf: vfio_%.c hw_vfio.h
-	gcc -m32 -Wall -Os -o $@ $<
+	env/bin/gcc -m32 -Wall -Os -I.. -o $@ $<
 
 # Push it to the boot server.
 NBP = kernel.nbp test.nbp

@@ -14,9 +14,12 @@
 
 /* DP83815 register offsets (operational, BAR1) */
 #define DP83815_CR      0x00    /* Command */
+#define DP83815_CFG     0x04    /* Configuration */
 #define DP83815_ISR     0x10    /* Interrupt Register -- Read to clear */
 #define DP83815_IMR     0x14    /* Interrupt Mask */
 #define DP83815_IER     0x18    /* Interrupt Enable */
+#define DP83815_TXDP    0x20    /* Tx Descriptor Pointer */
+#define DP83815_TCFG    0x24    /* Tx Configuration */
 #define DP83815_RXDP    0x30    /* Rx Descriptor Pointer */
 #define DP83815_RCFG    0x34    /* Rx Configuration */
 #define DP83815_RFCR    0x48    /* Rx Filter Control */
@@ -27,11 +30,26 @@
 #define DP83815_BMSR    0x84    /* Basic Mode Status  (MII reg 1) */
 
 /* CR bits */
+#define DP83815_CR_TXE  (1 << 0)
 #define DP83815_CR_RXE  (1 << 2)
 #define DP83815_CR_RST  (1 << 8)
 
+/* CFG bits */
+#define DP83815_CFG_FDUP (1 << 29)  /* link is full duplex */
+
+/* TCFG bits */
+#define DP83815_TCFG_CSI (1u << 31) /* carrier sense ignore, full duplex */
+#define DP83815_TCFG_HBI (1 << 30)  /* heartbeat ignore, full duplex */
+#define DP83815_TCFG_ATP (1 << 28)  /* automatic padding */
+#define DP83815_TCFG_ECRETRY (1 << 23)  /* retry after excessive collisions */
+#define DP83815_TCFG_MXDMA_256 (7 << 20)  /* max dma burst */
+#define DP83815_TCFG_FLTH_512 (16 << 8)   /* fill threshold, 32 byte units */
+#define DP83815_TCFG_DRTH_64 2      /* drain threshold, 32 byte units */
+
 /* RCFG bits */
-#define DP83815_RCFG_ATX (1 << 28)  /* accept transmit packets (loopback) - off */
+#define DP83815_RCFG_MXDMA_256 (7 << 20)  /* max dma burst */
+#define DP83815_RCFG_DRTH_64   (8 << 1)   /* drain threshold, 8 byte units */
+#define DP83815_RCFG_ATX (1 << 28)  /* accept transmit packets, full duplex */
 #define DP83815_RCFG_ARP (1 << 30)  /* accept runts - off (default fine) */
 
 /* RFCR bits */
@@ -45,14 +63,15 @@
 #define DP83815_ISR_RXDESC (1 << 1)
 #define DP83815_ISR_RXIDLE (1 << 4)
 
-#define DP83815_DESC_OK    (1 << 25)   /* "Packet OK" in cmdsts */
+#define DP83815_DESC_OK    (1 << 27)   /* "Packet OK" in cmdsts */
 
 /* Descriptor cmdsts bits */
 #define DP83815_DESC_OWN  (1u << 31)
 #define DP83815_DESC_SIZE_MASK 0xFFF
 
 #define DP83815_NRX     8
-#define DP83815_RXBUF   2048    /* > 1518, 4-byte aligned */
+#define DP83815_NTX     4
+#define DP83815_RXBUF   1536    /* > 1518, 4-byte aligned, 2048 reads as 0 */
 
 /* BMCR */
 #define DP83815_BMCR_ANRESTART  0x0200      /* Restart Autoneg (self-clearing) */
@@ -71,11 +90,17 @@ struct dp83815_desc {
 
 struct dp83815 {
     volatile struct dp83815_desc rxring[DP83815_NRX] __attribute__((aligned(16)));
+    volatile struct dp83815_desc txring[DP83815_NTX] __attribute__((aligned(16)));
     uint8_t rxbuf[DP83815_NRX][DP83815_RXBUF] __attribute__((aligned(4)));
+    uint8_t txbuf[DP83815_NTX][DP83815_RXBUF] __attribute__((aligned(4)));
     uint32_t rx_head;
+    uint32_t tx_head;
     uint8_t *mmio;   /* set by your PCI code from BAR1 */
     uint8_t irq;
     struct mac_addr mac;
+
+    void (*rx)(void *, const uint8_t *, uint32_t);
+    void *ctx;
 };
 
 static inline void dp83815_wr(struct dp83815 *s, uint32_t off, uint32_t v) {
@@ -84,31 +109,28 @@ static inline void dp83815_wr(struct dp83815 *s, uint32_t off, uint32_t v) {
 
 static inline void dp83815_isr_inner(struct dp83815 *s) {
     uint32_t status = *(volatile uint32_t *)(s->mmio + DP83815_ISR);
-    LOG("[STATUS=%x]\n",status);
+    // LOG("[STATUS=%x]\n",status);
     if (!(status & (DP83815_ISR_RXOK |
                     DP83815_ISR_RXDESC |
                     DP83815_ISR_RXERR))) {
         LOG("[?]\n");
         return;
     }
-    /* Walk descriptors the chip has handed back (OWN cleared). */
-    while (!(s->rxring[s->rx_head].cmdsts & DP83815_DESC_OWN)) {
+    /* Walk descriptors the chip has handed back (OWN set). */
+    while (s->rxring[s->rx_head].cmdsts & DP83815_DESC_OWN) {
 
-        LOG("[RX %d]\n", s->rx_head);
+        // LOG("[RX %d]\n", s->rx_head);
 
         uint32_t cs = s->rxring[s->rx_head].cmdsts;
         uint32_t len = cs & DP83815_DESC_SIZE_MASK;
-        (void)len;
 
-        /* OK bit is 25; if clear, packet had an error - drop it. */
-        if (!(cs & 0x047F0000)) {
-            /* Hand buffer + length up to your stack here.
-               len includes the 4-byte FCS, subtract if you don't want it. */
-            // net_rx(rxbuf[rx_head], len - 4);
+        /* If OK is clear, packet had an error - drop it. */
+        if (cs & DP83815_DESC_OK) {
+            s->rx(s->ctx, s->rxbuf[s->rx_head], len - 4); // strip FCS
         }
 
         /* Return descriptor to the chip. */
-        s->rxring[s->rx_head].cmdsts = DP83815_DESC_OWN | DP83815_RXBUF;
+        s->rxring[s->rx_head].cmdsts = DP83815_RXBUF;
         s->rx_head = (s->rx_head + 1) % DP83815_NRX;
     }
 
@@ -157,11 +179,45 @@ static inline void dp83815_set_mac(struct dp83815 *s) {
     dp83815_rf_write(s, 4, *((uint16_t*)&s->mac.mac[4]));
 }
 
+/* Link comes up after init, so this is called again on transmit. */
+static inline void dp83815_duplex(struct dp83815 *s) {
+    uint32_t tcfg = DP83815_TCFG_ATP | DP83815_TCFG_ECRETRY |
+        DP83815_TCFG_MXDMA_256 | DP83815_TCFG_FLTH_512 | DP83815_TCFG_DRTH_64;
+    uint32_t rcfg = DP83815_RCFG_MXDMA_256 | DP83815_RCFG_DRTH_64;
+    if (dp83815_read(s, DP83815_CFG) & DP83815_CFG_FDUP) {
+        tcfg |= DP83815_TCFG_CSI | DP83815_TCFG_HBI;
+        rcfg |= DP83815_RCFG_ATX;
+    }
+    dp83815_wr(s, DP83815_TCFG, tcfg);
+    dp83815_wr(s, DP83815_RCFG, rcfg);
+}
+
+/* Returns 0 on success, -1 if no descriptor is free or packet too big. */
+static inline int dp83815_transmit(struct dp83815 *s, const void *data, uint16_t len) {
+    volatile struct dp83815_desc *d = &s->txring[s->tx_head];
+    if (len > sizeof(s->txbuf[0])) return -1;
+    if (d->cmdsts & DP83815_DESC_OWN) return -1;
+
+    memcpy(s->txbuf[s->tx_head], data, len);
+    dp83815_duplex(s);
+    __asm__ volatile ("" ::: "memory");  // OWN goes last
+
+    /* For tx the driver is the producer, the chip clears OWN when done. */
+    d->cmdsts = DP83815_DESC_OWN | len;
+    s->tx_head = (s->tx_head + 1) % DP83815_NTX;
+    dp83815_wr(s, DP83815_CR, DP83815_CR_TXE);
+    return 0;
+}
+
+static inline void dp83815_rx_ignore(void *s, const uint8_t *data, uint32_t len) {
+}
+
 static inline void dp83815_init(struct dp83815 *s,
                                 const struct pci_function *f) {
 
     s->mmio = (uint8_t*)(pci_function_read32(f, PCI_CFG_BAR1) & ~0xF);
     s->irq  = pci_function_read32(f, PCI_CFG_IRQ) & 0xFF;
+    s->rx = dp83815_rx_ignore;
     LOG("dp83815 mmio=%08x irq=%d\n", s->mmio, s->irq);
 
 
@@ -187,15 +243,24 @@ static inline void dp83815_init(struct dp83815 *s,
     s->rx_head = 0;
 
     /* Build a circular ring of descriptors, all owned by the chip,
-       each pointing at its 2KB buffer. */
+       each pointing at its buffer.  For rx the chip is the
+       producer: it sets OWN, the driver clears it. */
     for (int i = 0; i < DP83815_NRX; i++) {
         s->rxring[i].link   = (uint32_t)(uintptr_t)&s->rxring[(i + 1) % DP83815_NRX];
         s->rxring[i].bufptr = (uint32_t)(uintptr_t)s->rxbuf[i];
-        s->rxring[i].cmdsts = DP83815_DESC_OWN | DP83815_RXBUF; /* hand to chip, max size */
+        s->rxring[i].cmdsts = DP83815_RXBUF; /* hand to chip, max size */
+    }
+
+    s->tx_head = 0;
+    for (int i = 0; i < DP83815_NTX; i++) {
+        s->txring[i].link   = (uint32_t)(uintptr_t)&s->txring[(i + 1) % DP83815_NTX];
+        s->txring[i].bufptr = (uint32_t)(uintptr_t)s->txbuf[i];
+        s->txring[i].cmdsts = 0;
     }
 
     /* Point the chip at descriptor 0. CR.RXE must be 0 here (it is, post-reset). */
     dp83815_wr(s, DP83815_RXDP, (uint32_t)(uintptr_t)&s->rxring[0]);
+    dp83815_wr(s, DP83815_TXDP, (uint32_t)(uintptr_t)&s->txring[0]);
 
     /* Filter: accept broadcast + perfect-match unicast. Assumes MAC was
        already loaded from EEPROM at reset; otherwise program via RFCR/RFDR. */
@@ -204,8 +269,9 @@ static inline void dp83815_init(struct dp83815 *s,
                DP83815_RFCR_AAB |
                DP83815_RFCR_APM);
 
-    /* Rx config: defaults are fine (drop runts, drop errors, no loopback). */
-    dp83815_wr(s, DP83815_RCFG, 0);
+    /* Rx config: drop runts, drop errors, no loopback.  DRTH 0 puts an
+       empty MORE descriptor in front of each packet. */
+    dp83815_duplex(s);
 
     /* Unmask the Rx interrupts we want, then globally enable. */
     dp83815_wr(s, DP83815_IMR,

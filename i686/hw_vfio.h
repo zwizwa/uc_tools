@@ -8,7 +8,10 @@
    - 0xCF8/0xCFC is emulated on the vfio config region, so
      hw_i686_pci.h works and enumerates only the one device
    - INTx arrives on an eventfd
-   - no MMIO, no DMA yet
+   - memory BARs are mapped at their bus address, so a driver can
+     dereference the BAR (-m32 only)
+   - vfio_dma_alloc gives memory with virtual == physical, so a driver
+     can hand pointers to the card
 
    Bind the device, no reboot needed.  noiommu taints the kernel:
 
@@ -19,9 +22,14 @@
    echo 0000:03:00.0 >$D/driver/unbind
    echo 0000:03:00.0 >/sys/bus/pci/drivers_probe
 
-   Give it back: unbind, echo >$D/driver_override, drivers_probe. */
+   Give it back: unbind, echo >$D/driver_override, drivers_probe.
+
+   vfio_dma_alloc needs a hugetlb page below 4G.  Those are used last,
+   so the pool has to be larger than what is free above 4G (see
+   /proc/zoneinfo).  Only needed during the run, see vfio_natsemi.sh */
 
 #define HW_I686_IO  // hw_i686_io.h becomes a no-op
+#define _GNU_SOURCE  // memfd_create
 #define _FILE_OFFSET_BITS 64  // region offsets are index << 40 with -m32
 
 #include <fcntl.h>
@@ -34,6 +42,7 @@
 #include <string.h>
 #include <sys/eventfd.h>
 #include <sys/ioctl.h>
+#include <sys/mman.h>
 #include <unistd.h>
 
 #define LOG(...) fprintf(stderr, __VA_ARGS__)
@@ -130,6 +139,45 @@ static inline void vfio_irq_unmask(void) {
     vfio_irq_set(VFIO_IRQ_SET_DATA_NONE | VFIO_IRQ_SET_ACTION_UNMASK, -1);
 }
 
+static inline void *vfio_map(uint32_t addr, uint32_t size, int fd, uint64_t offset) {
+    void *p = mmap((void*)(uintptr_t)addr, size, PROT_READ | PROT_WRITE,
+                   MAP_SHARED | MAP_FIXED_NOREPLACE, fd, offset);
+    VFIO_ASSERT(p == (void*)(uintptr_t)addr);
+    return p;
+}
+
+/* One 2M page, stays put while mapped.  vfio stops bus mastering on
+   close, so the card can't write to it after exit.  Pages above 4G
+   are skipped, they stay in the memfd until exit. */
+#define VFIO_DMA_SIZE (2 << 20)
+static inline void *vfio_dma_alloc(void) {
+    int fd = memfd_create("vfio_dma", MFD_HUGETLB);
+    int pagemap = open("/proc/self/pagemap", O_RDONLY);
+    VFIO_ASSERT(fd >= 0);
+    VFIO_ASSERT(pagemap >= 0);
+    for (uint64_t offset = 0; ; offset += VFIO_DMA_SIZE) {
+        VFIO_ASSERT(0 == ftruncate(fd, offset + VFIO_DMA_SIZE));
+        void *tmp = mmap(NULL, VFIO_DMA_SIZE, PROT_READ | PROT_WRITE,
+                         MAP_SHARED, fd, offset);
+        VFIO_ASSERT(tmp != MAP_FAILED);
+        *(volatile uint8_t *)tmp = 0;  // fault it in
+
+        uint64_t entry;
+        VFIO_ASSERT(sizeof(entry) ==
+                    pread(pagemap, &entry, sizeof(entry), (uintptr_t)tmp / 4096 * 8));
+        munmap(tmp, VFIO_DMA_SIZE);
+        uint64_t phys = (entry & ((1ull << 55) - 1)) * 4096;
+        if (!phys) ERROR("no pagemap, need root\n");
+        if (phys >> 32) continue;
+
+        void *p = vfio_map(phys, VFIO_DMA_SIZE, fd, offset);
+        close(pagemap);
+        close(fd);
+        LOG("dma %p\n", p);
+        return p;
+    }
+}
+
 /* name is the sysfs name, e.g. 0000:03:00.0 */
 static inline void vfio_open(char *name) {
     uint32_t bus, dev, func;
@@ -162,6 +210,10 @@ static inline void vfio_open(char *name) {
         if (bar & 1) {
             b->port = bar & ~3;
             b->offset = vfio_region(i, &b->size);
+        } else if (bar) {
+            uint32_t size;
+            uint64_t offset = vfio_region(i, &size);
+            vfio_map(bar & ~0xF, size, vfio.dev, offset);
         }
     }
 
