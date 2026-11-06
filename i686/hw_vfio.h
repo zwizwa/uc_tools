@@ -10,8 +10,10 @@
    - INTx arrives on an eventfd
    - memory BARs are mapped at their bus address, so a driver can
      dereference the BAR (-m32 only)
-   - vfio_dma_alloc gives memory with virtual == physical, so a driver
-     can hand pointers to the card
+   - vfio_dma_alloc gives memory where virtual == bus address, so a
+     driver can hand pointers to the card
+   - works with and without iommu: uses /dev/vfio/<group> if it
+     exists, else /dev/vfio/noiommu-<group>
 
    Bind the device, no reboot needed.  noiommu taints the kernel:
 
@@ -24,8 +26,8 @@
 
    Give it back: unbind, echo >$D/driver_override, drivers_probe.
 
-   vfio_dma_alloc needs a hugetlb page below 4G.  Those are used last,
-   so the pool has to be larger than what is free above 4G (see
+   Without iommu, vfio_dma_alloc needs a hugetlb page below 4G.  Those
+   are used last, so the pool has to be larger than what is free above 4G (see
    /proc/zoneinfo).  Only needed during the run, see vfio_natsemi.sh */
 
 #define HW_I686_IO  // hw_i686_io.h becomes a no-op
@@ -54,7 +56,7 @@ struct vfio_bar {
     uint64_t offset;
 };
 struct vfio {
-    int dev, irq;
+    int dev, irq, container, iommu;
     uint32_t bdf;  // CF8 format
     uint32_t cf8;
     uint64_t cfg_offset;
@@ -146,11 +148,30 @@ static inline void *vfio_map(uint32_t addr, uint32_t size, int fd, uint64_t offs
     return p;
 }
 
-/* One 2M page, stays put while mapped.  vfio stops bus mastering on
-   close, so the card can't write to it after exit.  Pages above 4G
-   are skipped, they stay in the memfd until exit. */
 #define VFIO_DMA_SIZE (2 << 20)
+
+/* iommu: any memory, mapped at bus address == virtual address. */
+static inline void *vfio_dma_alloc_iommu(void) {
+    void *p = mmap(NULL, VFIO_DMA_SIZE, PROT_READ | PROT_WRITE,
+                   MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    VFIO_ASSERT(p != MAP_FAILED);
+    struct vfio_iommu_type1_dma_map map = {
+        .argsz = sizeof(map),
+        .flags = VFIO_DMA_MAP_FLAG_READ | VFIO_DMA_MAP_FLAG_WRITE,
+        .vaddr = (uintptr_t)p,
+        .iova  = (uintptr_t)p,
+        .size  = VFIO_DMA_SIZE,
+    };
+    VFIO_ASSERT(0 == ioctl(vfio.container, VFIO_IOMMU_MAP_DMA, &map));
+    LOG("dma %p iommu\n", p);
+    return p;
+}
+
+/* noiommu: one 2M page, stays put while mapped.  vfio stops bus
+   mastering on close, so the card can't write to it after exit.
+   Pages above 4G are skipped, they stay in the memfd until exit. */
 static inline void *vfio_dma_alloc(void) {
+    if (vfio.iommu == VFIO_TYPE1_IOMMU) return vfio_dma_alloc_iommu();
     int fd = memfd_create("vfio_dma", MFD_HUGETLB);
     int pagemap = open("/proc/self/pagemap", O_RDONLY);
     VFIO_ASSERT(fd >= 0);
@@ -191,14 +212,20 @@ static inline void vfio_open(char *name) {
     ssize_t len = readlink(path, link, sizeof(link) - 1);
     VFIO_ASSERT(len > 0);
     link[len] = 0;
-    snprintf(path, sizeof(path), "/dev/vfio/noiommu-%s", basename(link));
-
-    int container = open("/dev/vfio/vfio", O_RDWR);
+    char *n = basename(link);
+    snprintf(path, sizeof(path), "/dev/vfio/%s", n);
+    vfio.iommu = VFIO_TYPE1_IOMMU;
     int group = open(path, O_RDWR);
-    VFIO_ASSERT(container >= 0);
+    if (group < 0) {
+        snprintf(path, sizeof(path), "/dev/vfio/noiommu-%s", n);
+        vfio.iommu = VFIO_NOIOMMU_IOMMU;
+        group = open(path, O_RDWR);
+    }
+    vfio.container = open("/dev/vfio/vfio", O_RDWR);
+    VFIO_ASSERT(vfio.container >= 0);
     VFIO_ASSERT(group >= 0);
-    VFIO_ASSERT(0 == ioctl(group, VFIO_GROUP_SET_CONTAINER, &container));
-    VFIO_ASSERT(0 == ioctl(container, VFIO_SET_IOMMU, VFIO_NOIOMMU_IOMMU));
+    VFIO_ASSERT(0 == ioctl(group, VFIO_GROUP_SET_CONTAINER, &vfio.container));
+    VFIO_ASSERT(0 == ioctl(vfio.container, VFIO_SET_IOMMU, vfio.iommu));
     vfio.dev = ioctl(group, VFIO_GROUP_GET_DEVICE_FD, name);
     VFIO_ASSERT(vfio.dev >= 0);
 
