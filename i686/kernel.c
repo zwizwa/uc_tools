@@ -29,11 +29,11 @@ int kernel_infof(const char *fmt, ...);
     m(ice) \
     m(emu10k) \
 
-/* Network cards, with the name of the mac field. */
+/* Network cards, with the name of the mac field and a second device id. */
 #define for_device_net(m) \
-    m(rtl8139, addr) \
-    m(dp83815, mac) \
-    m(i82574, mac) \
+    m(rtl8139, addr, 0) \
+    m(dp83815, mac, 0) \
+    m(i82574, mac, i82579_device) \
 
 #define for_device_disabled(m) \
 
@@ -42,7 +42,7 @@ int kernel_infof(const char *fmt, ...);
     for_device_phase1(m) for_device_phase2(m)
 
 #define STRUCT(name) struct name name;
-#define STRUCT_NET(name, mac) STRUCT(name)
+#define STRUCT_NET(name, mac, device2) STRUCT(name)
 
 
 /* Hardware access. */
@@ -341,10 +341,10 @@ static void sunix_isr(void) {
         x##_init(&app->x, f);
 
 /* Other cards stay untouched: no irq, so no isr. */
-#define PCI_INIT_NET(x, mac_field) \
+#define PCI_INIT_NET(x, mac_field, device2) \
     if (!app->net.dev && \
         (f->vendor == x##_vendor) && \
-        (f->device == x##_device)) { \
+        ((f->device == x##_device) || (f->device == device2))) { \
         x##_init(&app->x, f); \
         app->net = (struct net){ \
             .name     = #x, \

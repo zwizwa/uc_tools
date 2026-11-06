@@ -1,8 +1,8 @@
-/* Intel 82574L, PCIe gigabit
+/* Intel 82574L and 82579LM, PCIe gigabit
    Based on iPXE src/drivers/net/intel.c and intel.h
    - ported: reset order, ring setup, TCTL/RCTL values, register and
      bit definitions
-   - EECD AUTO_RD wait and stats registers are from Linux
+   - EECD AUTO_RD wait, stats registers and 82579 SWFLAG are from Linux
      drivers/net/ethernet/intel/e1000e, GPL2
    - 32 bit addresses only, legacy descriptors, INTx
 
@@ -38,6 +38,7 @@
 
 #define i82574_vendor  0x8086
 #define i82574_device  0x10d3
+#define i82579_device  0x1502
 
 /* Registers, BAR0 */
 #define I82574_CTRL    0x00000
@@ -47,6 +48,7 @@
 #define I82574_IMS     0x000D0
 #define I82574_RCTL    0x00100
 #define I82574_TCTL    0x00400
+#define I82574_EXTCNF_CTRL 0x00F00
 #define I82574_RD      0x02800  /* Rx ring block */
 #define I82574_TD      0x03800  /* Tx ring block */
 #define I82574_MPC     0x04010  /* Missed packets, stats are read to clear */
@@ -77,6 +79,7 @@
 
 #define I82574_STATUS_LU    (1 << 1)
 #define I82574_EECD_AUTO_RD (1 << 9)  /* nvm loaded, RAL0 valid */
+#define I82574_EXTCNF_SWFLAG (1 << 5)
 
 /* Interrupt bits */
 #define I82574_IRQ_RXDMT0   (1 << 4)
@@ -93,6 +96,7 @@
 #define I82574_TCTL_PSP     (1 << 3)
 #define I82574_TCTL_CT      (0x0F << 4)
 #define I82574_TCTL_COLD    (0x40 << 12)
+#define I82574_TCTL_CT_COLD 0x003FFFF0  /* mask */
 
 /* Descriptor bits */
 #define I82574_CMD_EOP      0x01
@@ -124,6 +128,7 @@ struct i82574 {
     uint32_t tx_head;
     uint8_t *mmio;
     uint8_t irq;
+    uint8_t ich;      // 82579: phy is shared with the ME
     struct mac_addr mac;
 
     void (*rx)(void *, const uint8_t *, uint32_t);
@@ -202,18 +207,32 @@ static inline void i82574_reset_wait(struct i82574 *s) {
     LOG("i82574 reset timeout\n");
 }
 
+/* Arbitrates with the ME, the reset clears it. */
+static inline void i82574_swflag(struct i82574 *s) {
+    for (int i = 0; i < 100000; i++) {
+        i82574_wr(s, I82574_EXTCNF_CTRL, i82574_rd(s, I82574_EXTCNF_CTRL) |
+                  I82574_EXTCNF_SWFLAG);
+        if (i82574_rd(s, I82574_EXTCNF_CTRL) & I82574_EXTCNF_SWFLAG) return;
+    }
+    LOG("i82574 swflag timeout\n");
+}
+
 /* A previous driver can leave the phy powered down, only a phy reset
-   gets it back.  Skipped with link up: that is a slow renegotiation. */
+   gets it back.  Skipped with link up: that is a slow renegotiation.
+   82579: mac reset only, iPXE: phy reset breaks the link speed. */
 static inline void i82574_reset(struct i82574 *s) {
     uint32_t ctrl = i82574_rd(s, I82574_CTRL);
+    if (s->ich) i82574_swflag(s);
     i82574_wr(s, I82574_CTRL, ctrl | I82574_CTRL_RST);
+    // 82579, e1000e: mmio right after reset hangs it.  About 20 ms.
+    if (s->ich) for (int i = 0; i < 40000; i++) inb(0x80);
     i82574_reset_wait(s);
 
     ctrl |= I82574_CTRL_ASDE | I82574_CTRL_SLU;
     ctrl &= ~(I82574_CTRL_LRST | I82574_CTRL_FRCSPD | I82574_CTRL_FRCDPLX |
               I82574_CTRL_RST | I82574_CTRL_PHY_RST);
     i82574_wr(s, I82574_CTRL, ctrl);
-    if (i82574_rd(s, I82574_STATUS) & I82574_STATUS_LU) return;
+    if (s->ich || (i82574_rd(s, I82574_STATUS) & I82574_STATUS_LU)) return;
 
     i82574_wr(s, I82574_CTRL, ctrl | I82574_CTRL_RST | I82574_CTRL_PHY_RST);
     i82574_reset_wait(s);
@@ -247,6 +266,7 @@ static inline void i82574_init(struct i82574 *s,
 
     s->mmio = (uint8_t*)pci_function_bar0_mem(f);
     s->irq  = pci_function_irq(f);
+    s->ich  = f->device == i82579_device;
     s->rx = i82574_rx_ignore;
     LOG("i82574 mmio=%08x irq=%d\n", s->mmio, s->irq);
 
@@ -273,7 +293,9 @@ static inline void i82574_init(struct i82574 *s,
     i82574_ring(s, I82574_TD, s->txring, sizeof(s->txring));
     i82574_ring(s, I82574_RD, s->rxring, sizeof(s->rxring));
 
-    i82574_wr(s, I82574_TCTL, I82574_TCTL_EN | I82574_TCTL_PSP |
+    // 82579: tx stalls if the reset value of MULR is lost
+    i82574_wr(s, I82574_TCTL, (i82574_rd(s, I82574_TCTL) & ~I82574_TCTL_CT_COLD) |
+              I82574_TCTL_EN | I82574_TCTL_PSP |
               I82574_TCTL_CT | I82574_TCTL_COLD);
     i82574_wr(s, I82574_RCTL, I82574_RCTL_EN | I82574_RCTL_BAM |
               I82574_RCTL_SECRC);
