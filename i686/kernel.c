@@ -23,14 +23,17 @@ int kernel_infof(const char *fmt, ...);
     m(sunix) \
 
 #define for_device_phase2(m) \
-    m(rtl8139) \
-    m(dp83815) \
-    m(i82574) \
     m(oxpcie952) \
     m(ox16pci952) \
     m(echo) \
     m(ice) \
     m(emu10k) \
+
+/* Network cards, with the name of the mac field. */
+#define for_device_net(m) \
+    m(rtl8139, addr) \
+    m(dp83815, mac) \
+    m(i82574, mac) \
 
 #define for_device_disabled(m) \
 
@@ -39,6 +42,7 @@ int kernel_infof(const char *fmt, ...);
     for_device_phase1(m) for_device_phase2(m)
 
 #define STRUCT(name) struct name name;
+#define STRUCT_NET(name, mac) STRUCT(name)
 
 
 /* Hardware access. */
@@ -57,24 +61,15 @@ int kernel_infof(const char *fmt, ...);
 #include "hw_i686_echo.h"
 #include "hw_i686_emu10k.h"
 
-/* Network card used by udp_mon */
-#define NET_I82574
-#if defined(NET_I82574)
-#define NET          i82574
-#define NET_NAME     "i82574"
-#define NET_MAC      mac
-#define NET_TRANSMIT i82574_transmit
-#elif defined(NET_DP83815)
-#define NET          dp83815
-#define NET_NAME     "dp83815"
-#define NET_MAC      mac
-#define NET_TRANSMIT dp83815_transmit
-#else
-#define NET          rtl8139
-#define NET_NAME     "rtl8139"
-#define NET_MAC      addr
-#define NET_TRANSMIT rtl8139_transmit
-#endif
+/* Network card used by udp_mon: first one in PCI order */
+struct net {
+    const char *name;
+    void *dev;  // zero: no card
+    int (*transmit)(void *, const void *, uint16_t);
+    struct mac_addr *mac;
+    void (**rx)(void *, const uint8_t *, uint32_t);
+    void **ctx;
+};
 
 /* Firmware header */
 #include "boot_config.h"
@@ -103,6 +98,8 @@ struct app {
     void (*com_output)(struct app *, uint8_t);
     uint32_t nb_zeros;
     for_device(STRUCT)
+    for_device_net(STRUCT_NET)
+    struct net net;
 };
 struct app g_app;
 
@@ -343,6 +340,22 @@ static void sunix_isr(void) {
         (f->device == x##_device)) \
         x##_init(&app->x, f);
 
+/* Other cards stay untouched: no irq, so no isr. */
+#define PCI_INIT_NET(x, mac_field) \
+    if (!app->net.dev && \
+        (f->vendor == x##_vendor) && \
+        (f->device == x##_device)) { \
+        x##_init(&app->x, f); \
+        app->net = (struct net){ \
+            .name     = #x, \
+            .dev      = &app->x, \
+            .transmit = (void*)x##_transmit, \
+            .mac      = &app->x.mac_field, \
+            .rx       = &app->x.rx, \
+            .ctx      = &app->x.ctx, \
+        }; \
+    }
+
 
 /* PCI scanning callback for driver instantiation. */
 void pci_phase1(void *vapp, struct pci_function *f) {
@@ -360,6 +373,7 @@ void pci_phase2(void *vapp, struct pci_function *f) {
         );
 #endif
     for_device_phase2(PCI_INIT)
+    for_device_net(PCI_INIT_NET)
 }
 
 void log_mem(uint32_t addr, uint32_t len) {
@@ -387,13 +401,13 @@ void void_app_send(void *vapp, const uint8_t *data, uint32_t len) {
     // LOG("app_send %d\n", len);
     // log_hex(data, len);
     struct app *app = vapp;
-    if (app->NET.irq) {
-        NET_TRANSMIT(&app->NET, data, len);
+    if (app->net.dev) {
+        app->net.transmit(app->net.dev, data, len);
     }
 }
 int app_log_send(void *vapp, const uint8_t *data, uint32_t len) {
     struct app *app = vapp;
-    return NET_TRANSMIT(&app->NET, data, len);
+    return app->net.transmit(app->net.dev, data, len);
 }
 void app_rx(void *vapp, const uint8_t *data, uint32_t len) {
     //LOG("app_rx %p\n", vapp);
@@ -461,16 +475,16 @@ void app_init(struct app *app) {
                 telnet_event);
 
     // hook udp_mon state machine to network card if initialized
-    if (app->NET.irq) {
-        LOG("connecting udp_mon to " NET_NAME "\n");
+    if (app->net.dev) {
+        LOG("connecting udp_mon to %s\n", app->net.name);
         udp_mon_init(&app->udp_mon,
                      void_app_send,
                      void_app_keyboard_input,
                      app);
         app->udp_mon.log_send = app_log_send;
-        app->udp_mon.mac = app->NET.NET_MAC;
-        app->NET.ctx = app;
-        app->NET.rx  = app_rx; // last
+        app->udp_mon.mac = *app->net.mac;
+        *app->net.ctx = app;
+        *app->net.rx  = app_rx; // last
         app->udp_mon.ip = boot_config.ip;
     }
 
@@ -481,6 +495,7 @@ void app_init(struct app *app) {
 
 #include "ethernet.h"
 void test_send(void) {
+    if (!g_app.net.dev) return;
 
     const struct mac_addr mac_bc = {{0xFF,0xFF,0xFF,0xFF,0xFF,0xFF}};
 
@@ -490,7 +505,7 @@ void test_send(void) {
         uint32_t data;
     } packet;
     packet.mac.dst_mac = mac_bc;
-    packet.mac.src_mac = g_app.NET.NET_MAC;
+    packet.mac.src_mac = *g_app.net.mac;
 
     packet.mac.ethertype = HTONS(0x88A4);
     packet.data          = HTONL(0x12345678);
@@ -504,7 +519,7 @@ void test_send(void) {
     // tx_head is shared with the rx isr
     int ie = interrupts_enabled();
     if (ie) cli();
-    NET_TRANSMIT(&g_app.NET, &packet, sizeof(packet));
+    g_app.net.transmit(g_app.net.dev, &packet, sizeof(packet));
     if (ie) sti();
 }
 
