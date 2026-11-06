@@ -486,6 +486,7 @@ void app_init(struct app *app) {
         *app->net.ctx = app;
         *app->net.rx  = app_rx; // last
         app->udp_mon.ip = boot_config.ip;
+        LOG("ip "); log_ipv4(&app->udp_mon.ip); LOG("\n");
     }
 
     app->log.use_cli = 0;
