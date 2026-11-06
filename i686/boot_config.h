@@ -1,8 +1,6 @@
 #ifndef BOOT_CONFIG_H
 #define BOOT_CONFIG_H
 
-#include "ethernet.h"
-
 /* Like gdbstub_config on ARM.  Let's start over. */
 
 /* Overlay using uint32_t instead of pointers.
@@ -15,13 +13,14 @@ struct boot_config_u32 {
     // Start is always 0x7E00
     uint32_t start;
 
-    struct ip_addr ip;
+    uint8_t ip[4];
     uint32_t app;
     uint32_t top;
 };
 
 #if defined(__i386__)
 /* Don't define this on 64 bit arch to avoid the pitfall. */
+#include "ethernet.h"
 struct boot_config {
     void (*entry)(void);  // kernel entry point
     void* endx;           // end of config + code + initialized data

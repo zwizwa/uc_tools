@@ -39,6 +39,7 @@ kernel.3if: trampoline.blk kernel.bin
 # 9216 track size (18 sectors)
 kernel.dsk: boot.dsk kernel.bin
 	cat boot.dsk kernel.bin >$@
+	truncate -s 1474560 $@  # qemu needs a real floppy size
 	truncate -s %512 $@
 	ls -l $@
 

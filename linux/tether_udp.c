@@ -23,6 +23,7 @@
 /* Try to get everything integrated here. */
 #define TETHER_3IF_UDP // Not enabled by default
 #include "mod_tether_3if.c"
+#include "i686/boot_config.h"
 
 void tether_handle_async(struct tether *s) {
     ERROR("tether_udp: async not implemented\n");
@@ -83,7 +84,16 @@ void cmd_send(int argc, char **argv) {
     mmap_file_open_ro(&mf, file);
     LOG("%s: %d bytes\n", file, mf.size);
 
-    tether_iub_write(&s, 0x90000, mf.buf, mf.size);
+    // Kernel stays at the address it was reached on.
+    ASSERT(mf.size >= 512 + sizeof(struct boot_config_u32));
+    uint8_t *buf = malloc(mf.size);
+    ASSERT(buf);
+    memcpy(buf, mf.buf, mf.size);
+    struct boot_config_u32 *config = (void*)(buf + 512);
+    memcpy(config->ip, &s.peer.sin_addr, sizeof(config->ip));
+
+    tether_iub_write(&s, 0x90000, buf, mf.size);
+    free(buf);
 }
 
 
