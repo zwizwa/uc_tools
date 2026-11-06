@@ -541,6 +541,21 @@ void f2(void) {
 #define FORTH_OUT_INFO 1
 #include "tools.c"
 #include "forth.h"
+static void lspci_function(void *ctx, struct pci_function *f) {
+    LOG("%02x:%02x.%d %02x%02x: %04x:%04x\n",
+        f->bus, f->dev, f->func,
+        f->class, f->subclass,
+        f->vendor, f->device);
+}
+void lspci(void) {
+    struct pci_cb cb = { .fun = lspci_function };
+    pci_enumerate(&cb);
+}
+
+void netstat(void) {
+    if (g_app.i82574.mmio) i82574_stats(&g_app.i82574);
+}
+
 void hello(void) {
     LOG("hello!\n");
 }
@@ -556,6 +571,8 @@ void restart(void) {
 #define W(word) {#word, (w)word}
 #define FORTH_WORDS\
     W(hello),      \
+    W(netstat),    \
+    W(lspci),      \
     W(reboot),     \
     W(restart),    \
     W(shutdown),   \

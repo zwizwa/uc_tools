@@ -2,8 +2,8 @@
    Based on iPXE src/drivers/net/intel.c and intel.h
    - ported: reset order, ring setup, TCTL/RCTL values, register and
      bit definitions
-   - EECD AUTO_RD wait is from Linux drivers/net/ethernet/intel/e1000e,
-     GPL2
+   - EECD AUTO_RD wait and stats registers are from Linux
+     drivers/net/ethernet/intel/e1000e, GPL2
    - 32 bit addresses only, legacy descriptors, INTx
 
    Notice from intel.c, which this file falls under:
@@ -49,6 +49,10 @@
 #define I82574_TCTL    0x00400
 #define I82574_RD      0x02800  /* Rx ring block */
 #define I82574_TD      0x03800  /* Tx ring block */
+#define I82574_MPC     0x04010  /* Missed packets, stats are read to clear */
+#define I82574_GPRC    0x04074  /* Good packets received */
+#define I82574_GPTC    0x04080  /* Good packets transmitted */
+#define I82574_RNBC    0x040A0  /* Receive no buffers */
 #define I82574_RAL0    0x05400
 #define I82574_RAH0    0x05404
 
@@ -124,6 +128,10 @@ struct i82574 {
 
     void (*rx)(void *, const uint8_t *, uint32_t);
     void *ctx;
+
+    uint32_t nb_rx;   // passed to rx
+    uint32_t nb_rxo;  // overrun interrupts
+    uint32_t mpc, gprc, gptc, rnbc;
 };
 
 static inline void i82574_wr(struct i82574 *s, uint32_t off, uint32_t v) {
@@ -139,10 +147,12 @@ static inline void i82574_isr_inner(struct i82574 *s) {
         LOG("[?]\n");
         return;
     }
+    if (status & I82574_IRQ_RXO) s->nb_rxo++;
     while (s->rxring[s->rx_head].status & I82574_STATUS_DD) {
         volatile struct i82574_desc *d = &s->rxring[s->rx_head];
         if (!(d->status & I82574_RX_ERRORS)) {
             s->rx(s->ctx, s->rxbuf[s->rx_head], d->length);
+            s->nb_rx++;
         }
         /* Tail trails head, the chip owns everything in between. */
         d->status = 0;
@@ -168,6 +178,16 @@ static inline int i82574_transmit(struct i82574 *s, const void *data, uint16_t l
     s->tx_head = next;
     i82574_wr(s, I82574_TD + I82574_xDT, next);
     return 0;
+}
+
+/* Totals since init. */
+static inline void i82574_stats(struct i82574 *s) {
+    s->mpc  += i82574_rd(s, I82574_MPC);
+    s->gprc += i82574_rd(s, I82574_GPRC);
+    s->gptc += i82574_rd(s, I82574_GPTC);
+    s->rnbc += i82574_rd(s, I82574_RNBC);
+    LOG("rx %d good %d missed %d no_buf %d overrun %d tx %d\n",
+        s->nb_rx, s->gprc, s->mpc, s->rnbc, s->nb_rxo, s->gptc);
 }
 
 static inline void i82574_rx_ignore(void *s, const uint8_t *data, uint32_t len) {
