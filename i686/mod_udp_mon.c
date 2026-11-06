@@ -28,6 +28,8 @@
 
 #define UDP_MON_CONSOLE_PORT 1001
 #define UDP_MON_COMMAND_PORT  799 // 0x31f
+#define UDP_MON_LOG_SIZE     4096 // power of 2
+#define UDP_MON_LOG_CHUNK    1024
 
 
 typedef void (*udp_mon_send_fn)(void *ctx, const uint8_t *data, uint32_t len);
@@ -37,6 +39,7 @@ struct udp_mon {
     /* OS interface. */
     void (*send)(void *ctx, const uint8_t *data, uint32_t len);
     void (*key)(void *ctx, uint8_t byte);
+    int  (*log_send)(void *ctx, const uint8_t *data, uint32_t len); // nonzero: tx full
     void *ctx;
 
     /* Our mac and ip addresses */
@@ -48,11 +51,75 @@ struct udp_mon {
        unless there was an ack. */
     struct monitor_3if monitor_3if;
 
+    /* Console output
+       - ring collects from boot, oldest bytes are overwritten
+       - goes to the last host that wrote to the console port
+       - log_peer holds that host's request headers */
+    struct eth_udp log_peer;
+    uint8_t log_connected;
+    uint32_t log_read, log_write; // free running
+    uint8_t log_buf[UDP_MON_LOG_SIZE];
+
 };
 
+/* Turn request headers into reply headers, returns packet size. */
+static inline uint32_t udp_mon_reply(struct eth_udp *q, const struct eth_udp *p, uint32_t data_len) {
+    /* Start it out with the same fields as the request. */
+    *q = *p;
 
-// socat - UDP:10.1.3.222:1234
-// socat - STDIO,raw,echo=0,escape=0x03 UDP:10.1.3.222:1234
+    struct udp *udp = &q->udp;
+    udp->dst_port = p->udp.src_port;
+    udp->src_port = p->udp.dst_port;
+    uint16_t l = sizeof(struct udp) + data_len;
+    udp->length = HTONS(l);
+    udp->checksum = 0; // Not needed on IPv4
+
+    struct ip *ip = &q->ip;
+    ip->dst_ip = p->ip.src_ip;
+    ip->src_ip = p->ip.dst_ip;
+    l += sizeof(struct ip);
+    ip->total_length = HTONS(l);
+    ip->header_checksum = 0;
+    ip->header_checksum = ip_checksum(ip, sizeof(*ip));
+
+    struct mac *mac = &q->mac;
+    mac->dst_mac = p->mac.src_mac;
+    mac->src_mac = p->mac.dst_mac;
+    l += sizeof(struct mac);
+    return l;
+}
+
+/* Call with interrupts off.  When tx is full the rest stays in the
+   ring until the next flush. */
+static inline void udp_mon_log_flush(struct udp_mon *s) {
+    if (!s->log_connected) return;
+    struct {
+        struct eth_udp eth_udp;
+        uint8_t data[UDP_MON_LOG_CHUNK];
+    } q;
+    while (s->log_read != s->log_write) {
+        uint32_t n = s->log_write - s->log_read;
+        if (n > UDP_MON_LOG_CHUNK) n = UDP_MON_LOG_CHUNK;
+        for (uint32_t i=0; i<n; i++) {
+            q.data[i] = s->log_buf[(s->log_read + i) % UDP_MON_LOG_SIZE];
+        }
+        uint32_t l = udp_mon_reply(&q.eth_udp, &s->log_peer, n);
+        if (s->log_send(s->ctx, (uint8_t*)&q, l)) return;
+        s->log_read += n;
+    }
+}
+
+/* Call with interrupts off. */
+static inline void udp_mon_log_putchar(struct udp_mon *s, uint8_t c) {
+    s->log_buf[s->log_write++ % UDP_MON_LOG_SIZE] = c;
+    if (s->log_write - s->log_read > UDP_MON_LOG_SIZE) {
+        s->log_read = s->log_write - UDP_MON_LOG_SIZE;
+    }
+    if (c == '\n') udp_mon_log_flush(s);
+}
+
+// socat - UDP:10.1.54.222:1001
+// socat - STDIO,raw,echo=0,escape=0x03 UDP:10.1.54.222:1001
 static inline void udp_mon_rx_udp(struct udp_mon *s, const uint8_t *eth_pkt, uint32_t len) {
     const struct eth_udp *p = (const void*)eth_pkt;
     // FIXME: checksum
@@ -66,11 +133,14 @@ static inline void udp_mon_rx_udp(struct udp_mon *s, const uint8_t *eth_pkt, uin
     // LOG("udp port=%d data_len=%d\n", port, data_len);
     // log_hex(data, data_len);
     if (port == UDP_MON_CONSOLE_PORT) {
+        s->log_peer = *p;
+        s->log_connected = 1;
         for (int32_t i=0; i<data_len; i++) {
             uint8_t c = data[i];
             if (c == 0xa) { c = 0xd; }
             s->key(s->ctx, c);
         }
+        udp_mon_log_flush(s);
     }
     else if (port == UDP_MON_COMMAND_PORT) {
         /* Run the 3if commands in the packet, record the replies in a
@@ -82,8 +152,6 @@ static inline void udp_mon_rx_udp(struct udp_mon *s, const uint8_t *eth_pkt, uin
             struct eth_udp eth_udp;
             uint8_t data[buf_size];
         } q;
-        /* Start it out with the same fields as the request. */
-        q.eth_udp = *p;
 
         /* Set up UDP packet body as reply buffer */
         struct pbuf pbuf;
@@ -98,25 +166,7 @@ static inline void udp_mon_rx_udp(struct udp_mon *s, const uint8_t *eth_pkt, uin
         s->monitor_3if.out = NULL;
         // log_hex(pbuf.buf, pbuf.count);
 
-        struct udp *udp = &q.eth_udp.udp;
-        udp->dst_port = p->udp.src_port;
-        udp->src_port = p->udp.dst_port;
-        uint16_t l = sizeof(struct udp) + pbuf.count;
-        udp->length = HTONS(l);
-        udp->checksum = 0; // Not needed on IPv4
-
-        struct ip *ip = &q.eth_udp.ip;
-        ip->dst_ip = p->ip.src_ip;
-        ip->src_ip = p->ip.dst_ip;
-        l += sizeof(struct ip);
-        ip->total_length = HTONS(l);
-        ip->header_checksum = 0;
-        ip->header_checksum = ip_checksum(ip, sizeof(*ip));
-
-        struct mac *mac = &q.eth_udp.mac;
-        mac->dst_mac = p->mac.src_mac;
-        mac->src_mac = p->mac.dst_mac;
-        l += sizeof(struct mac);
+        uint32_t l = udp_mon_reply(&q.eth_udp, p, pbuf.count);
         s->send(s->ctx, (uint8_t*)&q, l);
     }
 }
@@ -153,6 +203,10 @@ static inline void udp_mon_rx(struct udp_mon *s, const uint8_t *data, uint32_t l
         // LOG("ipv4 protocol %d\n", p->ip.protocol);
         switch(p->ip.protocol) {
         case PROTOCOL_ICMP:
+            // peer is gone, and logging this would feed back into it
+            if (((const struct icmp *)&p[1])->type == ICMP_DEST_UNREACHABLE) {
+                s->log_connected = 0;
+            }
             icmp_rx(s->send, s->ctx, data, len, &s->ip);
             break;
         case PROTOCOL_UDP:
@@ -174,7 +228,7 @@ static inline void udp_mon_init(struct udp_mon *s,
                                 void (*key)(void *, uint8_t),
                                 void *ctx) {
     //LOG("udp_mon_init %p %p %p\n", s, send, ctx);
-    memset(s, 0, sizeof(*s));
+    // No memset: .bss is clear and the log ring is already collecting.
     s->send = send;
     s->key  = key;
     s->ctx  = ctx;

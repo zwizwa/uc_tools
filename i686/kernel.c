@@ -128,6 +128,11 @@ static inline void app_com_putchar(struct app *app, uint8_t c) {
 }
 static inline void app_info_putchar(struct app *app, uint8_t c) {
     text_console_putchar(&app->log, c);
+    // log ring and tx are shared with the isrs
+    int ie = interrupts_enabled();
+    if (ie) cli();
+    udp_mon_log_putchar(&app->udp_mon, c);
+    if (ie) sti();
     if (app->com_output) {
         app->com_output(app, c);
     }
@@ -369,6 +374,10 @@ void void_app_send(void *vapp, const uint8_t *data, uint32_t len) {
         NET_TRANSMIT(&app->NET, data, len);
     }
 }
+int app_log_send(void *vapp, const uint8_t *data, uint32_t len) {
+    struct app *app = vapp;
+    return NET_TRANSMIT(&app->NET, data, len);
+}
 void app_rx(void *vapp, const uint8_t *data, uint32_t len) {
     //LOG("app_rx %p\n", vapp);
     struct app *app = vapp;
@@ -440,6 +449,7 @@ void app_init(struct app *app) {
                      void_app_send,
                      void_app_keyboard_input,
                      app);
+        app->udp_mon.log_send = app_log_send;
         app->udp_mon.mac = app->NET.NET_MAC;
         app->NET.ctx = app;
         app->NET.rx  = app_rx; // last

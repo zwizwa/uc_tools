@@ -112,6 +112,7 @@ struct __attribute__((packed)) ip {
 };
 #define ICMP_ECHO_REQUEST 8
 #define ICMP_ECHO_REPLY   0
+#define ICMP_DEST_UNREACHABLE 3
 struct __attribute__((packed)) icmp {
     uint8_t type;
     uint8_t code;
