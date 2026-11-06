@@ -1,3 +1,26 @@
+/* Based on the Linux driver, v6.12
+   drivers/net/ethernet/natsemi/natsemi.c
+   - ported: dp83815_ee_read, dp83815_get_mac, dp83815_phy_fixup
+   - from there too: dsp register values, PME clear, RX size limit,
+     full duplex RCFG/TCFG setup, descriptor OWN handling
+   - rest from the datasheet below
+
+   Notice from natsemi.c, which this file falls under:
+
+	Written/copyright 1999-2001 by Donald Becker.
+	Portions copyright (c) 2001,2002 Sun Microsystems (thockin@sun.com)
+	Portions copyright 2001,2002 Manfred Spraul (manfred@colorfullife.com)
+	Portions copyright 2004 Harald Welte <laforge@gnumonks.org>
+
+	This software may be used and distributed according to the terms of
+	the GNU General Public License (GPL), incorporated herein by reference.
+	Drivers based on or derived from this code fall under the GPL and must
+	retain the authorship, copyright and license notice.  This file is not
+	a complete program and may only be used when the entire operating
+	system is licensed under the GPL.  License for under other terms may be
+	available.  Contact the original author for details.
+*/
+
 #ifndef HW_I686_DP83815
 #define HW_I686_DP83815
 
@@ -15,6 +38,7 @@
 /* DP83815 register offsets (operational, BAR1) */
 #define DP83815_CR      0x00    /* Command */
 #define DP83815_CFG     0x04    /* Configuration */
+#define DP83815_MEAR    0x08    /* EEPROM Access */
 #define DP83815_ISR     0x10    /* Interrupt Register -- Read to clear */
 #define DP83815_IMR     0x14    /* Interrupt Mask */
 #define DP83815_IER     0x18    /* Interrupt Enable */
@@ -22,12 +46,27 @@
 #define DP83815_TCFG    0x24    /* Tx Configuration */
 #define DP83815_RXDP    0x30    /* Rx Descriptor Pointer */
 #define DP83815_RCFG    0x34    /* Rx Configuration */
+#define DP83815_CLKRUN  0x3C    /* Clockrun Control/Status */
 #define DP83815_RFCR    0x48    /* Rx Filter Control */
 #define DP83815_RFDR    0x4C
+#define DP83815_SRR     0x58    /* Silicon Revision */
 
 /* --- Internal PHY registers (memory-mapped, MII layout) --- */
 #define DP83815_BMCR    0x80    /* Basic Mode Control (MII reg 0) */
 #define DP83815_BMSR    0x84    /* Basic Mode Status  (MII reg 1) */
+
+/* --- DSP registers, behind PGSEL=1 --- */
+#define DP83815_PGSEL   0xCC
+#define DP83815_PMDCSR  0xE4
+#define DP83815_DSPCFG  0xF4
+#define DP83815_SDCFG   0xF8
+#define DP83815_TSTDAT  0xFC
+
+#define DP83815_PMDCSR_VAL 0x189c
+#define DP83815_DSPCFG_VAL 0x5040
+#define DP83815_DSPCFG_COEF 0x1000
+#define DP83815_SDCFG_VAL  0x008c
+#define DP83815_SRR_C      0x0302
 
 /* CR bits */
 #define DP83815_CR_TXE  (1 << 0)
@@ -36,6 +75,16 @@
 
 /* CFG bits */
 #define DP83815_CFG_FDUP (1 << 29)  /* link is full duplex */
+
+/* MEAR bits */
+#define DP83815_MEAR_EEDI  (1 << 0)  /* data to eeprom */
+#define DP83815_MEAR_EEDO  (1 << 1)  /* data from eeprom */
+#define DP83815_MEAR_EECLK (1 << 2)
+#define DP83815_MEAR_EESEL (1 << 3)
+#define DP83815_EE_READ    (6 << 6)
+
+/* CLKRUN bits */
+#define DP83815_CLKRUN_PMEEN (1 << 8)  /* power management enable */
 
 /* TCFG bits */
 #define DP83815_TCFG_CSI (1u << 31) /* carrier sense ignore, full duplex */
@@ -62,6 +111,7 @@
 #define DP83815_ISR_RXERR (1 << 2)
 #define DP83815_ISR_RXDESC (1 << 1)
 #define DP83815_ISR_RXIDLE (1 << 4)
+#define DP83815_ISR_RXORN  (1 << 5)
 
 #define DP83815_DESC_OK    (1 << 27)   /* "Packet OK" in cmdsts */
 
@@ -112,7 +162,9 @@ static inline void dp83815_isr_inner(struct dp83815 *s) {
     // LOG("[STATUS=%x]\n",status);
     if (!(status & (DP83815_ISR_RXOK |
                     DP83815_ISR_RXDESC |
-                    DP83815_ISR_RXERR))) {
+                    DP83815_ISR_RXERR |
+                    DP83815_ISR_RXIDLE |
+                    DP83815_ISR_RXORN))) {
         LOG("[?]\n");
         return;
     }
@@ -165,10 +217,41 @@ static inline void dp83815_rf_write(struct dp83815 *s, uint32_t addr, uint32_t v
     *(volatile uint32_t *)(s->mmio + DP83815_RFCR) = addr;
     *(volatile uint32_t *)(s->mmio + DP83815_RFDR) = value;
 }
+// Linux natsemi.c eeprom_read, the register read is the delay
+static inline uint32_t dp83815_ee_read(struct dp83815 *s, uint32_t addr) {
+    uint32_t cmd = addr | DP83815_EE_READ;
+    uint32_t val = 0;
+    dp83815_wr(s, DP83815_MEAR, DP83815_MEAR_EESEL);
+    for (int i = 10; i >= 0; i--) {
+        uint32_t bit = DP83815_MEAR_EESEL |
+            ((cmd & (1 << i)) ? DP83815_MEAR_EEDI : 0);
+        dp83815_wr(s, DP83815_MEAR, bit);
+        dp83815_read(s, DP83815_MEAR);
+        dp83815_wr(s, DP83815_MEAR, bit | DP83815_MEAR_EECLK);
+        dp83815_read(s, DP83815_MEAR);
+    }
+    dp83815_wr(s, DP83815_MEAR, DP83815_MEAR_EESEL);
+    dp83815_read(s, DP83815_MEAR);
+    for (int i = 0; i < 16; i++) {
+        dp83815_wr(s, DP83815_MEAR, DP83815_MEAR_EESEL | DP83815_MEAR_EECLK);
+        dp83815_read(s, DP83815_MEAR);
+        if (dp83815_read(s, DP83815_MEAR) & DP83815_MEAR_EEDO) val |= 1 << i;
+        dp83815_wr(s, DP83815_MEAR, DP83815_MEAR_EESEL);
+        dp83815_read(s, DP83815_MEAR);
+    }
+    dp83815_wr(s, DP83815_MEAR, DP83815_MEAR_EESEL);
+    dp83815_wr(s, DP83815_MEAR, 0);
+    return val;
+}
+// MAC is stored shifted by one bit
 static inline void dp83815_get_mac(struct dp83815 *s) {
-    *((uint16_t*)&s->mac.mac[0]) = dp83815_rf_read(s, 0);
-    *((uint16_t*)&s->mac.mac[2]) = dp83815_rf_read(s, 2);
-    *((uint16_t*)&s->mac.mac[4]) = dp83815_rf_read(s, 4);
+    uint32_t prev = dp83815_ee_read(s, 6);
+    for (int i = 0; i < 3; i++) {
+        uint32_t cur = dp83815_ee_read(s, i + 7);
+        s->mac.mac[i * 2]     = (cur << 1) + (prev >> 15);
+        s->mac.mac[i * 2 + 1] = cur >> 7;
+        prev = cur;
+    }
     LOG("dp83815 mac: ");
     log_mac(&s->mac);
     LOG("\n");
@@ -177,6 +260,32 @@ static inline void dp83815_set_mac(struct dp83815 *s) {
     dp83815_rf_write(s, 0, *((uint16_t*)&s->mac.mac[0]));
     dp83815_rf_write(s, 2, *((uint16_t*)&s->mac.mac[2]));
     dp83815_rf_write(s, 4, *((uint16_t*)&s->mac.mac[4]));
+}
+
+/* Linux natsemi.c init_phy_fixup
+   - some autonegotiations go bad without it
+   - dsp needs a few usec after phy start, so retry until it sticks */
+static inline void dp83815_phy_fixup(struct dp83815 *s) {
+    uint32_t srr = dp83815_read(s, DP83815_SRR);
+    for (int i = 0; i < 400; i++) {
+        dp83815_wr(s, DP83815_PGSEL, 1);
+        dp83815_wr(s, DP83815_PMDCSR, DP83815_PMDCSR_VAL);
+        dp83815_wr(s, DP83815_TSTDAT, 0);
+        uint32_t dspcfg = srr <= DP83815_SRR_C ? DP83815_DSPCFG_VAL :
+            DP83815_DSPCFG_COEF | (dp83815_read(s, DP83815_DSPCFG) & 0xFFFF);
+        dp83815_wr(s, DP83815_DSPCFG, dspcfg);
+        dp83815_wr(s, DP83815_SDCFG, DP83815_SDCFG_VAL);
+        dp83815_wr(s, DP83815_PGSEL, 0);
+        for (int j = 0; j < 16; j++) dp83815_read(s, DP83815_CFG); // delay
+        dp83815_wr(s, DP83815_PGSEL, 1);
+        uint32_t got = dp83815_read(s, DP83815_DSPCFG) & 0xFFFF;
+        dp83815_wr(s, DP83815_PGSEL, 0);
+        if (got == dspcfg) {
+            LOG("dp83815 srr=%x dspcfg=%x tries=%d\n", srr, got, i + 1);
+            return;
+        }
+    }
+    LOG("dp83815 dsp fixup failed\n");
 }
 
 /* Link comes up after init, so this is called again on transmit. */
@@ -215,18 +324,26 @@ static inline void dp83815_rx_ignore(void *s, const uint8_t *data, uint32_t len)
 static inline void dp83815_init(struct dp83815 *s,
                                 const struct pci_function *f) {
 
+    // Only one instance, soekris net4501 has 3 chips: first one wins
+    if (s->mmio) {
+        LOG("dp83815 %02x:%02x.%d ignored\n", f->bus, f->dev, f->func);
+        return;
+    }
+
     s->mmio = (uint8_t*)(pci_function_read32(f, PCI_CFG_BAR1) & ~0xF);
     s->irq  = pci_function_read32(f, PCI_CFG_IRQ) & 0xFF;
     s->rx = dp83815_rx_ignore;
     LOG("dp83815 mmio=%08x irq=%d\n", s->mmio, s->irq);
 
+    // Before the first mmio access
+    uint16_t cmd = pci_function_read16(f, 0x04);
+    /* want bits: 0x02 (memory space) | 0x04 (bus master) set,
+       0x400 (interrupt disable) clear */
+    pci_function_write16(f, 0x04, cmd | 0x06);
 
     // Read mac address (test card is 00:02:E3:0B:8D:BA)
 
-    // Note that iPXE reads the EEPROM. I don't want to implement the
-    // bitbang that is necessary for that, but it might be more
-    // robust.  MAC address should be loaded into receive filter after
-    // boot and after iPXE.  Both are verified on my machine.
+    // From EEPROM: the receive filter is zero on net4801 after PXE
     dp83815_get_mac(s);
     dp83815_reset(s);
 
@@ -235,10 +352,11 @@ static inline void dp83815_init(struct dp83815 *s,
     dp83815_set_mac(s);
     //dp83815_get_mac(s);
 
-    uint16_t cmd = pci_function_read16(f, 0x04);
-    /* want bits: 0x02 (memory space) | 0x04 (bus master) set,
-       0x400 (interrupt disable) clear */
-    pci_function_write16(f, 0x04, cmd | 0x06);
+    dp83815_phy_fixup(s);
+
+    // Chip writes nothing to memory with PME set, EEPROM can set it
+    dp83815_wr(s, DP83815_CLKRUN,
+               dp83815_read(s, DP83815_CLKRUN) & ~DP83815_CLKRUN_PMEEN);
 
     s->rx_head = 0;
 
@@ -277,7 +395,9 @@ static inline void dp83815_init(struct dp83815 *s,
     dp83815_wr(s, DP83815_IMR,
                DP83815_ISR_RXOK |
                DP83815_ISR_RXERR |
-               DP83815_ISR_RXDESC);
+               DP83815_ISR_RXDESC |
+               DP83815_ISR_RXIDLE |  // idle can follow the status read
+               DP83815_ISR_RXORN);
     dp83815_wr(s, DP83815_IER, 1);
 
     /* Go. */

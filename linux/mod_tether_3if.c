@@ -861,15 +861,20 @@ void tether_iub_write(struct tether *s,
         tether_iub_write_chunk(&c, chunk_nb);
         tether_iub_read_chunks(&c);
     }
-    usleep(200 * 1000);
-    tether_iub_read_chunks(&c);
+    uint32_t nb_missing;
+    for (uint32_t retry=0; ; retry++) {
+        usleep(200 * 1000);
+        tether_iub_read_chunks(&c);
 
-    uint32_t nb_missing = 0;
-    for (uint32_t chunk_nb=0; chunk_nb<c.nb_chunks; chunk_nb++) {
-        if (!c.bookkeep[chunk_nb]) {
-            LOG("missing chunk_nb=%d\n", chunk_nb);
-            nb_missing++;
+        nb_missing = 0;
+        for (uint32_t chunk_nb=0; chunk_nb<c.nb_chunks; chunk_nb++) {
+            if (!c.bookkeep[chunk_nb]) {
+                LOG("missing chunk_nb=%d\n", chunk_nb);
+                nb_missing++;
+                if (retry < 10) tether_iub_write_chunk(&c, chunk_nb);
+            }
         }
+        if (!nb_missing || retry == 10) break;
     }
     if (nb_missing) {
         LOG("nb_missing = %d\n", nb_missing);

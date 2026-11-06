@@ -56,7 +56,7 @@ int kernel_infof(const char *fmt, ...);
 #include "hw_i686_emu10k.h"
 
 /* Network card used by udp_mon */
-// #define NET_DP83815
+#define NET_DP83815
 #ifdef NET_DP83815
 #define NET          dp83815
 #define NET_NAME     "dp83815"
@@ -473,7 +473,11 @@ void test_send(void) {
         0x88,0xA4,
     };
 #endif
+    // tx_head is shared with the rx isr
+    int ie = interrupts_enabled();
+    if (ie) cli();
     NET_TRANSMIT(&g_app.NET, &packet, sizeof(packet));
+    if (ie) sti();
 }
 
 void f1(void) {
@@ -604,7 +608,7 @@ struct boot_config boot_config = {
     .entry = entry,
     .app   = &g_app,
     .top   = &__bss_end,
-    .ip    = {{10,1,3,222}},
+    .ip    = {{10,1,54,222}},
     .endx  = (void*)&__bss_start,
     .start = (void*)&boot_config,
 };
