@@ -1,10 +1,11 @@
-/* Intel 82574L and 82579LM, PCIe gigabit
+/* Intel 82574L, 82579LM and 82566DM, PCIe gigabit
    Based on iPXE src/drivers/net/intel.c and intel.h
    - ported: reset order, ring setup, TCTL/RCTL values, register and
      bit definitions
    - EECD AUTO_RD wait, stats registers and 82579 SWFLAG are from Linux
      drivers/net/ethernet/intel/e1000e, GPL2
    - 32 bit addresses only, legacy descriptors, INTx
+   - 82566DM links at 100 only: phy falls back from gig
 
    Notice from intel.c, which this file falls under:
 
@@ -39,6 +40,7 @@
 #define i82574_vendor  0x8086
 #define i82574_device  0x10d3
 #define i82579_device  0x1502
+#define i82566_device  0x104a
 
 /* Registers, BAR0 */
 #define I82574_CTRL    0x00000
@@ -49,6 +51,8 @@
 #define I82574_RCTL    0x00100
 #define I82574_TCTL    0x00400
 #define I82574_EXTCNF_CTRL 0x00F00
+#define I82574_PBA     0x01000
+#define I82574_PBS     0x01008
 #define I82574_RD      0x02800  /* Rx ring block */
 #define I82574_TD      0x03800  /* Tx ring block */
 #define I82574_MPC     0x04010  /* Missed packets, stats are read to clear */
@@ -128,7 +132,8 @@ struct i82574 {
     uint32_t tx_head;
     uint8_t *mmio;
     uint8_t irq;
-    uint8_t ich;      // 82579: phy is shared with the ME
+    uint8_t ich;      // 82579, 82566: phy is shared with the ME
+    uint8_t ich8;     // 82566
     struct mac_addr mac;
 
     void (*rx)(void *, const uint8_t *, uint32_t);
@@ -202,7 +207,7 @@ static inline void i82574_rx_ignore(void *s, const uint8_t *data, uint32_t len) 
 static inline void i82574_reset_wait(struct i82574 *s) {
     for (int i = 0; i < 1000000; i++) {
         if (!(i82574_rd(s, I82574_CTRL) & I82574_CTRL_RST) &&
-            (i82574_rd(s, I82574_EECD) & I82574_EECD_AUTO_RD)) return;
+            (s->ich8 || (i82574_rd(s, I82574_EECD) & I82574_EECD_AUTO_RD))) return;
     }
     LOG("i82574 reset timeout\n");
 }
@@ -217,24 +222,36 @@ static inline void i82574_swflag(struct i82574 *s) {
     LOG("i82574 swflag timeout\n");
 }
 
+/* e1000e: mmio right after reset hangs it.  About 20 ms. */
+static inline void i82574_ich_delay(struct i82574 *s) {
+    if (s->ich) for (int i = 0; i < 40000; i++) inb(0x80);
+}
+
 /* A previous driver can leave the phy powered down, only a phy reset
    gets it back.  Skipped with link up: that is a slow renegotiation.
    82579: mac reset only, iPXE: phy reset breaks the link speed. */
 static inline void i82574_reset(struct i82574 *s) {
     uint32_t ctrl = i82574_rd(s, I82574_CTRL);
     if (s->ich) i82574_swflag(s);
+    if (s->ich8) {  // iPXE: packet buffer errata
+        i82574_wr(s, I82574_PBA, 0x08);
+        i82574_wr(s, I82574_PBS, 0x10);
+    }
     i82574_wr(s, I82574_CTRL, ctrl | I82574_CTRL_RST);
-    // 82579, e1000e: mmio right after reset hangs it.  About 20 ms.
-    if (s->ich) for (int i = 0; i < 40000; i++) inb(0x80);
+    i82574_ich_delay(s);
     i82574_reset_wait(s);
 
     ctrl |= I82574_CTRL_ASDE | I82574_CTRL_SLU;
     ctrl &= ~(I82574_CTRL_LRST | I82574_CTRL_FRCSPD | I82574_CTRL_FRCDPLX |
               I82574_CTRL_RST | I82574_CTRL_PHY_RST);
     i82574_wr(s, I82574_CTRL, ctrl);
-    if (s->ich || (i82574_rd(s, I82574_STATUS) & I82574_STATUS_LU)) return;
+    i82574_ich_delay(s);
+    if ((s->ich && !s->ich8) ||
+        (i82574_rd(s, I82574_STATUS) & I82574_STATUS_LU)) return;
 
+    if (s->ich) i82574_swflag(s);
     i82574_wr(s, I82574_CTRL, ctrl | I82574_CTRL_RST | I82574_CTRL_PHY_RST);
+    i82574_ich_delay(s);
     i82574_reset_wait(s);
     for (int i = 0; i < 1000; i++) i82574_rd(s, I82574_STATUS); // delay
     i82574_wr(s, I82574_CTRL, ctrl);  // phy reset is not self-clearing
@@ -266,7 +283,8 @@ static inline void i82574_init(struct i82574 *s,
 
     s->mmio = (uint8_t*)pci_function_bar0_mem(f);
     s->irq  = pci_function_irq(f);
-    s->ich  = f->device == i82579_device;
+    s->ich8 = f->device == i82566_device;
+    s->ich  = s->ich8 || f->device == i82579_device;
     s->rx = i82574_rx_ignore;
     LOG("i82574 mmio=%08x irq=%d\n", s->mmio, s->irq);
 
