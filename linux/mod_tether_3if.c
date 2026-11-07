@@ -19,6 +19,7 @@
 #include "uct_byteswap.h"
 #ifdef TETHER_3IF_UDP
 #include "pbuf.h"
+#include "crc.h"
 #include <poll.h>
 #endif
 #include "uct_byteswap.h"
@@ -633,10 +634,19 @@ void tether_assert_udp_write(struct tether *s, const uint8_t *buf, size_t len) {
     /* UDP write is buffered.  We do not send out the packet until read. */
     pbuf_write(&s->w, buf, len); // FIXME: error on overflow
 }
+/* Appends {5, BCK, crc32 LE} over the rest, checked and stripped by
+   i686/mod_udp_mon.c.  Older kernels just echo it. */
+#define TETHER_UDP_CRC_LEN 6
 void tether_udp_send_packet(struct tether *s, const uint8_t *buf, uint32_t len) {
+    uint8_t pkt[len + TETHER_UDP_CRC_LEN];
+    uint32_t crc = crc32b(buf, len);
+    const uint8_t trailer[] = { 5, BCK, U32_LE(crc) };
+    memcpy(pkt, buf, len);
+    memcpy(pkt + len, trailer, sizeof(trailer));
+    len += sizeof(trailer);
     int wlen;
     ASSERT_ERRNO(
-        wlen = sendto(s->fd_out, buf, len, 0 /*flags*/,
+        wlen = sendto(s->fd_out, pkt, len, 0 /*flags*/,
                       (struct sockaddr*)&s->peer,
                       sizeof(s->peer)));
     ASSERT(len == wlen);
@@ -776,7 +786,7 @@ struct chunk_info {
     uint32_t chunk_size;
     uint32_t nb_chunks;
     uint8_t *bookkeep;
-    uint8_t buf[1472];
+    uint8_t buf[1472 - TETHER_UDP_CRC_LEN];
 };
 void tether_iub_write_chunk(struct chunk_info *c,
                             uint32_t chunk_nb) {

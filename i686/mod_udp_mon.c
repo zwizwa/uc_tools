@@ -10,6 +10,8 @@
 #define MONITOR_3IF_OUT_BUF_CLEAR pbuf_clear
 
 #include "mod_monitor_3if.c"
+#include "crc.h"
+#include "uct_byteswap.h"
 #include "ethernet.h"
 #include "ethernet_rx.h"
 
@@ -147,6 +149,15 @@ static inline void udp_mon_rx_udp(struct udp_mon *s, const uint8_t *eth_pkt, uin
            pbuf and send a reply with the same sequence number.  The
            sequence number is intentionally only 8 bit so a small
            array of handlers can be used at the host end. */
+        /* Last command is {5, BCK, crc32 LE} over the rest, see
+           tether_udp_send_packet.  Drop on mismatch: no ack, so the
+           host retransmits. */
+        if (data_len < 6 || data[data_len-6] != 5 || data[data_len-5] != BCK ||
+            crc32b(data, data_len-6) != read_le(data + data_len-4, 4)) {
+            LOG("udp_mon bad crc\n");
+            return;
+        }
+        data_len -= 6;
         uint32_t buf_size = 1472;
         struct {
             struct eth_udp eth_udp;
