@@ -48,7 +48,38 @@ start:
 
 
 %ifndef FLOPPY
+    ; boot_config.ip from the dhcp reply, else keep the default
+    mov ax, 0x5650
+    int 0x1A                    ; es:bx = PXENV+
+    jc load_done
+    cmp ax, 0x564E
+    jne load_done
+    mov eax, [es:bx + 0x0A]     ; RMEntry
+    mov [pxe_entry], eax
+    push ds
+    pop es
+    mov di, pxe_cached          ; es:di, bx: PXENV+ does not use the stack
+    mov bx, 0x0071              ; PXENV_GET_CACHED_INFO
+    call far [pxe_entry]
+    xor bx, bx
+    mov ds, bx
+    or ax, [pxe_cached]         ; exit code, Status
+    jnz load_done
+    les bx, [pxe_cached + 6]    ; Buffer
+    mov eax, [es:bx + 16]       ; yiaddr
+    test eax, eax
+    jz load_done
+    mov [0x7E00 + 12], eax
     jmp load_done
+
+pxe_entry:
+    dd 0
+pxe_cached:
+    dw 0                        ; Status
+    dw 2                        ; PacketType: DHCPACK
+    dw 0                        ; BufferSize, 0: use the stack's own
+    dd 0                        ; Buffer
+    dw 0                        ; BufferLimit
 
 %else
     ; reset floppy
