@@ -51,7 +51,7 @@ CFLAGS = \
 
 .PHONY: all clean run
 
-all: kernel.nbp kernel.dsk kernel.dasm trampoline.blk kernel.3if
+all: kernel.nbp kernel.dsk kernel.dasm trampoline.blk kernel.3if sqlite_plugin.bin
 
 DEPS := $(shell find -name '*.d')
 -include $(DEPS)
@@ -101,6 +101,14 @@ sqlite3.o: $(SQLITE)/sqlite3.c Makefile
 
 kernel.elf: kernel.o kernel.ld
 	$(LD) -T kernel.ld -o $@ kernel.o $(shell $(GCC) -print-libgcc-file-name)
+
+# Plugins are linked against the kernel they get loaded into, and
+# check its version string at load.  See plugin.h
+sqlite_plugin.o: sqlite_plugin.c kernel.bin
+	$(GCC) $(CFLAGS) -DKERNEL_VERSION=\"$$(grep -a -o -E '[0-9]{8}-[0-9]{4}' kernel.bin | head -1)\" -MD -MF sqlite_plugin.d -c $< -o $@
+
+sqlite_plugin.elf: sqlite_plugin.o sqlite3.o plugin.ld kernel.elf
+	$(LD) -T plugin.ld -R kernel.elf -o $@ sqlite_plugin.o sqlite3.o $(shell $(GCC) -print-libgcc-file-name)
 
 %.elf: %.o kernel.ld
 	$(LD) -T kernel.ld -o $@ $<

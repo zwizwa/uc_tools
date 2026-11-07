@@ -24,17 +24,20 @@
 #define TETHER_3IF_UDP // Not enabled by default
 #include "mod_tether_3if.c"
 #include "i686/boot_config.h"
+#include "i686/plugin.h"
 
 void tether_handle_async(struct tether *s) {
     ERROR("tether_udp: async not implemented\n");
 }
 
 #include <poll.h>
+#include <stddef.h>
 
 
 void usage_exit(int argc, char **argv) {
     LOG("usage: %s with arguments:\n");
     LOG("  send    <host> <file>\n",   argv[0]);
+    LOG("  plugin  <host> <file>\n",   argv[0]);
     exit(1);
 }
 
@@ -93,14 +96,32 @@ void cmd_send(int argc, char **argv) {
     memcpy(config->ip, &s.peer.sin_addr, sizeof(config->ip));
 
     // Above the kernel bss + sqlite heap, see i686/kernel.ld
-    tether_iub_write(&s, 0x1000000, buf, mf.size);
+    tether_iub_write(&s, 0x1000000, buf, mf.size, 1);
     free(buf);
 }
 
 
+/* Unregister the running plugin, write to the plugin slot and jump
+   to its first byte. */
+void cmd_plugin(int argc, char **argv) {
+    if (argc < 4) { usage_exit(argc, argv); }
+    struct tether s;
+    tether_open_udp(&s, argv[2], 799);
+    s.verbose  = 2;
+    s.progress = 1;
+    struct mmap_file mf = {};
+    mmap_file_open_ro(&mf, argv[3]);
+    LOG("%s: %d bytes\n", argv[3], mf.size);
+    const uint8_t zero[4] = {};
+    if (tether_iub_write(&s, 0x7E00 + offsetof(struct boot_config_u32, plugin),
+                         zero, sizeof(zero), 0)) return;
+    tether_iub_write(&s, PLUGIN_ADDR, mf.buf, mf.size, 1);
+}
+
 int main(int argc, char **argv) {
     if (argc < 2)                         usage_exit(argc, argv);
     else if (!strcmp(argv[1], "send"))    cmd_send(argc, argv);
+    else if (!strcmp(argv[1], "plugin"))  cmd_plugin(argc, argv);
     else                                  usage_exit(argc, argv);
 }
 

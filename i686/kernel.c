@@ -65,6 +65,7 @@ int kernel_infof(const char *fmt, ...);
 #include "hw_i686_echo.h"
 #include "hw_i686_emu10k.h"
 #include "hw_i686_ahci.h"
+#include "plugin.h"
 
 /* Network card used by udp_mon: first one in PCI order */
 struct net {
@@ -117,6 +118,10 @@ struct app {
     struct net net;
 };
 struct app g_app;
+
+/* See plugin.h */
+struct blockdev *kernel_blockdev;
+const char kernel_version[] = VERSION;
 
 
 
@@ -507,6 +512,7 @@ void app_init(struct app *app) {
         else {
             LOG("partition 7f lba0=%d sectors=%d\n",
                 app->part.lba0, app->part.bd.nb_sectors);
+            kernel_blockdev = &app->part.bd;
         }
     }
 
@@ -770,6 +776,8 @@ void entry(void) {
        interrupts on. */
     struct app *app = &g_app;
     for (;;) {
+        struct plugin *p = boot_config.plugin;
+        if (p && p->poll) p->poll();
         cli();
         if (app->line_read == app->line_write) {
             /* Wait for next interrupt.  sti takes effect after hlt
@@ -780,7 +788,10 @@ void entry(void) {
         }
         sti();
         struct app_line *l = &app->line[app->line_read % APP_NB_LINES];
-        forth_write(l->buf, l->len);
+        p = boot_config.plugin;
+        if (!p || !p->cmd || p->cmd(l->buf, l->len)) {
+            forth_write(l->buf, l->len);
+        }
         app->line_read++;
     }
 }

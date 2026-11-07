@@ -16,6 +16,7 @@ struct boot_config_u32 {
     uint8_t ip[4];
     uint32_t app;
     uint32_t top;
+    uint32_t plugin;
 };
 
 #if defined(__i386__)
@@ -28,6 +29,7 @@ struct boot_config {
     struct ip_addr ip;    // default ip addr
     void *app;            // main application static data structure
     void *top;            // free memory starts here, usable by 3if monitor
+    void *plugin;         // struct plugin *, see plugin.h
 };
 extern struct boot_config boot_config;
 CT_ASSERT(boot_config,sizeof(struct boot_config)==sizeof(struct boot_config_u32));

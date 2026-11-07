@@ -860,10 +860,12 @@ void tether_iub_read_chunks(struct chunk_info *c) {
 
 }
 
-void tether_iub_write(struct tether *s,
-                      uint32_t addr,
-                      const uint8_t *in,
-                      uint32_t in_len) {
+/* Returns 0 when complete, then jumps to addr if start is set. */
+int tether_iub_write(struct tether *s,
+                     uint32_t addr,
+                     const uint8_t *in,
+                     uint32_t in_len,
+                     int start) {
     struct chunk_info c = {};
     c.s = s;
     c.addr = addr;
@@ -906,8 +908,9 @@ void tether_iub_write(struct tether *s,
     }
     else {
         LOG("transfer complete\n");
-        tether_iub_write_start(&c);
+        if (start) tether_iub_write_start(&c);
     }
+    return nb_missing;
 }
 
 
