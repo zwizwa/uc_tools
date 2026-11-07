@@ -339,6 +339,16 @@ static void ox16pci952_isr(void) {
 
 }
 __attribute__((naked))
+static void oxpcie952_isr(void) {
+    isr_begin();
+    static uint32_t count = 0;
+    spinner(7, count++);
+    oxpcie952_isr_inner(&g_app.oxpcie952);
+    outb(0xA0, 0x20); // End Of Interrupt (EOI) to slave PIC
+    outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
+    isr_end();
+}
+__attribute__((naked))
 static void sunix_isr(void) {
     isr_begin();
     static uint32_t count = 0;
@@ -482,6 +492,7 @@ void app_init(struct app *app) {
         { .isr = mcs9865_isr,    .irq = app->mcs9865.uart[MCS9865_MAIN_UART].uart.irq },
         { .isr = ox16pci952_isr, .irq = app->ox16pci952.uart.irq },
         { .isr = sunix_isr,      .irq = app->sunix.uart.irq },
+        { .isr = oxpcie952_isr,  .irq = app->oxpcie952.irq },
         {} // END-OF-LIST
     };
 
@@ -574,6 +585,21 @@ void netstat(void) {
     if (g_app.rtl8168.iobase) rtl8168_stats(&g_app.rtl8168);
 }
 
+/* oxpcie952 uart 0 test */
+void oxsend(void) {
+    if (g_app.oxpcie952.irq) uart_putstr(&g_app.oxpcie952.uart[0], "hello\n");
+}
+void oxloop(void) {
+    struct uart *u = &g_app.oxpcie952.uart[0];
+    if (u->mmio) uart_out(u, UART_MCR, uart_in(u, UART_MCR) ^ 0x10);
+}
+void oxrx(void) {
+    struct oxpcie952 *s = &g_app.oxpcie952;
+    LOG("rx_head=%d\n", s->rx_head);
+    log_hex(s->rx, s->rx_head);
+    s->rx_head = 0;
+}
+
 void hello(void) {
     LOG("hello!\n");
 }
@@ -590,6 +616,9 @@ void restart(void) {
 #define FORTH_WORDS\
     W(hello),      \
     W(netstat),    \
+    W(oxsend),     \
+    W(oxloop),     \
+    W(oxrx),       \
     W(lspci),      \
     W(reboot),     \
     W(restart),    \

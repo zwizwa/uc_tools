@@ -26,11 +26,19 @@
 struct uart {
     uint16_t iobase;
     uint8_t  irq;
+    volatile uint8_t *mmio;  // instead of iobase
 };
+static inline uint8_t uart_in(struct uart *s, uint8_t reg) {
+    return s->mmio ? s->mmio[reg] : inb(s->iobase + reg);
+}
+static inline void uart_out(struct uart *s, uint8_t reg, uint8_t val) {
+    if (s->mmio) s->mmio[reg] = val;
+    else outb(s->iobase + reg, val);
+}
 
 static void uart_write_byte(struct uart *s, uint8_t byte) {
-    while (!(inb(s->iobase + UART_LSR) & LSR_THR_EMPTY)) { }
-    outb(s->iobase + UART_DATA, byte);
+    while (!(uart_in(s, UART_LSR) & LSR_THR_EMPTY)) { }
+    uart_out(s, UART_DATA, byte);
 }
 static void uart_putchar(struct uart *s, uint8_t byte) {
     int raw = 0;  // FIXME: put all com config in a struct
@@ -48,8 +56,8 @@ static void uart_putstr(struct uart *s, char *str) {
 typedef void (*uart_sink_fn)(void *, uint8_t);
 static void uart_isr(struct uart *s, uart_sink_fn sink, void *ctx) {
     uint8_t lsr;
-    while ((lsr = inb(s->iobase + UART_LSR)) & LSR_DATA_READY) {
-        uint8_t byte = inb(s->iobase + UART_DATA);
+    while ((lsr = uart_in(s, UART_LSR)) & LSR_DATA_READY) {
+        uint8_t byte = uart_in(s, UART_DATA);
         /* Optionally inspect lsr for framing/parity/overrun errors */
         if (lsr & (LSR_OVERRUN_ERR | LSR_PARITY_ERR | LSR_FRAMING_ERR)) {
             /* drop or log — byte is still worth passing up in most designs */
@@ -66,19 +74,19 @@ static void uart_init(struct uart *s, uint16_t div) {
        6 -> 19200 */
 
     /* disable interrupts while configuring */
-    outb(s->iobase + UART_IER,  0x00);
+    uart_out(s, UART_IER,  0x00);
 
-    outb(s->iobase + UART_LCR,  0x80);   /* DLAB = 1, access divisor latch */
-    outb(s->iobase + UART_DATA, div & 0xFF); /* divisor low */
-    outb(s->iobase + UART_IER,  div >> 8);   /* divisor high */
+    uart_out(s, UART_LCR,  0x80);   /* DLAB = 1, access divisor latch */
+    uart_out(s, UART_DATA, div & 0xFF); /* divisor low */
+    uart_out(s, UART_IER,  div >> 8);   /* divisor high */
 
-    outb(s->iobase + UART_LCR,  0x03);   /* DLAB = 0, 8 bits, no parity, 1 stop */
-    outb(s->iobase + UART_FCR,  0xC7);   /* enable FIFO, clear RX/TX, 14-byte trigger */
+    uart_out(s, UART_LCR,  0x03);   /* DLAB = 0, 8 bits, no parity, 1 stop */
+    uart_out(s, UART_FCR,  0xC7);   /* enable FIFO, clear RX/TX, 14-byte trigger */
 
     /* DTR, RTS, OUT2 (OUT2 gates IRQs on PCs) */
-    outb(s->iobase + UART_MCR,  0x0B);
+    uart_out(s, UART_MCR,  0x0B);
     /* enable "Received Data Available" interrupt */
-    outb(s->iobase + UART_IER,  0x01);
+    uart_out(s, UART_IER,  0x01);
 }
 
 
