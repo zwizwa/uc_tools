@@ -1,4 +1,4 @@
-/* Intel 82574L, 82579LM, 82577LM and 82566DM, PCIe gigabit
+/* Intel 82574L, 82579LM, 82577LM, 82567LM-3 and 82566DM, PCIe gigabit
    Based on iPXE src/drivers/net/intel.c and intel.h
    - ported: reset order, ring setup, TCTL/RCTL values, register and
      bit definitions
@@ -41,6 +41,7 @@
 #define i82579_device  0x1502
 #define i82566_device  0x104a
 #define i82577_device  0x10ea
+#define i82567_device  0x10de
 
 /* Registers, BAR0 */
 #define I82574_CTRL    0x00000
@@ -134,8 +135,9 @@ struct i82574 {
     uint32_t tx_head;
     uint8_t *mmio;
     uint8_t irq;
-    uint8_t ich;      // 82579, 82566: phy is shared with the ME
-    uint8_t ich8;     // 82566
+    uint8_t ich;      // all onboard: phy is shared with the ME
+    uint8_t ich8;     // 82566, 82567
+    uint8_t pbs;      // 82566
     struct mac_addr mac;
 
     void (*rx)(void *, const uint8_t *, uint32_t);
@@ -235,11 +237,11 @@ static inline void i82574_ich_delay(struct i82574 *s) {
 static inline void i82574_reset(struct i82574 *s) {
     uint32_t ctrl = i82574_rd(s, I82574_CTRL);
     if (s->ich) i82574_swflag(s);
-    if (s->ich8) {  // iPXE: packet buffer errata
+    if (s->pbs) {  // iPXE: packet buffer errata
         i82574_wr(s, I82574_PBA, 0x08);
         i82574_wr(s, I82574_PBS, 0x10);
     }
-    // 82566: phy too, the link is at 100 before DRV_LOAD is set
+    // ich8: phy too, the link is at 100 before DRV_LOAD is set
     i82574_wr(s, I82574_CTRL, ctrl | I82574_CTRL_RST |
               (s->ich8 ? I82574_CTRL_PHY_RST : 0));
     i82574_ich_delay(s);
@@ -250,7 +252,7 @@ static inline void i82574_reset(struct i82574 *s) {
               I82574_CTRL_RST | I82574_CTRL_PHY_RST);
     i82574_wr(s, I82574_CTRL, ctrl);
     i82574_ich_delay(s);
-    // 82566: without this the ME pulls the link down to 100
+    // ich8: without this the ME pulls the link down to 100
     if (s->ich8) i82574_wr(s, I82574_CTRL_EXT, i82574_rd(s, I82574_CTRL_EXT) |
                            I82574_CTRL_EXT_DRV_LOAD);
     if (s->ich || (i82574_rd(s, I82574_STATUS) & I82574_STATUS_LU)) return;
@@ -287,7 +289,8 @@ static inline void i82574_init(struct i82574 *s,
 
     s->mmio = (uint8_t*)pci_function_bar0_mem(f);
     s->irq  = pci_function_irq(f);
-    s->ich8 = f->device == i82566_device;
+    s->pbs  = f->device == i82566_device;
+    s->ich8 = s->pbs || f->device == i82567_device;
     s->ich  = s->ich8 || f->device == i82579_device ||
               f->device == i82577_device;
     s->rx = i82574_rx_ignore;
