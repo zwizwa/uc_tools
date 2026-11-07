@@ -96,6 +96,8 @@ struct rtl8139 {
     uint32_t rx_offset;
     uint32_t rx_isr_count;
     uint32_t tx_isr_count;
+    uint32_t nb_rxovw;   // ring full, packets dropped
+    uint32_t nb_rx_err;  // full chip resets
     uint32_t iobase;
     uint8_t  irq;
     struct mac_addr addr;
@@ -107,7 +109,8 @@ struct rtl8139 {
 
 };
 
-static inline void rtl8139_rx_poll(struct rtl8139 *s) {
+/* Returns -1 on a bad packet header, Linux 8139too rtl8139_rx. */
+static inline int rtl8139_rx_poll(struct rtl8139 *s) {
     // CMD bit 0 = RX buffer empty
     uint32_t mask = (RTL8139_RX_BUF_LEN - 1) & (~3);
     while (!(inb(s->iobase + RTL_CMD) & 0x01)) {
@@ -117,9 +120,9 @@ static inline void rtl8139_rx_poll(struct rtl8139 *s) {
         uint16_t rx_status = *(uint16_t *)(entry + 0);
         uint16_t rx_len    = *(uint16_t *)(entry + 2); // includes 4-byte CRC
 
-        if (!(rx_status & 0x0001)) {
-            // ROK not set — bad packet or not yet ready
-            break;
+        if (rx_len == 0xfff0) break;  // early rx, still being copied
+        if (!(rx_status & 0x0001) || rx_len < 8 || rx_len > 1792 + 4) {
+            return -1;
         }
 
         uint8_t  *pkt     = entry + 4;
@@ -145,6 +148,7 @@ static inline void rtl8139_rx_poll(struct rtl8139 *s) {
         // CAPR is written as rx_offset-16, a hardware quirk
         outw(s->iobase + RTL_CAPR, (s->rx_offset - 16) & mask);
     }
+    return 0;
 }
 
 /* Returns 0 on success, -1 if no descriptor is free or packet too big. */
@@ -209,6 +213,27 @@ static inline void rtl8139_reset(struct rtl8139 *s) {
 }
 
 
+/* Only CMD_RST puts the chip's ring pointers back to 0. */
+static inline void rtl8139_hw_reset(struct rtl8139 *s) {
+    // Software reset — wait for RST bit to clear
+    outb(s->iobase + RTL_CMD, CMD_RST);
+    while (inb(s->iobase + RTL_CMD) & CMD_RST);
+
+    // Give card the physical RX buffer address
+    outl(s->iobase + RTL_RBSTART, (uint32_t)s->rx_buf);
+
+    rtl8139_reset(s);
+
+    // Accept all multicast
+    outl(s->iobase + RTL_MAR0,   0xFFFFFFFF);
+    outl(s->iobase + RTL_MAR0+4, 0xFFFFFFFF);
+
+    // Unmask interrupts
+    outw(s->iobase + RTL_IMR,
+         INT_ROK | INT_RER | INT_RXOVW |
+         INT_TOK | INT_TER);
+}
+
 static inline void rtl8139_isr_inner(struct rtl8139 *s) {
     uint16_t status = inw(s->iobase + RTL_ISR);
     // Acknowledge all raised interrupts
@@ -216,9 +241,11 @@ static inline void rtl8139_isr_inner(struct rtl8139 *s) {
 
     //uint16_t status_ = inw(s->iobase + RTL_ISR);
     //LOG("rtl8139 interrupt %02x %02x\n", status, status_);
-    if (status & INT_ROK) {
+    // Overflow only drops packets, the ring is still in sync.
+    if (status & INT_RXOVW) s->nb_rxovw++;
+    if (status & (INT_ROK | INT_RXOVW)) {
         spinner(2, s->rx_isr_count++);
-        rtl8139_rx_poll(s);
+        if (rtl8139_rx_poll(s)) status |= INT_RER;
     }
 
     if (status & INT_TOK) {
@@ -232,12 +259,10 @@ static inline void rtl8139_isr_inner(struct rtl8139 *s) {
         */
     }
 
-    if (status & (INT_RER | INT_RXOVW)) {
+    if (status & INT_RER) {
         LOG("rtl8139 error %04x\n", status);
-        // Disable receiver
-        outb(s->iobase + RTL_CMD, CMD_TE);
-        // Re-initialize
-        rtl8139_reset(s);
+        s->nb_rx_err++;
+        rtl8139_hw_reset(s);
     }
 
 
@@ -245,6 +270,7 @@ static inline void rtl8139_isr_inner(struct rtl8139 *s) {
 }
 
 static inline void rtl8139_status(struct rtl8139 *s) {
+    LOG("rxovw=%d rx_err=%d\n", s->nb_rxovw, s->nb_rx_err);
     LOG("CBR=%04x CAPR=%04x MPC=%d ISR=%d CMD=%02x MSR=%02x RCR=%08x\n"
         ,inw(s->iobase + RTL_CBR)
         ,inw(s->iobase + RTL_CAPR)
@@ -285,24 +311,7 @@ static inline void rtl8139_init(struct rtl8139 *s,
     // Power on
     outb(s->iobase + RTL_CONFIG1, 0x00);
 
-    // Software reset — wait for RST bit to clear
-    outb(s->iobase + RTL_CMD, CMD_RST);
-    while (inb(s->iobase + RTL_CMD) & CMD_RST);
-
-    // Give card the physical RX buffer address
-    outl(s->iobase + RTL_RBSTART, (uint32_t)s->rx_buf);
-
-    // Also called from isr
-    rtl8139_reset(s);
-
-    // Accept all multicast
-    outl(s->iobase + RTL_MAR0,   0xFFFFFFFF);
-    outl(s->iobase + RTL_MAR0+4, 0xFFFFFFFF);
-
-    // Unmask interrupts
-    outw(s->iobase + RTL_IMR,
-         INT_ROK | INT_RER | INT_RXOVW |
-         INT_TOK | INT_TER);
+    rtl8139_hw_reset(s);
 
     /* Lock config registers */
     //outb(s->iobase + 0x50, 0x00);          /* 9346CR: normal mode */

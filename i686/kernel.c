@@ -587,6 +587,7 @@ void lspci(void) {
 void netstat(void) {
     if (g_app.i82574.mmio) i82574_stats(&g_app.i82574);
     if (g_app.rtl8168.iobase) rtl8168_stats(&g_app.rtl8168);
+    if (g_app.rtl8139.iobase) rtl8139_status(&g_app.rtl8139);
 }
 
 /* oxpcie952 uart 0 test */
