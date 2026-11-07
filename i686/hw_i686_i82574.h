@@ -1,4 +1,4 @@
-/* Intel 82574L, 82579LM and 82566DM, PCIe gigabit
+/* Intel 82574L, 82579LM, 82577LM and 82566DM, PCIe gigabit
    Based on iPXE src/drivers/net/intel.c and intel.h
    - ported: reset order, ring setup, TCTL/RCTL values, register and
      bit definitions
@@ -40,6 +40,7 @@
 #define i82574_device  0x10d3
 #define i82579_device  0x1502
 #define i82566_device  0x104a
+#define i82577_device  0x10ea
 
 /* Registers, BAR0 */
 #define I82574_CTRL    0x00000
@@ -287,7 +288,8 @@ static inline void i82574_init(struct i82574 *s,
     s->mmio = (uint8_t*)pci_function_bar0_mem(f);
     s->irq  = pci_function_irq(f);
     s->ich8 = f->device == i82566_device;
-    s->ich  = s->ich8 || f->device == i82579_device;
+    s->ich  = s->ich8 || f->device == i82579_device ||
+              f->device == i82577_device;
     s->rx = i82574_rx_ignore;
     LOG("i82574 mmio=%08x irq=%d\n", s->mmio, s->irq);
 
