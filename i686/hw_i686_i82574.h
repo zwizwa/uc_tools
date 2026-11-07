@@ -5,7 +5,6 @@
    - EECD AUTO_RD wait, stats registers and 82579 SWFLAG are from Linux
      drivers/net/ethernet/intel/e1000e, GPL2
    - 32 bit addresses only, legacy descriptors, INTx
-   - 82566DM links at 100 only: phy falls back from gig
 
    Notice from intel.c, which this file falls under:
 
@@ -46,6 +45,7 @@
 #define I82574_CTRL    0x00000
 #define I82574_STATUS  0x00008
 #define I82574_EECD    0x00010
+#define I82574_CTRL_EXT 0x00018
 #define I82574_ICR     0x000C0  /* Read to clear */
 #define I82574_IMS     0x000D0
 #define I82574_RCTL    0x00100
@@ -84,6 +84,7 @@
 #define I82574_STATUS_LU    (1 << 1)
 #define I82574_EECD_AUTO_RD (1 << 9)  /* nvm loaded, RAL0 valid */
 #define I82574_EXTCNF_SWFLAG (1 << 5)
+#define I82574_CTRL_EXT_DRV_LOAD (1 << 28)
 
 /* Interrupt bits */
 #define I82574_IRQ_RXDMT0   (1 << 4)
@@ -237,7 +238,9 @@ static inline void i82574_reset(struct i82574 *s) {
         i82574_wr(s, I82574_PBA, 0x08);
         i82574_wr(s, I82574_PBS, 0x10);
     }
-    i82574_wr(s, I82574_CTRL, ctrl | I82574_CTRL_RST);
+    // 82566: phy too, the link is at 100 before DRV_LOAD is set
+    i82574_wr(s, I82574_CTRL, ctrl | I82574_CTRL_RST |
+              (s->ich8 ? I82574_CTRL_PHY_RST : 0));
     i82574_ich_delay(s);
     i82574_reset_wait(s);
 
@@ -246,12 +249,12 @@ static inline void i82574_reset(struct i82574 *s) {
               I82574_CTRL_RST | I82574_CTRL_PHY_RST);
     i82574_wr(s, I82574_CTRL, ctrl);
     i82574_ich_delay(s);
-    if ((s->ich && !s->ich8) ||
-        (i82574_rd(s, I82574_STATUS) & I82574_STATUS_LU)) return;
+    // 82566: without this the ME pulls the link down to 100
+    if (s->ich8) i82574_wr(s, I82574_CTRL_EXT, i82574_rd(s, I82574_CTRL_EXT) |
+                           I82574_CTRL_EXT_DRV_LOAD);
+    if (s->ich || (i82574_rd(s, I82574_STATUS) & I82574_STATUS_LU)) return;
 
-    if (s->ich) i82574_swflag(s);
     i82574_wr(s, I82574_CTRL, ctrl | I82574_CTRL_RST | I82574_CTRL_PHY_RST);
-    i82574_ich_delay(s);
     i82574_reset_wait(s);
     for (int i = 0; i < 1000; i++) i82574_rd(s, I82574_STATUS); // delay
     i82574_wr(s, I82574_CTRL, ctrl);  // phy reset is not self-clearing
