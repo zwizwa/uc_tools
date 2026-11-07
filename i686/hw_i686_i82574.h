@@ -1,4 +1,5 @@
-/* Intel 82574L, 82579LM, 82577LM, 82567LM-3 and 82566DM, PCIe gigabit
+/* Intel 82574L, 82579LM, 82577LM, 82567LM-3 and 82566DM, PCIe gigabit,
+   and 82544GC, PCI gigabit
    Based on iPXE src/drivers/net/intel.c and intel.h
    - ported: reset order, ring setup, TCTL/RCTL values, register and
      bit definitions
@@ -42,6 +43,7 @@
 #define i82566_device  0x104a
 #define i82577_device  0x10ea
 #define i82567_device  0x10de
+#define i82544_device  0x100c
 
 /* Registers, BAR0 */
 #define I82574_CTRL    0x00000
@@ -85,8 +87,10 @@
 
 #define I82574_STATUS_LU    (1 << 1)
 #define I82574_EECD_AUTO_RD (1 << 9)  /* nvm loaded, RAL0 valid */
+#define I82574_RAH_AV       (1u << 31)
 #define I82574_EXTCNF_SWFLAG (1 << 5)
 #define I82574_CTRL_EXT_DRV_LOAD (1 << 28)
+#define I82574_CTRL_EXT_EE_RST   (1 << 13)
 
 /* Interrupt bits */
 #define I82574_IRQ_RXDMT0   (1 << 4)
@@ -138,6 +142,7 @@ struct i82574 {
     uint8_t ich;      // all onboard: phy is shared with the ME
     uint8_t ich8;     // 82566, 82567
     uint8_t pbs;      // 82566
+    uint8_t i82544;
     struct mac_addr mac;
 
     void (*rx)(void *, const uint8_t *, uint32_t);
@@ -211,7 +216,8 @@ static inline void i82574_rx_ignore(void *s, const uint8_t *data, uint32_t len) 
 static inline void i82574_reset_wait(struct i82574 *s) {
     for (int i = 0; i < 1000000; i++) {
         if (!(i82574_rd(s, I82574_CTRL) & I82574_CTRL_RST) &&
-            (s->ich8 || (i82574_rd(s, I82574_EECD) & I82574_EECD_AUTO_RD))) return;
+            (s->ich8 || s->i82544 ||
+             (i82574_rd(s, I82574_EECD) & I82574_EECD_AUTO_RD))) return;
     }
     LOG("i82574 reset timeout\n");
 }
@@ -228,7 +234,7 @@ static inline void i82574_swflag(struct i82574 *s) {
 
 /* e1000e: mmio right after reset hangs it.  About 20 ms. */
 static inline void i82574_ich_delay(struct i82574 *s) {
-    if (s->ich) for (int i = 0; i < 40000; i++) inb(0x80);
+    if (s->ich || s->i82544) for (int i = 0; i < 40000; i++) inb(0x80);
 }
 
 /* A previous driver can leave the phy powered down, only a phy reset
@@ -246,6 +252,12 @@ static inline void i82574_reset(struct i82574 *s) {
               (s->ich8 ? I82574_CTRL_PHY_RST : 0));
     i82574_ich_delay(s);
     i82574_reset_wait(s);
+    // 82544: no nvm reload after reset
+    if (s->i82544) {
+        i82574_wr(s, I82574_CTRL_EXT, i82574_rd(s, I82574_CTRL_EXT) |
+                  I82574_CTRL_EXT_EE_RST);
+        i82574_ich_delay(s);
+    }
 
     ctrl |= I82574_CTRL_ASDE | I82574_CTRL_SLU;
     ctrl &= ~(I82574_CTRL_LRST | I82574_CTRL_FRCSPD | I82574_CTRL_FRCDPLX |
@@ -266,6 +278,8 @@ static inline void i82574_reset(struct i82574 *s) {
 static inline void i82574_get_mac(struct i82574 *s) {
     uint32_t lo = i82574_rd(s, I82574_RAL0);
     uint32_t hi = i82574_rd(s, I82574_RAH0);
+    // 82544: nvm does not set this, only broadcast gets through
+    i82574_wr(s, I82574_RAH0, hi | I82574_RAH_AV);
     memcpy(&s->mac.mac[0], &lo, 4);
     memcpy(&s->mac.mac[4], &hi, 2);
     LOG("i82574 mac: ");
@@ -289,6 +303,7 @@ static inline void i82574_init(struct i82574 *s,
 
     s->mmio = (uint8_t*)pci_function_bar0_mem(f);
     s->irq  = pci_function_irq(f);
+    s->i82544 = f->device == i82544_device;
     s->pbs  = f->device == i82566_device;
     s->ich8 = s->pbs || f->device == i82567_device;
     s->ich  = s->ich8 || f->device == i82579_device ||
