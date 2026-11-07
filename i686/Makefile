@@ -99,8 +99,8 @@ boot.dsk: boot.asm
 sqlite3.o: $(SQLITE)/sqlite3.c Makefile
 	$(GCC) -Os $(SQLITE_FLAGS) -c $< -o $@
 
-kernel.elf: kernel.o sqlite3.o kernel.ld
-	$(LD) -T kernel.ld -o $@ kernel.o sqlite3.o $(shell $(GCC) -print-libgcc-file-name)
+kernel.elf: kernel.o kernel.ld
+	$(LD) -T kernel.ld -o $@ kernel.o $(shell $(GCC) -print-libgcc-file-name)
 
 %.elf: %.o kernel.ld
 	$(LD) -T kernel.ld -o $@ $<

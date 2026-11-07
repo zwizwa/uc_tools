@@ -1,4 +1,4 @@
-/* sqlite VFS on a raw MBR partition of type 0x7f, through hw_i686_ahci.h
+/* sqlite VFS on a raw block device, see blockdev.h
    - two fixed regions of 4K blocks: journal, then db
    - first block of a region holds magic + file size, written on sync
    - delete = size 0, so DELETE journal mode works as is
@@ -11,7 +11,6 @@
 #define SQV_SECT       (SQV_BLK / 512)
 #define SQV_MAGIC      0x72716c73  // "sqlr"
 #define SQV_JOURNAL_NB 16384       // 64MB
-#define SQV_PART_TYPE  0x7f
 
 struct sqv_region {
     uint32_t blk0;    // header block, data follows
@@ -24,9 +23,9 @@ struct sqv_file {
     struct sqv_region *r;
 };
 struct sqv {
-    struct ahci *ahci;
-    uint32_t lba0;
-    uint32_t cached;  // block in ahci->buf, or -1
+    struct blockdev *bd;
+    uint8_t buf[SQV_BLK];
+    uint32_t cached;  // block in buf, or -1
     struct sqv_region journal, db;
     uint32_t crash_after;  // db writes, test only: crash on the last one
     void (*crash)(void);   // or hang if 0
@@ -36,18 +35,18 @@ struct sqv sqv;
 static int sqv_read_blk(uint32_t b) {
     if (sqv.cached == b) return 0;
     sqv.cached = -1;
-    if (ahci_read(sqv.ahci, sqv.lba0 + b * SQV_SECT, SQV_BLK)) return -1;
+    if (sqv.bd->read(sqv.bd, b * SQV_SECT, sqv.buf, SQV_SECT)) return -1;
     sqv.cached = b;
     return 0;
 }
 static int sqv_write_blk(uint32_t b) {
     sqv.cached = -1;
-    if (ahci_write(sqv.ahci, sqv.lba0 + b * SQV_SECT, SQV_BLK)) return -1;
+    if (sqv.bd->write(sqv.bd, b * SQV_SECT, sqv.buf, SQV_SECT)) return -1;
     sqv.cached = b;
     return 0;
 }
 static int sqv_write_header(struct sqv_region *r) {
-    uint32_t *w = (uint32_t *)sqv.ahci->buf;
+    uint32_t *w = (uint32_t *)sqv.buf;
     mini_memset(w, 0, SQV_BLK);
     w[0] = SQV_MAGIC;
     w[1] = r->size;
@@ -57,7 +56,7 @@ static int sqv_write_header(struct sqv_region *r) {
     return SQLITE_OK;
 }
 static void sqv_read_header(struct sqv_region *r) {
-    uint32_t *w = (uint32_t *)sqv.ahci->buf;
+    uint32_t *w = (uint32_t *)sqv.buf;
     r->size = 0;
     if (sqv_read_blk(r->blk0) || w[0] != SQV_MAGIC) return;
     r->size = w[1] | ((uint64_t)w[2] << 32);
@@ -82,7 +81,7 @@ static int sqv_read(sqlite3_file *f, void *buf, int amt, sqlite3_int64 off) {
         uint32_t o = off % SQV_BLK;
         uint32_t n = SQV_BLK - o < amt ? SQV_BLK - o : amt;
         if (sqv_read_blk(r->blk0 + 1 + off / SQV_BLK)) return SQLITE_IOERR_READ;
-        mini_memcpy(dst, sqv.ahci->buf + o, n);
+        mini_memcpy(dst, sqv.buf + o, n);
         dst += n; off += n; amt -= n;
     }
     return rv;
@@ -102,7 +101,7 @@ static int sqv_write(sqlite3_file *f, const void *buf, int amt, sqlite3_int64 of
         uint32_t o = off % SQV_BLK;
         uint32_t n = SQV_BLK - o < amt ? SQV_BLK - o : amt;
         if (n < SQV_BLK && sqv_read_blk(b)) return SQLITE_IOERR_READ;
-        mini_memcpy(sqv.ahci->buf + o, src, n);
+        mini_memcpy(sqv.buf + o, src, n);
         if (sqv_write_blk(b)) return SQLITE_IOERR_WRITE;
         src += n; off += n; amt -= n;
     }
@@ -116,7 +115,7 @@ static int sqv_truncate(sqlite3_file *f, sqlite3_int64 size) {
 static int sqv_sync(sqlite3_file *f, int flags) {
     struct sqv_region *r = ((struct sqv_file *)f)->r;
     if (r->dirty && sqv_write_header(r)) return SQLITE_IOERR_FSYNC;
-    return ahci_flush(sqv.ahci) ? SQLITE_IOERR_FSYNC : SQLITE_OK;
+    return sqv.bd->flush(sqv.bd) ? SQLITE_IOERR_FSYNC : SQLITE_OK;
 }
 static int sqv_file_size(sqlite3_file *f, sqlite3_int64 *size) {
     *size = ((struct sqv_file *)f)->r->size;
@@ -163,7 +162,7 @@ static struct sqv_region *sqv_region(const char *name) {
 static int sqv_open(sqlite3_vfs *vfs, const char *name, sqlite3_file *f,
                     int flags, int *out_flags) {
     struct sqv_file *sf = (struct sqv_file *)f;
-    if (!sqv.ahci || !name ||
+    if (!sqv.bd || !name ||
         !(flags & (SQLITE_OPEN_MAIN_DB | SQLITE_OPEN_MAIN_JOURNAL)))
         return SQLITE_CANTOPEN;
     sf->r = sqv_region(name);
@@ -174,7 +173,7 @@ static int sqv_open(sqlite3_vfs *vfs, const char *name, sqlite3_file *f,
 static int sqv_delete(sqlite3_vfs *vfs, const char *name, int sync_dir) {
     struct sqv_region *r = sqv_region(name);
     r->size = 0;
-    if (sqv_write_header(r) || ahci_flush(sqv.ahci)) return SQLITE_IOERR_DELETE;
+    if (sqv_write_header(r) || sqv.bd->flush(sqv.bd)) return SQLITE_IOERR_DELETE;
     return SQLITE_OK;
 }
 static int sqv_access(sqlite3_vfs *vfs, const char *name, int flags, int *out) {
@@ -211,7 +210,7 @@ static sqlite3_vfs sqv_vfs = {
     .iVersion            = 2,
     .szOsFile            = sizeof(struct sqv_file),
     .mxPathname          = 64,
-    .zName               = "ahci",
+    .zName               = "blockdev",
     .xOpen               = sqv_open,
     .xDelete             = sqv_delete,
     .xAccess             = sqv_access,
@@ -229,28 +228,21 @@ int sqlite3_os_end(void) {
     return SQLITE_OK;
 }
 
-/* Finds the partition, reads the region headers. */
-static int sqv_init(struct ahci *ahci) {
-    sqv.ahci = ahci;
-    sqv.cached = -1;
-    if (ahci_read(ahci, 0, 512)) return -1;
-    for (int i = 0; i < 4; i++) {
-        uint8_t *e = ahci->buf + 0x1be + 16 * i;
-        if (e[4] != SQV_PART_TYPE) continue;
-        sqv.lba0 = e[8] | (e[9] << 8) | (e[10] << 16) | (e[11] << 24);
-        uint32_t nb = e[12] | (e[13] << 8) | (e[14] << 16) | (e[15] << 24);
-        uint32_t nb_blk = nb / SQV_SECT;
-        if (nb_blk <= 2 * SQV_JOURNAL_NB) break;
-        sqv.journal = (struct sqv_region){ .blk0 = 0, .nb_blk = SQV_JOURNAL_NB };
-        sqv.db = (struct sqv_region){ .blk0 = SQV_JOURNAL_NB,
-                                      .nb_blk = nb_blk - SQV_JOURNAL_NB };
-        sqv_read_header(&sqv.journal);
-        sqv_read_header(&sqv.db);
-        LOG("sqv lba0=%d blocks=%d journal=%d db=%d\n", sqv.lba0, nb_blk,
-            (uint32_t)sqv.journal.size, (uint32_t)sqv.db.size);
-        return 0;
+/* Lays out the regions on bd, reads their headers. */
+static int sqv_init(struct blockdev *bd) {
+    uint32_t nb_blk = bd->nb_sectors / SQV_SECT;
+    if (nb_blk <= 2 * SQV_JOURNAL_NB) {
+        LOG("sqv device too small\n");
+        return -1;
     }
-    sqv.ahci = 0;
-    LOG("sqv no partition\n");
-    return -1;
+    sqv.bd = bd;
+    sqv.cached = -1;
+    sqv.journal = (struct sqv_region){ .blk0 = 0, .nb_blk = SQV_JOURNAL_NB };
+    sqv.db = (struct sqv_region){ .blk0 = SQV_JOURNAL_NB,
+                                  .nb_blk = nb_blk - SQV_JOURNAL_NB };
+    sqv_read_header(&sqv.journal);
+    sqv_read_header(&sqv.db);
+    LOG("sqv blocks=%d journal=%d db=%d\n", nb_blk,
+        (uint32_t)sqv.journal.size, (uint32_t)sqv.db.size);
+    return 0;
 }

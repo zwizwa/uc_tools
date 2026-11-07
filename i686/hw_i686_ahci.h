@@ -8,6 +8,9 @@
 #define HW_I686_AHCI_H
 
 #include "hw_i686_pci.h"
+#include "blockdev.h"
+#include <stddef.h>
+#include <string.h>
 
 /* Matched by class 0106: x230 8086:1e03, qemu 8086:2922 */
 
@@ -78,6 +81,7 @@ struct ahci {
     uint32_t abar;
     volatile uint8_t *port;
     uint32_t nb_sectors;  // from IDENTIFY, low 32 bits
+    struct blockdev bd;   // set up when a disk is found
 };
 
 static inline uint32_t ahci_rd(struct ahci *s, uint32_t reg) {
@@ -149,6 +153,34 @@ static inline int ahci_flush(struct ahci *s) {
     return ahci_cmd(s, ATA_CMD_FLUSH_EXT, 0, 0, 0);
 }
 
+/* blockdev, copies through s->buf */
+#define AHCI_BD(bd) ((struct ahci *)((uint8_t *)(bd) - offsetof(struct ahci, bd)))
+static inline int ahci_bd_read(struct blockdev *bd, uint32_t lba, void *buf, uint32_t nb) {
+    struct ahci *s = AHCI_BD(bd);
+    uint8_t *dst = buf;
+    while (nb) {
+        uint32_t n = nb > AHCI_BUF / 512 ? AHCI_BUF / 512 : nb;
+        if (ahci_read(s, lba, n * 512)) return -1;
+        memcpy(dst, s->buf, n * 512);
+        dst += n * 512; lba += n; nb -= n;
+    }
+    return 0;
+}
+static inline int ahci_bd_write(struct blockdev *bd, uint32_t lba, const void *buf, uint32_t nb) {
+    struct ahci *s = AHCI_BD(bd);
+    const uint8_t *src = buf;
+    while (nb) {
+        uint32_t n = nb > AHCI_BUF / 512 ? AHCI_BUF / 512 : nb;
+        memcpy(s->buf, src, n * 512);
+        if (ahci_write(s, lba, n * 512)) return -1;
+        src += n * 512; lba += n; nb -= n;
+    }
+    return 0;
+}
+static inline int ahci_bd_flush(struct blockdev *bd) {
+    return ahci_flush(AHCI_BD(bd));
+}
+
 static inline void ahci_init(struct ahci *s, const struct pci_function *f) {
     s->abar = pci_function_bar_mem(f, 0x24);  // BAR5
     // mem, bus master, INTx off
@@ -196,6 +228,12 @@ static inline void ahci_init(struct ahci *s, const struct pci_function *f) {
     }
     model[40] = 0;
     LOG("ahci port%d sectors=%d model=%s\n", p, s->nb_sectors, model);
+    s->bd = (struct blockdev){
+        .read  = ahci_bd_read,
+        .write = ahci_bd_write,
+        .flush = ahci_bd_flush,
+        .nb_sectors = s->nb_sectors,
+    };
     return;
   fail:
     s->port = 0;
