@@ -512,6 +512,8 @@ void app_init(struct app *app) {
         else {
             LOG("partition 7f lba0=%d sectors=%d\n",
                 app->part.lba0, app->part.bd.nb_sectors);
+            // sqlite writes 4K blocks, see mod_sqlite_vfs.c
+            if (app->part.lba0 % 8) LOG("partition 7f not 4K aligned\n");
             kernel_blockdev = &app->part.bd;
         }
     }

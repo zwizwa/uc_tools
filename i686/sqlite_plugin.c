@@ -1,6 +1,6 @@
 /* sqlite plugin, see plugin.h
    - sqlite on kernel_blockdev through mod_sqlite_vfs.c
-   - words: sqtest, sqcrash
+   - words: sqtest, sqcrash, sqformat
    - make sqlite_plugin.bin; tether_udp plugin <host> sqlite_plugin.bin */
 
 #include "plugin.h"
@@ -18,19 +18,34 @@ static int sqtest_row(void *ctx, int n, char **val, char **col) {
     LOG("\n");
     return 0;
 }
+static sqlite3 *db;
 static sqlite3 *sqopen(void) {
-    static sqlite3 *db;
-    if (!db) {
-        if (!kernel_blockdev) return 0;
+    static int init;
+    if (!kernel_blockdev) return 0;
+    if (!init) {
         __asm__ volatile ("fninit");
         sqlite3_config(SQLITE_CONFIG_HEAP, sqlite_heap, sizeof(sqlite_heap), 64);
-        if (sqlite3_initialize() || sqv_init(kernel_blockdev) ||
-            sqlite3_open("sda3", &db)) {
+        if (sqlite3_initialize()) {
             LOG("sqlite init failed\n");
+            return 0;
+        }
+        init = 1;
+    }
+    if (!db) {
+        if (sqv_init(kernel_blockdev)) return 0;
+        if (sqlite3_open("sda3", &db)) {
+            LOG("sqlite open failed\n");
+            sqlite3_close(db);
             db = 0;
         }
     }
     return db;
+}
+/* Closes the database first. */
+static void sqformat(void) {
+    if (!kernel_blockdev) return;
+    if (db) { sqlite3_close(db); db = 0; }
+    sqv_format(kernel_blockdev);
 }
 static void sqexec(const char *sql) {
     sqlite3 *db = sqopen();
@@ -71,6 +86,7 @@ static int word_is(const uint8_t *line, uint32_t len, const char *word) {
 static int sqlite_cmd(const uint8_t *line, uint32_t len) {
     if      (word_is(line, len, "sqtest"))  sqtest();
     else if (word_is(line, len, "sqcrash")) sqcrash();
+    else if (word_is(line, len, "sqformat")) sqformat();
     else return -1;
     return 0;
 }

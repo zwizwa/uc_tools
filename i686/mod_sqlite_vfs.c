@@ -1,5 +1,6 @@
 /* sqlite VFS on a raw block device, see blockdev.h
-   - two fixed regions of 4K blocks: journal, then db
+   - block 0 is a superblock with magic and layout, see sqv_format
+   - two regions of 4K blocks: journal, then db
    - first block of a region holds magic + file size, written on sync
    - delete = size 0, so DELETE journal mode works as is
    - one connection, no locking, temp files in memory (SQLITE_TEMP_STORE=3)
@@ -11,6 +12,14 @@
 #define SQV_SECT       (SQV_BLK / 512)
 #define SQV_MAGIC      0x72716c73  // "sqlr"
 #define SQV_JOURNAL_NB 16384       // 64MB
+#define SQV_SB_MAGIC   "uc_tools sqlv1"
+
+struct sqv_superblock {
+    char magic[16];
+    uint32_t block_size;
+    uint32_t journal_blk0, journal_nb_blk;
+    uint32_t db_blk0, db_nb_blk;
+};
 
 struct sqv_region {
     uint32_t blk0;    // header block, data follows
@@ -228,21 +237,54 @@ int sqlite3_os_end(void) {
     return SQLITE_OK;
 }
 
-/* Lays out the regions on bd, reads their headers. */
+/* Reads the layout from the superblock and the region headers. */
 static int sqv_init(struct blockdev *bd) {
+    struct sqv_superblock *sb = (struct sqv_superblock *)sqv.buf;
+    sqv.bd = 0;
+    sqv.cached = -1;
+    if (bd->read(bd, 0, sqv.buf, SQV_SECT) ||
+        mini_memcmp(sb->magic, SQV_SB_MAGIC, sizeof(SQV_SB_MAGIC)) ||
+        sb->block_size != SQV_BLK) {
+        LOG("sqv no superblock, see sqformat\n");
+        return -1;
+    }
+    sqv.journal = (struct sqv_region){ .blk0 = sb->journal_blk0,
+                                       .nb_blk = sb->journal_nb_blk };
+    sqv.db = (struct sqv_region){ .blk0 = sb->db_blk0,
+                                  .nb_blk = sb->db_nb_blk };
+    sqv.bd = bd;
+    sqv_read_header(&sqv.journal);
+    sqv_read_header(&sqv.db);
+    LOG("sqv journal=%d db=%d\n",
+        (uint32_t)sqv.journal.size, (uint32_t)sqv.db.size);
+    return 0;
+}
+/* Writes the superblock and empty region headers.  Destroys any
+   database on bd. */
+static int sqv_format(struct blockdev *bd) {
     uint32_t nb_blk = bd->nb_sectors / SQV_SECT;
     if (nb_blk <= 2 * SQV_JOURNAL_NB) {
         LOG("sqv device too small\n");
         return -1;
     }
     sqv.bd = bd;
-    sqv.cached = -1;
-    sqv.journal = (struct sqv_region){ .blk0 = 0, .nb_blk = SQV_JOURNAL_NB };
-    sqv.db = (struct sqv_region){ .blk0 = SQV_JOURNAL_NB,
-                                  .nb_blk = nb_blk - SQV_JOURNAL_NB };
-    sqv_read_header(&sqv.journal);
-    sqv_read_header(&sqv.db);
-    LOG("sqv blocks=%d journal=%d db=%d\n", nb_blk,
-        (uint32_t)sqv.journal.size, (uint32_t)sqv.db.size);
+    sqv.journal = (struct sqv_region){ .blk0 = 1, .nb_blk = SQV_JOURNAL_NB };
+    sqv.db = (struct sqv_region){ .blk0 = 1 + SQV_JOURNAL_NB,
+                                  .nb_blk = nb_blk - 1 - SQV_JOURNAL_NB };
+    if (sqv_write_header(&sqv.journal) || sqv_write_header(&sqv.db)) goto fail;
+    struct sqv_superblock *sb = (struct sqv_superblock *)sqv.buf;
+    mini_memset(sqv.buf, 0, SQV_BLK);
+    mini_memcpy(sb->magic, SQV_SB_MAGIC, sizeof(SQV_SB_MAGIC));
+    sb->block_size     = SQV_BLK;
+    sb->journal_blk0   = sqv.journal.blk0;
+    sb->journal_nb_blk = sqv.journal.nb_blk;
+    sb->db_blk0        = sqv.db.blk0;
+    sb->db_nb_blk      = sqv.db.nb_blk;
+    if (sqv_write_blk(0) || bd->flush(bd)) goto fail;
+    LOG("sqv formatted blocks=%d\n", nb_blk);
+    sqv.bd = 0;
     return 0;
+  fail:
+    sqv.bd = 0;
+    return -1;
 }
