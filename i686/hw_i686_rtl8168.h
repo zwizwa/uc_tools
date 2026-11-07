@@ -1,4 +1,4 @@
-/* Realtek RTL8168 family, PCIe gigabit
+/* Realtek RTL8168 family, PCIe gigabit, and RTL8169, PCI gigabit
    Based on iPXE src/drivers/net/realtek.c and realtek.h
    - ported: reset, C+ mode setup, ring layout, TCR/RCR values
    - no phy access: the link stays as the boot firmware left it
@@ -36,6 +36,7 @@
 
 #define rtl8168_vendor  0x10ec
 #define rtl8168_device  0x8168
+#define rtl8169_device  0x8169
 
 /* Registers, all below 0x100 so the I/O BAR reaches them */
 #define RTL8168_IDR0    0x00

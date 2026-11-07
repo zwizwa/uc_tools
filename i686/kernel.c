@@ -35,7 +35,7 @@ int kernel_infof(const char *fmt, ...);
     m(dp83815, mac, 0, 0, 0, 0, 0) \
     m(i82574, mac, i82579_device, i82566_device, i82577_device, i82567_device, \
       i82544_device) \
-    m(rtl8168, mac, 0, 0, 0, 0, 0) \
+    m(rtl8168, mac, rtl8169_device, 0, 0, 0, 0) \
 
 #define for_device_disabled(m) \
 
