@@ -1,12 +1,12 @@
 /* Plugin at PLUGIN_ADDR, see plugin.h.  Link with -R kernel.elf. */
-ENTRY(plugin_start)
+ENTRY(plugin_header)
 SECTIONS {
     . = 0x2000000;
-    /* 3if JSR jumps to the first byte */
-    .text   : { *(.plugin_start) *(.text*) }
+    /* struct plugin_header first */
+    .text   : { KEEP(*(.plugin_header)) *(.text*) }
     .rodata : { *(.rodata*) }
     .data   : { *(.data*) }
-    /* Not in the image, plugin_start clears it */
+    /* Not in the image, the kernel clears it */
     .bss    : {
         __plugin_bss_start = .;
         *(.bss*) *(COMMON)

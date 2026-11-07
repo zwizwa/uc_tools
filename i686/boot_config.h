@@ -17,6 +17,7 @@ struct boot_config_u32 {
     uint32_t app;
     uint32_t top;
     uint32_t plugin;
+    uint32_t plugin_load;
 };
 
 #if defined(__i386__)
@@ -30,6 +31,7 @@ struct boot_config {
     void *app;            // main application static data structure
     void *top;            // free memory starts here, usable by 3if monitor
     void *plugin;         // struct plugin *, see plugin.h
+    void *plugin_load;    // struct plugin_header *, loader doorbell
 };
 extern struct boot_config boot_config;
 CT_ASSERT(boot_config,sizeof(struct boot_config)==sizeof(struct boot_config_u32));

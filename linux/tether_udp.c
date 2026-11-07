@@ -101,8 +101,8 @@ void cmd_send(int argc, char **argv) {
 }
 
 
-/* Unregister the running plugin, write to the plugin slot and jump
-   to its first byte. */
+/* Unregister the running plugin, write the plugin slot, ring the
+   loader doorbell.  See i686/plugin.h */
 void cmd_plugin(int argc, char **argv) {
     if (argc < 4) { usage_exit(argc, argv); }
     struct tether s;
@@ -115,7 +115,10 @@ void cmd_plugin(int argc, char **argv) {
     const uint8_t zero[4] = {};
     if (tether_iub_write(&s, 0x7E00 + offsetof(struct boot_config_u32, plugin),
                          zero, sizeof(zero), 0)) return;
-    tether_iub_write(&s, PLUGIN_ADDR, mf.buf, mf.size, 1);
+    if (tether_iub_write(&s, PLUGIN_ADDR, mf.buf, mf.size, 0)) return;
+    const uint8_t load[4] = { U32_LE(PLUGIN_ADDR) };
+    tether_iub_write(&s, 0x7E00 + offsetof(struct boot_config_u32, plugin_load),
+                     load, sizeof(load), 0);
 }
 
 int main(int argc, char **argv) {

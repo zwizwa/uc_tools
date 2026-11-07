@@ -1,12 +1,14 @@
 /* Kernel <-> plugin interface.
    - plugin is a flat binary at PLUGIN_ADDR, linked with
      ld -R kernel.elf against the running kernel, see plugin.ld
-   - no ABI guarantees, plugin_start checks kernel_version
-   - loaded and started by `tether_udp plugin`, from the 3if isr:
-     plugin_start only registers, work runs from the main loop
-   - registered in boot_config.plugin, at a fixed address so the
-     loader can clear it before overwriting the slot, whatever kernel
-     runs */
+   - image starts with struct plugin_header, data only
+   - `tether_udp plugin` clears boot_config.plugin, writes the image,
+     then sets boot_config.plugin_load to the header address: fixed
+     addresses, so this works whatever kernel runs.  No 3if JSR.
+   - the net isr turns plugin_load into KERNEL_EVENT_PLUGIN, the main
+     loop checks magic and kernel_version, clears bss, calls init and
+     registers what it returns.  No plugin code runs in an isr.
+   - no ABI guarantees beyond the header */
 
 #ifndef PLUGIN_H
 #define PLUGIN_H
@@ -17,7 +19,8 @@
 #define PLUGIN_ADDR 0x2000000  // 32MB, above stack and 3if kernel image
 
 /* Kernel events, queued by the isrs, delivered by the main loop */
-#define KERNEL_EVENT_LINE 0  // console line incl '\n', default: forth
+#define KERNEL_EVENT_LINE   0  // console line incl '\n', default: forth
+#define KERNEL_EVENT_PLUGIN 1  // uint32_t header address, default: load
 
 /* A plugin is a state machine driven by the events it listens to. */
 struct plugin {
@@ -26,6 +29,14 @@ struct plugin {
     /* Main loop, interrupts on.  Returns 0 when handled, else the
        kernel's default handler gets it. */
     int (*event)(uint32_t tag, const uint8_t *data, uint32_t len);
+};
+
+#define PLUGIN_MAGIC 0x6e67706c  // "lpgn"
+struct plugin_header {
+    uint32_t magic;
+    char kernel_version[16];  // KERNEL_VERSION at build time
+    uint8_t *bss_start, *bss_end;
+    struct plugin *(*init)(void);  // main loop, returns what to register
 };
 
 /* Provided by the kernel */

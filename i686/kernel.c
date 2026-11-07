@@ -474,6 +474,16 @@ void app_rx(void *vapp, const uint8_t *data, uint32_t len) {
     //LOG("app_rx %p\n", vapp);
     struct app *app = vapp;
     udp_mon_rx(&app->udp_mon, data, len);
+    /* Doorbell rung by 3if, see plugin.h.  Left set when the queue is
+       full, so the next packet retries. */
+    if (boot_config.plugin_load) {
+        uint8_t *d = kq_reserve(&app->kq, KERNEL_EVENT_PLUGIN, 4);
+        if (d) {
+            mini_memcpy(d, &boot_config.plugin_load, 4);
+            kq_commit(&app->kq);
+            boot_config.plugin_load = 0;
+        }
+    }
 }
 
 
@@ -649,6 +659,24 @@ void oxrx(void) {
     s->rx_head = 0;
 }
 
+/* Main loop, see plugin.h */
+static void plugin_load(const struct plugin_header *h) {
+    char v[sizeof(h->kernel_version) + 1] = {};
+    if (h->magic != PLUGIN_MAGIC) {
+        LOG("plugin bad magic %08x\n", h->magic);
+        return;
+    }
+    mini_memcpy(v, h->kernel_version, sizeof(h->kernel_version));
+    if (mini_strcmp(v, kernel_version)) {
+        LOG("plugin built for kernel %s, this is %s\n", v, kernel_version);
+        return;
+    }
+    mini_memset(h->bss_start, 0, h->bss_end - h->bss_start);
+    struct plugin *p = h->init();
+    boot_config.plugin = p;
+    if (p) LOG("plugin %s\n", p->name);
+}
+
 void kqstat(void) {
     LOG("kq events=%d drops=%d\n", g_app.kq_events, g_app.kq_drops);
 }
@@ -809,6 +837,11 @@ void entry(void) {
         if (!(p && p->event && (p->events & (1 << tag)) &&
               !p->event(tag, d, len))) {
             if (tag == KERNEL_EVENT_LINE) forth_write(d, len);
+            if (tag == KERNEL_EVENT_PLUGIN) {
+                uint32_t a;
+                mini_memcpy(&a, d, 4);
+                plugin_load((const struct plugin_header *)a);
+            }
         }
         kq_release(&app->kq);
     }

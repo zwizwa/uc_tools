@@ -6,7 +6,6 @@
 #include "plugin.h"
 #define LOG(...) kernel_infof(__VA_ARGS__)
 #include "tools.h"
-#include "boot_config.h"
 #include "hw_i686_io.h"
 #include <string.h>
 
@@ -97,14 +96,15 @@ static struct plugin sqlite_plugin = {
     .event  = sqlite_event,
 };
 
-/* Called by 3if JSR, in the isr.  On a version mismatch the kernel
-   symbols are wrong, so return without calling into the kernel. */
-extern uint8_t __plugin_bss_start, __plugin_bss_end;
-__attribute__((section(".plugin_start")))
-void plugin_start(void) {
-    if (mini_strcmp(kernel_version, KERNEL_VERSION)) return;
-    boot_config.plugin = 0;
-    memset(&__plugin_bss_start, 0, &__plugin_bss_end - &__plugin_bss_start);
-    boot_config.plugin = &sqlite_plugin;
-    LOG("plugin %s\n", sqlite_plugin.name);
+static struct plugin *sqlite_init(void) {
+    return &sqlite_plugin;
 }
+extern uint8_t __plugin_bss_start[], __plugin_bss_end[];
+__attribute__((section(".plugin_header")))
+const struct plugin_header plugin_header = {
+    .magic          = PLUGIN_MAGIC,
+    .kernel_version = KERNEL_VERSION,
+    .bss_start      = __plugin_bss_start,
+    .bss_end        = __plugin_bss_end,
+    .init           = sqlite_init,
+};
