@@ -34,6 +34,7 @@ int kernel_infof(const char *fmt, ...);
     m(rtl8139, addr, 0, 0, 0) \
     m(dp83815, mac, 0, 0, 0) \
     m(i82574, mac, i82579_device, i82566_device, i82577_device) \
+    m(rtl8168, mac, 0, 0, 0) \
 
 #define for_device_disabled(m) \
 
@@ -54,6 +55,7 @@ int kernel_infof(const char *fmt, ...);
 #include "hw_i686_mcs9904.h"
 #include "hw_i686_dp83815.h"
 #include "hw_i686_i82574.h"
+#include "hw_i686_rtl8168.h"
 #include "hw_i686_sunix.h"
 #include "hw_i686_oxpcie952.h"
 #include "hw_i686_ox16pci952.h"
@@ -302,6 +304,16 @@ static void i82574_isr(void) {
     isr_end();
 }
 __attribute__((naked))
+static void rtl8168_isr(void) {
+    isr_begin();
+    static uint32_t count = 0;
+    spinner(8, count++);
+    rtl8168_isr_inner(&g_app.rtl8168);
+    outb(0xA0, 0x20); // End Of Interrupt (EOI) to slave PIC
+    outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
+    isr_end();
+}
+__attribute__((naked))
 static void mcs9865_isr(void) {
     // This is only the first COM port
     isr_begin();
@@ -463,6 +475,7 @@ void app_init(struct app *app) {
         { .isr = rtl8139_isr,    .irq = app->rtl8139.irq },
         { .isr = dp83815_isr,    .irq = app->dp83815.irq },
         { .isr = i82574_isr,     .irq = app->i82574.irq },
+        { .isr = rtl8168_isr,    .irq = app->rtl8168.irq },
         { .isr = mcs9865_isr,    .irq = app->mcs9865.uart[MCS9865_MAIN_UART].uart.irq },
         { .isr = ox16pci952_isr, .irq = app->ox16pci952.uart.irq },
         { .isr = sunix_isr,      .irq = app->sunix.uart.irq },
@@ -555,6 +568,7 @@ void lspci(void) {
 
 void netstat(void) {
     if (g_app.i82574.mmio) i82574_stats(&g_app.i82574);
+    if (g_app.rtl8168.iobase) rtl8168_stats(&g_app.rtl8168);
 }
 
 void hello(void) {
