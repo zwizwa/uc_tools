@@ -93,16 +93,25 @@ struct net {
 /* All application state is in a single struct which make debugging a
    bit easier in case we ever do core dumps or gdb stub. */
 struct app;
-/* Command lines from the isrs, run by the main loop. */
-#define APP_NB_LINES 4
-struct app_line {
-    uint8_t buf[TELNET_LINE_BUF_SIZE];
-    uint32_t len;
+/* Events from the isrs to the main loop, see plugin.h */
+struct kq {
+    volatile uint32_t write;
+    volatile uint32_t read;
+    uint32_t size;
+    uint8_t *buf;
+    uint32_t reserved;
 };
+typedef struct kq kq_queue_t;
+#define NS(name) kq##name
+#include "ns_rqueue.h"
+#undef NS
+
 struct app {
     volatile uint32_t event;
-    struct app_line line[APP_NB_LINES];
-    volatile uint32_t line_read, line_write;  // free running
+    struct kq kq;
+    uint8_t kq_buf[4096] __attribute__((aligned(4)));
+    uint32_t kq_drops;   // isr
+    uint32_t kq_events;  // main loop
     struct udp_mon udp_mon;
     struct uart com1;
     struct text_console log;
@@ -254,15 +263,15 @@ void telnet_event(struct telnet *t, uintptr_t event) {
                 t->nb_char = sizeof(t->line) - 1;
             }
             t->line[t->nb_char++] = '\n';
-            struct app *app = &g_app;
-            if (app->line_write - app->line_read >= APP_NB_LINES) {
+            struct kq *q = &g_app.kq;
+            uint8_t *d = kq_reserve(q, KERNEL_EVENT_LINE, t->nb_char);
+            if (!d) {
+                g_app.kq_drops++;
                 LOG("line dropped\n");
                 break;
             }
-            struct app_line *l = &app->line[app->line_write % APP_NB_LINES];
-            mini_memcpy(l->buf, t->line, t->nb_char);
-            l->len = t->nb_char;
-            app->line_write++;
+            mini_memcpy(d, t->line, t->nb_char);
+            kq_commit(q);
         }
         break;
     case TELNET_EVENT_ESCAPE:
@@ -534,6 +543,7 @@ void app_init(struct app *app) {
         {} // END-OF-LIST
     };
 
+    kq_init(&app->kq, app->kq_buf, sizeof(app->kq_buf));
     idt_init(&app->idt, isrs);
 
     telnet_init(&app->telnet,
@@ -639,6 +649,9 @@ void oxrx(void) {
     s->rx_head = 0;
 }
 
+void kqstat(void) {
+    LOG("kq events=%d drops=%d\n", g_app.kq_events, g_app.kq_drops);
+}
 void hello(void) {
     LOG("hello!\n");
 }
@@ -654,6 +667,7 @@ void restart(void) {
 #define W(word) {#word, (w)word}
 #define FORTH_WORDS\
     W(hello),      \
+    W(kqstat),     \
     W(netstat),    \
     W(oxsend),     \
     W(oxloop),     \
@@ -778,10 +792,8 @@ void entry(void) {
        interrupts on. */
     struct app *app = &g_app;
     for (;;) {
-        struct plugin *p = boot_config.plugin;
-        if (p && p->poll) p->poll();
         cli();
-        if (app->line_read == app->line_write) {
+        if (kq_empty(&app->kq)) {
             /* Wait for next interrupt.  sti takes effect after hlt
                starts, so no wakeup is lost.  This is crucial to make
                QEMU more efficient. */
@@ -789,12 +801,16 @@ void entry(void) {
             continue;
         }
         sti();
-        struct app_line *l = &app->line[app->line_read % APP_NB_LINES];
-        p = boot_config.plugin;
-        if (!p || !p->cmd || p->cmd(l->buf, l->len)) {
-            forth_write(l->buf, l->len);
+        uint16_t tag, len;
+        uint8_t *d = kq_peek(&app->kq, &tag, &len);
+        if (!d) continue;
+        app->kq_events++;
+        struct plugin *p = boot_config.plugin;
+        if (!(p && p->event && (p->events & (1 << tag)) &&
+              !p->event(tag, d, len))) {
+            if (tag == KERNEL_EVENT_LINE) forth_write(d, len);
         }
-        app->line_read++;
+        kq_release(&app->kq);
     }
 }
 

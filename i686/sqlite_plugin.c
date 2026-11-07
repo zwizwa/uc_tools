@@ -83,7 +83,8 @@ static int word_is(const uint8_t *line, uint32_t len, const char *word) {
     uint32_t n = mini_strlen(word);
     return len > n && !memcmp(line, word, n) && line[n] <= ' ';
 }
-static int sqlite_cmd(const uint8_t *line, uint32_t len) {
+static int sqlite_event(uint32_t tag, const uint8_t *line, uint32_t len) {
+    if (tag != KERNEL_EVENT_LINE) return -1;
     if      (word_is(line, len, "sqtest"))  sqtest();
     else if (word_is(line, len, "sqcrash")) sqcrash();
     else if (word_is(line, len, "sqformat")) sqformat();
@@ -91,8 +92,9 @@ static int sqlite_cmd(const uint8_t *line, uint32_t len) {
     return 0;
 }
 static struct plugin sqlite_plugin = {
-    .name = "sqlite",
-    .cmd  = sqlite_cmd,
+    .name   = "sqlite",
+    .events = 1 << KERNEL_EVENT_LINE,
+    .event  = sqlite_event,
 };
 
 /* Called by 3if JSR, in the isr.  On a version mismatch the kernel

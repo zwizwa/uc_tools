@@ -16,13 +16,16 @@
 
 #define PLUGIN_ADDR 0x2000000  // 32MB, above stack and 3if kernel image
 
+/* Kernel events, queued by the isrs, delivered by the main loop */
+#define KERNEL_EVENT_LINE 0  // console line incl '\n', default: forth
+
+/* A plugin is a state machine driven by the events it listens to. */
 struct plugin {
     const char *name;
-    /* Main loop, once per wakeup, interrupts on.  Optional. */
-    void (*poll)(void);
-    /* Main loop, each command line incl '\n'.  Returns 0 when
-       handled, else it goes to forth.  Optional. */
-    int (*cmd)(const uint8_t *line, uint32_t len);
+    uint32_t events;  // mask of 1 << KERNEL_EVENT_*
+    /* Main loop, interrupts on.  Returns 0 when handled, else the
+       kernel's default handler gets it. */
+    int (*event)(uint32_t tag, const uint8_t *data, uint32_t len);
 };
 
 /* Provided by the kernel */
