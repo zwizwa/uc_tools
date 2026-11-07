@@ -92,7 +92,8 @@ void cmd_send(int argc, char **argv) {
     struct boot_config_u32 *config = (void*)(buf + 512);
     memcpy(config->ip, &s.peer.sin_addr, sizeof(config->ip));
 
-    tether_iub_write(&s, 0x90000, buf, mf.size);
+    // Above the kernel bss + sqlite heap, see i686/kernel.ld
+    tether_iub_write(&s, 0x1000000, buf, mf.size);
     free(buf);
 }
 

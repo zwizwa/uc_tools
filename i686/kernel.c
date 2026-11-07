@@ -64,6 +64,7 @@ int kernel_infof(const char *fmt, ...);
 #include "hw_i686_ice.h"
 #include "hw_i686_echo.h"
 #include "hw_i686_emu10k.h"
+#include "hw_i686_ahci.h"
 
 /* Network card used by udp_mon: first one in PCI order */
 struct net {
@@ -103,6 +104,7 @@ struct app {
     uint32_t nb_zeros;
     for_device(STRUCT)
     for_device_net(STRUCT_NET)
+    struct ahci ahci;
     struct net net;
 };
 struct app g_app;
@@ -400,6 +402,8 @@ void pci_phase2(void *vapp, struct pci_function *f) {
 #endif
     for_device_phase2(PCI_INIT)
     for_device_net(PCI_INIT_NET)
+    if (f->class == 0x01 && f->subclass == 0x06 && !app->ahci.port)
+        ahci_init(&app->ahci, f);
 }
 
 void log_mem(uint32_t addr, uint32_t len) {
@@ -600,6 +604,50 @@ void oxrx(void) {
     s->rx_head = 0;
 }
 
+/* sqlite on the type 7f partition, see mod_sqlite_vfs.c */
+#include "mod_sqlite_vfs.c"
+static uint8_t sqlite_heap[8 << 20] __attribute__((aligned(8)));
+static int sqtest_row(void *ctx, int n, char **val, char **col) {
+    for (int i = 0; i < n; i++) LOG("%s=%s ", col[i], val[i] ? val[i] : "NULL");
+    LOG("\n");
+    return 0;
+}
+static sqlite3 *sqopen(void) {
+    static sqlite3 *db;
+    if (!db) {
+        if (!g_app.ahci.port) return 0;
+        __asm__ volatile ("fninit");
+        sqlite3_config(SQLITE_CONFIG_HEAP, sqlite_heap, sizeof(sqlite_heap), 64);
+        if (sqlite3_initialize() || sqv_init(&g_app.ahci) ||
+            sqlite3_open("sda3", &db)) {
+            LOG("sqlite init failed\n");
+            db = 0;
+        }
+    }
+    return db;
+}
+static void sqexec(const char *sql) {
+    sqlite3 *db = sqopen();
+    char *err = 0;
+    if (!db) return;
+    sqlite3_exec(db, sql, sqtest_row, 0, &err);
+    if (err) { LOG("sqlite: %s\n", err); sqlite3_free(err); }
+}
+void sqtest(void) {
+    sqexec("create table if not exists boot(n integer primary key, t text);"
+           "insert into boot(t) values (sqlite_version());"
+           "select count(*), max(n) from boot;"
+           "pragma integrity_check;");
+}
+/* Hangs halfway through writing the db pages of a big commit. */
+void sqcrash(void) {
+    if (!sqopen()) return;
+    sqv.crash_after = 20;
+    sqexec("insert into boot(t) select hex(randomblob(500)) from"
+           " (with recursive c(x) as (select 1 union all select x+1 from c"
+           "  where x < 2000) select x from c);");
+}
+
 void hello(void) {
     LOG("hello!\n");
 }
@@ -619,6 +667,8 @@ void restart(void) {
     W(oxsend),     \
     W(oxloop),     \
     W(oxrx),       \
+    W(sqtest),     \
+    W(sqcrash),    \
     W(lspci),      \
     W(reboot),     \
     W(restart),    \
@@ -659,6 +709,40 @@ char *strcpy(char *dst, const char *src) {
 void *memset(void *s, int c, size_t n) {
     return mini_memset(s, c, n);
 }
+/* For sqlite */
+void *memmove(void *dest, const void *src, size_t n) {
+    uint8_t *d = dest;
+    const uint8_t *s = src;
+    if (d < s) while (n--) *d++ = *s++;
+    else while (n--) d[n] = s[n];
+    return dest;
+}
+int strncmp(const char *s1, const char *s2, size_t n) {
+    for (; n && *s1 && *s1 == *s2; n--, s1++, s2++);
+    return n ? (uint8_t)*s1 - (uint8_t)*s2 : 0;
+}
+char *strchr(const char *s, int c) {
+    for (; *s != (char)c; s++) if (!*s) return 0;
+    return (char *)s;
+}
+char *strrchr(const char *s, int c) {
+    const char *r = 0;
+    do { if (*s == (char)c) r = s; } while (*s++);
+    return (char *)r;
+}
+size_t strspn(const char *s, const char *accept) {
+    size_t n = 0;
+    while (s[n] && strchr(accept, s[n])) n++;
+    return n;
+}
+size_t strcspn(const char *s, const char *reject) {
+    size_t n = 0;
+    while (s[n] && !strchr(reject, s[n])) n++;
+    return n;
+}
+double fabs(double x) {
+    return __builtin_fabs(x);
+}
 
 
 
@@ -672,6 +756,7 @@ void *memset(void *s, int c, size_t n) {
 
 extern uint8_t __bss_start;
 extern uint8_t __bss_end;
+extern uint8_t __data_end;
 
 void entry(void) {
 
@@ -717,7 +802,7 @@ struct boot_config boot_config = {
     .app   = &g_app,
     .top   = &__bss_end,
     .ip    = {{10,1,54,222}},
-    .endx  = (void*)&__bss_start,
+    .endx  = (void*)&__data_end,
     .start = (void*)&boot_config,
 };
 

@@ -94,7 +94,7 @@ pxe_cached:
 next_track:
     call load_track
     add ax, 1
-    cmp ax, 5   ; endx = total tracks to read
+    cmp ax, 64  ; endx = total tracks to read, see kernel.ld
     jnz next_track
 
     call newline

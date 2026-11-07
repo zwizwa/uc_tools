@@ -13,9 +13,38 @@ OBJDUMP = i686-elf-objdump
 
 UC_TOOLS=..
 
+# sqlite amalgamation: ./configure && make sqlite3.c
+SQLITE = ../../sqlite/bld
+SQLITE_FLAGS = \
+	-DSQLITE_OS_OTHER=1 \
+	-DSQLITE_THREADSAFE=0 \
+	-DSQLITE_ZERO_MALLOC \
+	-DSQLITE_ENABLE_MEMSYS5 \
+	-DSQLITE_OMIT_AUTOINIT \
+	-DSQLITE_TEMP_STORE=3 \
+	-DSQLITE_DEFAULT_MEMSTATUS=0 \
+	-DSQLITE_DQS=0 \
+	-DSQLITE_OMIT_LOAD_EXTENSION \
+	-DSQLITE_OMIT_WAL \
+	-DSQLITE_OMIT_SHARED_CACHE \
+	-DSQLITE_OMIT_DEPRECATED \
+	-DSQLITE_OMIT_PROGRESS_CALLBACK \
+	-DSQLITE_OMIT_AUTHORIZATION \
+	-DSQLITE_OMIT_LOCALTIME \
+	-DSQLITE_OMIT_TRACE \
+	-DSQLITE_OMIT_JSON \
+	-DSQLITE_OMIT_COMPLETE \
+	-DSQLITE_OMIT_GET_TABLE \
+	-DSQLITE_OMIT_UTF16 \
+	-DSQLITE_OMIT_DECLTYPE \
+	-DSQLITE_OMIT_DESERIALIZE \
+	-DSQLITE_OMIT_SEH \
+	-DSQLITE_UNTESTABLE \
+
 CFLAGS = \
 	-Wall \
 	-I$(UC_TOOLS) \
+	-I$(SQLITE) \
 	-DVERSION=\"$(shell ./version.sh)\" \
 	-Os \
 
@@ -66,6 +95,12 @@ boot.dsk: boot.asm
 # Kernel is C code, loaded at 0x7E00 after the boot sector.
 %.o: %.c
 	$(GCC) $(CFLAGS) -MD -MF $(patsubst %.o,%.d,$@) -c $< -o $@
+
+sqlite3.o: $(SQLITE)/sqlite3.c Makefile
+	$(GCC) -Os $(SQLITE_FLAGS) -c $< -o $@
+
+kernel.elf: kernel.o sqlite3.o kernel.ld
+	$(LD) -T kernel.ld -o $@ kernel.o sqlite3.o $(shell $(GCC) -print-libgcc-file-name)
 
 %.elf: %.o kernel.ld
 	$(LD) -T kernel.ld -o $@ $<
