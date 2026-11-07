@@ -92,8 +92,16 @@ struct net {
 /* All application state is in a single struct which make debugging a
    bit easier in case we ever do core dumps or gdb stub. */
 struct app;
+/* Command lines from the isrs, run by the main loop. */
+#define APP_NB_LINES 4
+struct app_line {
+    uint8_t buf[TELNET_LINE_BUF_SIZE];
+    uint32_t len;
+};
 struct app {
     volatile uint32_t event;
+    struct app_line line[APP_NB_LINES];
+    volatile uint32_t line_read, line_write;  // free running
     struct udp_mon udp_mon;
     struct uart com1;
     struct text_console log;
@@ -240,7 +248,15 @@ void telnet_event(struct telnet *t, uintptr_t event) {
                 t->nb_char = sizeof(t->line) - 1;
             }
             t->line[t->nb_char++] = '\n';
-            forth_write(t->line, t->nb_char);
+            struct app *app = &g_app;
+            if (app->line_write - app->line_read >= APP_NB_LINES) {
+                LOG("line dropped\n");
+                break;
+            }
+            struct app_line *l = &app->line[app->line_write % APP_NB_LINES];
+            mini_memcpy(l->buf, t->line, t->nb_char);
+            l->len = t->nb_char;
+            app->line_write++;
         }
         break;
     case TELNET_EVENT_ESCAPE:
@@ -794,14 +810,23 @@ void entry(void) {
     /* Start the forth interpreter. */
     forth_start();
 
-    /* Main loop currently doesn't do anything.  Later this would be
-       the place to handle non-real-time events, i.e. the "bottom
-       half" interrupt routines. */
-  loop:
-    /* Wait for next interrupt.  This is crucial to make QEMU more
-       efficient. */
-    hlt();
-    goto loop;
+    /* Main loop runs the non-real-time work queued by the isrs, with
+       interrupts on. */
+    struct app *app = &g_app;
+    for (;;) {
+        cli();
+        if (app->line_read == app->line_write) {
+            /* Wait for next interrupt.  sti takes effect after hlt
+               starts, so no wakeup is lost.  This is crucial to make
+               QEMU more efficient. */
+            __asm__ volatile ("sti; hlt");
+            continue;
+        }
+        sti();
+        struct app_line *l = &app->line[app->line_read % APP_NB_LINES];
+        forth_write(l->buf, l->len);
+        app->line_read++;
+    }
 }
 
 
