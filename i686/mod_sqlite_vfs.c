@@ -28,7 +28,8 @@ struct sqv {
     uint32_t lba0;
     uint32_t cached;  // block in ahci->buf, or -1
     struct sqv_region journal, db;
-    uint32_t crash_after;  // db writes, test only: hang on the last one
+    uint32_t crash_after;  // db writes, test only: crash on the last one
+    void (*crash)(void);   // or hang if 0
 };
 struct sqv sqv;
 
@@ -92,6 +93,7 @@ static int sqv_write(sqlite3_file *f, const void *buf, int amt, sqlite3_int64 of
     if (off + amt > sqv_max(r)) return SQLITE_FULL;
     if (r == &sqv.db && sqv.crash_after && !--sqv.crash_after) {
         LOG("sqv crash\n");
+        if (sqv.crash) sqv.crash();
         for (;;) __asm__ volatile ("cli; hlt");
     }
     if (off + amt > r->size) { r->size = off + amt; r->dirty = 1; }

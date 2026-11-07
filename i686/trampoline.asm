@@ -25,7 +25,8 @@ get_eip:
     mov byte [ebx], '?'
 
     ; Reset the stack then jump to the kernel entry point
-    mov eax, 0x7C00
+    ; Below 16MB, see kernel.ld
+    mov eax, 0x1000000
     mov esp, eax
     jmp edx
 

@@ -78,10 +78,11 @@
 //  10  32K
 //  11  64K
 
-// There seems to be no reason to pick anything less than the maximum.
+// 32K: WRAP is ignored at 64K, so a packet at the end of the ring
+// continues at the start (datasheet, Linux 8139too RX_BUF_IDX).
 // The 8K is not enough in practice, but can be used to debug RX reset
 // with flooded ethernet.
-#define RCR_RBLEN 3
+#define RCR_RBLEN 2
 #define RCR_RBLEN_SHIFT 11
 #define RTL8139_RX_BUF_LEN (1<<(RCR_RBLEN+13))
 

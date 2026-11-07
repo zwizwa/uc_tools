@@ -370,6 +370,7 @@ gdt_end:
 
 [BITS 32]
 protected_mode: 
+    mov esp, 0x1000000      ; Stack below 16MB, see kernel.ld
     mov ebx, 0xB8000 + (2 * 79)
     mov byte [ebx], '?'
     mov edx, [0x7E00]

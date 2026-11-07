@@ -631,8 +631,9 @@ static void sqexec(const char *sql) {
     sqlite3 *db = sqopen();
     char *err = 0;
     if (!db) return;
-    sqlite3_exec(db, sql, sqtest_row, 0, &err);
-    if (err) { LOG("sqlite: %s\n", err); sqlite3_free(err); }
+    int rv = sqlite3_exec(db, sql, sqtest_row, 0, &err);
+    if (rv) LOG("sqlite rv=%d %s\n", rv, err ? err : "");
+    sqlite3_free(err);
 }
 void sqtest(void) {
     sqexec("create table if not exists boot(n integer primary key, t text);"
@@ -640,10 +641,17 @@ void sqtest(void) {
            "select count(*), max(n) from boot;"
            "pragma integrity_check;");
 }
-/* Hangs halfway through writing the db pages of a big commit. */
+/* Image tether_udp left at 16MB: restart without the BIOS. */
+static void reexec_3if(void) {
+    cli();
+    ((void (*)(void))0x1000000)();
+}
+/* Crashes halfway through writing the db pages of a big commit.
+   Restarts from the last 3if push, so only use after one. */
 void sqcrash(void) {
     if (!sqopen()) return;
     sqv.crash_after = 20;
+    sqv.crash = reexec_3if;
     sqexec("insert into boot(t) select hex(randomblob(500)) from"
            " (with recursive c(x) as (select 1 union all select x+1 from c"
            "  where x < 2000) select x from c);");

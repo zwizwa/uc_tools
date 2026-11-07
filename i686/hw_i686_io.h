@@ -99,7 +99,7 @@ static inline void cli_and_restart(void) {
     LOG("restart...\n");
     cli();
     __asm__ __volatile__ (
-        "movl $0x7C00, %%esp"   "\n\t"
+        "movl $0x1000000, %%esp" "\n\t"  // see kernel.ld
         "movl [0x7E00], %%edx"  "\n\t"
         "jmp *%%edx"            "\n\t"
         : : : "memory"
