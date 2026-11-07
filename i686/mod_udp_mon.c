@@ -151,13 +151,12 @@ static inline void udp_mon_rx_udp(struct udp_mon *s, const uint8_t *eth_pkt, uin
            array of handlers can be used at the host end. */
         /* Last command is {5, BCK, crc32 LE} over the rest, see
            tether_udp_send_packet.  Drop on mismatch: no ack, so the
-           host retransmits. */
+           host retransmits.  Otherwise it runs as a normal BCK. */
         if (data_len < 6 || data[data_len-6] != 5 || data[data_len-5] != BCK ||
             crc32b(data, data_len-6) != read_le(data + data_len-4, 4)) {
             LOG("udp_mon bad crc\n");
             return;
         }
-        data_len -= 6;
         uint32_t buf_size = 1472;
         struct {
             struct eth_udp eth_udp;
