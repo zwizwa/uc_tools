@@ -64,7 +64,27 @@ struct udp_mon {
 
 };
 
-/* Turn request headers into reply headers, returns packet size. */
+/* RFC 768 one's complement sum over pseudo header, udp header and
+   data, which must follow the header.  Returns 0 for a good packet. */
+static inline uint32_t udp_sum(uint32_t acc, const uint8_t *d, uint32_t n) {
+    for (uint32_t i = 0; i+1 < n; i += 2) acc += (d[i] << 8) | d[i+1];
+    if (n & 1) acc += d[n-1] << 8;
+    return acc;
+}
+static inline uint16_t udp_checksum(const struct ip *ip, const struct udp *udp) {
+    uint16_t len = HTONS(udp->length);
+    const uint8_t *src = ip->src_ip.ip, *dst = ip->dst_ip.ip;
+    uint8_t pseudo[] = {
+        src[0], src[1], src[2], src[3], dst[0], dst[1], dst[2], dst[3],
+        0, PROTOCOL_UDP, len >> 8, len };
+    uint32_t acc = udp_sum(0, pseudo, sizeof(pseudo));
+    acc = udp_sum(acc, (const uint8_t *)udp, len);
+    while (acc >> 16) acc = (acc & 0xffff) + (acc >> 16);
+    return ~acc;
+}
+
+/* Turn request headers into reply headers, returns packet size.
+   Data must follow the headers. */
 static inline uint32_t udp_mon_reply(struct eth_udp *q, const struct eth_udp *p, uint32_t data_len) {
     /* Start it out with the same fields as the request. */
     *q = *p;
@@ -74,7 +94,7 @@ static inline uint32_t udp_mon_reply(struct eth_udp *q, const struct eth_udp *p,
     udp->src_port = p->udp.dst_port;
     uint16_t l = sizeof(struct udp) + data_len;
     udp->length = HTONS(l);
-    udp->checksum = 0; // Not needed on IPv4
+    udp->checksum = 0;
 
     struct ip *ip = &q->ip;
     ip->dst_ip = p->ip.src_ip;
@@ -83,6 +103,9 @@ static inline uint32_t udp_mon_reply(struct eth_udp *q, const struct eth_udp *p,
     ip->total_length = HTONS(l);
     ip->header_checksum = 0;
     ip->header_checksum = ip_checksum(ip, sizeof(*ip));
+
+    uint16_t sum = udp_checksum(ip, udp);
+    udp->checksum = HTONS(sum ? sum : 0xffff);
 
     struct mac *mac = &q->mac;
     mac->dst_mac = p->mac.src_mac;
@@ -124,10 +147,14 @@ static inline void udp_mon_log_putchar(struct udp_mon *s, uint8_t c) {
 // socat - STDIO,raw,echo=0,escape=0x03 UDP:10.1.54.222:1001
 static inline void udp_mon_rx_udp(struct udp_mon *s, const uint8_t *eth_pkt, uint32_t len) {
     const struct eth_udp *p = (const void*)eth_pkt;
-    // FIXME: checksum
     int32_t data_len = HTONS(p->udp.length) - sizeof(struct udp);
     if (sizeof(*p) + data_len > len) {
         LOG("udp bad data_len=%d\n", data_len);
+        return;
+    }
+    // 0 means the sender did not compute one
+    if (p->udp.checksum && udp_checksum(&p->ip, &p->udp)) {
+        LOG("udp bad checksum\n");
         return;
     }
     const uint16_t port = HTONS(p->udp.dst_port);
@@ -149,17 +176,20 @@ static inline void udp_mon_rx_udp(struct udp_mon *s, const uint8_t *eth_pkt, uin
            pbuf and send a reply with the same sequence number.  The
            sequence number is intentionally only 8 bit so a small
            array of handlers can be used at the host end. */
-        /* Last command is {5, BCK, crc32 LE} over the rest, see
+        /* crc32 LE of the 3if data, then the data, both ways.  See
            tether_udp_send_packet.  Drop on mismatch: no ack, so the
-           host retransmits.  Otherwise it runs as a normal BCK. */
-        if (data_len < 6 || data[data_len-6] != 5 || data[data_len-5] != BCK ||
-            crc32b(data, data_len-6) != read_le(data + data_len-4, 4)) {
+           host retransmits. */
+        if (data_len < 4 ||
+            crc32b(data + 4, data_len - 4) != read_le(data, 4)) {
             LOG("udp_mon bad crc\n");
             return;
         }
-        uint32_t buf_size = 1472;
-        struct {
+        data += 4;
+        data_len -= 4;
+        uint32_t buf_size = 1472 - 4;
+        struct __attribute__((packed)) {
             struct eth_udp eth_udp;
+            uint32_t crc;
             uint8_t data[buf_size];
         } q;
 
@@ -176,7 +206,8 @@ static inline void udp_mon_rx_udp(struct udp_mon *s, const uint8_t *eth_pkt, uin
         s->monitor_3if.out = NULL;
         // log_hex(pbuf.buf, pbuf.count);
 
-        uint32_t l = udp_mon_reply(&q.eth_udp, p, pbuf.count);
+        q.crc = crc32b(q.data, pbuf.count);
+        uint32_t l = udp_mon_reply(&q.eth_udp, p, sizeof(q.crc) + pbuf.count);
         s->send(s->ctx, (uint8_t*)&q, l);
     }
 }

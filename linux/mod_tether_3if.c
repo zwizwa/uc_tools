@@ -634,23 +634,29 @@ void tether_assert_udp_write(struct tether *s, const uint8_t *buf, size_t len) {
     /* UDP write is buffered.  We do not send out the packet until read. */
     pbuf_write(&s->w, buf, len); // FIXME: error on overflow
 }
-/* Appends {5, BCK, crc32 LE} over the rest, checked by
-   i686/mod_udp_mon.c and echoed like any BCK.  Returns the crc. */
-#define TETHER_UDP_CRC_LEN 6
-uint32_t tether_udp_send_packet(struct tether *s, const uint8_t *buf, uint32_t len) {
-    uint8_t pkt[len + TETHER_UDP_CRC_LEN];
+/* UDP payload is a crc32 LE of the 3if data, then the 3if data,
+   both ways.  See i686/mod_udp_mon.c */
+#define TETHER_UDP_CRC_LEN 4
+void tether_udp_send_packet(struct tether *s, const uint8_t *buf, uint32_t len) {
+    uint8_t pkt[TETHER_UDP_CRC_LEN + len];
     uint32_t crc = crc32b(buf, len);
-    const uint8_t trailer[] = { 5, BCK, U32_LE(crc) };
-    memcpy(pkt, buf, len);
-    memcpy(pkt + len, trailer, sizeof(trailer));
-    len += sizeof(trailer);
+    const uint8_t hdr[TETHER_UDP_CRC_LEN] = { U32_LE(crc) };
+    memcpy(pkt, hdr, sizeof(hdr));
+    memcpy(pkt + TETHER_UDP_CRC_LEN, buf, len);
+    len += TETHER_UDP_CRC_LEN;
     int wlen;
     ASSERT_ERRNO(
         wlen = sendto(s->fd_out, pkt, len, 0 /*flags*/,
                       (struct sockaddr*)&s->peer,
                       sizeof(s->peer)));
     ASSERT(len == wlen);
-    return crc;
+}
+/* Returns 3if data length, or -1 on a bad crc. */
+int tether_udp_check_crc(const uint8_t *buf, int len) {
+    if (len < TETHER_UDP_CRC_LEN) return -1;
+    len -= TETHER_UDP_CRC_LEN;
+    if (crc32b(buf + TETHER_UDP_CRC_LEN, len) != read_le(buf, TETHER_UDP_CRC_LEN)) return -1;
+    return len;
 }
 void tether_udp_send_str(struct tether *s, const char *str) {
     tether_udp_send_packet(s, (const uint8_t*)str, strlen(str));
@@ -682,7 +688,9 @@ void tether_udp_write_read(struct tether *s) {
                   (struct sockaddr *)&from, &fromlen);
     ASSERT(rv >= 0);
     // LOG("udp rv=%d\n", rv);
-    cbuf_write(&s->r, buf, rv);
+    rv = tether_udp_check_crc(buf, rv);
+    ASSERT(rv >= 0);
+    cbuf_write(&s->r, buf + TETHER_UDP_CRC_LEN, rv);
 }
 ssize_t tether_assert_udp_read(struct tether *s, void *vbuf, size_t nb) {
     /* If there is data in the cbuf then read that first.  If we run
@@ -787,7 +795,6 @@ struct chunk_info {
     uint32_t chunk_size;
     uint32_t nb_chunks;
     uint8_t *bookkeep;
-    uint32_t *crc;
     uint8_t buf[1472 - TETHER_UDP_CRC_LEN];
 };
 void tether_iub_write_chunk(struct chunk_info *c,
@@ -806,7 +813,7 @@ void tether_iub_write_chunk(struct chunk_info *c,
 
     buf_written += sizeof(hdr);
     ASSERT(buf_written <= sizeof(c->buf));
-    c->crc[chunk_nb] = tether_udp_send_packet(c->s, c->buf, buf_written);
+    tether_udp_send_packet(c->s, c->buf, buf_written);
 
 }
 
@@ -836,18 +843,18 @@ void tether_iub_read_chunks(struct chunk_info *c) {
         socklen_t fromlen = sizeof(from);
         rv = recvfrom(c->s->fd_in, buf, sizeof(buf), 0 /*flags*/,
                       (struct sockaddr *)&from, &fromlen);
-        /* The first 3if message contains the chunk id. */
-        ASSERT(rv >= 3);
-        ASSERT(buf[0] == 2);
-        uint16_t chunk_id = read_be(buf+1, 2);
-        ASSERT(chunk_id < c->nb_chunks);
-        // LOG("rx chunk_id %d\n", chunk_id);
-        /* Last message is the echoed crc trailer. */
-        if (rv < 8 || buf[rv-5] != 4 ||
-            read_le(buf+rv-4, 4) != c->crc[chunk_id]) {
-            LOG("bad ack chunk_id %d\n", chunk_id);
+        if (tether_udp_check_crc(buf, rv) < 0) {
+            LOG("bad reply crc\n");
             continue;
         }
+        rv -= TETHER_UDP_CRC_LEN;
+        uint8_t *msg = buf + TETHER_UDP_CRC_LEN;
+        /* The first 3if message contains the chunk id. */
+        ASSERT(rv >= 3);
+        ASSERT(msg[0] == 2);
+        uint16_t chunk_id = read_be(msg+1, 2);
+        ASSERT(chunk_id < c->nb_chunks);
+        // LOG("rx chunk_id %d\n", chunk_id);
         c->bookkeep[chunk_id] = 1;
     }
 
@@ -867,8 +874,6 @@ void tether_iub_write(struct tether *s,
     c.nb_chunks  = 1 + (in_len-1) / c.chunk_size;
     uint8_t bookkeep[c.nb_chunks];
     c.bookkeep = bookkeep;
-    uint32_t crc[c.nb_chunks];
-    c.crc = crc;
 
     LOG("%d bytes, sending %d packets\n", c.in_len, c.nb_chunks);
 
