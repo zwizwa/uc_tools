@@ -1,7 +1,9 @@
 #!/bin/sh
 # Kernel event queue: 600 console lines in packets of 10, padded to
-# 5..95 bytes, about 30K.  Each packet is one KERNEL_EVENT_INPUT, telnet
-# in the main loop makes the lines, see kqstat.
+# 5..60 bytes, about 20K.  Each packet is one KERNEL_EVENT_INPUT, telnet
+# in the main loop makes the lines, see kqstat.  Lines stay below 63
+# characters: forth drops longer ones (forth_in_buf[64] in mod_forth.c).
+# Queue wrap is covered by linux/test_ns_rqueue.c
 #   test_kq_burst.sh <ip>
 # All 600 lines must arrive, no drops.  The 64K queue holds the whole
 # burst, also in qemu where the echo to COM1 busy-waits at emulated
@@ -25,7 +27,7 @@ lines() {
     while [ $p -lt 60 ]; do
         i=0; out=""
         while [ $i -lt 10 ]; do
-            out="${out}hello$(printf "%$(( (p * 10 + i) * 7 % 90 ))s" "")
+            out="${out}hello$(printf "%$(( (p * 10 + i) * 7 % 56 ))s" "")
 "
             i=$((i + 1))
         done
