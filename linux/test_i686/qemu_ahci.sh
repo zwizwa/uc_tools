@@ -1,7 +1,8 @@
 #!/bin/sh
 # i686 kernel in qemu with emulated hardware, no passthrough:
 # - kernel.dsk on floppy, 64MB for the plugin slot at 32MB
-# - ahci with sq.img: 256MB, one type 7f partition
+# - ahci with sq.img: 256MB, one type 7f partition, or with DISK=ide
+#   on the piix IDE primary master (hw_i686_ata_pio.h, like CF on Soekris)
 # - NIC (rtl8139 or e1000e) on a private tap: only T/32 routed to it,
 #   nothing bridged, the kernel's floppy default ip is 10.1.54.222
 # - serial on tcp 127.0.0.1:4556
@@ -12,6 +13,8 @@
 #   kill $(pgrep -f "^qemu-system-i386 -name sqvfs")
 # (pkill -f without ^ also matches the shell running it over ssh)
 NIC=${NIC:-rtl8139}
+DISK_ARGS="-device ahci,id=ahci -drive file=sq.img,format=raw,if=none,id=sq -device ide-hd,drive=sq,bus=ahci.0"
+[ "$DISK" = ide ] && DISK_ARGS="-drive file=sq.img,format=raw,if=ide,index=0"
 T=${T:-10.1.54.222}
 TAP=tapsq
 [ -e sq.img ] || {
@@ -25,8 +28,7 @@ ip link set $TAP up
 ip route add $T/32 dev $TAP
 qemu-system-i386 -name sqvfs $DBG_ARGS -enable-kvm -m 64 \
     -drive file=kernel.dsk,format=raw,if=floppy,file.locking=off -boot a \
-    -device ahci,id=ahci -drive file=sq.img,format=raw,if=none,id=sq \
-    -device ide-hd,drive=sq,bus=ahci.0 \
+    $DISK_ARGS \
     -netdev tap,id=n,ifname=$TAP,script=no,downscript=no \
     -device $NIC,netdev=n -display none \
     -serial tcp:127.0.0.1:4556,server,nowait >qemu.log 2>&1
