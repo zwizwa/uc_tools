@@ -1,18 +1,18 @@
 #!/bin/sh
-# Run the test_i686 tests that apply to a target.  As root on the
+# Run the test_*.sh tests that apply to a target.  As root on the
 # host that reaches the target on-link (psamathe), see lib.sh for I686
 # and TETHER.
-#   run_all.sh qemu <qemu dir>  emulated rig, starts and stops qemu,
-#                               usually qemu/ next to this script
-#   run_all.sh x230 <ip>        ahci disk with a 7f partition, sqlite
-#   run_all.sh rtl8139 <ip>     real rtl8139 card
+#   test_run_all.sh qemu <qemu dir>  emulated rig, starts and stops
+#                                    qemu, usually qemu/ next to this
+#   test_run_all.sh x230 <ip>        ahci disk with a 7f partition, sqlite
+#   test_run_all.sh rtl8139 <ip>     real rtl8139 card
 # OTHER_PLUGIN=<sqlite_plugin.bin built for another kernel> adds the
 # plugin mismatch test.  Prints PASS/FAIL lines, exits 1 on any FAIL.
 HERE=$(cd "$(dirname "$0")" && pwd)
 . "$HERE/lib.sh"
 [ -n "$2" ] || { echo "usage: $0 qemu|x230|rtl8139 <qemu dir | ip>"; exit 1; }
 
-out=$HERE/run_all.log
+out=$HERE/test_run_all.log
 : >$out
 run() {
     echo "## $*"

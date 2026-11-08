@@ -1,4 +1,4 @@
-# Shared by the test_i686 scripts, sourced.  Run as root on the host
+# Shared by the test_*.sh scripts, sourced.  Run as root on the host
 # that reaches the target on-link (psamathe for br54): the kernel has
 # no gateway, so its UDP replies only go to its own segment.
 #
@@ -13,8 +13,8 @@
 #   T       target ip, first argument of most scripts
 
 HERE=$(cd "$(dirname "$0")" && pwd)
-I686=${I686:-$HERE/../../i686}
-TETHER=${TETHER:-$HERE/../tether_udp.dynamic.host.elf}
+I686=${I686:-$HERE}
+TETHER=${TETHER:-$HERE/../linux/tether_udp.dynamic.host.elf}
 CON_DELAY=${CON_DELAY:-4}
 
 # tether_udp send|plugin <file>, prints the result line

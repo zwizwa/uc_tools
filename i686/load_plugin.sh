@@ -6,7 +6,7 @@
 # TETHER_UDP_GAP_US=2000 by default: the Soekris drops 3if bursts.
 HERE=$(cd "$(dirname "$0")" && pwd)
 G=$HERE/glibc
-[ -d "$G" ] && TETHER=${TETHER:-"$G/ld-linux-x86-64.so.2 --library-path $G $HERE/../tether_udp.dynamic.host.elf"}
+[ -d "$G" ] && TETHER=${TETHER:-"$G/ld-linux-x86-64.so.2 --library-path $G $HERE/../linux/tether_udp.dynamic.host.elf"}
 . "$HERE/lib.sh"
 T=$1
 [ -n "$T" ] || { echo "usage: $0 <ip> [<plugin.bin>]"; exit 1; }

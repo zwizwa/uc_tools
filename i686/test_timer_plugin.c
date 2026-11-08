@@ -5,7 +5,7 @@
      the alarm table hold: posts until full, continues on
      KERNEL_EVENT_ROOM, checks all fire in order
    make test_timer_plugin.bin
-   linux/test_i686/test_timer.sh */
+   test_timer.sh */
 
 #include "plugin.h"
 #define LOG(...) kernel_infof(__VA_ARGS__)
