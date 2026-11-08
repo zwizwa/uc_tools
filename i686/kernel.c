@@ -887,6 +887,32 @@ double fabs(double x) {
 
 extern uint8_t __bss_start;
 extern uint8_t __bss_end;
+
+/* .bss is at 1MB, see kernel.ld.  boot.asm's int 15h 2401 fails on
+   real machines ("!A20" on Soekris), and without A20 bit 20 is
+   masked: clearing .bss would wipe low memory and the kernel. */
+static int a20_on(void) {
+    volatile uint32_t *lo = (void *)0x1000, *hi = (void *)0x101000;
+    uint32_t save = *lo;
+    *lo = 0x12345678;
+    *hi = 0xEDCBA987;
+    int on = *lo == 0x12345678;
+    *lo = save;
+    return on;
+}
+static void kbc_wait(void) {
+    while (inb(0x64) & 2);
+}
+static int a20_enable(void) {
+    if (a20_on()) return 1;
+    outb(0x92, (inb(0x92) | 2) & ~1);  // fast A20, bit 0 is reset
+    if (a20_on()) return 1;
+    kbc_wait(); outb(0x64, 0xD1);      // 8042: write output port
+    kbc_wait(); outb(0x60, 0xDF);      // A20 on
+    kbc_wait();
+    for (int i = 0; i < 100000; i++) if (a20_on()) return 1;
+    return 0;
+}
 extern uint8_t __data_end;
 
 void entry(void) {
@@ -897,6 +923,11 @@ void entry(void) {
        later be overwritten by the top status line from the
        text_console object. */
     VIDEO[79*2] = '!';
+
+    if (!a20_enable()) {
+        VIDEO[78*2] = 'A';
+        for (;;) hlt();
+    }
 
     /* Initialize memory.  */
     mini_memset_volatile(&__bss_start, 0, &__bss_end - &__bss_start);
