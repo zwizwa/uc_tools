@@ -795,6 +795,7 @@ struct chunk_info {
     uint32_t chunk_size;
     uint32_t nb_chunks;
     uint8_t *bookkeep;
+    uint32_t gap_us;  // between packets, TETHER_UDP_GAP_US
     uint8_t buf[1472 - TETHER_UDP_CRC_LEN];
 };
 void tether_iub_write_chunk(struct chunk_info *c,
@@ -814,7 +815,7 @@ void tether_iub_write_chunk(struct chunk_info *c,
     buf_written += sizeof(hdr);
     ASSERT(buf_written <= sizeof(c->buf));
     tether_udp_send_packet(c->s, c->buf, buf_written);
-
+    if (c->gap_us) usleep(c->gap_us);
 }
 
 void tether_iub_write_start(struct chunk_info *c) {
@@ -874,6 +875,8 @@ int tether_iub_write(struct tether *s,
     /* Computed manually.  Assert checks for buffer overflow. */
     c.chunk_size = sizeof(c.buf) - 22;
     c.nb_chunks  = 1 + (in_len-1) / c.chunk_size;
+    const char *gap = getenv("TETHER_UDP_GAP_US");
+    if (gap) c.gap_us = atoi(gap);
     uint8_t bookkeep[c.nb_chunks];
     c.bookkeep = bookkeep;
 
