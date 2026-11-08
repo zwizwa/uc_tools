@@ -5,6 +5,7 @@
 # - output caused elsewhere (UDP console) shows up too
 # - 200 lines in one burst all get answered
 # - a second connection while the first is open, and reconnects
+# - ctrl-d on an empty line closes the connection
 # lwIP has no gateway: the client address must be on its /24.  The
 # qemu rig is routed, not bridged, so pass psamathe's br54 address.
 . "$(dirname "$0")/lib.sh"
@@ -43,5 +44,13 @@ wait
 check "second connection" sh -c 'echo "$0" | grep -a -q "^hello!$"' "$out"
 for i in 1 2 3 4 5 6; do out=$(tcp 0 hello); done
 check "reconnects" sh -c 'echo "$0" | grep -a -q "^hello!$"' "$out"
+
+# ctrl-d closes on an empty line only: socat exits on the close
+# before timeout kills it (124)
+{ sleep 1; printf "\004"; sleep 5; } | timeout 4 socat - TCP:$T:23$BIND >/dev/null 2>&1
+check "ctrl-d closes" [ $? != 124 ]
+out=$({ sleep 1; printf "hel\004lo\r\n"; sleep 2; } |
+    timeout 5 socat - TCP:$T:23$BIND 2>/dev/null | tr -d "\r")
+check "ctrl-d in a line is ignored" sh -c 'echo "$0" | grep -a -q "^hello!$"' "$out"
 rm -f $HERE/tcp1.log
 finish
