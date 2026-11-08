@@ -42,7 +42,14 @@
 
 #define TELNET_OPTION_ECHO                 1 // 01
 #define TELNET_OPTION_SUPPRESS_GO_AHEAD    3 // 03
+#define TELNET_OPTION_STATUS               5
+#define TELNET_OPTION_TERMINAL_TYPE       24
+#define TELNET_OPTION_NAWS                31 // window size
+#define TELNET_OPTION_TERMINAL_SPEED      32
+#define TELNET_OPTION_REMOTE_FLOW_CONTROL 33
 #define TELNET_OPTION_LINEMODE            34
+#define TELNET_OPTION_X_DISPLAY_LOCATION  35
+#define TELNET_OPTION_NEW_ENVIRON         39
 #define TELNET_OPTION_SUPPRESS_LOCAL_ECHO 45 // 2D
 
 
@@ -89,6 +96,21 @@ const uint8_t telnet_init_bytes[] = {
 #define TELNET_EVENT_PROMPT     0x600
 
 
+/* Last WILL/WONT/DO/DONT received per option, 0 if none.  Only
+   saved, not answered.  Options not listed here are logged. */
+struct telnet_options {
+    uint8_t echo;
+    uint8_t suppress_go_ahead;
+    uint8_t status;
+    uint8_t terminal_type;
+    uint8_t naws;
+    uint8_t terminal_speed;
+    uint8_t remote_flow_control;
+    uint8_t linemode;
+    uint8_t x_display_location;
+    uint8_t new_environ;
+};
+
 struct telnet;
 typedef void (*telnet_write_output_fn)(struct telnet *, const uint8_t *, uintptr_t);
 typedef void (*telnet_event_fn)(struct telnet *, uintptr_t);
@@ -100,6 +122,7 @@ struct telnet {
     telnet_write_output_fn write_output;
     telnet_event_fn event;
     uint8_t cmd, opt, nb_esc, nb_char;
+    struct telnet_options options;
     uint8_t esc[TELNET_ESCAPE_BUF_SIZE];
     uint8_t line[TELNET_LINE_BUF_SIZE];
 };
@@ -116,6 +139,23 @@ struct telnet {
 #define TELNET_NEXT(s,var)                      \
     TELNET_NEXT_(s,var,GENSYM(label_))
 
+
+static inline uint8_t *telnet_option(struct telnet *s, uint8_t opt) {
+    struct telnet_options *o = &s->options;
+    switch(opt) {
+    case TELNET_OPTION_ECHO:                return &o->echo;
+    case TELNET_OPTION_SUPPRESS_GO_AHEAD:   return &o->suppress_go_ahead;
+    case TELNET_OPTION_STATUS:              return &o->status;
+    case TELNET_OPTION_TERMINAL_TYPE:       return &o->terminal_type;
+    case TELNET_OPTION_NAWS:                return &o->naws;
+    case TELNET_OPTION_TERMINAL_SPEED:      return &o->terminal_speed;
+    case TELNET_OPTION_REMOTE_FLOW_CONTROL: return &o->remote_flow_control;
+    case TELNET_OPTION_LINEMODE:            return &o->linemode;
+    case TELNET_OPTION_X_DISPLAY_LOCATION:  return &o->x_display_location;
+    case TELNET_OPTION_NEW_ENVIRON:         return &o->new_environ;
+    default:                                return 0;
+    }
+}
 
 #define TELNET_WRITE_OUTPUT(t, ...) { \
     uint8_t cmd[] = { __VA_ARGS__ }; \
@@ -149,9 +189,13 @@ static inline void telnet_tick(struct telnet *s, int32_t telnet_tick_input) {
         case TELNET_COMMAND_DONT:
         case TELNET_COMMAND_WILL:
         case TELNET_COMMAND_WONT:
-            /* No action needed except for reading the option byte. */
+            /* Save known options, log the others. */
             TELNET_NEXT(s, s->opt);
-            TELNET_LOG("<IAC,CMD:%d,OPT:%d>\n", s->cmd, s->opt);
+            {
+                uint8_t *o = telnet_option(s, s->opt);
+                if (o) *o = s->cmd;
+                else TELNET_LOG("<IAC,CMD:%d,OPT:%d>\n", s->cmd, s->opt);
+            }
             goto next;
         default:
             TELNET_LOG("<IAC,%02x>", s->cmd);
