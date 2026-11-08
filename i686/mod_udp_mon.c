@@ -143,8 +143,8 @@ static inline void udp_mon_log_putchar(struct udp_mon *s, uint8_t c) {
     if (c == '\n') udp_mon_log_flush(s);
 }
 
-// socat - UDP:10.1.54.222:1001
-// socat - STDIO,raw,echo=0,escape=0x03 UDP:10.1.54.222:1001
+// socat - UDP:10.1.9.222:1001
+// socat - STDIO,raw,echo=0,escape=0x03 UDP:10.1.9.222:1001
 static inline void udp_mon_rx_udp(struct udp_mon *s, const uint8_t *eth_pkt, uint32_t len) {
     const struct eth_udp *p = (const void*)eth_pkt;
     int32_t data_len = HTONS(p->udp.length) - sizeof(struct udp);

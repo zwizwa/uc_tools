@@ -1153,9 +1153,9 @@ struct boot_config boot_config = {
     .entry = entry,
     .app   = &g_app,
     .top   = &__bss_end,
-    .ip    = {{10,1,54,222}},
+    .ip    = {{10,1,9,222}},
     .netmask = {{255,255,255,0}},
-    .update  = {{10,1,54,9}},
+    .update  = {{10,1,9,1}},
     .endx  = (void*)&__data_end,
     .start = (void*)&boot_config,
 };

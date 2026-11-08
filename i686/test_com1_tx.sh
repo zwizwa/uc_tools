@@ -12,7 +12,7 @@
 . "$(dirname "$0")/lib.sh"
 Q=$1
 [ -d "$Q" ] || { echo "usage: $0 <qemu dir>"; exit 1; }
-T=10.1.54.222
+T=10.1.9.222
 
 ser=$HERE/test_com1_tx.log
 (cd "$Q" && nohup "$HERE/qemu_ahci.sh" >qsq.out 2>&1 </dev/null &)

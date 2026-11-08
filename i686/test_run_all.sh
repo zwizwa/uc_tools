@@ -33,11 +33,11 @@ qemu)
     run test_com1_tx "$Q"
     (cd "$Q" && DBG=1 NIC=rtl8139 nohup "$HERE/qemu_ahci.sh" >qsq.out 2>&1 </dev/null &)
     sleep 6
-    T=10.1.54.222
+    T=10.1.9.222
     run test_3if_integrity "$Q"
     for t in test_isr_log test_sqlite test_rtl8139_flood test_kq_burst test_timer; do run $t $T; done
-    run test_tcp_console $T 10.1.54.9  # routed tap, see the script
-    run test_http $T 10.1.54.9
+    run test_tcp_console $T 10.1.9.1  # routed tap, see the script
+    run test_http $T 10.1.9.1
     mismatch $T
     vm_stop
     ;;

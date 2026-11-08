@@ -7,7 +7,7 @@
 # - a second connection while the first is open, and reconnects
 # - ctrl-d on an empty line closes the connection
 # lwIP has no gateway: the client address must be on its /24.  The
-# qemu rig is routed, not bridged, so pass psamathe's br54 address.
+# qemu rig is routed, not bridged, so pass psamathe's br9 address.
 . "$(dirname "$0")/lib.sh"
 T=$1
 [ -n "$T" ] || { echo "usage: $0 <ip> [<local ip>]"; exit 1; }

@@ -4,7 +4,7 @@
 # - ahci with sq.img: 256MB, one type 7f partition, or with DISK=ide
 #   on the piix IDE primary master (hw_i686_ata_pio.h, like CF on Soekris)
 # - NIC (rtl8139 or e1000e) on a private tap: only T/32 routed to it,
-#   nothing bridged, the kernel's floppy default ip is 10.1.54.222
+#   nothing bridged, the kernel's floppy default ip is 10.1.9.222
 # - serial on tcp 127.0.0.1:4556
 # - DBG=1: exit instead of reboot on triple fault, cpu reset log in
 #   cpu.log, monitor on mon.sock (info registers, pmemsave)
@@ -15,7 +15,7 @@
 NIC=${NIC:-rtl8139}
 DISK_ARGS="-device ahci,id=ahci -drive file=sq.img,format=raw,if=none,id=sq -device ide-hd,drive=sq,bus=ahci.0"
 [ "$DISK" = ide ] && DISK_ARGS="-drive file=sq.img,format=raw,if=ide,index=0"
-T=${T:-10.1.54.222}
+T=${T:-10.1.9.222}
 TAP=tapsq
 [ -e sq.img ] || {
     truncate -s 256M sq.img

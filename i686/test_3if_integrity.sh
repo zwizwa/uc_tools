@@ -1,7 +1,7 @@
 #!/bin/sh
 # 3if upload arrives byte for byte, qemu_ahci.sh with DBG=1 only.
 #   test_3if_integrity.sh [<qemu dir>]
-# Pushes kernel.3if to 10.1.54.222 and compares the image at 16MB
+# Pushes kernel.3if to 10.1.9.222 and compares the image at 16MB
 # (after the 512 byte trampoline) with kernel.bin via the monitor.
 # The ip patched into the image is the floppy default, so no diff.
 #
@@ -11,7 +11,7 @@
 # then this test reports missing chunks, retransmits, and still no
 # diff.
 . "$(dirname "$0")/lib.sh"
-T=10.1.54.222
+T=10.1.9.222
 Q=${1:-.}
 
 tu send "$I686/kernel.3if" | sort | uniq -c
