@@ -109,9 +109,10 @@ typedef struct kq kq_queue_t;
 struct app {
     volatile uint32_t event;
     struct kq kq;
-    uint8_t kq_buf[4096] __attribute__((aligned(4)));
+    uint8_t kq_buf[0x10000] __attribute__((aligned(4)));  // no text loss
     uint32_t kq_drops;   // isr
     uint32_t kq_events;  // main loop
+    uint32_t nb_lines;   // main loop
     struct udp_mon udp_mon;
     struct uart com1;
     struct text_console log;
@@ -195,6 +196,19 @@ int kernel_infof(const char *fmt, ...) {
     va_end(ap);
     return rv;
 }
+/* Console input from the isrs, telnet runs in the main loop. */
+static void app_input(struct app *app, const uint8_t *data, uint32_t len, int lf_to_cr) {
+    uint8_t *d = kq_reserve(&app->kq, KERNEL_EVENT_INPUT, len);
+    if (!d) {
+        app->kq_drops++;
+        return;
+    }
+    for (uint32_t i = 0; i < len; i++) {
+        d[i] = (lf_to_cr && data[i] == '\n') ? '\r' : data[i];
+    }
+    kq_commit(&app->kq);
+}
+
 /* COM port, Keyboard input */
 void app_keyboard_input(struct app *app, uint8_t byte);
 void app_monitor_input(struct app *app, uint8_t byte) {
@@ -219,11 +233,11 @@ void app_keyboard_input(struct app *app, uint8_t byte) {
         LOG("switched to monitor\n");
         app->nb_zeros = 0;
     }
-    telnet_write_input(&app->telnet, &byte, 1);
+    app_input(app, &byte, 1, 0);
 }
-void void_app_keyboard_input(void *vapp, uint8_t byte) {
-    struct app *app = vapp;
-    app_keyboard_input(app, byte);
+/* UDP console, one event per packet */
+void void_app_console_input(void *vapp, const uint8_t *data, uint32_t len) {
+    app_input(vapp, data, len, 1);
 }
 
 /* COM port input can be re-routed to monitor. */
@@ -237,6 +251,7 @@ void keyboard_input(uint8_t ascii) {
 #include "mod_pc_keyboard.c"
 /* Telnet output and input handler */
 void forth_write(const uint8_t *line, uint32_t nb_char);
+static void kernel_event(uint32_t tag, const uint8_t *data, uint32_t len);
 void telnet_write_output(struct telnet *, const uint8_t *bytes, uintptr_t len) {
     for (uintptr_t i=0; i<len; i++) {
         app_info_putchar(&g_app, bytes[i]);
@@ -263,15 +278,7 @@ void telnet_event(struct telnet *t, uintptr_t event) {
                 t->nb_char = sizeof(t->line) - 1;
             }
             t->line[t->nb_char++] = '\n';
-            struct kq *q = &g_app.kq;
-            uint8_t *d = kq_reserve(q, KERNEL_EVENT_LINE, t->nb_char);
-            if (!d) {
-                g_app.kq_drops++;
-                LOG("line dropped\n");
-                break;
-            }
-            mini_memcpy(d, t->line, t->nb_char);
-            kq_commit(q);
+            kernel_event(KERNEL_EVENT_LINE, t->line, t->nb_char);
         }
         break;
     case TELNET_EVENT_ESCAPE:
@@ -565,7 +572,7 @@ void app_init(struct app *app) {
         LOG("connecting udp_mon to %s\n", app->net.name);
         udp_mon_init(&app->udp_mon,
                      void_app_send,
-                     void_app_keyboard_input,
+                     void_app_console_input,
                      app);
         app->udp_mon.log_send = app_log_send;
         app->udp_mon.mac = *app->net.mac;
@@ -677,8 +684,32 @@ static void plugin_load(const struct plugin_header *h) {
     if (p) LOG("plugin %s\n", p->name);
 }
 
+/* Main loop: plugin first if it listens, else the kernel default. */
+static void kernel_event(uint32_t tag, const uint8_t *data, uint32_t len) {
+    struct plugin *p = boot_config.plugin;
+    if (tag == KERNEL_EVENT_LINE) g_app.nb_lines++;
+    if (p && p->event && (p->events & (1 << tag)) && !p->event(tag, data, len)) {
+        return;
+    }
+    switch (tag) {
+    case KERNEL_EVENT_INPUT:
+        telnet_write_input(&g_app.telnet, data, len);
+        break;
+    case KERNEL_EVENT_LINE:
+        forth_write(data, len);
+        break;
+    case KERNEL_EVENT_PLUGIN: {
+        uint32_t a;
+        mini_memcpy(&a, data, 4);
+        plugin_load((const struct plugin_header *)a);
+        break;
+    }
+    }
+}
+
 void kqstat(void) {
-    LOG("kq events=%d drops=%d\n", g_app.kq_events, g_app.kq_drops);
+    LOG("kq events=%d drops=%d lines=%d\n",
+        g_app.kq_events, g_app.kq_drops, g_app.nb_lines);
 }
 void hello(void) {
     LOG("hello!\n");
@@ -833,16 +864,7 @@ void entry(void) {
         uint8_t *d = kq_peek(&app->kq, &tag, &len);
         if (!d) continue;
         app->kq_events++;
-        struct plugin *p = boot_config.plugin;
-        if (!(p && p->event && (p->events & (1 << tag)) &&
-              !p->event(tag, d, len))) {
-            if (tag == KERNEL_EVENT_LINE) forth_write(d, len);
-            if (tag == KERNEL_EVENT_PLUGIN) {
-                uint32_t a;
-                mini_memcpy(&a, d, 4);
-                plugin_load((const struct plugin_header *)a);
-            }
-        }
+        kernel_event(tag, d, len);
         kq_release(&app->kq);
     }
 }

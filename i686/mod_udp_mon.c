@@ -40,7 +40,7 @@ struct udp_mon {
 
     /* OS interface. */
     void (*send)(void *ctx, const uint8_t *data, uint32_t len);
-    void (*key)(void *ctx, uint8_t byte);
+    void (*input)(void *ctx, const uint8_t *data, uint32_t len);  // console
     int  (*log_send)(void *ctx, const uint8_t *data, uint32_t len); // nonzero: tx full
     void *ctx;
 
@@ -164,11 +164,7 @@ static inline void udp_mon_rx_udp(struct udp_mon *s, const uint8_t *eth_pkt, uin
     if (port == UDP_MON_CONSOLE_PORT) {
         s->log_peer = *p;
         s->log_connected = 1;
-        for (int32_t i=0; i<data_len; i++) {
-            uint8_t c = data[i];
-            if (c == 0xa) { c = 0xd; }
-            s->key(s->ctx, c);
-        }
+        s->input(s->ctx, data, data_len);
         udp_mon_log_flush(s);
     }
     else if (port == UDP_MON_COMMAND_PORT) {
@@ -266,12 +262,12 @@ static inline void udp_mon_rx(struct udp_mon *s, const uint8_t *data, uint32_t l
 
 static inline void udp_mon_init(struct udp_mon *s,
                                 udp_mon_send_fn send,
-                                void (*key)(void *, uint8_t),
+                                void (*input)(void *, const uint8_t *, uint32_t),
                                 void *ctx) {
     //LOG("udp_mon_init %p %p %p\n", s, send, ctx);
     // No memset: .bss is clear and the log ring is already collecting.
     s->send = send;
-    s->key  = key;
+    s->input = input;
     s->ctx  = ctx;
     // Push it once with dummy input to boot the state machine.
     monitor_3if_push_key(&s->monitor_3if, 0);
