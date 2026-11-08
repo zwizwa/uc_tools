@@ -10,9 +10,16 @@
 #define UART_DATA   0  /* RBR: Receive Buffer Register */
 #define UART_IER    1  /* Interrupt Enable Register */
 #define UART_FCR    2  /* FIFO Control Register */
+#define UART_IIR    2  /* Interrupt Identification Register, read */
 #define UART_LCR    3  /* Line Control Register */
 #define UART_MCR    4  /* Modem Control Register */
 #define UART_LSR    5  /* Line Status Register */
+#define UART_SCR    7  /* Scratch Register */
+
+/* IER bits */
+#define IER_RDA     0x01  /* Received Data Available */
+#define IER_THRE    0x02  /* Transmitter Holding Register Empty */
+#define IIR_NONE    0x01  /* no interrupt pending */
 
 /* LSR bits */
 #define LSR_DATA_READY   0x01
@@ -51,6 +58,46 @@ static void uart_putstr(struct uart *s, char *str) {
     while(*str) {
         uart_putchar(s, *str++);
     }
+}
+
+/* Interrupt driven tx: one producer, drained by uart_tx_isr.  The
+   producer publishes, then enables THRE, so no wakeup is lost.  THRE
+   is toggled for a fresh edge: the PC pic is edge triggered and an
+   edge can be lost, e.g. before the pic is set up at boot. */
+#define UART_TX_SIZE 4096  // power of two
+#define UART_FIFO 16
+struct uart_tx {
+    uint8_t buf[UART_TX_SIZE];
+    volatile uint32_t write, read;  // free running
+};
+static inline int uart_tx_full(struct uart_tx *t) {
+    return t->write - t->read == UART_TX_SIZE;
+}
+/* Returns -1 when full. */
+static inline int uart_tx_put(struct uart *s, struct uart_tx *t, uint8_t byte) {
+    if (uart_tx_full(t)) return -1;
+    t->buf[t->write % UART_TX_SIZE] = byte;
+    __asm__ volatile ("" ::: "memory");
+    t->write++;
+    uart_out(s, UART_IER, IER_RDA);
+    uart_out(s, UART_IER, IER_RDA | IER_THRE);
+    return 0;
+}
+/* Isr, or poll with interrupts off. */
+static inline void uart_tx_isr(struct uart *s, struct uart_tx *t) {
+    if (!(uart_in(s, UART_LSR) & LSR_THR_EMPTY)) return;
+    for (int i = 0; i < UART_FIFO && t->read != t->write; i++) {
+        uart_out(s, UART_DATA, t->buf[t->read % UART_TX_SIZE]);
+        t->read++;
+    }
+    if (t->read == t->write) uart_out(s, UART_IER, IER_RDA);
+}
+/* 16550 present: scratch register keeps its value. */
+static inline int uart_present(struct uart *s) {
+    uart_out(s, UART_SCR, 0x5A);
+    if (uart_in(s, UART_SCR) != 0x5A) return 0;
+    uart_out(s, UART_SCR, 0xA5);
+    return uart_in(s, UART_SCR) == 0xA5;
 }
 
 typedef void (*uart_sink_fn)(void *, uint8_t);

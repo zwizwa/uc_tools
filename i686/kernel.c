@@ -113,9 +113,10 @@ struct app {
     uint32_t kq_drops;   // isr
     uint32_t kq_events;  // main loop
     uint32_t nb_lines;   // main loop
-    volatile uint32_t main_loop;  // set when the main loop runs
+    volatile uint32_t main_loop;  // set when isrs can queue LOG text
     struct udp_mon udp_mon;
     struct uart com1;
+    struct uart_tx com1_tx;  // console output, main loop -> isr
     struct text_console log;
     struct telnet telnet;
     struct idt idt;
@@ -143,13 +144,30 @@ const char kernel_version[] = VERSION;
    - Text output goes to both COM1 and vga console
    - Text input is parsed by Telnet / ANSI terminal layer
    - And passed on to forth command interpreter */
+/* COM1 is interrupt driven, no text loss: wait for room, or poll the
+   isr when interrupts are off (boot). */
+static inline void app_com1_put(struct app *app, uint8_t c) {
+    while (uart_tx_put(&app->com1, &app->com1_tx, c)) {
+        if (!interrupts_enabled()) {
+            uart_tx_isr(&app->com1, &app->com1_tx);
+            continue;
+        }
+        cli();
+        if (uart_tx_full(&app->com1_tx)) __asm__ volatile ("sti; hlt");
+        else sti();
+    }
+}
+static inline void app_com1_putchar(struct app *app, uint8_t c) {
+    if (c == '\n') app_com1_put(app, '\r');
+    app_com1_put(app, c);
+}
 static inline void app_com_putchar(struct app *app, uint8_t c) {
 
     // FIXME: It's better to just have one com port and set it with a
     // pointer.  Default would be com1.
 
     if (app->com1.irq) {
-        uart_putchar(&app->com1, c);
+        app_com1_putchar(app, c);
     }
     if (app->mcs9865.uart[MCS9865_MAIN_UART].uart.irq) {
         uart_putchar(&app->mcs9865.uart[MCS9865_MAIN_UART].uart, c);
@@ -343,12 +361,19 @@ static void keyboard_isr(void) {
     outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
     isr_end();
 }
+/* Edge triggered: service until nothing is pending, rx and tx. */
+static void com1_service(void) {
+    while (!(uart_in(&g_app.com1, UART_IIR) & IIR_NONE)) {
+        uart_isr(&g_app.com1, (uart_sink_fn)app_com_input, &g_app);
+        uart_tx_isr(&g_app.com1, &g_app.com1_tx);
+    }
+}
 __attribute__((naked))
 static void com1_isr(void) {
     isr_begin();
     static uint32_t count = 0;
     spinner(1, count++);
-    uart_isr(&g_app.com1, (uart_sink_fn)app_com_input, &g_app);
+    com1_service();
     outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
     isr_end();
 }
@@ -545,8 +570,12 @@ void app_init(struct app *app) {
 
 #if 1
     g_app.com1.iobase = 0x3F8;
-    g_app.com1.irq = 4;
-    uart_init(&g_app.com1, 1);
+    // Absent on the X230: tx would wait for a THRE irq forever.
+    if (uart_present(&g_app.com1)) {
+        g_app.com1.irq = 4;
+        uart_init(&g_app.com1, 1);
+    }
+    LOG("com1 %s\n", g_app.com1.irq ? "16550" : "absent");
     //uart_putstr(&g_app.com1, "com1 initialized\n");
 #endif
 
@@ -618,6 +647,8 @@ void app_init(struct app *app) {
     }
 
     app->log.use_cli = 0;
+    // From here isr LOGs go to the queue, see kernel_infof
+    app->main_loop = 1;
     sti();
 
 };
@@ -888,7 +919,6 @@ void entry(void) {
     /* Main loop runs the non-real-time work queued by the isrs, with
        interrupts on. */
     struct app *app = &g_app;
-    app->main_loop = 1;
     for (;;) {
         cli();
         if (kq_empty(&app->kq)) {
