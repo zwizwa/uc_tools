@@ -66,6 +66,7 @@ int kernel_infof(const char *fmt, ...);
 #include "hw_i686_echo.h"
 #include "hw_i686_emu10k.h"
 #include "hw_i686_ahci.h"
+#include "hw_i686_ata_pio.h"
 #include "plugin.h"
 
 /* Network card used by udp_mon: first one in PCI order */
@@ -127,7 +128,8 @@ struct app {
     for_device(STRUCT)
     for_device_net(STRUCT_NET)
     struct ahci ahci;
-    struct partition part;  // type 7f on ahci, for sqlite
+    struct ata_pio ata;     // legacy IDE primary master, when no ahci disk
+    struct partition part;  // type 7f on the disk, for sqlite
     struct net net;
 };
 struct app g_app;
@@ -686,8 +688,15 @@ void app_init(struct app *app) {
         struct pci_cb cb = { .fun = pci_phase2, .ctx = app };
         pci_enumerate(&cb);
     }
+    struct blockdev *disk = 0;
     if (app->ahci.port) {
-        if (partition_find(&app->part, &app->ahci.bd, 0x7f)) {
+        disk = &app->ahci.bd;
+    }
+    else if (!ata_pio_init(&app->ata, ATA_PRIMARY_IO, ATA_PRIMARY_CTL, 0)) {
+        disk = &app->ata.bd;
+    }
+    if (disk) {
+        if (partition_find(&app->part, disk, 0x7f)) {
             LOG("no type 7f partition\n");
         }
         else {
