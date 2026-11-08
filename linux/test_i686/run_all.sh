@@ -2,7 +2,8 @@
 # Run the test_i686 tests that apply to a target.  As root on the
 # host that reaches the target on-link (psamathe), see lib.sh for I686
 # and TETHER.
-#   run_all.sh qemu <qemu dir>  emulated rig, starts and stops qemu
+#   run_all.sh qemu <qemu dir>  emulated rig, starts and stops qemu,
+#                               usually qemu/ next to this script
 #   run_all.sh x230 <ip>        ahci disk with a 7f partition, sqlite
 #   run_all.sh rtl8139 <ip>     real rtl8139 card
 # OTHER_PLUGIN=<sqlite_plugin.bin built for another kernel> adds the
@@ -11,7 +12,8 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 . "$HERE/lib.sh"
 [ -n "$2" ] || { echo "usage: $0 qemu|x230|rtl8139 <qemu dir | ip>"; exit 1; }
 
-out=$(mktemp)
+out=$HERE/run_all.log
+: >$out
 run() {
     echo "## $*"
     "$HERE/$1.sh" "$2" ${3:+"$3"} 2>&1 | grep -a -E "PASS|FAIL|lines |hello! on" | tee -a $out
@@ -29,24 +31,24 @@ qemu)
     Q=$2
     vm_stop
     run test_com1_tx "$Q"
-    (cd "$Q" && DBG=1 NIC=rtl8139 nohup ./qemu_ahci.sh >qsq.out 2>&1 </dev/null &)
+    (cd "$Q" && DBG=1 NIC=rtl8139 nohup "$HERE/qemu_ahci.sh" >qsq.out 2>&1 </dev/null &)
     sleep 6
     T=10.1.54.222
     run test_3if_integrity "$Q"
-    for t in test_isr_log test_sqlite test_rtl8139_flood test_kq_burst; do run $t $T; done
+    for t in test_isr_log test_sqlite test_rtl8139_flood test_kq_burst test_timer; do run $t $T; done
     mismatch $T
     vm_stop
     ;;
 x230)
     T=$2
     push_kernel >/dev/null
-    for t in test_isr_log test_sqlite test_kq_burst; do run $t $T; done
+    for t in test_isr_log test_sqlite test_kq_burst test_timer; do run $t $T; done
     mismatch $T
     ;;
 rtl8139)
     T=$2
     push_kernel >/dev/null
-    for t in test_isr_log test_kq_burst test_rtl8139_flood; do run $t $T; done
+    for t in test_isr_log test_kq_burst test_rtl8139_flood test_timer; do run $t $T; done
     ;;
 *)
     echo "unknown target $1"; exit 1
@@ -55,5 +57,4 @@ esac
 
 n=$(grep -c FAIL $out)
 echo "## $(grep -c PASS $out) PASS, $n FAIL"
-rm -f $out
 [ $n = 0 ]

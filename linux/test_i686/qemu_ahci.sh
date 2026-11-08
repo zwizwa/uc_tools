@@ -7,7 +7,8 @@
 # - serial on tcp 127.0.0.1:4556
 # - DBG=1: exit instead of reboot on triple fault, cpu reset log in
 #   cpu.log, monitor on mon.sock (info registers, pmemsave)
-# Run as root in the directory holding kernel.dsk.  Stop with:
+# Run as root in the directory holding kernel.dsk, usually qemu/ next
+# to this script.  Stop with:
 #   kill $(pgrep -f "^qemu-system-i386 -name sqvfs")
 # (pkill -f without ^ also matches the shell running it over ssh)
 NIC=${NIC:-rtl8139}

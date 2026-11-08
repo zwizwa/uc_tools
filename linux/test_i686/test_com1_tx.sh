@@ -14,8 +14,8 @@ Q=$1
 [ -d "$Q" ] || { echo "usage: $0 <qemu dir>"; exit 1; }
 T=10.1.54.222
 
-ser=$(mktemp)
-(cd "$Q" && nohup ./qemu_ahci.sh >qsq.out 2>&1 </dev/null &)
+ser=$HERE/test_com1_tx.log
+(cd "$Q" && nohup "$HERE/qemu_ahci.sh" >qsq.out 2>&1 </dev/null &)
 # qemu drops serial output until a client connects
 socat -u TCP:127.0.0.1:4556,retry=100,interval=0.1 - >$ser 2>/dev/null &
 sleep 8
@@ -33,5 +33,4 @@ check "boot log on COM1" grep -a -q "^version" $ser
 n=$(grep -a -o "hello!" $ser | wc -l)
 echo "hello! on COM1: $n"
 check "600 lines of output on COM1" [ "$n" = 600 ]
-rm -f $ser
 finish

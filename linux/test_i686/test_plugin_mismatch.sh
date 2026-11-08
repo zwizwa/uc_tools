@@ -16,14 +16,13 @@ T=$1
 push_kernel
 push_plugin
 check "matching plugin registers" sh -c 'echo "$0" | grep -a -q "^count"' "$(con sqtest)"
-log=$(mktemp)
+log=$HERE/test_plugin_mismatch.log
 CON_DELAY=8 con "" >$log &
 sleep 2
 push_plugin "$2"
 wait
 check "kernel reports mismatch" grep -a -q "plugin built for kernel" $log
 grep -a "plugin built" $log
-rm -f $log
 out=$(CON_DELAY=2 con sqtest hello)
 check "mismatched plugin refused" sh -c 'echo "$0" | grep -a -q "sqtest?"' "$out"
 check "kernel still alive" sh -c 'echo "$0" | grep -a -q "hello!"' "$out"

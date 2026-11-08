@@ -4,8 +4,12 @@
 #
 # Environment:
 #   I686    dir with kernel.3if kernel.bin sqlite_plugin.bin
-#   TETHER  tether_udp command, may include a loader, e.g.
-#           "/tmp/t/ld-linux-x86-64.so.2 --library-path /tmp/t /tmp/t/tether_udp.dynamic.host.elf"
+#           test_timer_plugin.bin
+#   TETHER  tether_udp command, may include a loader, e.g. when it is
+#           built against another glibc, with that glibc in glibc/:
+#           "$G/ld-linux-x86-64.so.2 --library-path $G .../tether_udp.dynamic.host.elf"
+# Logs go next to the scripts (*.log, gitignored), the qemu rig lives
+# in qemu/ (gitignored), see qemu_ahci.sh.
 #   T       target ip, first argument of most scripts
 
 HERE=$(cd "$(dirname "$0")" && pwd)

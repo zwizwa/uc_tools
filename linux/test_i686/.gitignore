@@ -1,0 +1,4 @@
+# logs, bundled glibc for tether_udp, qemu rig state, see lib.sh
+*.log
+glibc/
+qemu/
