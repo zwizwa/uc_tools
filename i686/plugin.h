@@ -23,6 +23,7 @@
 #define KERNEL_EVENT_PLUGIN 1  // uint32_t header address, default: load
 #define KERNEL_EVENT_INPUT  2  // console bytes, default: telnet, which
                                // makes KERNEL_EVENT_LINE in the main loop
+#define KERNEL_EVENT_LOG    3  // LOG text from an isr, default: print
 
 /* A plugin is a state machine driven by the events it listens to. */
 struct plugin {

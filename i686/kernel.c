@@ -113,6 +113,7 @@ struct app {
     uint32_t kq_drops;   // isr
     uint32_t kq_events;  // main loop
     uint32_t nb_lines;   // main loop
+    volatile uint32_t main_loop;  // set when the main loop runs
     struct udp_mon udp_mon;
     struct uart com1;
     struct text_console log;
@@ -188,11 +189,45 @@ static inline int app_infof(struct app *app, const char *fmt, ...) {
     return rv;
 }
 #endif
-/* Support LOG() without app reference. */
+/* LOG from an isr is formatted here and printed by the main loop.
+   isrs don't nest, so one buffer. */
+struct isr_log {
+    uint8_t buf[256];
+    uint32_t len;
+};
+struct isr_log isr_log;
+static inline void isr_info_putchar(struct isr_log *l, uint8_t c) {
+    if (l->len < sizeof(l->buf)) l->buf[l->len++] = c;
+}
+#define NS(tag) isr_info_##tag
+#define isr_info_CTX_DEF struct isr_log *l,
+#define isr_info_CTX_REF l,
+#include "ns_infof.c"
+#undef NS
+
+/* Support LOG() without app reference.  In an isr: queue the text as
+   KERNEL_EVENT_LOG.  During boot interrupts are off too, but there is
+   no main loop yet: print directly. */
 int kernel_infof(const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
-    int rv = app_info_vf(&g_app, fmt, ap);
+    int rv;
+    if (interrupts_enabled() || !g_app.main_loop) {
+        rv = app_info_vf(&g_app, fmt, ap);
+    }
+    else {
+        struct isr_log *l = &isr_log;
+        l->len = 0;
+        rv = isr_info_vf(l, fmt, ap);
+        uint8_t *d = kq_reserve(&g_app.kq, KERNEL_EVENT_LOG, l->len);
+        if (d) {
+            mini_memcpy(d, l->buf, l->len);
+            kq_commit(&g_app.kq);
+        }
+        else {
+            g_app.kq_drops++;
+        }
+    }
     va_end(ap);
     return rv;
 }
@@ -698,6 +733,9 @@ static void kernel_event(uint32_t tag, const uint8_t *data, uint32_t len) {
     case KERNEL_EVENT_LINE:
         forth_write(data, len);
         break;
+    case KERNEL_EVENT_LOG:
+        for (uint32_t i = 0; i < len; i++) app_info_putchar(&g_app, data[i]);
+        break;
     case KERNEL_EVENT_PLUGIN: {
         uint32_t a;
         mini_memcpy(&a, data, 4);
@@ -850,6 +888,7 @@ void entry(void) {
     /* Main loop runs the non-real-time work queued by the isrs, with
        interrupts on. */
     struct app *app = &g_app;
+    app->main_loop = 1;
     for (;;) {
         cli();
         if (kq_empty(&app->kq)) {
