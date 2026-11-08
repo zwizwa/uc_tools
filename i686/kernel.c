@@ -935,6 +935,24 @@ void kqstat(void) {
 void hello(void) {
     LOG("hello!\n");
 }
+/* Ask update_daemon.sh to push kernel and app.  No ARP client: the
+   frame goes to the ethernet broadcast address, so the host must be
+   on-link. */
+#define UPDATE_PORT 1002
+void update(void) {
+    struct udp_mon *s = &g_app.udp_mon;
+    // udp_mon_reply turns a request into a reply: fake the request
+    struct eth_udp p = {
+        .mac = { .src_mac = {{0xff,0xff,0xff,0xff,0xff,0xff}}, .dst_mac = s->mac,
+                 .ethertype = HTONS(ETHERTYPE_IPV4) },
+        .ip  = { .version_ihl = 0x45, .ttl = 64, .protocol = PROTOCOL_UDP,
+                 .src_ip = boot_config.update, .dst_ip = s->ip },
+        .udp = { .src_port = HTONS(UPDATE_PORT), .dst_port = HTONS(UPDATE_PORT) },
+    };
+    struct { struct eth_udp eth_udp; uint8_t data[7]; } q;
+    mini_memcpy(q.data, "update\n", 7);
+    kernel_net_send(&q, udp_mon_reply(&q.eth_udp, &p, sizeof(q.data)));
+}
 #define EVENT_RESTART (1<<0)
 void restart(void) {
 #if 0
@@ -947,6 +965,7 @@ void restart(void) {
 #define W(word) {#word, (w)word}
 #define FORTH_WORDS\
     W(hello),      \
+    W(update),     \
     W(kqstat),     \
     W(netstat),    \
     W(oxsend),     \
@@ -1135,6 +1154,8 @@ struct boot_config boot_config = {
     .app   = &g_app,
     .top   = &__bss_end,
     .ip    = {{10,1,54,222}},
+    .netmask = {{255,255,255,0}},
+    .update  = {{10,1,54,9}},
     .endx  = (void*)&__data_end,
     .start = (void*)&boot_config,
 };

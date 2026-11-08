@@ -20,6 +20,7 @@ static void conn_abort(void) __attribute__((noreturn));
 #define ABORT conn_abort()
 #include "tools.h"
 #include <string.h>
+#include "boot_config.h"
 
 #define telnet_init_bytes lwip_telnet_init_bytes  // kernel has one too
 #include "telnet.h"
@@ -360,8 +361,8 @@ static struct plugin *lwip_plugin_init(void) {
     kernel_net_addr(nif_mac, ip);
     ip4_addr_t a, mask, gw;
     IP4_ADDR(&a, ip[0], ip[1], ip[2], ip[3]);
-    IP4_ADDR(&mask, 255, 255, 255, 0);
-    IP4_ADDR(&gw, 0, 0, 0, 0);
+    memcpy(&mask, &boot_config.netmask, 4);
+    memcpy(&gw, &boot_config.gateway, 4);
     netif_add(&nif, &a, &mask, &gw, 0, nif_init, ethernet_input);
     netif_set_default(&nif);
     netif_set_up(&nif);
