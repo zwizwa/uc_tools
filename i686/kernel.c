@@ -692,8 +692,11 @@ void app_init(struct app *app) {
     if (app->ahci.port) {
         disk = &app->ahci.bd;
     }
-    else if (!ata_pio_init(&app->ata, ATA_PRIMARY_IO, ATA_PRIMARY_CTL, 0)) {
-        disk = &app->ata.bd;
+    else {
+        // Soekris CF is the slave
+        for (int slave = 0; slave < 2 && !disk; slave++) {
+            if (!ata_pio_init(&app->ata, ATA_PRIMARY_IO, ATA_PRIMARY_CTL, slave)) disk = &app->ata.bd;
+        }
     }
     if (disk) {
         if (partition_find(&app->part, disk, 0x7f)) {
