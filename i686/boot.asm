@@ -35,16 +35,16 @@ start:
     mov si, msg_banner
     call print_string_nl
 
-    ; First enable the A20 line
+    ; A20 is now handled in the kernel, see a20_enable() in kernel.c.
+    ; int 15h 2401 failed on real machines and printed a misleading
+    ; !A20 while the kernel enabled it anyway.
     ; https://claude.ai/chat/f4693772-1425-4e1f-a287-f974e0cff4ac
-    ; FIXME: This works on qemu but not on my 2 real machines.
-    mov ax, 0x2401
-    int 0x15
-    jnc .a20_ok
-    mov si, msg_a20_failed
-    call print_string_nl
-    ; It fails on hardware.  Not an issue for now since kernel is still small.
-.a20_ok:
+    ; mov ax, 0x2401
+    ; int 0x15
+    ; jnc .a20_ok
+    ; mov si, msg_a20_failed
+    ; call print_string_nl
+; .a20_ok:
 
 
 %ifndef FLOPPY
@@ -320,8 +320,8 @@ msg_newline:
     db 0x0D, 0x0A, 0    
 msg_banner:
     db 'booting', 0
-msg_a20_failed:
-    db "!A20", 0
+; msg_a20_failed:
+;     db "!A20", 0
 msg_disk_error:
     db "!disk", 0
 

@@ -879,18 +879,18 @@ double fabs(double x) {
 
 
 /* Before jumping here, the bootloader loads from media if needed,
-   enables A20, turns off interrupts, switches to protected mode.  The
-   boot_config struct is located 512 bytes into the disk or NBP image
-   and is loaded at 0x7E00, right after the boot sector at 0x7C00.
-   Stack is set up below 7C00.*/
+   turns off interrupts, switches to protected mode.  The boot_config
+   struct is located 512 bytes into the disk or NBP image and is
+   loaded at 0x7E00, right after the boot sector at 0x7C00.  Stack is
+   set up below 16MB.  A20 is enabled here, see a20_enable().*/
 
 
 extern uint8_t __bss_start;
 extern uint8_t __bss_end;
 
-/* .bss is at 1MB, see kernel.ld.  boot.asm's int 15h 2401 fails on
-   real machines ("!A20" on Soekris), and without A20 bit 20 is
-   masked: clearing .bss would wipe low memory and the kernel. */
+/* .bss is at 1MB, see kernel.ld.  Without A20 bit 20 is masked:
+   clearing .bss would wipe low memory and the kernel.  BIOS int 15h
+   2401 failed on real machines (Soekris). */
 static int a20_on(void) {
     volatile uint32_t *lo = (void *)0x1000, *hi = (void *)0x101000;
     uint32_t save = *lo;
@@ -925,7 +925,14 @@ void entry(void) {
     VIDEO[79*2] = '!';
 
     if (!a20_enable()) {
+        // Devices have vga or COM1.  COM1 as the BIOS left it, polled.
         VIDEO[78*2] = 'A';
+        for (const char *c = "!A20\r\n"; *c; c++) {
+            for (int i = 0; i < 100000; i++) {
+                if (inb(0x3F8 + UART_LSR) & LSR_THR_EMPTY) break;
+            }
+            outb(0x3F8 + UART_DATA, *c);
+        }
         for (;;) hlt();
     }
 
