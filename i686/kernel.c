@@ -51,6 +51,7 @@ int kernel_infof(const char *fmt, ...);
 /* Hardware access. */
 #include "hw_i686_interrupts.h"
 #include "hw_i686_com.h"
+#include "hw_i686_pit.h"
 #include "hw_i686_spinner.h"
 #include "hw_i686_rtl8139.h"
 #include "hw_i686_mcs9865.h"
@@ -361,7 +362,97 @@ static void keyboard_isr(void) {
     outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
     isr_end();
 }
-/* Edge triggered: service until nothing is pending, rx and tx. */
+/* Commands from the main loop to one isr: ns_rqueue, main loop is the
+   only producer.  A failed post sets want_room, the isr answers with
+   KERNEL_EVENT_ROOM after its next drain.  want_room is written by
+   both sides, the worst case is a spurious ROOM event. */
+struct isr_cmdq {
+    struct kq q;
+    volatile uint32_t want_room;
+    uint32_t id;  // KERNEL_CMDQ_*
+};
+static int isr_cmdq_post(struct isr_cmdq *c, uint16_t tag, const void *data, uint32_t len) {
+    uint8_t *d = kq_reserve(&c->q, tag, len);
+    if (!d) {
+        c->want_room = 1;
+        return -1;
+    }
+    mini_memcpy(d, data, len);
+    kq_commit(&c->q);
+    return 0;
+}
+/* Isr, after draining. */
+static void isr_cmdq_room(struct isr_cmdq *c) {
+    if (!c->want_room) return;
+    uint8_t *d = kq_reserve(&g_app.kq, KERNEL_EVENT_ROOM, 4);
+    if (!d) return;  // next time
+    mini_memcpy(d, &c->id, 4);
+    kq_commit(&g_app.kq);
+    c->want_room = 0;
+}
+
+/* PIT tick and alarms, see kernel_timer_at in plugin.h */
+#define TIMER_HZ 1000
+#define TIMER_NB_ALARM 16
+#define TIMER_CMD_AT 0
+struct timer_alarm {
+    uint32_t at, cookie, used;
+};
+struct timer {
+    struct isr_cmdq cmdq;
+    uint8_t cmdq_buf[1024] __attribute__((aligned(4)));
+    struct timer_alarm alarm[TIMER_NB_ALARM];
+};
+struct timer timer;
+volatile uint32_t kernel_ms;
+int kernel_timer_at(uint32_t at, uint32_t cookie) {
+    uint32_t cmd[2] = { at, cookie };
+    return isr_cmdq_post(&timer.cmdq, TIMER_CMD_AT, cmd, sizeof(cmd));
+}
+/* noinline: the naked isr has no frame, inlined code would use the
+   interrupted code's %ebp for its locals. */
+__attribute__((noinline))
+static void timer_service(void) {
+    kernel_ms++;
+    /* Commands stay queued while the alarm table is full. */
+    for (;;) {
+        uint16_t tag, len;
+        uint8_t *d = kq_peek(&timer.cmdq.q, &tag, &len);
+        if (!d) break;
+        struct timer_alarm *a = 0;
+        for (int i = 0; i < TIMER_NB_ALARM; i++) {
+            if (!timer.alarm[i].used) { a = &timer.alarm[i]; break; }
+        }
+        if (!a) break;
+        mini_memcpy(a, d, 8);
+        a->used = 1;
+        kq_release(&timer.cmdq.q);
+    }
+    isr_cmdq_room(&timer.cmdq);
+    /* A due alarm stays when the event queue is full. */
+    for (int i = 0; i < TIMER_NB_ALARM; i++) {
+        struct timer_alarm *a = &timer.alarm[i];
+        if (!a->used || (int32_t)(kernel_ms - a->at) < 0) continue;
+        uint8_t *d = kq_reserve(&g_app.kq, KERNEL_EVENT_TIMER,
+                                sizeof(struct kernel_timer_event));
+        if (!d) break;
+        struct kernel_timer_event e = { .cookie = a->cookie, .ms = kernel_ms };
+        mini_memcpy(d, &e, sizeof(e));
+        kq_commit(&g_app.kq);
+        a->used = 0;
+    }
+}
+__attribute__((naked))
+static void timer_isr(void) {
+    isr_begin();
+    timer_service();
+    outb(0x20, 0x20); // End Of Interrupt (EOI) to master PIC
+    isr_end();
+}
+
+/* Edge triggered: service until nothing is pending, rx and tx.
+   noinline, see timer_service. */
+__attribute__((noinline))
 static void com1_service(void) {
     while (!(uart_in(&g_app.com1, UART_IIR) & IIR_NONE)) {
         uart_isr(&g_app.com1, (uart_sink_fn)app_com_input, &g_app);
@@ -625,7 +716,13 @@ void app_init(struct app *app) {
     };
 
     kq_init(&app->kq, app->kq_buf, sizeof(app->kq_buf));
+    kq_init(&timer.cmdq.q, timer.cmdq_buf, sizeof(timer.cmdq_buf));
+    timer.cmdq.id = KERNEL_CMDQ_TIMER;
     idt_init(&app->idt, isrs);
+    /* irq 0 means "off" in isrs[], so the PIT goes in here. */
+    idt_set(&app->idt, 0, timer_isr);
+    outb(0x21, ~app->idt.master_enable);
+    pit_init(TIMER_HZ);
 
     telnet_init(&app->telnet,
                 telnet_write_output,

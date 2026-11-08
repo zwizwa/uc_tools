@@ -24,6 +24,8 @@
 #define KERNEL_EVENT_INPUT  2  // console bytes, default: telnet, which
                                // makes KERNEL_EVENT_LINE in the main loop
 #define KERNEL_EVENT_LOG    3  // LOG text from an isr, default: print
+#define KERNEL_EVENT_TIMER  4  // struct kernel_timer_event, see kernel_timer_at
+#define KERNEL_EVENT_ROOM   5  // uint32_t queue id: a post that failed can be retried
 
 /* A plugin is a state machine driven by the events it listens to. */
 struct plugin {
@@ -42,7 +44,20 @@ struct plugin_header {
     struct plugin *(*init)(void);  // main loop, returns what to register
 };
 
+/* Commands from the main loop to an isr fail when the queue is full,
+   then KERNEL_EVENT_ROOM follows once the isr made room. */
+#define KERNEL_CMDQ_TIMER 0  // queue id in KERNEL_EVENT_ROOM
+struct kernel_timer_event {
+    uint32_t cookie;
+    uint32_t ms;  // kernel_ms when it fired
+};
+
 /* Provided by the kernel */
+extern volatile uint32_t kernel_ms;  // PIT tick, ~1kHz, wraps
+/* KERNEL_EVENT_TIMER with cookie when kernel_ms reaches at (wrap safe,
+   at in the past fires on the next tick).  Main loop only.  Returns
+   -1 when the queue is full. */
+int kernel_timer_at(uint32_t at, uint32_t cookie);
 extern struct blockdev *kernel_blockdev;  // type 7f partition, or 0
 extern const char kernel_version[];
 int kernel_infof(const char *fmt, ...);

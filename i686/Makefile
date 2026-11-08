@@ -51,7 +51,7 @@ CFLAGS = \
 
 .PHONY: all clean run
 
-all: kernel.nbp kernel.dsk kernel.dasm trampoline.blk kernel.3if sqlite_plugin.bin
+all: kernel.nbp kernel.dsk kernel.dasm trampoline.blk kernel.3if sqlite_plugin.bin test_timer_plugin.bin
 
 DEPS := $(shell find -name '*.d')
 -include $(DEPS)
@@ -104,11 +104,13 @@ kernel.elf: kernel.o kernel.ld
 
 # Plugins are linked against the kernel they get loaded into, and
 # check its version string at load.  See plugin.h
-sqlite_plugin.o: sqlite_plugin.c kernel.bin
-	$(GCC) $(CFLAGS) -DKERNEL_VERSION=\"$$(grep -a -o -E '[0-9]{8}-[0-9]{4}' kernel.bin | head -1)\" -MD -MF sqlite_plugin.d -c $< -o $@
+%_plugin.o: %_plugin.c kernel.bin
+	$(GCC) $(CFLAGS) -DKERNEL_VERSION=\"$$(grep -a -o -E '[0-9]{8}-[0-9]{4}' kernel.bin | head -1)\" -MD -MF $(patsubst %.o,%.d,$@) -c $< -o $@
 
-sqlite_plugin.elf: sqlite_plugin.o sqlite3.o plugin.ld kernel.elf
-	$(LD) -T plugin.ld -R kernel.elf -o $@ sqlite_plugin.o sqlite3.o $(shell $(GCC) -print-libgcc-file-name)
+%_plugin.elf: %_plugin.o plugin.ld kernel.elf
+	$(LD) -T plugin.ld -R kernel.elf -o $@ $(filter %.o,$^) $(shell $(GCC) -print-libgcc-file-name)
+
+sqlite_plugin.elf: sqlite3.o
 
 %.elf: %.o kernel.ld
 	$(LD) -T kernel.ld -o $@ $<
