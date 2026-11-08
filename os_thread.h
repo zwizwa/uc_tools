@@ -43,6 +43,15 @@ static inline void os_mutex_unlock(mutex_t *m) {
 #define OS_THREAD_WAIT(name) \
     chThdWait(name##_thread)
 
+// No OS, single threaded: only the mutex, as a no-op
+#elif defined(OS_THREAD_NONE)
+
+typedef struct {} os_mutex_t;
+static inline void os_mutex_lock(os_mutex_t *m)    { }
+static inline void os_mutex_unlock(os_mutex_t *m)  { }
+static inline void os_mutex_init(os_mutex_t *m)    { }
+static inline void os_mutex_destroy(os_mutex_t *m) { }
+
 // Posix
 #else
 #include "os_linux.h"

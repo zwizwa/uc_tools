@@ -126,7 +126,9 @@ lwip/obj/%.o: $(LWIP)/%.c lwip/lwipopts.h lwip/arch/cc.h
 	@mkdir -p $(@D)
 	$(GCC) -Os -Wall $(LWIP_FLAGS) -c $< -o $@
 lwip_plugin.o: CFLAGS += $(LWIP_FLAGS)
-lwip_plugin.elf: $(LWIP_OBJ)
+lwip_plugin.elf: $(LWIP_OBJ) www_index.o
+www_index.o: www/index.html
+	$(LD) -r -b binary -o $@ $<
 
 %.elf: %.o kernel.ld
 	$(LD) -T kernel.ld -o $@ $<
