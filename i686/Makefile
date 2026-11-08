@@ -41,6 +41,16 @@ SQLITE_FLAGS = \
 	-DSQLITE_OMIT_SEH \
 	-DSQLITE_UNTESTABLE \
 
+# lwIP for lwip_plugin, options and arch in lwip/
+LWIP = ../../lwip/src
+LWIP_SRC = $(addprefix core/, \
+	init.c def.c inet_chksum.c ip.c mem.c memp.c netif.c pbuf.c \
+	sys.c tcp.c tcp_in.c tcp_out.c timeouts.c udp.c \
+	ipv4/etharp.c ipv4/icmp.c ipv4/ip4.c ipv4/ip4_addr.c ipv4/ip4_frag.c) \
+	netif/ethernet.c
+LWIP_OBJ = $(addprefix lwip/obj/, $(LWIP_SRC:.c=.o))
+LWIP_FLAGS = -Ilwip -I$(LWIP)/include
+
 CFLAGS = \
 	-Wall \
 	-I$(UC_TOOLS) \
@@ -51,7 +61,7 @@ CFLAGS = \
 
 .PHONY: all clean run
 
-all: kernel.nbp kernel.dsk kernel.dasm trampoline.blk kernel.3if sqlite_plugin.bin test_timer_plugin.bin
+all: kernel.nbp kernel.dsk kernel.dasm trampoline.blk kernel.3if sqlite_plugin.bin test_timer_plugin.bin lwip_plugin.bin
 
 DEPS := $(shell find -name '*.d')
 -include $(DEPS)
@@ -111,6 +121,12 @@ kernel.elf: kernel.o kernel.ld
 	$(LD) -T plugin.ld -R kernel.elf -o $@ $(filter %.o,$^) $(shell $(GCC) -print-libgcc-file-name)
 
 sqlite_plugin.elf: sqlite3.o
+
+lwip/obj/%.o: $(LWIP)/%.c lwip/lwipopts.h lwip/arch/cc.h
+	@mkdir -p $(@D)
+	$(GCC) -Os -Wall $(LWIP_FLAGS) -c $< -o $@
+lwip_plugin.o: CFLAGS += $(LWIP_FLAGS)
+lwip_plugin.elf: $(LWIP_OBJ)
 
 %.elf: %.o kernel.ld
 	$(LD) -T kernel.ld -o $@ $<

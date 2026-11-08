@@ -26,6 +26,9 @@
 #define KERNEL_EVENT_LOG    3  // LOG text from an isr, default: print
 #define KERNEL_EVENT_TIMER  4  // struct kernel_timer_event, see kernel_timer_at
 #define KERNEL_EVENT_ROOM   5  // uint32_t queue id: a post that failed can be retried
+#define KERNEL_EVENT_NET    6  // ethernet frame udp_mon does not own:
+                               // ARP (also answered by udp_mon), IPv4
+                               // except ICMP and udp 799/1001
 
 /* A plugin is a state machine driven by the events it listens to. */
 struct plugin {
@@ -61,5 +64,12 @@ int kernel_timer_at(uint32_t at, uint32_t cookie);
 extern struct blockdev *kernel_blockdev;  // type 7f partition, or 0
 extern const char kernel_version[];
 int kernel_infof(const char *fmt, ...);
+/* Main loop only */
+int kernel_net_send(const void *frame, uint32_t len);  // nonzero: tx full
+void kernel_net_addr(uint8_t mac[6], uint8_t ip[4]);   // udp_mon's
+void kernel_line(const uint8_t *line, uint32_t len);   // as KERNEL_EVENT_LINE
+/* Gets a copy of all console output while a plugin is registered.
+   Cleared on plugin load. */
+extern void (*kernel_console_hook)(uint8_t c);
 
 #endif

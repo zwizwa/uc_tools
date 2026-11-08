@@ -182,8 +182,11 @@ static inline void app_com_putchar(struct app *app, uint8_t c) {
         uart_putchar(&app->sunix.uart, c);
     }
 }
+void (*kernel_console_hook)(uint8_t c);
 static inline void app_info_putchar(struct app *app, uint8_t c) {
     text_console_putchar(&app->log, c);
+    // boot_config.plugin is cleared before a plugin image is written
+    if (kernel_console_hook && boot_config.plugin) kernel_console_hook(c);
     // log ring and tx are shared with the isrs
     int ie = interrupts_enabled();
     if (ie) cli();
@@ -630,10 +633,33 @@ int app_log_send(void *vapp, const uint8_t *data, uint32_t len) {
     struct app *app = vapp;
     return app->net.transmit(app->net.dev, data, len);
 }
+/* Frames for KERNEL_EVENT_NET, see plugin.h */
+static int net_for_plugin(const uint8_t *data, uint32_t len) {
+    const struct eth_udp *p = (const void*)data;
+    if (len < sizeof(struct mac)) return 0;
+    uint16_t ethertype = NTOHS(p->mac.ethertype);
+    if (ethertype == ETHERTYPE_ARP) return 1;
+    if (ethertype != ETHERTYPE_IPV4 || len < sizeof(struct mac) + sizeof(struct ip)) return 0;
+    if (p->ip.protocol == PROTOCOL_ICMP) return 0;
+    if (p->ip.protocol != PROTOCOL_UDP || len < sizeof(*p)) return 1;
+    uint16_t port = HTONS(p->udp.dst_port);
+    return port != UDP_MON_CONSOLE_PORT && port != UDP_MON_COMMAND_PORT;
+}
 void app_rx(void *vapp, const uint8_t *data, uint32_t len) {
     //LOG("app_rx %p\n", vapp);
     struct app *app = vapp;
     udp_mon_rx(&app->udp_mon, data, len);
+    struct plugin *p = boot_config.plugin;
+    if (p && (p->events & (1 << KERNEL_EVENT_NET)) && net_for_plugin(data, len)) {
+        uint8_t *d = kq_reserve(&app->kq, KERNEL_EVENT_NET, len);
+        if (d) {
+            mini_memcpy(d, data, len);
+            kq_commit(&app->kq);
+        }
+        else {
+            app->kq_drops++;
+        }
+    }
     /* Doorbell rung by 3if, see plugin.h.  Left set when the queue is
        full, so the next packet retries. */
     if (boot_config.plugin_load) {
@@ -853,10 +879,27 @@ static void plugin_load(const struct plugin_header *h) {
         LOG("plugin built for kernel %s, this is %s\n", v, kernel_version);
         return;
     }
+    kernel_console_hook = 0;
     mini_memset(h->bss_start, 0, h->bss_end - h->bss_start);
     struct plugin *p = h->init();
     boot_config.plugin = p;
     if (p) LOG("plugin %s\n", p->name);
+}
+
+/* See plugin.h */
+int kernel_net_send(const void *frame, uint32_t len) {
+    if (!g_app.net.dev) return -1;
+    cli();  // the net isr transmits too
+    int rv = g_app.net.transmit(g_app.net.dev, frame, len);
+    sti();
+    return rv;
+}
+void kernel_net_addr(uint8_t mac[6], uint8_t ip[4]) {
+    mini_memcpy(mac, &g_app.udp_mon.mac, 6);
+    mini_memcpy(ip, &g_app.udp_mon.ip, 4);
+}
+void kernel_line(const uint8_t *line, uint32_t len) {
+    kernel_event(KERNEL_EVENT_LINE, line, len);
 }
 
 /* Main loop: plugin first if it listens, else the kernel default. */
