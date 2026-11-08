@@ -37,6 +37,7 @@ qemu)
     run test_3if_integrity "$Q"
     for t in test_isr_log test_sqlite test_rtl8139_flood test_kq_burst test_timer; do run $t $T; done
     run test_tcp_console $T 10.1.54.9  # routed tap, see the script
+    run test_http $T 10.1.54.9
     mismatch $T
     vm_stop
     ;;
