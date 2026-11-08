@@ -3,7 +3,8 @@
    - frames from KERNEL_EVENT_NET, out through kernel_net_send
    - timers on a 50ms kernel_timer_at tick
    - console over TCP port 23: telnet.h per connection, lines go to
-     kernel_line, console output comes back through kernel_console_hook
+     kernel_line, console output comes back through kernel_console_hook,
+     ctrl-d on an empty line closes
    - http on port 80: httpserver.h serves www/index.html, a console on
      the websocket at /ws (binary frames, one line per message)
    - httpserver.h and websocket.h do blocking reads: here a short read
@@ -144,7 +145,12 @@ static void conn_write(struct telnet *t, const uint8_t *buf, uintptr_t len) {
     struct conn *c = conn_of(t);
     if (c->pcb) tcp_write(c->pcb, buf, len, TCP_WRITE_FLAG_COPY);
 }
+static void conn_close(struct conn *c);
 static void conn_event(struct telnet *t, uintptr_t event) {
+    if (event == TELNET_EVENT_CONTROL + 4 && !t->nb_char) {
+        conn_close(conn_of(t));  // ctrl-d on an empty line
+        return;
+    }
     if ((event & ~0xff) != TELNET_EVENT_LINE) return;
     uint8_t line[TELNET_LINE_BUF_SIZE + 1];
     memcpy(line, t->line, t->nb_char);
@@ -259,7 +265,7 @@ static err_t conn_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err
     // before any close: tcp_close sends RST when data is unacked
     tcp_recved(pcb, p->tot_len);
     if (c->kind == CONN_TELNET) {
-        for (struct pbuf *q = p; q; q = q->next) {
+        for (struct pbuf *q = p; q && c->pcb; q = q->next) {
             telnet_write_input(&c->t, q->payload, q->len);
         }
     }
