@@ -58,6 +58,17 @@ end
 m.aon = m.array_of_numbers
 
 
+-- Number to bin, little endian machine order.
+function m.bin_le(nb_bytes, val)
+   local arr = {}
+   for i=1,nb_bytes do
+      arr[i] = val % 0x100
+      val = math.floor(val / 0x100)
+   end
+   return array_to_bin(arr)
+end
+
+
 function m.sized_array(thing, size, pad)
    assert(size)
    assert(pad ~= nil)
