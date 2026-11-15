@@ -1,0 +1,188 @@
+<!-- Served by la_gl.c as root document.  Overview: see linux/la_gl.c -->
+<html>
+<head>
+<title>la_gl</title>
+<link rel="icon" href="data:,">
+<style>
+  body { margin: 0; background: #111; color: #ccc; font: 12px monospace; display: flex; height: 100vh; }
+  #scope { flex: 1; position: relative; min-width: 0; }
+  #scope canvas { width: 100%; height: 100%; display: block; }
+  #status { position: absolute; left: 4px; top: 2px; color: #888; }
+  #packets { width: 44em; overflow-y: scroll; white-space: pre; border-left: 1px solid #333; }
+  #packets div { padding: 0 4px; cursor: pointer; }
+  #packets div:hover { background: #333; }
+</style>
+</head>
+<body>
+<div id="scope"><canvas id="canvas"></canvas><div id="status"></div></div>
+<div id="packets"></div>
+<script id="vert" type="x-shader/x-vertex">
+attribute vec2 point;
+void main() { gl_Position = vec4(point, 0.0, 1.0); }
+</script>
+<script id="frag" type="x-shader/x-fragment">
+precision mediump float;
+/* One texel per pixel column: luminance = min, alpha = max, where
+   min/max are and/or of the 8 channel bits over the column's samples. */
+uniform sampler2D mm;
+uniform vec2 dims;
+float bit(float v, float ch) {
+    return mod(floor(floor(v * 255.0 + 0.5) / exp2(ch) + 0.001), 2.0);
+}
+void main() {
+    float x = gl_FragCoord.x;
+    float y = dims.y - gl_FragCoord.y;
+    float h = dims.y / 8.0;
+    float ch = floor(y / h);
+    float fy = y - ch * h;
+    float hi = floor(h * 0.2), lo = floor(h * 0.8);
+    vec4 t0 = texture2D(mm, vec2((x - 1.0) / dims.x, 0.5));
+    vec4 t1 = texture2D(mm, vec2(x / dims.x, 0.5));
+    float mn0 = bit(t0.r, ch), mx0 = bit(t0.a, ch);
+    float mn1 = bit(t1.r, ch), mx1 = bit(t1.a, ch);
+    float on = 0.0;
+    if (fy >= hi && fy <= lo) {
+        /* Both levels in this column: dim band.  Level changed
+           between columns: edge. */
+        if (mn1 != mx1) on = 0.4;
+        else if (mn0 == mx0 && mn0 != mn1 && x > 1.0) on = 1.0;
+    }
+    if (mx1 > 0.5 && abs(fy - hi) < 1.0) on = 1.0;
+    if (mn1 < 0.5 && abs(fy - lo) < 1.0) on = 1.0;
+    vec3 bg = (fy < 1.0) ? vec3(0.2) : vec3(0.07);
+    vec3 fg = 0.6 + 0.4 * cos(6.2832 * (ch / 8.0 + vec3(0.0, 0.33, 0.67)));
+    gl_FragColor = vec4(mix(bg, fg, on), 1.0);
+}
+</script>
+<script>
+const RATE = 2e6, LEVEL_MAX = 20;
+const CMD_WINDOW = 0, CMD_PACKETS = 1, PKT_SIZE = 48, PKT_DATA = 32;
+const canvas = document.getElementById('canvas');
+const status = document.getElementById('status');
+const packets = document.getElementById('packets');
+const gl = canvas.getContext('webgl');
+
+/* View state.  left is in samples at level, time/size in samples. */
+let level = 8, left = 0, follow = true, time = 0, size = 0, seq = 0;
+
+function shader(type, id) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, document.getElementById(id).textContent);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw gl.getShaderInfoLog(s);
+    return s;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, shader(gl.VERTEX_SHADER, 'vert'));
+gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, 'frag'));
+gl.linkProgram(prog);
+gl.useProgram(prog);
+gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+const point = gl.getAttribLocation(prog, 'point');
+gl.enableVertexAttribArray(point);
+gl.vertexAttribPointer(point, 2, gl.FLOAT, false, 0, 0);
+gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+
+function draw(mm) {
+    const w = mm.length / 2;
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE_ALPHA, w, 1, 0,
+                  gl.LUMINANCE_ALPHA, gl.UNSIGNED_BYTE, mm);
+    gl.uniform2f(gl.getUniformLocation(prog, 'dims'), canvas.width, canvas.height);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+/* Keep the window inside what is still in the circular buffer. */
+function clip() {
+    const scale = 2 ** level, w = canvas.width;
+    const max = Math.floor(time / scale) - w;
+    const min = Math.ceil((time - size) / scale) + Math.ceil(2 ** 20 / scale);
+    if (follow || left > max) left = max;
+    if (left < min && min < max) left = min;
+}
+
+const ws = new WebSocket('ws://' + location.host + '/ws');
+ws.binaryType = 'arraybuffer';
+function send(cmd, arg, left, width) {
+    const v = new DataView(new ArrayBuffer(24));
+    v.setUint32(0, cmd, true);
+    v.setUint32(4, arg, true);
+    v.setBigInt64(8, BigInt(left), true);
+    v.setUint32(16, width, true);
+    ws.send(v.buffer);
+}
+function req_window() {
+    canvas.width = Math.min(canvas.clientWidth, 4096);
+    canvas.height = canvas.clientHeight;
+    clip();
+    send(CMD_WINDOW, level, left, canvas.width);
+}
+function hex(b) { return b.toString(16).padStart(2, '0'); }
+function goto(t) {
+    follow = false;
+    level = 3;
+    left = Math.floor(t / 2 ** level) - 100;
+}
+function rpl_packets(v) {
+    const nb = v.getUint32(4, true);
+    const bottom = packets.scrollTop + packets.clientHeight >= packets.scrollHeight - 4;
+    for (let i = 0; i < nb; i++) {
+        const o = 8 + i * PKT_SIZE;
+        const t = Number(v.getBigUint64(o, true));
+        seq = v.getUint32(o + 8, true) + 1;
+        const port = v.getUint16(o + 12, true);
+        const count = v.getUint16(o + 14, true);
+        let line = (t / RATE).toFixed(6).padStart(12) + ' p' + port + ' ' + String(count).padStart(3) + ':';
+        for (let j = 0; j < Math.min(count, 16); j++) line += ' ' + hex(v.getUint8(o + 16 + j));
+        if (count > 16) line += ' ..';
+        const el = document.createElement('div');
+        el.textContent = line;
+        el.onclick = () => goto(t);
+        packets.appendChild(el);
+    }
+    while (packets.childElementCount > 500) packets.firstChild.remove();
+    if (bottom) packets.scrollTop = packets.scrollHeight;
+}
+ws.onmessage = (m) => {
+    const v = new DataView(m.data);
+    switch (v.getUint32(0, true)) {
+    case CMD_WINDOW:
+        time = Number(v.getBigUint64(16, true));
+        size = Number(v.getBigUint64(24, true));
+        draw(new Uint8Array(m.data, 32));
+        status.textContent =
+            (2 ** v.getUint32(4, true) * 1e6 / RATE) + ' us/px  t=' +
+            (Number(v.getBigInt64(8, true)) * 2 ** v.getUint32(4, true) / RATE).toFixed(6) +
+            (follow ? '  live' : '  paused') + '  (wheel: zoom, drag: pan, space: live)';
+        setTimeout(req_window, 50);
+        break;
+    case CMD_PACKETS:
+        rpl_packets(v);
+        setTimeout(() => send(CMD_PACKETS, seq, 0, 0), 250);
+        break;
+    }
+};
+ws.onopen = () => { req_window(); send(CMD_PACKETS, seq, 0, 0); };
+
+canvas.addEventListener('wheel', (ev) => {
+    ev.preventDefault();
+    const next = Math.max(0, Math.min(LEVEL_MAX, level + (ev.deltaY > 0 ? 1 : -1)));
+    const x = follow ? canvas.width : ev.offsetX;
+    left = Math.floor((left + x) * 2 ** level / 2 ** next) - x;
+    level = next;
+});
+canvas.addEventListener('mousemove', (ev) => {
+    if (ev.buttons & 1) { follow = false; left -= ev.movementX; }
+});
+document.addEventListener('keydown', (ev) => {
+    if (ev.key == ' ') { follow = !follow; ev.preventDefault(); }
+});
+</script>
+</body>
+</html>
