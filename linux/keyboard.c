@@ -1,6 +1,7 @@
 /* Read out the state of the shift key.
    Original purpose: read from udev script to enable test setup. */
 
+#include <errno.h>
 #include <fcntl.h>
 #include <linux/input.h>
 #include <stdio.h>
@@ -38,16 +39,25 @@ int leftshift(int fd) {
 
 /* Edit these. */
 #define NOTIFY_SEC  30
-/* Runs as tom, so the key file is readable.  Override with $NOTIFY_CMD.
-   See exo/etc_net/bin/mq_pub.sh */
-#define NOTIFY_CMD_DEFAULT \
-    "mosquitto_pub -h 10.1.3.1 -u notify " \
-    "-P \"$(cat /etc/keys/tom/mqtt-notify)\" " \
-    "-t notifications/keyboard -m \"$(hostname)\""
+/* mqtt-pub daemon FIFO, see nix/pkgs/mqtt/mqtt_pub.c.  Override with $MQTT_FIFO.
+   - owned by tom
+   - nonblocking: daemon down drops the event */
+#define MQTT_FIFO_DEFAULT "/run/mqtt-pub"
+
+void notify_mqtt(const char *fifo, const char *msg, int len) {
+    int fd = open(fifo, O_WRONLY | O_NONBLOCK);
+    if (fd < 0) { LOG("open %s: %s\n", fifo, strerror(errno)); return; }
+    if (write(fd, msg, len) != len) LOG("write %s: %s\n", fifo, strerror(errno));
+    close(fd);
+}
 
 int notify(int fd) {
-    const char *notify_cmd = getenv("NOTIFY_CMD");
-    if (!notify_cmd) notify_cmd = NOTIFY_CMD_DEFAULT;
+    const char *fifo = getenv("MQTT_FIFO");
+    if (!fifo) fifo = MQTT_FIFO_DEFAULT;
+    char host[64] = {};
+    gethostname(host, sizeof(host) - 1);
+    char msg[128];
+    int len = snprintf(msg, sizeof(msg), "notifications/keyboard %s\n", host);
     long last = 0;
     struct input_event ev;
     while (read(fd, &ev, sizeof(ev)) == (ssize_t)sizeof(ev)) {
@@ -55,8 +65,7 @@ int notify(int fd) {
         if (ev.value != 1) continue;  /* key down only */
         if (ev.time.tv_sec - last < NOTIFY_SEC) continue;
         last = ev.time.tv_sec;
-        int rv = system(notify_cmd);
-        if (rv) LOG("system: %d\n", rv);
+        notify_mqtt(fifo, msg, len);
     }
     return 0;
 }
