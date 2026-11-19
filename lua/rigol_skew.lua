@@ -9,7 +9,8 @@
 -- - one :SING per run of <pulse script>, trigger CH1 falling, 50us/div,
 --   600k points at 500MSa/s: dmx break + zero byte fits, 4 edges per channel
 -- - <pulse script> prints the 36MHz divisor on stdout (16 = 2.25M, 144 = 250k)
--- - shot rejected unless both channels show the same edge sequence
+-- - each CH2 edge paired with the nearest CH1 edge in the same direction,
+--   shot rejected unless the pairing is 1:1 and the same as the first shot's
 -- - per edge: 50% crossing from a line fit over the 20-80% samples,
 --   skew CH2-CH1; per low pulse: width per channel
 -- - vertical scale and trigger level: by hand, signal should fill the screen
@@ -96,15 +97,18 @@ function scpi:number(query)
    return tonumber(self:line(query))
 end
 -- - #<n><len><data>\n, optional expected len
-function scpi:block(query, len)
+-- - setup(), optional, inside the retry: settings the scope can drop
+--   although *OPC? acks them, e.g. :WAV:STAR/STOP
+function scpi:block(query, len, setup)
    return self:retry(
       query, function()
+         if setup then setup() end
          self:put(query)
          while self:read_bytes(1) ~= '#' do end
          local n = tonumber(self:read_bytes(1))
          local data = self:read_bytes(tonumber(self:read_bytes(n)))
          self:read_line()
-         assert(not len or #data == len, 'short block')
+         assert(not len or #data == len, 'short block ' .. #data .. '/' .. tostring(len))
          return data
       end)
 end
@@ -342,9 +346,10 @@ function skew:wav(ch, f)
    local chunks = {}
    for start = 1, points, CHUNK do
       local stop = math.min(start + CHUNK - 1, points)
-      self:cmd(':WAV:STAR ' .. start)
-      self:cmd(':WAV:STOP ' .. stop)
-      table.insert(chunks, self:block(':WAV:DATA?', stop - start + 1))
+      table.insert(chunks, self:block(':WAV:DATA?', stop - start + 1, function()
+         self:cmd(':WAV:STAR ' .. start)
+         self:cmd(':WAV:STOP ' .. stop)
+      end))
    end
    local data = table.concat(chunks)
    write_file(f('_ch' .. ch .. '.bin'), data)
@@ -376,25 +381,38 @@ function skew:shot(i)
       for _, x in ipairs(e) do table.insert(d, x[1]) end
       return table.concat(d, ',')
    end
-   if dirs(e1) ~= dirs(e2) or #e1 == 0 or (self.dirs and self.dirs ~= dirs(e1)) then
+   -- - CH2 can miss edges, e.g. an undriven line until the chain
+   --   drives it: pair each CH2 edge with the nearest CH1 edge in the
+   --   same direction, n = CH1 edge numbers, increasing
+   local n, a, b = {}, {}, {}
+   for _, y in ipairs(e2) do
+      local k
+      for j, x in ipairs(e1) do
+         if x[1] == y[1] and (not k or math.abs(x[2] - y[2]) < math.abs(e1[k][2] - y[2])) then k = j end
+      end
+      if not k or k <= (n[#n] or 0) then n = {} ; break end
+      table.insert(n, k) ; table.insert(a, e1[k]) ; table.insert(b, y)
+   end
+   local sig = dirs(e1) .. ' ' .. table.concat(n, ',')
+   if #n == 0 or (self.sig and self.sig ~= sig) then
       logf('shot %d: rejected, edges %s / %s\n', i, dirs(e1), dirs(e2))
       return
    end
-   self.dirs = dirs(e1)
+   self.sig = sig
    local t1, t2, row, cols = {}, {}, {}, {}
-   for e = 1, #e1 do
+   for p = 1, #n do
       -- - t = 0 at the trigger, the first CH1 edge: preamble xorigin is off in RAW
-      t1[e] = (e1[e][2] - e1[1][2]) * dt
-      t2[e] = (e2[e][2] - e1[1][2]) * dt
-      table.insert(row, t2[e] - t1[e])
-      table.insert(cols, 'skew_e' .. e .. '_' .. e1[e][1])
+      t1[p] = (a[p][2] - e1[1][2]) * dt
+      t2[p] = (b[p][2] - e1[1][2]) * dt
+      table.insert(row, t2[p] - t1[p])
+      table.insert(cols, 'skew_e' .. n[p] .. '_' .. a[p][1])
    end
    -- - low pulses: fall followed by rise
    for ch, t in ipairs({ t1, t2 }) do
-      for e = 1, #e1 - 1 do
-         if e1[e][1] == 'fall' then
-            table.insert(row, t[e + 1] - t[e])
-            table.insert(cols, 'low_e' .. e .. '_ch' .. ch)
+      for p = 1, #n - 1 do
+         if a[p][1] == 'fall' and n[p + 1] == n[p] + 1 then
+            table.insert(row, t[p + 1] - t[p])
+            table.insert(cols, 'low_e' .. n[p] .. '_ch' .. ch)
          end
       end
    end
@@ -405,13 +423,13 @@ function skew:shot(i)
    end
    self.tsv:write(table.concat({ i, div, srat, table.concat(row, '\t'), fdel, rdel }, '\t') .. '\n')
    self.tsv:flush()
-   for e = 1, #e1 do
-      plot(f('_e' .. e .. '.bmp'),
-           string.format('shot %d edge %d %s   CH2-CH1 %s', i, e, e1[e][1], si(row[e], 's')),
-           s1, s2, e1[e], e2[e], mid1, mid2, pre1, pre2)
+   for p = 1, #n do
+      plot(f('_e' .. n[p] .. '.bmp'),
+           string.format('shot %d edge %d %s   CH2-CH1 %s', i, n[p], a[p][1], si(row[p], 's')),
+           s1, s2, a[p], b[p], mid1, mid2, pre1, pre2)
    end
    local ns = {}
-   for e = 1, #e1 do table.insert(ns, string.format('%.2f', row[e] * 1e9)) end
+   for p = 1, #n do table.insert(ns, string.format('%.2f', row[p] * 1e9)) end
    logf('shot %d: div %d, %.0fMSa/s, skew ns %s\n', i, div, srat / 1e6, table.concat(ns, ' '))
    return row
 end
@@ -451,15 +469,15 @@ end
 
 function skew:halt() uv.stop() end
 
-local script, shots = arg[1], tonumber(arg[2] or 10)
-if not script then
-   log('usage: rigol_skew.lua <pulse script> [shots]\n')
+local script, shots, ip = arg[1], tonumber(arg[2] or 10), os.getenv('RIGOL')
+if not script or not ip then
+   log('usage: RIGOL=<ip> rigol_skew.lua <pulse script> [shots]\n')
    os.exit(1)
 end
 local sched = actor.scheduler.new()
 actor_uv.spawn_tcp_client(
    sched,
-   { ip = os.getenv('RIGOL') or '10.1.9.62', port = 5555, mode = 'raw',
+   { ip = ip, port = 5555, mode = 'raw',
      connection = function()
         local task = { script = script, shots = shots }
         mixin.add(task, skew)
