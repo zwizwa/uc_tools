@@ -119,18 +119,33 @@ function actor_uv.spawn_tcp_server(scheduler, serv_obj)
          end,
          task)
 
+      actor_uv.start_read(task, serv_obj)
+
+   end
+   local lsocket = uv.tcp()
+   listener.lsocket = lsocket
+
+   lsocket:bind(serv_obj.ip, serv_obj.port)
+   lsocket:listen(connect)
+
+   return listener
+end
+
+-- Push task.socket data into the task, server and client side
+function actor_uv.start_read(task, obj)
+
       -- Configure how data will be pushed into the actor network.  It
       -- seems simpler to do this at the write end as opposed to the
       -- read end.  The function is stored inside the connection task
       -- object such that mode can be changed later.
 
-      if serv_obj.mode == 'line' then
+      if obj.mode == 'line' then
          task.push = actor_uv.line_mode_push(task)
 
-      elseif serv_obj.mode and serv_obj.mode[1] == 'packet' then
-         task.push = actor_uv.packet_mode_push(task, serv_obj)
+      elseif obj.mode and obj.mode[1] == 'packet' then
+         task.push = actor_uv.packet_mode_push(task, obj)
 
-      elseif serv_obj.mode == 'raw' then
+      elseif obj.mode == 'raw' then
          task.push = actor_uv.raw_mode_push(task)
 
       else
@@ -145,9 +160,9 @@ function actor_uv.spawn_tcp_server(scheduler, serv_obj)
                -- log_desc({err=err, errno=err:no(), errmsg=err:msg()})
                if (-4095 == err:no()) then
                   -- EOF
-                  log("tcp_server: disconnect\n")
+                  log("tcp: disconnect\n")
                else
-                  logf("tcp_server: error %d %s\n", err:no(), err:msg())
+                  log(string.format("tcp: error %d %s\n", err:no(), err:msg()))
                end
                if task.halt then
                   task:halt()
@@ -157,15 +172,33 @@ function actor_uv.spawn_tcp_server(scheduler, serv_obj)
                task.push(data)
             end
          end)
+end
 
-   end
-   local lsocket = uv.tcp()
-   listener.lsocket = lsocket
-
-   lsocket:bind(serv_obj.ip, serv_obj.port)
-   lsocket:listen(connect)
-
-   return listener
+-- A TCP client, same cfg as the server
+-- - cfg.ip must be an address, lluv does not resolve
+-- - cfg:connection() runs once connected, as the server's
+function actor_uv.spawn_tcp_client(scheduler, cfg)
+   assert(cfg.ip)
+   assert(cfg.port)
+   local task = cfg:connection()
+   actor_uv.task(scheduler, task)
+   task.socket = uv.tcp()
+   task.socket:connect(
+      cfg.ip, cfg.port,
+      function(_, err)
+         if err then
+            error("tcp connect " .. cfg.ip .. ":" .. cfg.port .. ": " .. err:msg())
+         end
+         actor_uv.start_read(task, cfg)
+         scheduler:spawn(
+            function(task)
+               task:connect()
+               task.socket:close()
+            end,
+            task)
+         scheduler:schedule()
+      end)
+   return task
 end
 
 -- Blocking abstraction for asynchronous socket writes.
