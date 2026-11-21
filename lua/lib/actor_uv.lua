@@ -22,6 +22,11 @@ function actor_uv.send_after(task, msg, ms, t)
    if not t then
       t = uv.timer()
    end
+   -- The timeout counts from the loop time, which libuv caches at the
+   -- start of each loop iteration.  Lua code can run longer than the
+   -- timeout before getting here, so refresh it.
+   -- Claude Code session "buildroot" 89c75c2c-e511-4106-a946-6b3bb5449f4a
+   uv.update_time()
    t:start(
       ms, 0,
       function(timer)
