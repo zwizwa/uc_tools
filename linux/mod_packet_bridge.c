@@ -1117,6 +1117,72 @@ static void strtok_argv(char *tok, const char *delim,
 }
 
 
+/* Numeric IPv6 only.  Link-local needs the scope: fe80::1%eth0
+   getaddrinfo() needs a later _POSIX_C_SOURCE, and net/if.h conflicts
+   with linux/if.h, so do the scope with an ioctl. */
+static int tcp6_socket(void) {
+    int fd;
+    ASSERT_ERRNO(fd = socket(AF_INET6, SOCK_STREAM, 0));
+    int intarg = 1;
+    ASSERT_ERRNO(setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &intarg, sizeof(intarg)));
+    return fd;
+}
+static int tcp6_connect(const char *host, uint16_t port) {
+    int fd = tcp6_socket();
+    struct sockaddr_in6 addr = {
+        .sin6_port = htons(port),
+        .sin6_family = AF_INET6
+    };
+    char ip[strlen(host)+1];
+    strcpy(ip, host);
+    char *scope = strchr(ip, '%');
+    if (scope) {
+        *scope++ = 0;
+        struct ifreq ifr = {};
+        ASSERT(strlen(scope) < sizeof(ifr.ifr_name));
+        strcpy(ifr.ifr_name, scope);
+        ASSERT_ERRNO(ioctl(fd, SIOCGIFINDEX, &ifr));
+        addr.sin6_scope_id = ifr.ifr_ifindex;
+    }
+    if (1 != inet_pton(AF_INET6, ip, &addr.sin6_addr)) {
+        ERROR("bad IPv6 address %s\n", ip);
+    }
+    ASSERT_ERRNO(connect(fd, (struct sockaddr *)&addr, sizeof(addr)));
+    return fd;
+}
+static int tcp6_listen(uint16_t port) {
+    int fd_listen = tcp6_socket();
+    int intarg = 1;
+    ASSERT_ERRNO(setsockopt(fd_listen, SOL_SOCKET, SO_REUSEADDR, &intarg, sizeof(intarg)));
+    ASSERT_ERRNO(setsockopt(fd_listen, IPPROTO_IPV6, IPV6_V6ONLY, &intarg, sizeof(intarg)));
+    struct sockaddr_in6 addr = {
+        .sin6_port = htons(port),
+        .sin6_family = AF_INET6
+    };
+    ASSERT_ERRNO(bind(fd_listen, (struct sockaddr *)&addr, sizeof(addr)));
+    ASSERT_ERRNO(listen(fd_listen, 1));
+    return fd_listen;
+}
+/* Wait for a single connection. */
+static int tcp_accept_one(int fd_listen) {
+    int fd;
+    ASSERT_ERRNO(fd = accept(fd_listen, NULL, NULL));
+    int intarg = 1;
+    ASSERT_ERRNO(setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &intarg, sizeof(intarg)));
+    close(fd_listen);
+    return fd;
+}
+
+static struct port *port_open_framed_stream(const char *framing, int fd) {
+    if (!strcmp("slip", framing)) {
+        return port_open_slip_stream(fd, fd);
+    }
+    else {
+        uint16_t len_bytes = atoi(framing);
+        return port_open_packetn_stream(len_bytes, fd, fd);
+    }
+}
+
 struct port *port_open_(const char *spec_ro) {
     char spec[strlen(spec_ro)+1];
     strcpy(spec, spec_ro);
@@ -1309,6 +1375,36 @@ struct port *port_open_(const char *spec_ro) {
             uint16_t len_bytes = atoi(framing);
             return port_open_packetn_tcp_connect(len_bytes, host, tcp_port);
         }
+    }
+
+    // TCP6:<framing>:[<host>]:<port>
+    // The brackets are needed: the address has colons.
+    if (!strcmp(tok, "TCP6")) {
+        ASSERT(tok = strtok(NULL, delim));
+        const char *framing = tok;
+        ASSERT(tok = strtok(NULL, "]"));
+        ASSERT(tok[0] == '[');
+        const char *host = tok + 1;
+        ASSERT(tok = strtok(NULL, delim));
+        uint16_t tcp_port = atoi(tok);
+        ASSERT(NULL == (tok = strtok(NULL, delim)));
+        int fd = tcp6_connect(host, tcp_port);
+        return port_open_framed_stream(framing, fd);
+    }
+
+    // TCP-LISTEN:<framing>:<port>
+    // TCP6-LISTEN:<framing>:<port>
+    // Waits for one connection.  Ports are opened in order, so when
+    // this is the first one, the second is opened on connect.
+    if (!strcmp(tok, "TCP-LISTEN") || !strcmp(tok, "TCP6-LISTEN")) {
+        int v6 = !strcmp(tok, "TCP6-LISTEN");
+        ASSERT(tok = strtok(NULL, delim));
+        const char *framing = tok;
+        ASSERT(tok = strtok(NULL, delim));
+        uint16_t tcp_port = atoi(tok);
+        ASSERT(NULL == (tok = strtok(NULL, delim)));
+        int fd_listen = v6 ? tcp6_listen(tcp_port) : assert_tcp_listen(tcp_port);
+        return port_open_framed_stream(framing, tcp_accept_one(fd_listen));
     }
 
     if (!strcmp(tok, "TIMERFD")) {
